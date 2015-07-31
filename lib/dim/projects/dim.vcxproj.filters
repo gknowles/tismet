@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{6a7326f9-aed9-4e44-b5c9-07113d48ac52}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{ce582bb0-1c98-4fb8-83e2-cde094609558}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="config">
+      <UniqueIdentifier>{da5187c8-0f1b-4ab4-8af9-c741a075317b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\dim\app.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\cmdline.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\config.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\handle.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\task.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\timer.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\types.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\compiler\visualc.h">
+      <Filter>config</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\intern.h">
+      <Filter>src</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\app.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cmdline.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\handle.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\task.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\timer.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
