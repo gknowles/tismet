@@ -2,15 +2,15 @@
 #include "pch.h"
 #pragma hdrstop
 
-class TestCleanup : public IDimAppShutdownNotify {
+class MainShutdown : public IDimAppShutdownNotify {
     void OnAppStartClientCleanup () override;
     bool OnAppQueryClientDestroy () override;
 };
 
-void TestCleanup::OnAppStartClientCleanup () {
+void MainShutdown::OnAppStartClientCleanup () {
 }
 
-bool TestCleanup::OnAppQueryClientDestroy () {
+bool MainShutdown::OnAppQueryClientDestroy () {
     return true;
 }
 
@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < limit + 1; ++i) {
         if (limit > 1)
             printf("Run #%i\n", i);
-        TestCleanup cleanup;
+        MainShutdown cleanup;
         DimAppInitialize();
         DimAppMonitorShutdown(&cleanup);
         DimAppSignalShutdown(9);

@@ -32,12 +32,23 @@ private:
     DimSocket * m_socket = nullptr;
 };
 
+struct DimSocketBuffer {
+    void * data;
+    size_t bytes;
+};
+DimSocketBuffer * DimSocketNewBuffer ();
+void DimSocketDeleteBuffer (DimSocketBuffer * buffer);
+
 void DimSocketConnect (
     IDimSocketNotify * notify,
     const SockAddr & remoteAddr,
     const SockAddr & localAddr
 );
 void DimSocketDisconnect (IDimSocketNotify * notify);
-void DimSocketWrite (IDimSocketNotify * notify, void * data, size_t bytes);
+
+// Writes the data and deletes the buffer.
+//
+// NOTE: Must be a buffer that was allocated with DimSocketNewBuffer
+void DimSocketWrite (IDimSocketNotify * notify, DimSocketBuffer * buffer);
 
 #endif

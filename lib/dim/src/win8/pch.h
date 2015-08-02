@@ -5,6 +5,8 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <limits>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -13,6 +15,7 @@
 
 #define _WIN32_WINNT _WIN32_WINNT_WIN8
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <Windows.h>
 #include <WinSock2.h>
 #include <MSWSock.h>

@@ -250,7 +250,7 @@ void DimTimer::StopSync (IDimTimerNotify * notify) {
     if (!notify->m_timer)
         return;
         
-    // if we've stopped just removed the timer, this could be a call from the
+    // if we've stopped just remove the timer, this could be a call from the
     // destructor of a static notify so s_mut may already be destroyed.
     if (s_mode == MODE_STOPPED) {
         notify->m_timer.reset();
