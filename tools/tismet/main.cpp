@@ -1,12 +1,8 @@
 // main.cpp - tismet
-#include "dim/app.h"
-#include "dim/app.h"
+#include "pch.h"
+#pragma hdrstop
 
-#include <crtdbg.h>
-#include <cstdio>
-#include <cstdlib>
-
-class TestCleanup : public IAppCleanup {
+class TestCleanup : public IDimAppShutdownNotify {
     void OnAppStartClientCleanup () override;
     bool OnAppQueryClientDestroy () override;
 };
@@ -33,10 +29,10 @@ int main(int argc, char *argv[]) {
         if (limit > 1)
             printf("Run #%i\n", i);
         TestCleanup cleanup;
-        Initialize();
-        RegisterCleanup(&cleanup);
-        SignalShutdown(9);
-        code = WaitForShutdown();
+        DimAppInitialize();
+        DimAppMonitorShutdown(&cleanup);
+        DimAppSignalShutdown(9);
+        code = DimAppWaitForShutdown();
     }
     return code;
 }

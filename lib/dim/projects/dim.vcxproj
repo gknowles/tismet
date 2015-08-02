@@ -19,22 +19,52 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\dim.h" />
     <ClInclude Include="..\include\dim\app.h" />
     <ClInclude Include="..\include\dim\cmdline.h" />
     <ClInclude Include="..\include\dim\compiler\visualc.h" />
     <ClInclude Include="..\include\dim\config.h" />
+    <ClInclude Include="..\include\dim\error.h" />
     <ClInclude Include="..\include\dim\handle.h" />
+    <ClInclude Include="..\include\dim\socket.h" />
     <ClInclude Include="..\include\dim\task.h" />
     <ClInclude Include="..\include\dim\timer.h" />
     <ClInclude Include="..\include\dim\types.h" />
     <ClInclude Include="..\src\intern.h" />
+    <ClInclude Include="..\src\pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\app.cpp" />
-    <ClCompile Include="..\src\cmdline.cpp" />
-    <ClCompile Include="..\src\handle.cpp" />
-    <ClCompile Include="..\src\task.cpp" />
-    <ClCompile Include="..\src\timer.cpp" />
+    <ClCompile Include="..\src\app.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="..\src\cmdline.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="..\src\error.cpp" />
+    <ClCompile Include="..\src\handle.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="..\src\pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="..\src\task.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="..\src\timer.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+    </ClCompile>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{73784937-0004-4A1B-9352-EADDB9499541}</ProjectGuid>
@@ -114,6 +144,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <AdditionalIncludeDirectories>$(ProjectDir)../include</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

@@ -8,9 +8,9 @@
 enum ERunMode;
 
 
-class IAppCleanup {
+class IDimAppShutdownNotify {
 public:
-    virtual ~IAppCleanup () {}
+    virtual ~IDimAppShutdownNotify () {}
 
     virtual void OnAppStartClientCleanup () {}
     virtual bool OnAppQueryClientDestroy () { return true; }
@@ -20,15 +20,15 @@ public:
     virtual bool OnAppQueryConsoleDestroy () { return true; }
 };
 
-void Initialize ();
-void SignalShutdown (int exitcode = 0);
+void DimAppInitialize ();
+void DimAppSignalShutdown (int exitcode = 0);
 
 // returns exit code
-int WaitForShutdown ();
+int DimAppWaitForShutdown ();
 
-void RegisterCleanup (IAppCleanup * cleanup);
-bool QueryDestroyFailed ();
+void DimAppMonitorShutdown (IDimAppShutdownNotify * cleanup);
+bool DimQueryDestroyFailed ();
 
-ERunMode AppMode ();
+ERunMode DimAppMode ();
 
 #endif

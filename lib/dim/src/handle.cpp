@@ -1,7 +1,6 @@
 // handle.cpp - dim services
-#include "dim/handle.h"
-
-#include <cassert>
+#include "pch.h"
+#pragma hdrstop
 
 using namespace std;
 
@@ -13,29 +12,29 @@ using namespace std;
 ***/
 
 //===========================================================================
-HandleMapBase::HandleMapBase () {
+DimHandleMapBase::DimHandleMapBase () {
     m_values.push_back({nullptr, 0});
 }
 
 //===========================================================================
-HandleMapBase::~HandleMapBase() {
+DimHandleMapBase::~DimHandleMapBase() {
     assert(Empty());
 }
 
 //===========================================================================
-bool HandleMapBase::Empty () const {
+bool DimHandleMapBase::Empty () const {
     return !m_numUsed;
 }
 
 //===========================================================================
-void * HandleMapBase::Find (HandleBase handle) {
+void * DimHandleMapBase::Find (DimHandleBase handle) {
     return handle.pos >= (int) m_values.size() 
         ? NULL 
         : m_values[handle.pos].value;
 }
 
 //===========================================================================
-HandleBase HandleMapBase::Insert (void * value) {
+DimHandleBase DimHandleMapBase::Insert (void * value) {
     int pos;
     if (!m_firstFree) {
         m_values.push_back({value, 0});
@@ -52,7 +51,7 @@ HandleBase HandleMapBase::Insert (void * value) {
 }
 
 //===========================================================================
-void * HandleMapBase::Release (HandleBase handle) {
+void * DimHandleMapBase::Release (DimHandleBase handle) {
     if (handle.pos >= (int) m_values.size())
         return nullptr;
     Node & node = m_values[handle.pos];

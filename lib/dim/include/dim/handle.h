@@ -7,18 +7,18 @@
 #include <string>
 #include <vector>
 
-struct HandleBase {
+struct DimHandleBase {
     int pos;
 
     template<typename H> 
     H As () const {
         H handle;
-        static_cast<HandleBase&>(handle) = *this;
+        static_cast<DimHandleBase&>(handle) = *this;
         return handle;
     }
 };
 
-class HandleMapBase {
+class DimHandleMapBase {
 public:
     template<typename H, typename T> class Iterator;
     struct Node {
@@ -27,13 +27,13 @@ public:
     };
 
 public:
-    HandleMapBase ();
-    ~HandleMapBase ();
+    DimHandleMapBase ();
+    ~DimHandleMapBase ();
     bool Empty () const;
-    void * Find (HandleBase handle);
+    void * Find (DimHandleBase handle);
 
-    HandleBase Insert (void * value);
-    void * Release (HandleBase handle);
+    DimHandleBase Insert (void * value);
+    void * Release (DimHandleBase handle);
     
     template<typename H, typename T> Iterator<H,T> begin ();
     template<typename H, typename T> Iterator<H,T> end ();
@@ -45,10 +45,10 @@ private:
 };
 
 template<typename H, typename T>
-class HandleMapBase::Iterator {
-    HandleMapBase::Node * node{nullptr};
-    HandleMapBase::Node * base{nullptr};
-    HandleMapBase::Node * end{nullptr};
+class DimHandleMapBase::Iterator {
+    DimHandleMapBase::Node * node{nullptr};
+    DimHandleMapBase::Node * base{nullptr};
+    DimHandleMapBase::Node * end{nullptr};
 public:
     Iterator () {}
     Iterator (Node * base, Node * end) 
@@ -81,35 +81,35 @@ public:
 
 //===========================================================================
 template<typename H, typename T>
-inline auto HandleMapBase::begin () -> Iterator<H,T> {
+inline auto DimHandleMapBase::begin () -> Iterator<H,T> {
     auto data = m_values.data();
     return Iterator<H,T>(data, data + m_values.size());
 }
 
 //===========================================================================
 template<typename H, typename T>
-inline auto HandleMapBase::end () -> Iterator<H,T> {
+inline auto DimHandleMapBase::end () -> Iterator<H,T> {
     return Iterator<H,T>{};
 }
 
 template<typename H, typename T>
-class HandleMap : public HandleMapBase {
+class DimHandleMap : public DimHandleMapBase {
 public:
     T * Find (H handle) { 
-        return static_cast<T*>(HandleMapBase::Find(handle)); 
+        return static_cast<T*>(DimHandleMapBase::Find(handle)); 
     }
     void Clear () { 
         for (auto&& ht : *this) 
             Erase(ht);
     }
-    H Insert (T * value) { return HandleMapBase::Insert(value).As<H>(); }
+    H Insert (T * value) { return DimHandleMapBase::Insert(value).As<H>(); }
     void Erase (H handle) { delete Release(handle); }
     T * Release (H handle) { 
-        return static_cast<T*>(HandleMapBase::Release(handle)); 
+        return static_cast<T*>(DimHandleMapBase::Release(handle)); 
     }
 
-    Iterator<H,T> begin () { return HandleMapBase::begin<H,T>(); }
-    Iterator<H,T> end () { return HandleMapBase::end<H,T>(); }
+    Iterator<H,T> begin () { return DimHandleMapBase::begin<H,T>(); }
+    Iterator<H,T> end () { return DimHandleMapBase::end<H,T>(); }
 };
 
 #endif

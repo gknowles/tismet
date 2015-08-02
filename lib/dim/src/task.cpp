@@ -1,13 +1,6 @@
 // task.cpp - dim core
-#include "dim/handle.h"
-#include "dim/task.h"
-#include "intern.h"
-
-#include <atomic>
-#include <cassert>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
+#include "pch.h"
+#pragma hdrstop
 
 using namespace std;
 using namespace std::rel_ops;
@@ -19,9 +12,9 @@ using namespace std::rel_ops;
 *
 ***/
 
-class TaskQueue {
+class DimTaskQueue {
 public:
-    HTaskQueue hq;
+    HDimTaskQueue hq;
     string name;
 
     // current threads have been created, haven't exited, but may not have
@@ -29,12 +22,12 @@ public:
     int curThreads{0};
     int wantThreads{0};
 
-    ITaskNotify * first{nullptr};
-    ITaskNotify * last{nullptr};
+    IDimTaskNotify * first{nullptr};
+    IDimTaskNotify * last{nullptr};
 
     condition_variable cv;
 
-    void Push (ITaskNotify & task);
+    void Push (IDimTaskNotify & task);
     void Pop ();
 };
 
@@ -47,7 +40,7 @@ public:
 
 namespace {
 
-class EndThreadTask : public ITaskNotify {};
+class EndThreadTask : public IDimTaskNotify {};
 
 } // namespace
 
@@ -58,15 +51,15 @@ class EndThreadTask : public ITaskNotify {};
 *
 ***/
 
-static HandleMap<HTaskQueue, TaskQueue> s_queues;
+static DimHandleMap<HDimTaskQueue, DimTaskQueue> s_queues;
 static int s_numThreads;
 static mutex s_mut;
 static condition_variable s_destroyed;
 static int s_numDestroyed;
 static int s_numEnded;
 
-static HTaskQueue s_eventQ;
-static HTaskQueue s_computeQ;
+static HDimTaskQueue s_eventQ;
+static HDimTaskQueue s_computeQ;
 static atomic_bool s_running;
 
 
@@ -77,8 +70,8 @@ static atomic_bool s_running;
 ***/
 
 //===========================================================================
-static void TaskQueueThread (TaskQueue * ptr) {
-    TaskQueue & q{*ptr};
+static void TaskQueueThread (DimTaskQueue * ptr) {
+    DimTaskQueue & q{*ptr};
     bool more{true};
     unique_lock<mutex> lk{s_mut};
     while (more) {
@@ -103,7 +96,7 @@ static void TaskQueueThread (TaskQueue * ptr) {
 }
 
 //===========================================================================
-static void SetThreads_Lock (TaskQueue & q, int threads) {
+static void SetThreads_Lock (DimTaskQueue & q, int threads) {
     q.wantThreads = threads;
     int num = q.wantThreads - q.curThreads;
     if (num > 0) {
@@ -129,12 +122,12 @@ static void SetThreads_Lock (TaskQueue & q, int threads) {
 
 /****************************************************************************
 *
-*   TaskQueue
+*   DimTaskQueue
 *
 ***/
 
 //===========================================================================
-void TaskQueue::Push (ITaskNotify & task) {
+void DimTaskQueue::Push (IDimTaskNotify & task) {
     task.m_taskNext = nullptr;
 
     if (!first) {
@@ -146,7 +139,7 @@ void TaskQueue::Push (ITaskNotify & task) {
 }
 
 //===========================================================================
-void TaskQueue::Pop () {
+void DimTaskQueue::Pop () {
     first = first->m_taskNext;
 }
 
@@ -158,14 +151,14 @@ void TaskQueue::Pop () {
 ***/
 
 //===========================================================================
-void ITaskInitialize () {
+void IDimTaskInitialize () {
     s_running = true;
-    s_eventQ = TaskCreateQueue("Event", 1);
-    s_computeQ = TaskCreateQueue("Compute", 5);
+    s_eventQ = DimTaskCreateQueue("Event", 1);
+    s_computeQ = DimTaskCreateQueue("Compute", 5);
 }
 
 //===========================================================================
-void ITaskDestroy () {
+void IDimTaskDestroy () {
     s_running = false;
     unique_lock<mutex> lk{s_mut};
 
@@ -190,20 +183,20 @@ void ITaskDestroy () {
 ***/
 
 //===========================================================================
-void TaskPushEvent (ITaskNotify & task) {
-    TaskPush(s_eventQ, task);
+void DimTaskPushEvent (IDimTaskNotify & task) {
+    DimTaskPush(s_eventQ, task);
 }
 
 //===========================================================================
-void TaskPushCompute (ITaskNotify & task) {
-    TaskPush(s_computeQ, task);
+void DimTaskPushCompute (IDimTaskNotify & task) {
+    DimTaskPush(s_computeQ, task);
 }
 
 //===========================================================================
-HTaskQueue TaskCreateQueue (const string & name, unsigned threads) {
+HDimTaskQueue DimTaskCreateQueue (const string & name, unsigned threads) {
     assert(s_running);
     assert(threads);
-    auto * q = new TaskQueue;
+    auto * q = new DimTaskQueue;
     q->name = name;
     q->wantThreads = 0;
     q->curThreads = 0;
@@ -215,7 +208,7 @@ HTaskQueue TaskCreateQueue (const string & name, unsigned threads) {
 }
 
 //===========================================================================
-void TaskSetQueueThreads (HTaskQueue hq, unsigned threads) {
+void DimTaskSetQueueThreads (HDimTaskQueue hq, unsigned threads) {
     assert(s_running || !threads);
 
     lock_guard<mutex> lk{s_mut};
@@ -224,7 +217,7 @@ void TaskSetQueueThreads (HTaskQueue hq, unsigned threads) {
 }
 
 //===========================================================================
-void TaskPush (HTaskQueue hq, ITaskNotify & task) {
+void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify & task) {
     assert(s_running);
 
     lock_guard<mutex> lk{s_mut};

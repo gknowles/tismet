@@ -1,12 +1,6 @@
 // app.cpp - dim core
-#include "dim/app.h"
-#include "dim/timer.h"
-
-#include "intern.h"
-
-#include <cassert>
-#include <mutex>
-#include <vector>
+#include "pch.h"
+#pragma hdrstop
 
 using namespace std;
 using namespace std::chrono;
@@ -21,10 +15,10 @@ using namespace std::chrono;
 namespace {
 
 struct CleanupInfo {
-    IAppCleanup * notify;
+    IDimAppShutdownNotify * notify;
     bool destroyed = false;
 
-    CleanupInfo (IAppCleanup * notify) : notify(notify) {}
+    CleanupInfo (IDimAppShutdownNotify * notify) : notify(notify) {}
 };
 
 enum ETimerMode {
@@ -39,16 +33,16 @@ enum ETimerMode {
     DONE
 };
 
-class MainTimer : public ITimerNotify {
+class MainTimer : public IDimTimerNotify {
 public:
-    typedef void (IAppCleanup::*CleanFn)();
-    typedef bool (IAppCleanup::*QueryFn)();
+    typedef void (IDimAppShutdownNotify::*CleanFn)();
+    typedef bool (IDimAppShutdownNotify::*QueryFn)();
 
 public:
     bool Stopped () const;
     bool QueryDestroyFailed (Duration grace);
 
-    // ITimerNotify
+    // IDimTimerNotify
     Duration OnTimer () override;
 
 private:
@@ -93,32 +87,32 @@ Duration MainTimer::OnTimer () {
     switch (m_mode) {
         case MAIN_SC: 
             s_runMode = MODE_STOPPING;
-            m_shutdownStart = Clock::now();
+            m_shutdownStart = DimClock::now();
             break;
         case MAIN_QD:
             break;
         case CLIENT_SC:
-            StartCleanup(&IAppCleanup::OnAppStartClientCleanup);
+            StartCleanup(&IDimAppShutdownNotify::OnAppStartClientCleanup);
             break;
         case CLIENT_QD:
-            next = QueryDestroy(&IAppCleanup::OnAppQueryClientDestroy);
+            next = QueryDestroy(&IDimAppShutdownNotify::OnAppQueryClientDestroy);
             break;
         case SERVER_SC:
-            StartCleanup(&IAppCleanup::OnAppStartServerCleanup);
+            StartCleanup(&IDimAppShutdownNotify::OnAppStartServerCleanup);
             break;
         case SERVER_QD:
-            next = QueryDestroy(&IAppCleanup::OnAppQueryServerDestroy);
+            next = QueryDestroy(&IDimAppShutdownNotify::OnAppQueryServerDestroy);
             break;
         case CONSOLE_SC:
-            StartCleanup(&IAppCleanup::OnAppStartConsoleCleanup);
+            StartCleanup(&IDimAppShutdownNotify::OnAppStartConsoleCleanup);
             break;
         case CONSOLE_QD:
-            next = QueryDestroy(&IAppCleanup::OnAppQueryConsoleDestroy);
+            next = QueryDestroy(&IDimAppShutdownNotify::OnAppQueryConsoleDestroy);
             break;
         case DONE:
             s_cleaners.clear();
             s_stopped.notify_one();
-            return TIMER_WAIT_FOREVER;
+            return DIM_TIMER_INFINITE;
     }
 
     // some delay when rerunning the same step (i.e. QueryDestroy failed)
@@ -136,7 +130,7 @@ bool MainTimer::Stopped() const {
 
 //===========================================================================
 bool MainTimer::QueryDestroyFailed (Duration grace) {
-    if (Clock::now() - m_shutdownStart > s_shutdownTimeout + grace) {
+    if (DimClock::now() - m_shutdownStart > s_shutdownTimeout + grace) {
         assert(0 && "shutdown timeout");
         terminate();
     }
@@ -173,41 +167,42 @@ bool MainTimer::QueryDestroy (QueryFn notify) {
 ***/
 
 //===========================================================================
-void Initialize () {
-    ITaskInitialize();
-    ITimerInitialize();
+void DimAppInitialize () {
+    IDimTaskInitialize();
+    IDimTimerInitialize();
+    IDimSocketInitialize();
     s_runMode = MODE_RUNNING;
 }
 
 //===========================================================================
-void SignalShutdown (int exitcode) {
+void DimAppSignalShutdown (int exitcode) {
     s_exitcode = exitcode;
     s_mainTimer = {};
-    TimerUpdate(&s_mainTimer, 0ms);
+    DimTimerUpdate(&s_mainTimer, 0ms);
 }
 
 //===========================================================================
-int WaitForShutdown () {
+int DimAppWaitForShutdown () {
     unique_lock<mutex> lk{s_runMut};
     while (!s_mainTimer.Stopped())
         s_stopped.wait(lk);
-    ITimerDestroy();
-    ITaskDestroy();
+    IDimTimerDestroy();
+    IDimTaskDestroy();
     s_runMode = MODE_STOPPED;
     return s_exitcode;
 }
 
 //===========================================================================
-void RegisterCleanup (IAppCleanup * cleaner) {
+void DimAppMonitorShutdown (IDimAppShutdownNotify * cleaner) {
     s_cleaners.emplace(s_cleaners.begin(), cleaner);
 }
 
 //===========================================================================
-bool QueryDestroyFailed () {
+bool DimQueryDestroyFailed () {
     return s_mainTimer.QueryDestroyFailed(0ms);
 }
 
 //===========================================================================
-ERunMode AppMode () {
+ERunMode DimAppMode () {
     return s_runMode;
 }

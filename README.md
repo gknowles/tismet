@@ -1,2 +1,2 @@
 # tismet
-Time series metric collection and querying
+Time series metric collection

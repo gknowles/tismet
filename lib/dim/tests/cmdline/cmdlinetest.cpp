@@ -1,5 +1,6 @@
-// cmdlinetest.cpp - dim test program
-#include "dim/cmdline.h"
+// cmdlinetest.cpp - dim test cmdline
+#include "pch.h"
+#pragma hdrstop
 
 using namespace CmdLine;
 

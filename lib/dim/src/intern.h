@@ -9,18 +9,26 @@
 *
 ***/
 
-void ITaskInitialize ();
-void ITaskDestroy ();
+void IDimTaskInitialize ();
+void IDimTaskDestroy ();
 
 
 /****************************************************************************
 *
-*   Timer
+*   DimTimer
 *
 ***/
 
-void ITimerInitialize ();
-void ITimerDestroy ();
+void IDimTimerInitialize ();
+void IDimTimerDestroy ();
 
+
+/****************************************************************************
+*
+*   Socket
+*
+***/
+
+void IDimSocketInitialize ();
 
 #endif

@@ -10,23 +10,23 @@
 #include <limits>
 #include <memory>
 
-const auto TIMER_WAIT_FOREVER = Duration::max();
+const auto DIM_TIMER_INFINITE = Duration::max();
 
-class ITimerNotify {
+class IDimTimerNotify {
 public:
-    virtual ~ITimerNotify ();
+    virtual ~IDimTimerNotify ();
     virtual Duration OnTimer () = 0;
 
 private:
-    friend class Timer;
-    std::shared_ptr<Timer> m_timer;
+    friend class DimTimer;
+    std::shared_ptr<DimTimer> m_timer;
 };
 
-void TimerUpdate (
-    ITimerNotify * notify, 
+void DimTimerUpdate (
+    IDimTimerNotify * notify, 
     Duration wait, 
     bool onlyIfSooner = false
 );
-void TimerStopSync (ITimerNotify * notify);
+void DimTimerStopSync (IDimTimerNotify * notify);
 
 #endif

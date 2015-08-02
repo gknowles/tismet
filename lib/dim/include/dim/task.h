@@ -8,23 +8,23 @@
 
 #include <string>
 
-struct HTaskQueue : HandleBase {};
+struct HDimTaskQueue : DimHandleBase {};
 
-class ITaskNotify {
+class IDimTaskNotify {
 public:
-    virtual ~ITaskNotify () {}
+    virtual ~IDimTaskNotify () {}
     virtual void OnTask () { delete this; }
 
 private:
-    friend class TaskQueue;
-    ITaskNotify * m_taskNext = nullptr;
+    friend class DimTaskQueue;
+    IDimTaskNotify * m_taskNext = nullptr;
 };
 
-void TaskPushEvent (ITaskNotify & task);
-void TaskPushCompute (ITaskNotify & task);
+void DimTaskPushEvent (IDimTaskNotify & task);
+void DimTaskPushCompute (IDimTaskNotify & task);
 
-HTaskQueue TaskCreateQueue (const std::string & name, unsigned threads);
-void TaskSetQueueThreads (HTaskQueue q, unsigned threads);
-void TaskPush (HTaskQueue q, ITaskNotify & task);
+HDimTaskQueue DimTaskCreateQueue (const std::string & name, unsigned threads);
+void DimTaskSetQueueThreads (HDimTaskQueue q, unsigned threads);
+void DimTaskPush (HDimTaskQueue q, IDimTaskNotify & task);
 
 #endif

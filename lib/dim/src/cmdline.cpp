@@ -1,7 +1,6 @@
 // cmdline.cpp - dim services
-#include "dim/cmdline.h"
-
-#include <cassert>
+#include "pch.h"
+#pragma hdrstop
 
 using namespace std;
 

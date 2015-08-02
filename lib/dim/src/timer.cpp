@@ -1,15 +1,6 @@
 // timer.cpp - dim core
-#include "dim/task.h"
-#include "dim/timer.h"
-#include "intern.h"
-
-#include <atomic>
-#include <cassert>
-#include <condition_variable>
-#include <memory>
-#include <mutex>
-#include <queue>
-#include <thread>
+#include "pch.h"
+#pragma hdrstop
 
 using namespace std;
 //using namespace std::rel_ops;
@@ -21,19 +12,19 @@ using namespace std;
 *
 ***/
 
-class Timer {
+class DimTimer {
 public:
     static void Update (
-        ITimerNotify * notify, 
+        IDimTimerNotify * notify, 
         Duration wait, 
         bool onlyIfSooner
     );
-    static void StopSync (ITimerNotify * notify);
+    static void StopSync (IDimTimerNotify * notify);
 
-    Timer (ITimerNotify * notify);
+    DimTimer (IDimTimerNotify * notify);
     bool Connected () const;
 
-    ITimerNotify * notify{nullptr};
+    IDimTimerNotify * notify{nullptr};
     TimePoint expiration;
     unsigned instance{0};
 
@@ -50,11 +41,11 @@ public:
 namespace {
 
 struct TimerQueueNode {
-    shared_ptr<Timer> timer;
+    shared_ptr<DimTimer> timer;
     TimePoint expiration;
     unsigned instance;
 
-    TimerQueueNode (shared_ptr<Timer> & timer);
+    TimerQueueNode (shared_ptr<DimTimer> & timer);
     bool operator< (const TimerQueueNode & right) const;
     bool operator== (const TimerQueueNode & right) const;
 };
@@ -77,7 +68,7 @@ static bool s_processing; // dispatch task has been queued and isn't done
 
 static thread::id s_processingThread; // thread running any current callback
 static condition_variable s_processingCv; // when running callback completes
-static ITimerNotify * s_processingNotify; // callback currently in progress
+static IDimTimerNotify * s_processingNotify; // callback currently in progress
 
 
 /****************************************************************************
@@ -87,7 +78,7 @@ static ITimerNotify * s_processingNotify; // callback currently in progress
 ***/
 
 //===========================================================================
-class CRunTimers : public ITaskNotify {
+class CRunTimers : public IDimTaskNotify {
     void OnTask () override;
 };
 static CRunTimers s_runTimers;
@@ -95,14 +86,14 @@ static CRunTimers s_runTimers;
 //===========================================================================
 void CRunTimers::OnTask () {
     Duration wait;
-    TimePoint now{Clock::now()};
+    TimePoint now{DimClock::now()};
     unique_lock<mutex> lk{s_mut};
     assert(s_processing);
     s_processingThread = this_thread::get_id();
     for (;;) {
         // find next expired timer with notifier to call
         wait = s_timers.empty()
-            ? TIMER_WAIT_FOREVER
+            ? DIM_TIMER_INFINITE
             : s_timers.top().expiration - now;
         if (wait > 0ms) {
             s_processingThread = {};
@@ -115,7 +106,7 @@ void CRunTimers::OnTask () {
             continue;
         
         // call notifier
-        Timer * timer = node.timer.get();
+        DimTimer * timer = node.timer.get();
         timer->expiration = TimePoint::max();
         s_processingNotify = timer->notify;
         lk.unlock();
@@ -123,13 +114,13 @@ void CRunTimers::OnTask () {
 
         // update timer
         lk.lock();
-        now = Clock::now();
+        now = DimClock::now();
         s_processingNotify = nullptr;
         if (!timer->Connected()) {
             s_processingCv.notify_all();
             continue;
         }
-        if (wait == TIMER_WAIT_FOREVER) 
+        if (wait == DIM_TIMER_INFINITE) 
             continue;
         TimePoint expire = now + wait;
         if (expire < timer->expiration) {
@@ -139,16 +130,12 @@ void CRunTimers::OnTask () {
         }
     }
 
-    if (wait != TIMER_WAIT_FOREVER) 
+    if (wait != DIM_TIMER_INFINITE) 
         s_queueCv.notify_one();
 }
 
 //===========================================================================
 static void TimerQueueThread () {
-    // Wait is initialized to 0ms, bypassing the condition the first time 
-    // through. This is to allow for a timer being queued before we first 
-    // take the mutex.
-    Duration wait = 1ms;
     for (;;) {
         {
             unique_lock<mutex> lk{s_mut};
@@ -164,7 +151,7 @@ static void TimerQueueThread () {
                     s_queueCv.wait(lk);
                     continue;
                 }
-                wait = s_timers.top().expiration - Clock::now();
+                Duration wait = s_timers.top().expiration - DimClock::now();
                 if (wait <= 0ms) {
                     s_processing = true;
                     break;
@@ -174,21 +161,21 @@ static void TimerQueueThread () {
             }
         }
 
-        TaskPushEvent(s_runTimers);
+        DimTaskPushEvent(s_runTimers);
     }
 }
 
 
 /****************************************************************************
 *
-*   ITimerNotify
+*   IDimTimerNotify
 *
 ***/
 
 //===========================================================================
-ITimerNotify::~ITimerNotify () {
+IDimTimerNotify::~IDimTimerNotify () {
     if (m_timer)
-        TimerStopSync(this);
+        DimTimerStopSync(this);
 }
 
 
@@ -199,7 +186,7 @@ ITimerNotify::~ITimerNotify () {
 ***/
 
 //===========================================================================
-TimerQueueNode::TimerQueueNode (shared_ptr<Timer> & timer)
+TimerQueueNode::TimerQueueNode (shared_ptr<DimTimer> & timer)
     : timer{timer}
     , expiration{timer->expiration}
     , instance{timer->instance}
@@ -221,26 +208,26 @@ bool TimerQueueNode::operator== (const TimerQueueNode & right) const {
 
 /****************************************************************************
 *
-*   Timer
+*   DimTimer
 *
 ***/
 
 //===========================================================================
 // static
-void Timer::Update (
-    ITimerNotify * notify,
+void DimTimer::Update (
+    IDimTimerNotify * notify,
     Duration wait,
     bool onlyIfSooner
 ) {
-    TimePoint now{Clock::now()};
-    auto expire = wait == TIMER_WAIT_FOREVER
+    TimePoint now{DimClock::now()};
+    auto expire = wait == DIM_TIMER_INFINITE
         ? TimePoint::max()
         : now + wait;
     
     {
         lock_guard<mutex> lk{s_mut};
         if (!notify->m_timer) 
-            new Timer{notify};
+            new DimTimer{notify};
         auto & timer = notify->m_timer;
         if (onlyIfSooner && !(expire < timer->expiration))
             return;
@@ -259,7 +246,7 @@ void Timer::Update (
 
 //===========================================================================
 // static
-void Timer::StopSync (ITimerNotify * notify) {
+void DimTimer::StopSync (IDimTimerNotify * notify) {
     if (!notify->m_timer)
         return;
         
@@ -271,7 +258,7 @@ void Timer::StopSync (ITimerNotify * notify) {
     }
 
     unique_lock<mutex> lk{s_mut};
-    shared_ptr<Timer> timer{std::move(notify->m_timer)};
+    shared_ptr<DimTimer> timer{std::move(notify->m_timer)};
     timer->instance += 1;
     if (this_thread::get_id() == s_processingThread)
         return;
@@ -281,7 +268,7 @@ void Timer::StopSync (ITimerNotify * notify) {
 }
 
 //===========================================================================
-Timer::Timer (ITimerNotify * notify) 
+DimTimer::DimTimer (IDimTimerNotify * notify) 
     : notify(notify)
 {
     assert(!notify->m_timer);
@@ -289,7 +276,7 @@ Timer::Timer (ITimerNotify * notify)
 }
 
 //===========================================================================
-bool Timer::Connected () const {
+bool DimTimer::Connected () const {
     return this == notify->m_timer.get();
 }
 
@@ -301,7 +288,7 @@ bool Timer::Connected () const {
 ***/
 
 //===========================================================================
-void ITimerInitialize () {
+void IDimTimerInitialize () {
     assert(s_mode == MODE_STOPPED);
     s_mode = MODE_RUNNING;
     thread thr{TimerQueueThread};
@@ -309,7 +296,7 @@ void ITimerInitialize () {
 }
 
 //===========================================================================
-void ITimerDestroy () {
+void IDimTimerDestroy () {
     {
         lock_guard<mutex> lk{s_mut};
         assert(s_mode == MODE_RUNNING);
@@ -330,15 +317,15 @@ void ITimerDestroy () {
 ***/
 
 //===========================================================================
-void TimerUpdate (
-    ITimerNotify * notify,
+void DimTimerUpdate (
+    IDimTimerNotify * notify,
     Duration wait,
     bool onlyIfSooner
 ) {
-    Timer::Update(notify, wait, onlyIfSooner);
+    DimTimer::Update(notify, wait, onlyIfSooner);
 }
 
 //===========================================================================
-void TimerStopSync (ITimerNotify * notify) {
-    Timer::StopSync(notify);
+void DimTimerStopSync (IDimTimerNotify * notify) {
+    DimTimer::StopSync(notify);
 }
