@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
     int limit = argc > 1 ? atoi(argv[1]) : 1;
     for (int i = 1; i < limit + 1; ++i) {
         if (limit > 1)
-            printf("Run #%i\n", i);
+            DimErrorLog{kInfo} << "Run #" << i;
         MainShutdown cleanup;
         DimAppInitialize();
         DimAppMonitorShutdown(&cleanup);

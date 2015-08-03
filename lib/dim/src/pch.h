@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <queue>

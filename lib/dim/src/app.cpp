@@ -72,7 +72,7 @@ static vector<CleanupInfo> s_cleaners;
 static Duration s_shutdownTimeout{2min};
 static mutex s_runMut;
 static condition_variable s_stopped;
-static ERunMode s_runMode{MODE_STOPPED};
+static RunMode s_runMode{kRunStopped};
 
 
 /****************************************************************************
@@ -86,7 +86,7 @@ Duration MainTimer::OnTimer () {
     bool next = true;
     switch (m_mode) {
         case MAIN_SC: 
-            s_runMode = MODE_STOPPING;
+            s_runMode = kRunStopping;
             m_shutdownStart = DimClock::now();
             break;
         case MAIN_QD:
@@ -171,7 +171,7 @@ void DimAppInitialize () {
     IDimTaskInitialize();
     IDimTimerInitialize();
     IDimSocketInitialize();
-    s_runMode = MODE_RUNNING;
+    s_runMode = kRunRunning;
 }
 
 //===========================================================================
@@ -188,7 +188,7 @@ int DimAppWaitForShutdown () {
         s_stopped.wait(lk);
     IDimTimerDestroy();
     IDimTaskDestroy();
-    s_runMode = MODE_STOPPED;
+    s_runMode = kRunStopped;
     return s_exitcode;
 }
 
@@ -203,6 +203,6 @@ bool DimQueryDestroyFailed () {
 }
 
 //===========================================================================
-ERunMode DimAppMode () {
+RunMode DimAppMode () {
     return s_runMode;
 }

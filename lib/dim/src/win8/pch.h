@@ -2,14 +2,10 @@
 #include "dim.h"
 #include "../intern.h"
 
-#include <atomic>
+#include <algorithm>
 #include <cassert>
-#include <condition_variable>
 #include <limits>
-#include <list>
-#include <memory>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <vector>
 
@@ -21,3 +17,5 @@
 #include <MSWSock.h>
 
 #pragma comment(lib, "ws2_32.lib")
+
+#include "winint.h"

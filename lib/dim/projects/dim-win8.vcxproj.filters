@@ -3,8 +3,10 @@
   <ItemGroup>
     <ClCompile Include="..\src\win8\pch.cpp" />
     <ClCompile Include="..\src\win8\winsocket.cpp" />
+    <ClCompile Include="..\src\win8\winiocp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\pch.h" />
+    <ClInclude Include="..\src\win8\winint.h" />
   </ItemGroup>
 </Project>

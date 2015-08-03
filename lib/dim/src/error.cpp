@@ -13,7 +13,7 @@ using namespace std;
 
 //===========================================================================
 void LogMsg (DimErrorSeverity severity, const string & msg) {
-    printf("%s\n", msg.c_str());
+    cout << msg << endl;
     if (severity == kFatal) {
         abort();
     }

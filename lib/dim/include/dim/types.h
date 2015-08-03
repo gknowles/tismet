@@ -68,11 +68,11 @@ struct SockAddr {
 *
 ***/
 
-enum ERunMode {
-    MODE_STOPPED,
-    MODE_STARTING,
-    MODE_RUNNING,
-    MODE_STOPPING,
+enum RunMode {
+    kRunStopped,
+    kRunStarting,
+    kRunRunning,
+    kRunStopping,
 };
 
 

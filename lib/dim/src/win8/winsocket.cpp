@@ -18,6 +18,10 @@ public:
         const SockAddr & remoteAddr,
         const SockAddr & localAddr
     );
+
+private:
+    SOCKET m_handle;
+    RIO_RQ m_rq;
 };
 
 
@@ -56,6 +60,8 @@ struct RegisteredBuffer {
 *
 ***/
 
+static RunMode s_mode;
+
 static RIO_EXTENSION_FUNCTION_TABLE s_rio;
 
 static int s_bufferSize{4096};
@@ -68,7 +74,7 @@ static vector<RegisteredBuffer> s_rbuffers;
 static int s_numPartial;
 static int s_numFull;
 
-static ERunMode s_mode;
+static RIO_CQ s_cq;
 
 
 /****************************************************************************
@@ -76,6 +82,8 @@ static ERunMode s_mode;
 *   Helpers
 *
 ***/
+
+//===========================================================================
 
 
 /****************************************************************************
@@ -149,8 +157,18 @@ void DimSocket::Connect (
     const SockAddr & remoteAddr,
     const SockAddr & localAddr
 ) {
-    if (!notify->m_socket) {
-        
+    DimSocket * sock = notify->m_socket;
+    if (!sock) {
+        sock = notify->m_socket = new DimSocket;
+        sock->m_handle = WSASocketW(
+            AF_UNSPEC,
+            SOCK_STREAM,
+            IPPROTO_TCP,
+            NULL,
+            0,
+            WSA_FLAG_REGISTERED_IO
+        );
+
     }
 
     ref(notify);
@@ -174,10 +192,10 @@ static DimSocketShutdown s_cleanup;
 
 //===========================================================================
 bool DimSocketShutdown::OnAppQueryConsoleDestroy () {
-    s_mode = MODE_STOPPING;
+    s_mode = kRunStopping;
     if (WSACleanup()) 
         DimErrorLog{kError} << "WSACleanup failed, " << WSAGetLastError();
-    s_mode = MODE_STOPPED;
+    s_mode = kRunStopped;
     return true;
 }
 
@@ -190,8 +208,10 @@ bool DimSocketShutdown::OnAppQueryConsoleDestroy () {
 
 //===========================================================================
 void IDimSocketInitialize () {
-    s_mode = MODE_STARTING;
+    s_mode = kRunStarting;
     DimAppMonitorShutdown(&s_cleanup);
+    IDimIocpInitialize();
+
     WSADATA data = {};
     int error = WSAStartup(WINSOCK_VERSION, &data);
     if (error || data.wVersion != WINSOCK_VERSION) {
@@ -236,8 +256,17 @@ void IDimSocketInitialize () {
     // that big
     s_registeredBufferSize = max(s_minLargePage, s_registeredBufferSize);
 
+
+    //RIO_NOTIFICATION_COMPLETION ctype;
+    //ctype.Type = RIO_IOCP_COMPLETION;
+    //ctype.Iocp.IocpHandle = s_iocp;
+    //ctype.Iocp.Overlapped
+    //s_cq = s_rio.RIOCreateCompletionQueue(
+    //    
+    //);
+
     closesocket(s);
-    s_mode = MODE_RUNNING;
+    s_mode = kRunRunning;
 }
 
 

@@ -62,7 +62,7 @@ struct TimerQueueNode {
 static mutex s_mut;
 static condition_variable s_queueCv; // when wait for next timer is reduced
 static condition_variable s_modeCv; // when run mode changes to stopped
-static ERunMode s_mode{MODE_STOPPED};
+static RunMode s_mode{kRunStopped};
 static priority_queue<TimerQueueNode> s_timers;
 static bool s_processing; // dispatch task has been queued and isn't done
 
@@ -140,10 +140,10 @@ static void TimerQueueThread () {
         {
             unique_lock<mutex> lk{s_mut};
             for (;;) {
-                if (s_mode == MODE_STOPPING) {
+                if (s_mode == kRunStopping) {
                     while (!s_timers.empty()) 
                         s_timers.pop();
-                    s_mode = MODE_STOPPED;
+                    s_mode = kRunStopped;
                     s_modeCv.notify_one();
                     return;
                 }
@@ -252,7 +252,7 @@ void DimTimer::StopSync (IDimTimerNotify * notify) {
         
     // if we've stopped just remove the timer, this could be a call from the
     // destructor of a static notify so s_mut may already be destroyed.
-    if (s_mode == MODE_STOPPED) {
+    if (s_mode == kRunStopped) {
         notify->m_timer.reset();
         return;
     }
@@ -289,8 +289,8 @@ bool DimTimer::Connected () const {
 
 //===========================================================================
 void IDimTimerInitialize () {
-    assert(s_mode == MODE_STOPPED);
-    s_mode = MODE_RUNNING;
+    assert(s_mode == kRunStopped);
+    s_mode = kRunRunning;
     thread thr{TimerQueueThread};
     thr.detach();
 }
@@ -299,13 +299,13 @@ void IDimTimerInitialize () {
 void IDimTimerDestroy () {
     {
         lock_guard<mutex> lk{s_mut};
-        assert(s_mode == MODE_RUNNING);
-        s_mode = MODE_STOPPING;
+        assert(s_mode == kRunRunning);
+        s_mode = kRunStopping;
     }
     s_queueCv.notify_one();
 
     unique_lock<mutex> lk{s_mut};
-    while (s_mode != MODE_STOPPED)
+    while (s_mode != kRunStopped)
         s_modeCv.wait(lk);
 }
 

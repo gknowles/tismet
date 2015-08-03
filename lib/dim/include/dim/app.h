@@ -5,7 +5,7 @@
 #include "dim/config.h"
 
 // forward declarations
-enum ERunMode;
+enum RunMode;
 
 
 class IDimAppShutdownNotify {
@@ -29,6 +29,6 @@ int DimAppWaitForShutdown ();
 void DimAppMonitorShutdown (IDimAppShutdownNotify * cleanup);
 bool DimQueryDestroyFailed ();
 
-ERunMode DimAppMode ();
+RunMode DimAppMode ();
 
 #endif
