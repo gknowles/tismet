@@ -60,9 +60,9 @@ struct TimerQueueNode {
 ***/
 
 static mutex s_mut;
-static condition_variable s_queueCv; // when wait for next timer is reduced
 static condition_variable s_modeCv; // when run mode changes to stopped
 static RunMode s_mode{kRunStopped};
+static condition_variable s_queueCv; // when wait for next timer is reduced
 static priority_queue<TimerQueueNode> s_timers;
 static bool s_processing; // dispatch task has been queued and isn't done
 

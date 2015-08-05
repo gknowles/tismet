@@ -5,23 +5,22 @@
 
 /****************************************************************************
 *
-*   IoOp
+*   Event
 *
 ***/
 
-class IDimIocpNotify;
-
-struct DimIocpEvent {
-    OVERLAPPED overlapped;
-    IDimIocpNotify * notify;
-};
-
-class IDimIocpNotify {
+class WinEvent {
 public:
-    virtual void OnIocpEvent (DimIocpEvent & evt) = 0;
+    WinEvent ();
+    ~WinEvent ();
+
+    void Signal ();
+    void Wait (Duration wait = DIM_TIMER_INFINITE);
+
+    HANDLE NativeHandle () const { return m_handle; };
 
 private:
-    HANDLE m_iocpPort;
+    HANDLE m_handle;
 };
 
 
@@ -31,6 +30,23 @@ private:
 *
 ***/
 
-void IDimIocpInitialize ();
+struct DimIocpEvent {
+    OVERLAPPED overlapped;
+    IDimTaskNotify * notify;
+};
+
+void DimIocpInitialize ();
+
+HANDLE DimIocpHandle ();
+
+
+/****************************************************************************
+*
+*   Socket buffers
+*
+***/
+
+void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio);
+
 
 #endif

@@ -34,10 +34,10 @@ private:
 
 struct DimSocketBuffer {
     void * data;
-    size_t bytes;
+    size_t size;
 };
-DimSocketBuffer * DimSocketNewBuffer ();
-void DimSocketDeleteBuffer (DimSocketBuffer * buffer);
+std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
+//void DimSocketFreeBuffer (DimSocketBuffer * buffer);
 
 void DimSocketConnect (
     IDimSocketNotify * notify,
@@ -49,6 +49,10 @@ void DimSocketDisconnect (IDimSocketNotify * notify);
 // Writes the data and deletes the buffer.
 //
 // NOTE: Must be a buffer that was allocated with DimSocketNewBuffer
-void DimSocketWrite (IDimSocketNotify * notify, DimSocketBuffer * buffer);
+void DimSocketWrite (
+    IDimSocketNotify * notify, 
+    std::unique_ptr<DimSocketBuffer> buffer,
+    size_t bytes
+);
 
 #endif
