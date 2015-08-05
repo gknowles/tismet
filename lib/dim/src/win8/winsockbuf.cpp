@@ -1,0 +1,264 @@
+// winsockbuf.cpp - dim core - windows platform
+#include "pch.h"
+#pragma hdrstop
+
+using namespace std;
+
+/****************************************************************************
+*
+*   Tuning parameters
+*
+***/
+
+// includes space for BufferSlice header
+const unsigned kDefaultBufferSliceSize = 4096;
+
+
+/****************************************************************************
+*
+*   Private declarations
+*
+***/
+
+static void DestroyBufferSlice (void * ptr);
+
+//===========================================================================
+namespace {
+
+struct Buffer;
+struct BufferSlice {
+    union {
+        int ownerPos;
+        int nextPos;
+    };
+};
+struct Buffer {
+    RIO_BUFFERID id;
+    BufferSlice * base;
+    TimePoint lastUsed;
+    int sliceSize;
+    int reserved;
+    int size;
+    int used;
+    int firstFree;
+};
+
+} // namespace
+
+//===========================================================================
+namespace std {
+
+template<>
+struct default_delete<DimSocketBuffer> {
+    void operator() (DimSocketBuffer * ptr) { 
+        DestroyBufferSlice(ptr->data); 
+    }
+};
+
+} // namespace std
+
+
+/****************************************************************************
+*
+*   Variables
+*
+***/
+
+static RIO_EXTENSION_FUNCTION_TABLE s_rio;
+
+static int s_sliceSize{kDefaultBufferSliceSize};
+static size_t s_bufferSize{256 * kDefaultBufferSliceSize};
+static size_t s_minLargeAlloc;
+static size_t s_minAlloc;
+static size_t s_pageSize;
+
+// buffers are kept sorted by state (full, partial, empty)
+static vector<Buffer> s_buffers;
+static int s_numPartial;
+static int s_numFull;
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+static void CreateEmptyBuffer () {
+    size_t bytes = s_bufferSize;
+    size_t granularity = s_minAlloc;
+    if (s_minLargeAlloc && s_bufferSize >= s_minLargeAlloc) {
+        granularity = s_minLargeAlloc;
+    }
+    // round up, but not to exceed DWORD
+    bytes += granularity - 1;
+    bytes = bytes - bytes % granularity;
+    if (bytes > numeric_limits<DWORD>::max()) {
+        bytes = numeric_limits<DWORD>::max() / granularity * granularity;
+    }
+
+    s_buffers.emplace_back();
+    Buffer & buf = s_buffers.back();
+    buf.sliceSize = s_sliceSize;
+    buf.reserved = int(bytes / s_sliceSize);
+    buf.lastUsed = TimePoint::min();
+    buf.size = 0;
+    buf.used = 0;
+    buf.firstFree = 0;
+    buf.base = (BufferSlice *) VirtualAlloc(
+        nullptr,
+        bytes,
+        MEM_COMMIT 
+            | MEM_RESERVE 
+            | (bytes > s_minLargeAlloc ? MEM_LARGE_PAGES : 0),
+        PAGE_READWRITE
+    );
+
+    buf.id = s_rio.RIORegisterBuffer(
+        (char *) buf.base, 
+        (DWORD) bytes
+    );
+    if (buf.id == RIO_INVALID_BUFFERID) {
+        DimErrorLog{kError} << "RIORegisterBuffer failed, " 
+            << WSAGetLastError();
+    }
+}
+
+//===========================================================================
+static void DestroyEmptyBuffer () {
+    assert(!s_buffers.empty());
+    Buffer & buf = s_buffers.back();
+    assert(!buf.used);
+    s_rio.RIODeregisterBuffer(buf.id);
+    VirtualFree(buf.base, 0, MEM_RELEASE);
+    s_buffers.pop_back();
+}
+
+//===========================================================================
+static void DestroyBufferSlice (void * ptr) {
+    // get the header 
+    BufferSlice * slice = (BufferSlice *) ptr - 1;
+    assert((size_t) slice->ownerPos < s_buffers.size());
+    int rbufPos = slice->ownerPos;
+    auto buf = s_buffers[rbufPos];
+    // BufferSlice must be aligned within the owning registered buffer
+    assert(slice >= buf.base && slice < buf.base + buf.size);
+    assert(((char *) slice - (char *) buf.base) % buf.sliceSize == 0);
+
+    slice->nextPos = buf.firstFree;
+    buf.firstFree = int(slice - buf.base);
+    buf.used -= 1;
+
+    if (buf.used == buf.reserved - 1) {
+        // no longer full: move to partial list
+        if (rbufPos != s_numFull - 1)
+            swap(buf, s_buffers[s_numFull - 1]);
+        s_numFull -= 1;
+        s_numPartial += 1;
+    } else if (!buf.used) {
+        // newly empty: move to empty list
+        buf.lastUsed = DimClock::now();
+        int pos = s_numFull + s_numPartial - 1;
+        if (rbufPos != pos)
+            swap(buf, s_buffers[pos]);
+        s_numPartial -= 1;
+
+        // over half the rbufs are empty? destroy one
+        if (s_buffers.size() > 2 * (s_numFull + s_numPartial))
+            DestroyEmptyBuffer();
+    }
+}
+
+
+/****************************************************************************
+*
+*   Shutdown
+*
+***/
+
+namespace {
+    class Shutdown : public IDimAppShutdownNotify {
+        bool OnAppQueryConsoleDestroy () override;
+    };
+} // namespace
+static Shutdown s_cleanup;
+
+//===========================================================================
+bool Shutdown::OnAppQueryConsoleDestroy () {
+    while (!s_buffers.empty())
+        DestroyEmptyBuffer();
+
+    return true;
+}
+
+
+/****************************************************************************
+*
+*   Internal API
+*
+***/
+
+//===========================================================================
+void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
+    DimAppMonitorShutdown(&s_cleanup);
+
+    s_rio = rio;
+
+    s_minLargeAlloc = GetLargePageMinimum();
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    s_pageSize = info.dwPageSize;
+    s_minAlloc = info.dwAllocationGranularity;
+
+    // if large pages are available make sure the buffers are at least 
+    // that big
+    s_bufferSize = max(s_minLargeAlloc, s_bufferSize);
+}
+
+
+/****************************************************************************
+*
+*   Public API
+*
+***/
+
+//===========================================================================
+unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
+    // all buffers full? create a new one
+    if (s_numFull == s_buffers.size())
+        CreateEmptyBuffer();
+    // use the last partial or, if there aren't any, the first empty
+    auto buf = s_numPartial
+        ? s_buffers[s_numFull + s_numPartial - 1]
+        : s_buffers[s_numFull];
+
+    BufferSlice * slice = buf.base + buf.firstFree;
+    if (slice) {
+        buf.firstFree = slice->nextPos;
+    } else {
+        assert(buf.size < buf.reserved);
+        slice = buf.base + buf.size;
+        buf.size += 1;
+    }
+    slice->ownerPos = int(slice - buf.base);
+    buf.used += 1;
+
+    // set pointer to just passed the header
+    auto out = make_unique<DimSocketBuffer>();
+    out->data = slice + 1;
+    out->size = buf.sliceSize - sizeof(*slice);
+
+    // if the registered buffer is full move it to the back of the list
+    if (buf.used == buf.reserved) {
+        if (s_numPartial > 1)
+            swap(buf, s_buffers[s_numFull]);
+        s_numFull += 1;
+        s_numPartial -= 1;
+    } else if (buf.used == 1) {
+        // no longer empty: it's in the right place, just update the count
+        s_numPartial += 1;
+    }
+
+    return out;
+}
