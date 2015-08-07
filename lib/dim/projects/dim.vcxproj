@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\dim.h" />
+    <ClInclude Include="..\include\dim\address.h" />
     <ClInclude Include="..\include\dim\app.h" />
     <ClInclude Include="..\include\dim\cmdline.h" />
     <ClInclude Include="..\include\dim\compiler\visualc.h" />

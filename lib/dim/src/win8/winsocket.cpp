@@ -28,9 +28,18 @@ public:
         const SockAddr & localAddr
     );
 
+public:
+    DimSocket (IDimSocketNotify * notify);
+    ~DimSocket ();
+
+    void HardClose ();
+
+    void OnConnect ();
+
 private:
-    SOCKET m_handle;
-    RIO_RQ m_rq;
+    IDimSocketNotify * m_notify;
+    SOCKET m_handle = INVALID_SOCKET;
+    RIO_RQ m_rq = {};
 };
 
 
@@ -42,8 +51,27 @@ private:
 
 namespace {
 
-class RioDispatchTask : public IDimTaskNotify {
+class ConnectTask : public IWinEventWaitNotify {
+public:
+    unique_ptr<DimSocket> m_sock;
+public:
+    ConnectTask (unique_ptr<DimSocket> && sock);
     void OnTask () override;
+};
+
+class ConnectFailedTask : public IDimTaskNotify {
+    IDimSocketNotify * m_notify;
+public:
+    ConnectFailedTask (IDimSocketNotify * notify);
+    void OnTask () override;
+};
+
+class RioRequestTask : public IDimTaskNotify {
+    void OnTask () override;
+
+public:
+    int ntstatus;
+    int bytes;
 };
 
 } // namespace
@@ -55,7 +83,6 @@ class RioDispatchTask : public IDimTaskNotify {
 *
 ***/
 
-static RioDispatchTask s_dispatchTask;
 static RIO_EXTENSION_FUNCTION_TABLE s_rio;
 
 static mutex s_mut;
@@ -81,23 +108,94 @@ static int s_cqSize = kInitialCompletionQueueSize;
 *
 ***/
 
+namespace {
+    class RioDispatchThread : public IDimTaskNotify {
+        void OnTask () override;
+    };
+}
+static RioDispatchThread s_dispatchThread;
+
 //===========================================================================
-void RioDispatchTask::OnTask () {
-    s_rio.RIONotify(s_cq);
+void RioDispatchThread::OnTask () {
+    static const int kNumResults = 100;
+    RIORESULT results[kNumResults];
+    IDimTaskNotify * tasks[_countof(results)];
+    int count;
 
     for (;;) {
-        s_cqReady.Wait();
-
-        lock_guard<mutex> lk{s_mut};
+        unique_lock<mutex> lk{s_mut};
         if (s_mode == kRunStopping) {
             s_mode = kRunStopped;
             break;
         }
 
+        count = s_rio.RIODequeueCompletion(
+            s_cq,
+            results,
+            _countof(results)
+        );
+        if (count == RIO_CORRUPT_CQ) {
+            DimErrorLog{kFatal} << "RIODequeueCompletion failed, " 
+                << WSAGetLastError();
+        }
 
+        for (int i = 0; i < count; ++i) {
+            auto&& rr = results[i];
+            auto task = (RioRequestTask *) rr.SocketContext;
+            task->ntstatus = rr.Status;
+            task->bytes = rr.BytesTransferred;
+            tasks[i] = task;
+        }
+
+        if (int error = s_rio.RIONotify(s_cq)) 
+            DimErrorLog{kFatal} << "RIONotify failed, " << error;
+
+        lk.unlock();
+
+        if (count) 
+            DimTaskPushEvent(tasks, count);
+
+        s_cqReady.Wait();
     }
 
     s_modeCv.notify_one();
+}
+
+
+/****************************************************************************
+*
+*   ConnectTask
+*
+***/
+
+//===========================================================================
+ConnectTask::ConnectTask (unique_ptr<DimSocket> && sock) 
+    : m_sock(move(sock))
+{}
+
+//===========================================================================
+void ConnectTask::OnTask () {
+    m_sock->OnConnect();
+    m_sock.release();
+    delete this;
+}
+
+
+/****************************************************************************
+*
+*   ConnectFailedTask
+*
+***/
+
+//===========================================================================
+ConnectFailedTask::ConnectFailedTask (IDimSocketNotify * notify)
+    : m_notify(notify)
+{}
+
+//===========================================================================
+void ConnectFailedTask::OnTask () {
+    m_notify->OnSocketConnectFailed();
+    delete this;
 }
 
 
@@ -108,29 +206,137 @@ void RioDispatchTask::OnTask () {
 ***/
 
 //===========================================================================
+static void PushConnectFailed (IDimSocketNotify * notify) {
+    auto ptr = new ConnectFailedTask(notify);
+    DimTaskPushEvent(*ptr);
+}
+
+//===========================================================================
 // static
 void DimSocket::Connect (
     IDimSocketNotify * notify,
     const SockAddr & remoteAddr,
     const SockAddr & localAddr
 ) {
-    DimSocket * sock = notify->m_socket;
-    if (!sock) {
-        sock = notify->m_socket = new DimSocket;
-        sock->m_handle = WSASocketW(
-            AF_UNSPEC,
-            SOCK_STREAM,
-            IPPROTO_TCP,
-            NULL,
-            0,
-            WSA_FLAG_REGISTERED_IO
-        );
-
+    assert(!notify->m_socket);
+    auto sock = make_unique<DimSocket>(notify);
+    sock->m_handle = WSASocketW(
+        AF_UNSPEC,
+        SOCK_STREAM,
+        IPPROTO_TCP,
+        NULL,
+        0,
+        WSA_FLAG_REGISTERED_IO
+    );
+    if (sock->m_handle == INVALID_SOCKET) {
+        int error = WSAGetLastError();
+        DimErrorLog{kError} << "WSASocket failed, " << error;
+        return PushConnectFailed(notify);
     }
 
-    ref(notify);
-    ref(remoteAddr);
-    ref(localAddr);
+    int yes = 1;
+    setsockopt(
+        sock->m_handle, 
+        SOL_SOCKET, 
+        SO_PORT_SCALABILITY, 
+        (char *) &yes, 
+        sizeof(yes)
+    );
+
+    sockaddr_storage sas;
+    DimAddressToStorage(&sas, localAddr);
+    if (SOCKET_ERROR == ::bind(
+        sock->m_handle, 
+        (sockaddr *) &sas, 
+        sizeof(sas)
+    )) {
+        DimErrorLog{kError} << "bind failed, " << WSAGetLastError();
+        return PushConnectFailed(notify);
+    }
+
+    // get ConnectEx function
+    GUID extId = WSAID_CONNECTEX;
+    LPFN_CONNECTEX fConnectEx;
+    DWORD bytes;
+    if (WSAIoctl(
+        sock->m_handle,
+        SIO_GET_EXTENSION_FUNCTION_POINTER,
+        &extId, sizeof(extId),
+        &fConnectEx, sizeof(fConnectEx),
+        &bytes,
+        NULL,
+        NULL
+    )) {
+        DimErrorLog{kError} << "WSAIoctl get ConnectEx failed, " 
+            << WSAGetLastError();
+        return PushConnectFailed(notify);
+    }
+
+    DimAddressToStorage(&sas, remoteAddr);
+    auto task = make_unique<ConnectTask>(move(sock));
+    if (!fConnectEx(
+        sock->m_handle,
+        (sockaddr *) &sas,
+        sizeof(sas),
+        NULL,   // send buffer
+        0,      // send buffer length
+        NULL,   // bytes sent
+        &task->m_overlapped
+    )) {
+        int error = WSAGetLastError();
+        if (error != ERROR_IO_PENDING) {
+            DimErrorLog{kError} << "ConnectEx failed, " << error;
+            return PushConnectFailed(notify);
+        }
+    }
+    task.release();
+}
+
+//===========================================================================
+DimSocket::DimSocket (IDimSocketNotify * notify)
+    : m_notify(notify)
+{}
+
+//===========================================================================
+DimSocket::~DimSocket () {
+    if (m_notify)
+        m_notify->m_socket = nullptr;
+
+    HardClose();
+}
+
+//===========================================================================
+void DimSocket::HardClose () {
+    if (!m_handle)
+        return;
+
+    linger opt = {};
+    setsockopt(m_handle, SOL_SOCKET, SO_LINGER, (char *) &opt, sizeof(opt));
+    closesocket(m_handle);
+}
+
+//===========================================================================
+void DimSocket::OnConnect () {
+    auto notify = m_notify;
+
+    if (SOCKET_ERROR == setsockopt(
+        m_handle, 
+        SOL_SOCKET,
+        SO_UPDATE_CONNECT_CONTEXT,
+        NULL,
+        0
+    )) {
+        DimErrorLog{kError} 
+            << "setsockopt(SO_UPDATE_CONNECT_CONTEXT) failed, "
+            << WSAGetLastError();
+        delete this;
+        notify->OnSocketConnectFailed();
+    }
+
+    // TODO: RIOCreateRequestQueue
+    DimSocketConnectInfo info = {};
+    // TODO: getpeername
+    m_notify->OnSocketConnect(info);
 }
 
 
@@ -230,7 +436,7 @@ void IDimSocketInitialize () {
 
     // start rio dispatch task
     HDimTaskQueue taskq = DimTaskCreateQueue("RIO Dispatch", 1);
-    DimTaskPush(taskq, s_dispatchTask);
+    DimTaskPush(taskq, s_dispatchThread);
 
     s_mode = kRunRunning;
 }

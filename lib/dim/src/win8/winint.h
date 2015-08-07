@@ -26,7 +26,7 @@ private:
 
 /****************************************************************************
 *
-*   IoOp
+*   Iocp
 *
 ***/
 
@@ -47,6 +47,24 @@ HANDLE DimIocpHandle ();
 ***/
 
 void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio);
+
+
+/****************************************************************************
+*
+*   Wait for events
+*
+***/
+
+class IWinEventWaitNotify : public IDimTaskNotify {
+public:
+    IWinEventWaitNotify ();
+    ~IWinEventWaitNotify ();
+
+    virtual void OnTask () override = 0;
+
+    OVERLAPPED m_overlapped = {};
+    HANDLE m_registeredWait = NULL;
+};
 
 
 #endif

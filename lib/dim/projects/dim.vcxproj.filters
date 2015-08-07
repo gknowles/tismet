@@ -51,6 +51,9 @@
     <ClInclude Include="..\include\dim\error.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\dim\address.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.cpp">

@@ -4,6 +4,7 @@
 
 #include "dim/config.h"
 
+#include "dim/address.h"
 #include "dim/app.h"
 #include "dim/cmdline.h"
 #include "dim/error.h"

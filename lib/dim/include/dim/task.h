@@ -21,10 +21,14 @@ private:
 };
 
 void DimTaskPushEvent (IDimTaskNotify & task);
+void DimTaskPushEvent (IDimTaskNotify * tasks[], int numTasks);
+
 void DimTaskPushCompute (IDimTaskNotify & task);
+void DimTaskPushCompute (IDimTaskNotify * tasks[], int numTasks);
 
 HDimTaskQueue DimTaskCreateQueue (const std::string & name, unsigned threads);
 void DimTaskSetQueueThreads (HDimTaskQueue q, unsigned threads);
 void DimTaskPush (HDimTaskQueue q, IDimTaskNotify & task);
+void DimTaskPush (HDimTaskQueue q, IDimTaskNotify * tasks[], int numTasks);
 
 #endif

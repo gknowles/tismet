@@ -129,7 +129,6 @@ static void SetThreads_Lock (DimTaskQueue & q, int threads) {
 //===========================================================================
 void DimTaskQueue::Push (IDimTaskNotify & task) {
     task.m_taskNext = nullptr;
-
     if (!first) {
         first = &task;
     } else {
@@ -140,7 +139,9 @@ void DimTaskQueue::Push (IDimTaskNotify & task) {
 
 //===========================================================================
 void DimTaskQueue::Pop () {
-    first = first->m_taskNext;
+    auto * task = first;
+    first = task->m_taskNext;
+    task->m_taskNext = nullptr;
 }
 
 
@@ -184,12 +185,24 @@ void IDimTaskDestroy () {
 
 //===========================================================================
 void DimTaskPushEvent (IDimTaskNotify & task) {
-    DimTaskPush(s_eventQ, task);
+    IDimTaskNotify * list[] = { &task };
+    DimTaskPushEvent(list, _countof(list));
+}
+
+//===========================================================================
+void DimTaskPushEvent (IDimTaskNotify * tasks[], int numTasks) {
+    DimTaskPush(s_eventQ, tasks, numTasks);
 }
 
 //===========================================================================
 void DimTaskPushCompute (IDimTaskNotify & task) {
-    DimTaskPush(s_computeQ, task);
+    IDimTaskNotify * list[] = { &task };
+    DimTaskPushCompute(list, _countof(list));
+}
+
+//===========================================================================
+void DimTaskPushCompute (IDimTaskNotify * tasks[], int numTasks) {
+    DimTaskPush(s_computeQ, tasks, numTasks);
 }
 
 //===========================================================================
@@ -218,10 +231,17 @@ void DimTaskSetQueueThreads (HDimTaskQueue hq, unsigned threads) {
 
 //===========================================================================
 void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify & task) {
+    IDimTaskNotify * list[] = { &task };
+    DimTaskPush(hq, list, _countof(list));
+}
+
+//===========================================================================
+void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify * tasks[], int numTasks) {
     assert(s_running);
 
     lock_guard<mutex> lk{s_mut};
     auto * q = s_queues.Find(hq);
-    q->Push(task);
+    for (; numTasks; ++tasks, --numTasks) 
+        q->Push(**tasks);
     q->cv.notify_one();
 }

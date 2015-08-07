@@ -14,7 +14,12 @@ using namespace std::chrono;
 
 //===========================================================================
 WinEvent::WinEvent () {
-    m_handle = CreateEvent(NULL, false, false, NULL);
+    m_handle = CreateEvent(
+        NULL,   // security attributes
+        false,  // manual reset
+        false,  // initial signaled state
+        NULL    // name
+    );
 }
 
 //===========================================================================
@@ -34,5 +39,46 @@ void WinEvent::Wait (Duration wait) {
         WaitForSingleObject(m_handle, INFINITE);
     } else {
         WaitForSingleObject(m_handle, (DWORD) waitMs.count());
+    }
+}
+
+
+/****************************************************************************
+*
+*   IWinEventWaitNotify
+*
+***/
+
+//===========================================================================
+static void __stdcall EventWaitCallback (void * param, uint8_t timeout) {
+    auto notify = reinterpret_cast<IWinEventWaitNotify *>(param);
+    DimTaskPushEvent(*notify);
+}
+
+//===========================================================================
+IWinEventWaitNotify::IWinEventWaitNotify () {
+    m_overlapped.hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+
+    if (!RegisterWaitForSingleObject(
+        &m_registeredWait,
+        m_overlapped.hEvent,
+        &EventWaitCallback,
+        this,
+        INFINITE,   // timeout
+        WT_EXECUTEINWAITTHREAD | WT_EXECUTEONLYONCE
+    )) {
+        DimErrorLog{kFatal} << "RegisterWaitForSingleObject failed, "
+            << GetLastError();
+    }
+}
+
+//===========================================================================
+IWinEventWaitNotify::~IWinEventWaitNotify () {
+    if (m_registeredWait && !UnregisterWaitEx(m_registeredWait, nullptr)) {
+        DimErrorLog{kError} << "UnregisterWaitEx failed, " << GetLastError();
+    }
+    if (m_overlapped.hEvent && !CloseHandle(m_overlapped.hEvent)) {
+        DimErrorLog{kError} << "CloseHandle(m_overlapped.hEvent) failed, "
+            << GetLastError();
     }
 }
