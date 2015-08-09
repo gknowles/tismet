@@ -35,6 +35,7 @@
     <ClInclude Include="..\src\pch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\address.cpp" />
     <ClCompile Include="..\src\app.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

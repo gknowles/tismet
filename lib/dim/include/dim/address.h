@@ -4,15 +4,23 @@
 
 #include "dim/config.h"
 
+#include <iosfwd>
+
 struct SockAddr;
 
 
 /****************************************************************************
 *
-*   Native
+*   SockAddr
 *
 ***/
 
+bool Parse (SockAddr * addr, const char src[]);
+std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
+
+//===========================================================================
+// Native
+//===========================================================================
 struct sockaddr_storage;
 
 void DimAddressToStorage (sockaddr_storage * out, const SockAddr & addr);

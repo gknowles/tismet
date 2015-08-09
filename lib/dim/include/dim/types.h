@@ -54,11 +54,11 @@ typedef DimClock::time_point TimePoint;
 
 // IP v4 or v6 address
 struct NetAddr {
-    int32_t data[4];
+    int32_t data[4]{};
 };
 struct SockAddr {
     NetAddr addr;
-    unsigned port;
+    unsigned port{0};
 };
 
 

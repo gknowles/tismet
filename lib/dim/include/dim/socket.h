@@ -15,12 +15,12 @@ struct DimSocketConnectInfo {
 };
 struct DimSocketData {
     char * data;
-    size_t bytes;
+    int bytes;
 };
 
 class IDimSocketNotify {
 public:
-    virtual ~IDimSocketNotify ();
+    virtual ~IDimSocketNotify () {}
 
     virtual void OnSocketConnect (const DimSocketConnectInfo & info) {};
     virtual void OnSocketConnectFailed () {};
@@ -29,16 +29,13 @@ public:
 
 private:
     friend class DimSocket;
-    DimSocket * m_socket = nullptr;
+    DimSocket * m_socket{nullptr};
 };
 
-struct DimSocketBuffer {
-    void * data;
-    size_t size;
-};
-std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
-//void DimSocketFreeBuffer (DimSocketBuffer * buffer);
 
+//===========================================================================
+// connecting and disconnecting
+//===========================================================================
 void DimSocketConnect (
     IDimSocketNotify * notify,
     const SockAddr & remoteAddr,
@@ -46,6 +43,30 @@ void DimSocketConnect (
 );
 void DimSocketDisconnect (IDimSocketNotify * notify);
 
+//===========================================================================
+// socket buffer
+//===========================================================================
+struct DimSocketBuffer {
+    char * data;
+    int size;
+};
+
+// not generally used, let unique_ptr handle it via default_delete<>
+void DimSocketFreeBuffer (DimSocketBuffer * buffer);
+
+namespace std {
+    template<>
+    struct default_delete<DimSocketBuffer> {
+        void operator() (DimSocketBuffer * ptr) { 
+            DimSocketFreeBuffer(ptr); 
+        }
+    };
+} // namespace std
+std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
+
+//===========================================================================
+// writing
+//===========================================================================
 // Writes the data and deletes the buffer.
 //
 // NOTE: Must be a buffer that was allocated with DimSocketNewBuffer

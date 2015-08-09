@@ -47,6 +47,7 @@ HANDLE DimIocpHandle ();
 ***/
 
 void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio);
+void IDimSocketGetRioBuffer (RIO_BUF * out, DimSocketBuffer * buf);
 
 
 /****************************************************************************

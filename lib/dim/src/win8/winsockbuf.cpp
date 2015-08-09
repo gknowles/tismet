@@ -45,18 +45,6 @@ struct Buffer {
 
 } // namespace
 
-//===========================================================================
-namespace std {
-
-template<>
-struct default_delete<DimSocketBuffer> {
-    void operator() (DimSocketBuffer * ptr) { 
-        DestroyBufferSlice(ptr->data); 
-    }
-};
-
-} // namespace std
-
 
 /****************************************************************************
 *
@@ -83,6 +71,24 @@ static int s_numFull;
 *   Helpers
 *
 ***/
+
+//===========================================================================
+static void FindBufferSlice (
+    BufferSlice ** sliceOut, 
+    Buffer ** bufferOut, 
+    void * ptr
+) {
+    auto slice = (BufferSlice *) ptr - 1;
+    assert((size_t) slice->ownerPos < s_buffers.size());
+    int rbufPos = slice->ownerPos;
+    auto buf = &s_buffers[rbufPos];
+    // BufferSlice must be aligned within the owning registered buffer
+    assert(slice >= buf->base && slice < buf->base + buf->size);
+    assert(((char *) slice - (char *) buf->base) % buf->sliceSize == 0);
+
+    *sliceOut = slice;
+    *bufferOut = buf;
+}
 
 //===========================================================================
 static void CreateEmptyBuffer () {
@@ -120,8 +126,8 @@ static void CreateEmptyBuffer () {
         (DWORD) bytes
     );
     if (buf.id == RIO_INVALID_BUFFERID) {
-        DimErrorLog{kError} << "RIORegisterBuffer failed, " 
-            << WSAGetLastError();
+        DimErrorLog{kFatal} << "RIORegisterBuffer failed, " 
+            << GetLastError();
     }
 }
 
@@ -138,13 +144,11 @@ static void DestroyEmptyBuffer () {
 //===========================================================================
 static void DestroyBufferSlice (void * ptr) {
     // get the header 
-    BufferSlice * slice = (BufferSlice *) ptr - 1;
-    assert((size_t) slice->ownerPos < s_buffers.size());
+    BufferSlice * slice;
+    Buffer * pbuf;
+    FindBufferSlice(&slice, &pbuf, ptr);
+    auto & buf = *pbuf;
     int rbufPos = slice->ownerPos;
-    auto buf = s_buffers[rbufPos];
-    // BufferSlice must be aligned within the owning registered buffer
-    assert(slice >= buf.base && slice < buf.base + buf.size);
-    assert(((char *) slice - (char *) buf.base) % buf.sliceSize == 0);
 
     slice->nextPos = buf.firstFree;
     buf.firstFree = int(slice - buf.base);
@@ -216,6 +220,16 @@ void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
     s_bufferSize = max(s_minLargeAlloc, s_bufferSize);
 }
 
+//===========================================================================
+void IDimSocketGetRioBuffer (RIO_BUF * out, DimSocketBuffer * sbuf) {
+    BufferSlice * slice;
+    Buffer * pbuf;
+    FindBufferSlice(&slice, &pbuf, sbuf->data);
+    out->BufferId = pbuf->id;
+    out->Offset = ULONG((char *) sbuf->data - (char *) pbuf->base);
+    out->Length = sbuf->size;
+}
+
 
 /****************************************************************************
 *
@@ -229,24 +243,25 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
     if (s_numFull == s_buffers.size())
         CreateEmptyBuffer();
     // use the last partial or, if there aren't any, the first empty
-    auto buf = s_numPartial
+    auto & buf = s_numPartial
         ? s_buffers[s_numFull + s_numPartial - 1]
         : s_buffers[s_numFull];
 
-    BufferSlice * slice = buf.base + buf.firstFree;
-    if (slice) {
+    BufferSlice * slice;
+    if (buf.used < buf.size) {
+        slice = buf.base + buf.firstFree;
         buf.firstFree = slice->nextPos;
     } else {
         assert(buf.size < buf.reserved);
         slice = buf.base + buf.size;
         buf.size += 1;
     }
-    slice->ownerPos = int(slice - buf.base);
+    slice->ownerPos = int(&buf - s_buffers.data());
     buf.used += 1;
 
     // set pointer to just passed the header
     auto out = make_unique<DimSocketBuffer>();
-    out->data = slice + 1;
+    out->data = (char *) (slice + 1);
     out->size = buf.sliceSize - sizeof(*slice);
 
     // if the registered buffer is full move it to the back of the list
@@ -261,4 +276,9 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
     }
 
     return out;
+}
+
+//===========================================================================
+void DimSocketFreeBuffer (DimSocketBuffer * buffer) {
+    DestroyBufferSlice(buffer->data);
 }

@@ -4,6 +4,53 @@
 
 using namespace std;
 
+#pragma warning(disable: 4996) // deprecated
+
+
+/****************************************************************************
+*
+*   SockAddr
+*
+***/
+
+//===========================================================================
+bool Parse (SockAddr * addr, const char src[]) {
+    sockaddr_storage sas;
+    int sasLen = sizeof(sas);
+    if (SOCKET_ERROR == WSAStringToAddress(
+        (char *) src,
+        AF_INET,
+        NULL,
+        (sockaddr *) &sas,
+        &sasLen
+    )) {
+        *addr = {};
+        return false;
+    }
+    DimAddressFromStorage(addr, sas);
+    return true;
+}
+
+//===========================================================================
+std::ostream & operator<< (std::ostream & os, const SockAddr & addr) {
+    sockaddr_storage sas;
+    DimAddressToStorage(&sas, addr);
+    char tmp[256];
+    DWORD tmpLen = sizeof(tmp);
+    if (SOCKET_ERROR == WSAAddressToString(
+        (sockaddr *) &sas,
+        sizeof(sas),
+        NULL,
+        tmp,
+        &tmpLen
+    )) {
+        os << "(bad_sockaddr)";
+    } else {
+        os << tmp;
+    }
+    return os;
+}
+
 
 /****************************************************************************
 *

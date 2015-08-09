@@ -2,18 +2,35 @@
 #include "pch.h"
 #pragma hdrstop
 
+
+/****************************************************************************
+*
+*   MainShutdown
+*
+***/
+
 class MainShutdown : public IDimAppShutdownNotify {
     void OnAppStartClientCleanup () override;
     bool OnAppQueryClientDestroy () override;
 };
 
+//===========================================================================
 void MainShutdown::OnAppStartClientCleanup () {
 }
 
+//===========================================================================
 bool MainShutdown::OnAppQueryClientDestroy () {
     return true;
 }
 
+
+/****************************************************************************
+*
+*   main
+*
+***/
+
+//===========================================================================
 int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
         | _CRTDBG_LEAK_CHECK_DF
