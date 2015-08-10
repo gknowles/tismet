@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <list>
 #include <mutex>
 #include <thread>
 #include <vector>

@@ -49,19 +49,10 @@ void DimSocketDisconnect (IDimSocketNotify * notify);
 struct DimSocketBuffer {
     char * data;
     int size;
+
+    ~DimSocketBuffer ();
 };
 
-// not generally used, let unique_ptr handle it via default_delete<>
-void DimSocketFreeBuffer (DimSocketBuffer * buffer);
-
-namespace std {
-    template<>
-    struct default_delete<DimSocketBuffer> {
-        void operator() (DimSocketBuffer * ptr) { 
-            DimSocketFreeBuffer(ptr); 
-        }
-    };
-} // namespace std
 std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
 
 //===========================================================================
@@ -69,7 +60,7 @@ std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
 //===========================================================================
 // Writes the data and deletes the buffer.
 //
-// NOTE: Must be a buffer that was allocated with DimSocketNewBuffer
+// NOTE: Must be a buffer that was allocated with DimSocketGetBuffer
 void DimSocketWrite (
     IDimSocketNotify * notify, 
     std::unique_ptr<DimSocketBuffer> buffer,

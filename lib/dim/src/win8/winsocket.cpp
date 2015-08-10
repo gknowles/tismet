@@ -11,7 +11,8 @@ using namespace std;
 *
 ***/
 
-const unsigned kInitialCompletionQueueSize = 100;
+const int kInitialCompletionQueueSize = 100;
+const int kInitialSendQueueSize = 10;
 
 
 /****************************************************************************
@@ -40,13 +41,21 @@ public:
 class RequestTaskBase : public IDimTaskNotify {
     virtual void OnTask () override = 0;
 public:
-    // filled in by the dispatch thread
-    int m_ntstatus = 0;
-    int m_bytes = 0;
-    DimSocket * m_socket = nullptr;
+    RIO_BUF m_rbuf = {};
+    unique_ptr<DimSocketBuffer> m_buffer;
+
+    // filled in after completion
+    int m_xferStatus{0};
+    int m_xferError{0};
+    int m_xferBytes{0};
+    DimSocket * m_socket{nullptr};
 };
 
-class ReceiveTask : public RequestTaskBase {
+class ReadTask : public RequestTaskBase {
+    void OnTask () override;
+};
+
+class WriteTask : public RequestTaskBase {
     void OnTask () override;
 };
 
@@ -67,6 +76,11 @@ public:
         const SockAddr & localAddr
     );
     static void Disconnect (IDimSocketNotify * notify);
+    static void Write (
+        IDimSocketNotify * notify, 
+        unique_ptr<DimSocketBuffer> buffer,
+        size_t bytes
+    );
 
 public:
     DimSocket (IDimSocketNotify * notify);
@@ -75,17 +89,30 @@ public:
     void HardClose ();
 
     void OnConnect (int error, int bytes);
-    void OnReceive ();
+    void OnRead ();
+    void OnWrite (WriteTask * task);
 
-    void QueueReceive ();
+    void QueueRead_LK ();
+    void QueueWrite_LK (
+        unique_ptr<DimSocketBuffer> buffer,
+        size_t bytes
+    );
+    void QueueWriteFromUnsent_LK ();
 
 private:
-    IDimSocketNotify * m_notify;
-    SOCKET m_handle = INVALID_SOCKET;
-    RIO_RQ m_rq = {};
-    RIO_BUF m_rbuf = {};
-    unique_ptr<DimSocketBuffer> m_buffer;
-    ReceiveTask m_recv;
+    IDimSocketNotify * m_notify{nullptr};
+    SOCKET m_handle{INVALID_SOCKET};
+    RIO_RQ m_rq{};
+
+    // used by single read request
+    ReadTask m_read;
+    static const int kMaxReceiving{1};
+
+    // used by write requests
+    list<WriteTask> m_sending;
+    int m_numSending{0};
+    int m_maxSending{0};
+    list<WriteTask> m_unsent;
 };
 
 
@@ -102,7 +129,8 @@ static condition_variable s_modeCv; // when run mode changes to stopped
 static RunMode s_mode{kRunStopped};
 static WinEvent s_cqReady;
 static RIO_CQ s_cq;
-static int s_cqSize = kInitialCompletionQueueSize;
+static int s_cqSize = 10; // kInitialCompletionQueueSize;
+static int s_cqUsed;
 
 
 /****************************************************************************
@@ -112,6 +140,40 @@ static int s_cqSize = kInitialCompletionQueueSize;
 ***/
 
 //===========================================================================
+static void AddCqUsed_LK (int delta) {
+    s_cqUsed += delta;
+    assert(s_cqUsed >= 0);
+
+    int size = s_cqSize;
+    if (s_cqUsed > s_cqSize) {
+        size = max(s_cqSize * 3 / 2, s_cqUsed);
+    } else if (s_cqUsed < s_cqSize / 3) {
+        size = max(s_cqSize / 2, kInitialCompletionQueueSize);
+    }
+    if (size != s_cqSize) {
+        if (!s_rio.RIOResizeCompletionQueue(s_cq, size)) {
+            int error = GetLastError();
+            DimErrorLog{kError} << "RIOResizeCompletionQueue(" 
+                << size << ") failed, " << error;
+        } else {
+            s_cqSize = size;
+        }
+    }
+}
+
+//===========================================================================
+static int HResultFromNtStatus (int ntstatus) {
+    int error{0};
+    if (ntstatus) {
+        OVERLAPPED overlapped{};
+        overlapped.Internal = ntstatus;
+        DWORD bytes;
+        if (!GetOverlappedResult(NULL, &overlapped, &bytes, false)) {
+            error = GetLastError();
+        }
+    }
+    return error;
+}
 
 
 /****************************************************************************
@@ -155,8 +217,8 @@ void RioDispatchThread::OnTask () {
             auto&& rr = results[i];
             auto task = (RequestTaskBase *) rr.RequestContext;
             task->m_socket = (DimSocket *) rr.SocketContext;
-            task->m_ntstatus = rr.Status;
-            task->m_bytes = rr.BytesTransferred;
+            task->m_xferStatus = rr.Status;
+            task->m_xferBytes = rr.BytesTransferred;
             tasks[i] = task;
         }
 
@@ -224,15 +286,30 @@ void ConnectFailedTask::OnTask () {
 
 /****************************************************************************
 *
-*   ReceiveTask
+*   ReadTask
 *
 ***/
 
 //===========================================================================
-void ReceiveTask::OnTask () {
-    m_socket->OnReceive();
+void ReadTask::OnTask () {
+    m_xferError = HResultFromNtStatus(m_xferStatus);
+    m_socket->OnRead();
     // task object is a member of DimSocket and will be deleted when the 
     // socket is deleted
+}
+
+
+/****************************************************************************
+*
+*   WriteTask
+*
+***/
+
+//===========================================================================
+void WriteTask::OnTask () {
+    m_xferError = HResultFromNtStatus(m_xferStatus);
+    m_socket->OnWrite(this);
+    delete this;
 }
 
 
@@ -349,8 +426,25 @@ void DimSocket::Connect (
 //===========================================================================
 // static 
 void DimSocket::Disconnect (IDimSocketNotify * notify) {
+    unique_lock<mutex> lk{s_mut};
     if (notify->m_socket)
         notify->m_socket->HardClose();
+}
+
+//===========================================================================
+// static 
+void DimSocket::Write (
+    IDimSocketNotify * notify, 
+    unique_ptr<DimSocketBuffer> buffer,
+    size_t bytes
+) {
+    assert(bytes <= buffer->size);
+    unique_lock<mutex> lk{s_mut};
+    DimSocket * sock = notify->m_socket;
+    if (!sock)
+        return;
+
+    sock->QueueWrite_LK(move(buffer), bytes);
 }
 
 //===========================================================================
@@ -360,10 +454,14 @@ DimSocket::DimSocket (IDimSocketNotify * notify)
 
 //===========================================================================
 DimSocket::~DimSocket () {
+    lock_guard<mutex> lk{s_mut};
     if (m_notify)
         m_notify->m_socket = nullptr;
 
     HardClose();
+
+    if (m_maxSending)
+        AddCqUsed_LK(-(m_maxSending + kMaxReceiving));
 }
 
 //===========================================================================
@@ -407,30 +505,43 @@ void DimSocket::OnConnect (
         return;
     }
 
-    // create request queue
-    m_rq = s_rio.RIOCreateRequestQueue(
-        m_handle,
-        1,      // max outstanding recv requests
-        1,      // max recv buffers (must be 1)
-        10,     // max outstanding send requests
-        1,      // max send buffers (must be 1)
-        s_cq,   // recv completion queue
-        s_cq,   // send completion queue
-        this    // socket context
+    m_read.m_buffer = DimSocketGetBuffer();
+    IDimSocketGetRioBuffer(
+        &m_read.m_rbuf, 
+        m_read.m_buffer.get(), 
+        m_read.m_buffer->size
     );
-    if (m_rq == RIO_INVALID_RQ) {
-        DimErrorLog{kError} << "RIOCreateRequestQueue failed, "
-            << GetLastError();
-        notify->OnSocketConnectFailed();
-        delete this;
-        return;
+
+    {
+        unique_lock<mutex> lk{s_mut};
+
+        // adjust size of completion queue if required
+        m_maxSending = kInitialSendQueueSize;
+        AddCqUsed_LK(m_maxSending + kMaxReceiving);
+
+        // create request queue
+        m_rq = s_rio.RIOCreateRequestQueue(
+            m_handle,
+            kMaxReceiving,  // max outstanding recv requests
+            1,              // max recv buffers (must be 1)
+            m_maxSending,   // max outstanding send requests
+            1,              // max send buffers (must be 1)
+            s_cq,           // recv completion queue
+            s_cq,           // send completion queue
+            this            // socket context
+        );
+        if (m_rq == RIO_INVALID_RQ) {
+            DimErrorLog{kError} << "RIOCreateRequestQueue failed, "
+                << GetLastError();
+            lk.unlock();
+            notify->OnSocketConnectFailed();
+            delete this;
+            return;
+        }
+
+        // start reading from socket
+        QueueRead_LK();
     }
-
-    m_buffer = DimSocketGetBuffer();
-    IDimSocketGetRioBuffer(&m_rbuf, m_buffer.get());
-
-    // start reading from socket
-    QueueReceive();
 
     //-----------------------------------------------------------------------
     // notify socket connect event
@@ -469,13 +580,15 @@ void DimSocket::OnConnect (
 }
 
 //===========================================================================
-void DimSocket::OnReceive () {
-    if (m_recv.m_bytes) {
+void DimSocket::OnRead () {
+    if (m_read.m_xferBytes) {
         DimSocketData data;
-        data.data = (char *) m_buffer->data;
-        data.bytes = m_recv.m_bytes;
+        data.data = (char *) m_read.m_buffer->data;
+        data.bytes = m_read.m_xferBytes;
         m_notify->OnSocketRead(data);
-        QueueReceive();
+
+        lock_guard<mutex> lk{s_mut};
+        QueueRead_LK();
     } else {
         m_notify->OnSocketDisconnect();
         delete this;
@@ -483,17 +596,80 @@ void DimSocket::OnReceive () {
 }
 
 //===========================================================================
-void DimSocket::QueueReceive () {
-    unique_lock<mutex> lk{s_mut};
+void DimSocket::QueueRead_LK () {
     if (!s_rio.RIOReceive(
         m_rq,
-        &m_rbuf,
+        &m_read.m_rbuf,
         1,      // number of RIO_BUFs (must be 1)
         0,      // RIO_MSG_* flags
-        &m_recv
+        &m_read
     )) {
         int error = GetLastError();
         DimErrorLog{kFatal} << "RIOReceive failed, " << error;
+    }
+}
+
+//===========================================================================
+void DimSocket::OnWrite (WriteTask * task) {
+    lock_guard<mutex> lk{s_mut};
+
+    auto it = find_if(
+        m_sending.begin(), 
+        m_sending.end(), 
+        [task](auto&& val) { return &val == task; }
+    );
+    assert(it != m_sending.end());
+    m_sending.erase(it);
+
+    QueueWriteFromUnsent_LK();
+}
+
+//===========================================================================
+void DimSocket::QueueWrite_LK (
+    unique_ptr<DimSocketBuffer> buffer,
+    size_t bytes
+) {
+    if (!m_unsent.empty()) {
+        auto & back = m_unsent.back();
+        int count = min(
+            back.m_buffer->size - (int) back.m_rbuf.Length, 
+            (int) bytes
+        );
+        if (count) {
+            memcpy(
+                back.m_buffer->data + back.m_rbuf.Length,
+                buffer->data,
+                count
+            );
+            back.m_rbuf.Length += count;
+            bytes -= count;
+            if (bytes) {
+                memmove(buffer->data, buffer->data + count, bytes);
+            }
+        }
+    }
+
+    if (bytes) {
+        m_unsent.emplace_back();
+        auto & task = m_unsent.back();
+        IDimSocketGetRioBuffer(&task.m_rbuf, buffer.get(), bytes);
+        task.m_buffer = move(buffer);
+    }
+
+    QueueWriteFromUnsent_LK();
+}
+
+//===========================================================================
+void DimSocket::QueueWriteFromUnsent_LK () {
+    while (m_numSending < m_maxSending && !m_unsent.empty()) {
+        m_sending.splice(m_sending.end(), m_unsent, m_unsent.begin());
+        m_numSending += 1;
+        auto & task = m_sending.back();
+        if (!s_rio.RIOSend(m_rq, &task.m_rbuf, 1, 0, &task)) {
+            DimErrorLog{kFatal} << "RIOSend failed, " << GetLastError();
+            m_sending.pop_back();
+            m_numSending -= 1;
+        }
     }
 }
 
@@ -621,4 +797,10 @@ void DimSocketDisconnect (IDimSocketNotify * notify) {
 }
 
 //===========================================================================
-void DimSocketWrite (IDimSocketNotify * notify, void * data, size_t bytes);
+void DimSocketWrite (
+    IDimSocketNotify * notify, 
+    unique_ptr<DimSocketBuffer> buffer,
+    size_t bytes
+) {
+    DimSocket::Write (notify, move(buffer), bytes);
+}

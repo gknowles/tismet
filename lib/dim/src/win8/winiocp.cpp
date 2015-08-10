@@ -60,7 +60,7 @@ static void IocpDispatchThread () {
                 break;
             }
 
-            DimErrorLog{kFatal} << "GetQueuedCompletionStatusEx, "
+            DimErrorLog{kFatal} << "GetQueuedCompletionStatus, "
                 << error;
         }
 

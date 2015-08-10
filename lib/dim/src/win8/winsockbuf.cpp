@@ -177,6 +177,18 @@ static void DestroyBufferSlice (void * ptr) {
 
 /****************************************************************************
 *
+*   DimSocketBuffer
+*
+***/
+
+//===========================================================================
+DimSocketBuffer::~DimSocketBuffer () {
+    DestroyBufferSlice(data);
+}
+
+
+/****************************************************************************
+*
 *   Shutdown
 *
 ***/
@@ -221,13 +233,18 @@ void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
 }
 
 //===========================================================================
-void IDimSocketGetRioBuffer (RIO_BUF * out, DimSocketBuffer * sbuf) {
+void IDimSocketGetRioBuffer (
+    RIO_BUF * out, 
+    DimSocketBuffer * sbuf,
+    size_t bytes
+) {
+    assert(bytes <= sbuf->size);
     BufferSlice * slice;
     Buffer * pbuf;
     FindBufferSlice(&slice, &pbuf, sbuf->data);
     out->BufferId = pbuf->id;
     out->Offset = ULONG((char *) sbuf->data - (char *) pbuf->base);
-    out->Length = sbuf->size;
+    out->Length = (int) bytes;
 }
 
 
@@ -276,9 +293,4 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
     }
 
     return out;
-}
-
-//===========================================================================
-void DimSocketFreeBuffer (DimSocketBuffer * buffer) {
-    DestroyBufferSlice(buffer->data);
 }

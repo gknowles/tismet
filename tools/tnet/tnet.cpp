@@ -85,7 +85,7 @@ void SocketConn::OnSocketDisconnect () {
 //===========================================================================
 void Start (int argc, char * argv[]) {
     if (argc < 2) {
-        cout << "tnet v1.0 (" __DATE__ << ")\n"
+        cout << "tnet v1.0 (" __DATE__ ")\n"
             << "usage: tnet <remote address>\n";
         return DimAppSignalShutdown(kExitBadArgs);
     }
