@@ -34,7 +34,7 @@ struct BufferSlice {
 };
 struct Buffer {
     RIO_BUFFERID id;
-    BufferSlice * base;
+    char * base;
     TimePoint lastUsed;
     int sliceSize;
     int reserved;
@@ -64,6 +64,7 @@ static size_t s_pageSize;
 static vector<Buffer> s_buffers;
 static int s_numPartial;
 static int s_numFull;
+static mutex s_mut;
 
 
 /****************************************************************************
@@ -73,18 +74,24 @@ static int s_numFull;
 ***/
 
 //===========================================================================
+static BufferSlice * GetSlice (const Buffer & buf, int pos) {
+    char * ptr = (char *) buf.base + pos * buf.sliceSize;
+    return (BufferSlice *) ptr;
+}
+
+//===========================================================================
 static void FindBufferSlice (
     BufferSlice ** sliceOut, 
     Buffer ** bufferOut, 
     void * ptr
 ) {
-    auto slice = (BufferSlice *) ptr - 1;
+    auto * slice = (BufferSlice *) ptr - 1;
     assert((size_t) slice->ownerPos < s_buffers.size());
     int rbufPos = slice->ownerPos;
-    auto buf = &s_buffers[rbufPos];
+    auto * buf = &s_buffers[rbufPos];
     // BufferSlice must be aligned within the owning registered buffer
-    assert(slice >= buf->base && slice < buf->base + buf->size);
-    assert(((char *) slice - (char *) buf->base) % buf->sliceSize == 0);
+    assert((char *) slice >= buf->base && slice < GetSlice(*buf, buf->size));
+    assert(((char *) slice - buf->base) % buf->sliceSize == 0);
 
     *sliceOut = slice;
     *bufferOut = buf;
@@ -112,7 +119,7 @@ static void CreateEmptyBuffer () {
     buf.size = 0;
     buf.used = 0;
     buf.firstFree = 0;
-    buf.base = (BufferSlice *) VirtualAlloc(
+    buf.base = (char *) VirtualAlloc(
         nullptr,
         bytes,
         MEM_COMMIT 
@@ -121,13 +128,10 @@ static void CreateEmptyBuffer () {
         PAGE_READWRITE
     );
 
-    buf.id = s_rio.RIORegisterBuffer(
-        (char *) buf.base, 
-        (DWORD) bytes
-    );
+    buf.id = s_rio.RIORegisterBuffer(buf.base, (DWORD) bytes);
     if (buf.id == RIO_INVALID_BUFFERID) {
-        DimErrorLog{kFatal} << "RIORegisterBuffer failed, " 
-            << GetLastError();
+        DimLog{kCrash} << "RIORegisterBuffer failed, " 
+            << WinError();
     }
 }
 
@@ -151,7 +155,7 @@ static void DestroyBufferSlice (void * ptr) {
     int rbufPos = slice->ownerPos;
 
     slice->nextPos = buf.firstFree;
-    buf.firstFree = int(slice - buf.base);
+    buf.firstFree = int((char *) slice - buf.base) / buf.sliceSize;
     buf.used -= 1;
 
     if (buf.used == buf.reserved - 1) {
@@ -202,6 +206,8 @@ static Shutdown s_cleanup;
 
 //===========================================================================
 bool Shutdown::OnAppQueryConsoleDestroy () {
+    lock_guard<mutex> lk{s_mut};
+
     while (!s_buffers.empty())
         DestroyEmptyBuffer();
 
@@ -238,7 +244,9 @@ void IDimSocketGetRioBuffer (
     DimSocketBuffer * sbuf,
     size_t bytes
 ) {
-    assert(bytes <= sbuf->size);
+    lock_guard<mutex> lk{s_mut};
+
+    assert(bytes <= sbuf->len);
     BufferSlice * slice;
     Buffer * pbuf;
     FindBufferSlice(&slice, &pbuf, sbuf->data);
@@ -256,6 +264,8 @@ void IDimSocketGetRioBuffer (
 
 //===========================================================================
 unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
+    lock_guard<mutex> lk{s_mut};
+
     // all buffers full? create a new one
     if (s_numFull == s_buffers.size())
         CreateEmptyBuffer();
@@ -266,11 +276,11 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
 
     BufferSlice * slice;
     if (buf.used < buf.size) {
-        slice = buf.base + buf.firstFree;
+        slice = GetSlice(buf, buf.firstFree);
         buf.firstFree = slice->nextPos;
     } else {
         assert(buf.size < buf.reserved);
-        slice = buf.base + buf.size;
+        slice = GetSlice(buf, buf.size);
         buf.size += 1;
     }
     slice->ownerPos = int(&buf - s_buffers.data());
@@ -279,7 +289,7 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
     // set pointer to just passed the header
     auto out = make_unique<DimSocketBuffer>();
     out->data = (char *) (slice + 1);
-    out->size = buf.sliceSize - sizeof(*slice);
+    out->len = buf.sliceSize - sizeof(*slice);
 
     // if the registered buffer is full move it to the back of the list
     if (buf.used == buf.reserved) {

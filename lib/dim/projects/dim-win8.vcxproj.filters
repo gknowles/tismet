@@ -7,6 +7,8 @@
     <ClCompile Include="..\src\win8\winsync.cpp" />
     <ClCompile Include="..\src\win8\winsockbuf.cpp" />
     <ClCompile Include="..\src\win8\winaddress.cpp" />
+    <ClCompile Include="..\src\win8\winfile.cpp" />
+    <ClCompile Include="..\src\win8\winerror.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\pch.h" />

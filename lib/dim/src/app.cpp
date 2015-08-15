@@ -64,7 +64,7 @@ private:
 ***/
 
 static MainTimer s_mainTimer;
-static unsigned s_exitcode;
+static int s_exitcode;
 
 // cleaners are in the order (newest to oldest) that they will be executed.
 static vector<CleanupInfo> s_cleaners;
@@ -170,13 +170,15 @@ bool MainTimer::QueryDestroy (QueryFn notify) {
 void DimAppInitialize () {
     IDimTaskInitialize();
     IDimTimerInitialize();
+    IDimFileInitialize();
     IDimSocketInitialize();
     s_runMode = kRunRunning;
 }
 
 //===========================================================================
 void DimAppSignalShutdown (int exitcode) {
-    s_exitcode = exitcode;
+    if (exitcode > s_exitcode)
+        s_exitcode = exitcode;
     s_mainTimer = {};
     DimTimerUpdate(&s_mainTimer, 0ms);
 }

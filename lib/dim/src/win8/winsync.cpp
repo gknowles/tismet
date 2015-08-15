@@ -67,7 +67,7 @@ IWinEventWaitNotify::IWinEventWaitNotify () {
         INFINITE,   // timeout
         WT_EXECUTEINWAITTHREAD | WT_EXECUTEONLYONCE
     )) {
-        DimErrorLog{kFatal} << "RegisterWaitForSingleObject failed, "
+        DimLog{kCrash} << "RegisterWaitForSingleObject failed, "
             << GetLastError();
     }
 }
@@ -75,10 +75,10 @@ IWinEventWaitNotify::IWinEventWaitNotify () {
 //===========================================================================
 IWinEventWaitNotify::~IWinEventWaitNotify () {
     if (m_registeredWait && !UnregisterWaitEx(m_registeredWait, nullptr)) {
-        DimErrorLog{kError} << "UnregisterWaitEx failed, " << GetLastError();
+        DimLog{kError} << "UnregisterWaitEx failed, " << GetLastError();
     }
     if (m_overlapped.hEvent && !CloseHandle(m_overlapped.hEvent)) {
-        DimErrorLog{kError} << "CloseHandle(m_overlapped.hEvent) failed, "
+        DimLog{kError} << "CloseHandle(m_overlapped.hEvent) failed, "
             << GetLastError();
     }
 }

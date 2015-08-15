@@ -33,6 +33,8 @@ private:
 };
 
 
+RunMode DimSocketGetMode (IDimSocketNotify * notify);
+
 //===========================================================================
 // connecting and disconnecting
 //===========================================================================
@@ -44,23 +46,17 @@ void DimSocketConnect (
 void DimSocketDisconnect (IDimSocketNotify * notify);
 
 //===========================================================================
-// socket buffer
+// writing
 //===========================================================================
 struct DimSocketBuffer {
     char * data;
-    int size;
+    int len;
 
     ~DimSocketBuffer ();
 };
-
 std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
 
-//===========================================================================
-// writing
-//===========================================================================
 // Writes the data and deletes the buffer.
-//
-// NOTE: Must be a buffer that was allocated with DimSocketGetBuffer
 void DimSocketWrite (
     IDimSocketNotify * notify, 
     std::unique_ptr<DimSocketBuffer> buffer,

@@ -3,6 +3,7 @@
 #include "../intern.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <limits>
 #include <list>

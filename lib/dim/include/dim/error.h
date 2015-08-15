@@ -8,14 +8,14 @@ enum DimErrorSeverity {
     kDebug,
     kInfo,
     kError,
-    kFatal,
+    kCrash,
 };
 
-class DimErrorLog : public std::ostringstream {
+class DimLog : public std::ostringstream {
     DimErrorSeverity m_severity;
 public:
-    DimErrorLog (DimErrorSeverity severity) : m_severity(severity) {}
-    ~DimErrorLog ();
+    DimLog (DimErrorSeverity severity) : m_severity(severity) {}
+    ~DimLog ();
 };
 
 #endif

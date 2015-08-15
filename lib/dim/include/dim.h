@@ -8,6 +8,7 @@
 #include "dim/app.h"
 #include "dim/cmdline.h"
 #include "dim/error.h"
+#include "dim/file.h"
 #include "dim/handle.h"
 #include "dim/socket.h"
 #include "dim/task.h"

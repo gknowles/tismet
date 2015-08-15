@@ -12,9 +12,9 @@ using namespace std;
 ***/
 
 //===========================================================================
-void LogMsg (DimErrorSeverity severity, const string & msg) {
+static void LogMsg (DimErrorSeverity severity, const string & msg) {
     cout << msg << endl;
-    if (severity == kFatal) {
+    if (severity == kCrash) {
         abort();
     }
 }
@@ -22,11 +22,11 @@ void LogMsg (DimErrorSeverity severity, const string & msg) {
 
 /****************************************************************************
 *
-*   DimErrorLog
+*   DimLog
 *
 ***/
 
 //===========================================================================
-DimErrorLog::~DimErrorLog () {
+DimLog::~DimLog () {
     LogMsg(m_severity, str());
 }

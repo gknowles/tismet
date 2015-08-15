@@ -241,7 +241,12 @@ void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify * tasks[], int numTasks) {
 
     lock_guard<mutex> lk{s_mut};
     auto * q = s_queues.Find(hq);
-    for (; numTasks; ++tasks, --numTasks) 
+    for (int i = 0; i < numTasks; ++tasks, ++i) 
         q->Push(**tasks);
-    q->cv.notify_one();
+
+    if (numTasks > 1 && q->curThreads > 1) {
+        q->cv.notify_all();
+    } else {
+        q->cv.notify_one();
+    }
 }

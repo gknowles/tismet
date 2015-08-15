@@ -2,6 +2,8 @@
 #ifndef DIM_WININT_INCLUDED
 #define DIM_WININT_INCLUDED
 
+#include <iosfwd>
+
 
 /****************************************************************************
 *
@@ -30,14 +32,14 @@ private:
 *
 ***/
 
-struct DimIocpEvent {
+struct WinIocpEvent {
     OVERLAPPED overlapped;
     IDimTaskNotify * notify;
 };
 
-void DimIocpInitialize ();
+void WinIocpInitialize ();
 
-HANDLE DimIocpHandle ();
+bool WinIocpBindHandle (HANDLE handle);
 
 
 /****************************************************************************
@@ -70,6 +72,23 @@ public:
     OVERLAPPED m_overlapped = {};
     HANDLE m_registeredWait = NULL;
 };
+
+
+/****************************************************************************
+*
+*   Error
+*
+***/
+
+class WinError {
+    int m_value;
+public:
+    // default constructor calls GetLastError()
+    WinError ();
+
+    operator int () const { return m_value; }
+};
+std::ostream & operator<< (std::ostream & os, const WinError & val);
 
 
 #endif

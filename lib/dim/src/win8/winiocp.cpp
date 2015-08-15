@@ -45,7 +45,6 @@ static void IocpDispatchThread () {
     OVERLAPPED * overlapped;
     ULONG_PTR key;
     ULONG bytes;
-    DWORD error;
     for (;;) {
         if (!GetQueuedCompletionStatus(
             s_iocp,
@@ -54,17 +53,19 @@ static void IocpDispatchThread () {
             &overlapped,
             INFINITE
         )) {
-            error = GetLastError();
-            if (error == ERROR_ABANDONED_WAIT_0) {
+            WinError err;
+            if (err == ERROR_ABANDONED_WAIT_0) {
                 // completion port was closed
                 break;
+            } else if (err == ERROR_OPERATION_ABORTED) {
+                // probably file handle was closed
+            } else {
+                DimLog{kCrash} << "GetQueuedCompletionStatus: "
+                    << err;
             }
-
-            DimErrorLog{kFatal} << "GetQueuedCompletionStatus, "
-                << error;
         }
 
-        auto evt = (DimIocpEvent *) overlapped;
+        auto evt = (WinIocpEvent *) overlapped;
         DimTaskPushEvent(*evt->notify);
     }
 
@@ -75,22 +76,22 @@ static void IocpDispatchThread () {
 
 /****************************************************************************
 *
-*   DimIocpShutdown
+*   WinIocpShutdown
 *
 ***/
 
 namespace {
-class DimIocpShutdown : public IDimAppShutdownNotify {
+class WinIocpShutdown : public IDimAppShutdownNotify {
     bool OnAppQueryConsoleDestroy () override;
 };
-static DimIocpShutdown s_cleanup;
+static WinIocpShutdown s_cleanup;
 } // namespace
 
 //===========================================================================
-bool DimIocpShutdown::OnAppQueryConsoleDestroy () {
+bool WinIocpShutdown::OnAppQueryConsoleDestroy () {
     s_mode = kRunStopping;
     if (!CloseHandle(s_iocp))
-        DimErrorLog{kError} << "CloseHandle(iocp), " << GetLastError();
+        DimLog{kError} << "CloseHandle(iocp): " << WinError{};
 
     unique_lock<mutex> lk(s_mut);
     while (s_iocp)
@@ -108,19 +109,18 @@ bool DimIocpShutdown::OnAppQueryConsoleDestroy () {
 ***/
 
 //===========================================================================
-void DimIocpInitialize () {
+void WinIocpInitialize () {
     s_mode = kRunStarting;
     DimAppMonitorShutdown(&s_cleanup);
 
     s_iocp = CreateIoCompletionPort(
         INVALID_HANDLE_VALUE,
         NULL,   // existing port
-        0,      // completion key
+        NULL,   // completion key
         0       // num threads, 0 for default
     );
     if (!s_iocp) {
-        DimErrorLog{kFatal} << "CreateIoCompletionPort failed, " 
-            << GetLastError();
+        DimLog{kCrash} << "CreateIoCompletionPort(null): " << WinError{};
     }
 
     thread thr{IocpDispatchThread};
@@ -130,6 +130,18 @@ void DimIocpInitialize () {
 }
 
 //===========================================================================
-HANDLE DimIocpHandle () {
-    return s_iocp;
+bool WinIocpBindHandle (HANDLE handle) {
+    assert(s_iocp);
+
+    if (!CreateIoCompletionPort(
+        handle,
+        s_iocp,
+        NULL,
+        0
+    )) {
+        DimLog{kError} << "CreateIoCompletionPort(handle): " << WinError{};
+        return false;
+    }
+
+    return true;
 }
