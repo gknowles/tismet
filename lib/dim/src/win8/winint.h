@@ -7,6 +7,18 @@
 
 /****************************************************************************
 *
+*   Overlapped
+*
+***/
+
+struct WinOverlappedEvent {
+    OVERLAPPED overlapped{};
+    IDimTaskNotify * notify{nullptr};
+};
+
+
+/****************************************************************************
+*
 *   Event
 *
 ***/
@@ -33,11 +45,6 @@ private:
 ***/
 
 void WinIocpInitialize ();
-
-struct WinIocpEvent {
-    OVERLAPPED overlapped;
-    IDimTaskNotify * notify;
-};
 
 bool WinIocpBindHandle (HANDLE handle);
 
@@ -69,8 +76,8 @@ public:
 
     virtual void OnTask () override = 0;
 
-    OVERLAPPED m_overlapped = {};
-    HANDLE m_registeredWait = NULL;
+    OVERLAPPED m_overlapped{};
+    HANDLE m_registeredWait{nullptr};
 };
 
 

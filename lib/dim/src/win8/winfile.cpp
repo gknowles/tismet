@@ -42,7 +42,7 @@ namespace {
         void OnTask () override;
 
     private:
-        WinIocpEvent m_iocpEvt;
+        WinOverlappedEvent m_iocpEvt;
         int64_t m_offset{0};
         int64_t m_length{0};
 

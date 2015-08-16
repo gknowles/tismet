@@ -9,6 +9,7 @@
 #include <list>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #define _WIN32_WINNT _WIN32_WINNT_WIN8
@@ -16,7 +17,8 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <WinSock2.h>
-#include <MSWSock.h>
+#include <MSWSock.h>    // must come after WinSock2
+#include <WS2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 

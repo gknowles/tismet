@@ -65,7 +65,7 @@ static void IocpDispatchThread () {
             }
         }
 
-        auto evt = (WinIocpEvent *) overlapped;
+        auto evt = (WinOverlappedEvent *) overlapped;
         DimTaskPushEvent(*evt->notify);
     }
 

@@ -169,7 +169,7 @@ static void AddCqUsed_LK (int delta) {
 
 /****************************************************************************
 *
-*   RioDispatchTask
+*   RioDispatchThread
 *
 ***/
 
@@ -727,10 +727,10 @@ void IDimSocketInitialize () {
     s_mode = kRunStarting;
 
     WSADATA data = {};
-    int error = WSAStartup(WINSOCK_VERSION, &data);
-    if (error || data.wVersion != WINSOCK_VERSION) {
-        DimLog{kCrash} << "WSAStartup failed, " << error
-            << ", version " << hex << data.wVersion;
+    WinError err = WSAStartup(WINSOCK_VERSION, &data);
+    if (err || data.wVersion != WINSOCK_VERSION) {
+        DimLog{kCrash} << "WSAStartup(version=" << hex << WINSOCK_VERSION
+            << "): " << err << ", version " << data.wVersion;
     }
 
     // get extension functions
