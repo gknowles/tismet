@@ -34,12 +34,15 @@ class IDimFileNotify {
 public:
     virtual ~IDimFileNotify () {}
 
-    virtual void OnFileRead (
+    // return false to prevent more reads, otherwise reads continue until the
+    // requested length has been received.
+    virtual bool OnFileRead (
         char * data, 
         int bytes,
         int64_t offset,
         IDimFile * file
     ) = 0;
+
     virtual void OnFileEnd (
         int64_t offset, 
         IDimFile * file
@@ -58,7 +61,7 @@ void DimFileRead (
     size_t outBufferSize,
     IDimFile * file,
     int64_t offset = 0,
-    int64_t length = 0  // 0 for all
+    int64_t length = 0  // 0 to read until the end
 );
 
 #endif

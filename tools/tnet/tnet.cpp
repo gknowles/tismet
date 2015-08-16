@@ -122,7 +122,7 @@ public:
 
     bool QueryDestroy () const { return !m_file && !m_buffer; }
 
-    void OnFileRead (
+    bool OnFileRead (
         char * data, 
         int bytes,
         int64_t offset,
@@ -136,13 +136,15 @@ public:
 static ConsoleReader s_console;
 
 //===========================================================================
-void ConsoleReader::OnFileRead (
+bool ConsoleReader::OnFileRead (
     char * data, 
     int bytes,
     int64_t offset,
     IDimFile * file
 ) {
     DimSocketWrite(&s_socket, move(m_buffer), bytes);
+    // stop reading (return false) so we can get a new buffer
+    return false;
 }
 
 //===========================================================================
@@ -232,9 +234,7 @@ void Start (int argc, char * argv[]) {
 
 //===========================================================================
 int main(int argc, char * argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
-        | _CRTDBG_LEAK_CHECK_DF
-    );
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
     MainShutdown cleanup;

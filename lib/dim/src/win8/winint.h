@@ -32,12 +32,12 @@ private:
 *
 ***/
 
+void WinIocpInitialize ();
+
 struct WinIocpEvent {
     OVERLAPPED overlapped;
     IDimTaskNotify * notify;
 };
-
-void WinIocpInitialize ();
 
 bool WinIocpBindHandle (HANDLE handle);
 
@@ -81,13 +81,25 @@ public:
 ***/
 
 class WinError {
-    int m_value;
+public:
+    enum NtStatus;
+
 public:
     // default constructor calls GetLastError()
     WinError ();
+    WinError (NtStatus status);
+    WinError (int error);
+
+    WinError & operator= (int error);
+    // sets equivalent standard windows error value
+    WinError & operator= (NtStatus status);
 
     operator int () const { return m_value; }
+
+private:
+    int m_value;
 };
+
 std::ostream & operator<< (std::ostream & os, const WinError & val);
 
 

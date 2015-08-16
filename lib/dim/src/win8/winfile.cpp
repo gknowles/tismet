@@ -130,8 +130,7 @@ void FileReader::Read (int64_t off, int64_t len) {
     )) {
         WinError err;
         if (err != ERROR_IO_PENDING) {
-            DimLog{kError} << "ReadFile (" << m_file->m_path 
-                << "): " << err;
+            DimLog{kError} << "ReadFile (" << m_file->m_path << "): " << err;
             m_notify->OnFileEnd(m_offset, m_file);
             delete this;
         }
@@ -150,13 +149,15 @@ void FileReader::OnTask () {
         return;
     }
 
-    if (bytes) 
-        m_notify->OnFileRead(m_outBuf, bytes, m_offset, m_file);
-    if (!bytes || m_length <= bytes) {
+    bool more = bytes
+        ? m_notify->OnFileRead(m_outBuf, bytes, m_offset, m_file)
+        : false;
+
+    if (!more || m_length && m_length <= bytes) {
         m_notify->OnFileEnd(m_offset + bytes, m_file);
         delete this;
     } else {
-        Read(m_offset + bytes, m_length - bytes);
+        Read(m_offset + bytes, m_length ? m_length - bytes : 0);
     }
 }
 
@@ -253,10 +254,10 @@ bool DimFileOpen (
         NULL        // template file
     );
     if (file->m_handle == INVALID_HANDLE_VALUE)
-        return SetErrno(GetLastError());
+        return SetErrno(WinError{});
 
     if (!WinIocpBindHandle(file->m_handle))
-        return SetErrno(GetLastError());
+        return SetErrno(WinError{});
 
     out = move(file);
     return true;
