@@ -8,14 +8,18 @@
 #include <string>
 #include <vector>
 
+struct NetAddr;
 struct SockAddr;
 
 
 /****************************************************************************
 *
-*   SockAddr
+*   NetAddr & SockAddr
 *
 ***/
+
+bool Parse (NetAddr * addr, const char src[]);
+std::ostream & operator<< (std::ostream & os, const NetAddr & addr);
 
 bool Parse (SockAddr * addr, const char src[]);
 std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
@@ -44,10 +48,11 @@ public:
 void DimAddressQuery (
     int * cancelId, 
     IDimAddressNotify * notify, 
-    const std::string & name
+    const std::string & name,
+    int defaultPort
 );
 void DimAddressCancelQuery (int cancelId);
 
-void DimAddressGetLocal (std::vector<SockAddr> * out);
+void DimAddressGetLocal (std::vector<NetAddr> * out);
 
 #endif

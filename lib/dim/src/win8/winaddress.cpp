@@ -14,6 +14,31 @@ using namespace std;
 ***/
 
 //===========================================================================
+bool Parse (NetAddr * addr, const char src[]) {
+    SockAddr sa;
+    if (!Parse(&sa, src)) {
+        *addr = {};
+        return false;
+    }
+    *addr = sa.addr;
+    return true;
+}
+
+//===========================================================================
+std::ostream & operator<< (std::ostream & os, const NetAddr & addr) {
+    SockAddr sa;
+    sa.addr = addr;
+    return operator<<(os, sa);
+}
+
+
+/****************************************************************************
+*
+*   SockAddr
+*
+***/
+
+//===========================================================================
 bool Parse (SockAddr * addr, const char src[]) {
     sockaddr_storage sas;
     int sasLen = sizeof(sas);
@@ -89,7 +114,7 @@ void DimAddressFromStorage (
 namespace {
     struct QueryTask : IDimTaskNotify {
         WinOverlappedEvent evt{};
-        ADDRINFOEX * results{nullptr};
+        ADDRINFOEXW * results{nullptr};
         IDimAddressNotify * notify{nullptr};
         HANDLE cancel{nullptr};
         int id;
@@ -100,12 +125,6 @@ namespace {
         void OnTask () override;
     };
 } // namespace
-
-//===========================================================================
-void QueryTask::OnTask () {
-    notify->OnAddressFound(addrs.data(), (int) addrs.size());
-    delete this;
-}
 
 //===========================================================================
 // Variables
@@ -125,19 +144,32 @@ static void CALLBACK AddressQueryCallback (
         ((WinOverlappedEvent *)overlapped)->notify
     );
     task->err = error;
-    if (!error && task->results) {
-        ADDRINFOEX * result = task->results;
+    if (task->results) {
+        ADDRINFOEXW * result = task->results;
         while (result) {
-            SockAddr addr;
-            sockaddr_storage sas;
-            memcpy(&sas, result->ai_addr, result->ai_addrlen);
-            DimAddressFromStorage(&addr, sas);
-            task->addrs.push_back(addr);
+            if (result->ai_family == AF_INET) {
+                SockAddr addr;
+                sockaddr_storage sas{};
+                memcpy(&sas, result->ai_addr, result->ai_addrlen);
+                DimAddressFromStorage(&addr, sas);
+                task->addrs.push_back(addr);
+            }
             result = result->ai_next;
         }
-        FreeAddrInfoEx(task->results);
+        FreeAddrInfoExW(task->results);
     }
     DimTaskPushEvent(*task);
+}
+
+//===========================================================================
+// QueryTask
+//===========================================================================
+void QueryTask::OnTask () {
+    if (err && err != WSA_E_CANCELLED) {
+        DimLog{kError} << "GetAddrInfoEx: " << err;
+    }
+    notify->OnAddressFound(addrs.data(), (int) addrs.size());
+    s_tasks.erase(id);
 }
 
 //===========================================================================
@@ -161,9 +193,21 @@ void DimAddressQuery (
     task->evt.notify = task;
     task->id = *cancelId;
     task->notify = notify;
-    WinError err = GetAddrInfoEx(
-        name.c_str(),
-        to_string(defaultPort).c_str(),
+    // Async completion requires wchar version of 
+    wstring wname;
+    wname.resize(name.size() + 1);
+    int chars = MultiByteToWideChar(
+        CP_UTF8,
+        0,
+        name.data(),
+        (int) name.size(),
+        (wchar_t *) wname.data(),
+        (int) wname.size()
+    );
+    wname.resize(chars);
+    WinError err = GetAddrInfoExW(
+        wname.c_str(),
+        to_wstring(defaultPort).c_str(),
         NS_ALL,
         NULL,       // namespace provider id
         NULL,       // hints
@@ -185,6 +229,33 @@ void DimAddressCancelQuery (int cancelId) {
 }
 
 //===========================================================================
-void DimAddressGetLocal (std::vector<SockAddr> * out) {
-    // getaddrinfo("..localmachine");
+void DimAddressGetLocal (std::vector<NetAddr> * out) {
+    out->resize(0);
+    ADDRINFO * result;
+    WinError err = getaddrinfo(
+        "..localmachine",
+        NULL,   // service name
+        NULL,   // hints
+        &result
+    );
+    if (err)
+        DimLog{kCrash} << "getaddrinfo(..localmachine): " << err;
+
+    SockAddr addr;
+    sockaddr_storage sas;
+    while (result) {
+        if (result->ai_family == AF_INET) {
+            memcpy(&sas, result->ai_addr, result->ai_addrlen);
+            DimAddressFromStorage(&addr, sas); 
+            out->push_back(addr.addr);
+        }
+        result = result->ai_next;
+    }
+
+    // if there are no addresses toss on the loopback so we can at least
+    // pretend.
+    if (out->empty()) {
+        Parse(&addr, "127.0.0.1");
+        out->push_back(addr.addr);
+    }
 }

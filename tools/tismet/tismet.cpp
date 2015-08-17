@@ -2,6 +2,29 @@
 #include "pch.h"
 #pragma hdrstop
 
+using namespace std;
+
+
+/****************************************************************************
+*
+*   AddrFind
+*
+***/
+
+class AddrFind : public IDimAddressNotify {
+    void OnAddressFound (SockAddr * addr, int count) override;
+};
+static AddrFind s_addrFind;
+
+//===========================================================================
+void AddrFind::OnAddressFound (SockAddr * addr, int count) {
+    cout << "\nDNS Addresses:" << endl;
+    for (int i = 0; i < count; ++i) {
+        cout << addr[i] << endl;
+    }
+    DimAppSignalShutdown(9);
+}
+
 
 /****************************************************************************
 *
@@ -26,6 +49,30 @@ bool MainShutdown::OnAppQueryClientDestroy () {
 
 /****************************************************************************
 *
+*   Start
+*
+***/
+
+//===========================================================================
+void Start (int argc, char * argv[]) {
+    vector<NetAddr> addrs;
+    DimAddressGetLocal(&addrs);
+    cout << "Local Addresses:" << endl;
+    for (auto&& addr : addrs) {
+        cout << addr << endl;
+    }
+
+    if (argc > 1) {
+        int cancelId;
+        DimAddressQuery(&cancelId, &s_addrFind, argv[1], 0);
+    } else {
+        DimAppSignalShutdown(8);
+    }
+}
+
+
+/****************************************************************************
+*
 *   main
 *
 ***/
@@ -37,19 +84,10 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int * a = new int[3];
-    a[0] = 3;
-
-    int code = 0;
-    int limit = argc > 1 ? atoi(argv[1]) : 1;
-    for (int i = 1; i < limit + 1; ++i) {
-        if (limit > 1)
-            DimLog{kInfo} << "Run #" << i;
-        MainShutdown cleanup;
-        DimAppInitialize();
-        DimAppMonitorShutdown(&cleanup);
-        DimAppSignalShutdown(9);
-        code = DimAppWaitForShutdown();
-    }
+    MainShutdown cleanup;
+    DimAppInitialize();
+    DimAppMonitorShutdown(&cleanup);
+    Start(argc, argv);
+    int code = DimAppWaitForShutdown();
     return code;
 }
