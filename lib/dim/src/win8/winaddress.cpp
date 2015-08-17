@@ -16,7 +16,7 @@ using namespace std;
 //===========================================================================
 bool Parse (NetAddr * addr, const char src[]) {
     SockAddr sa;
-    if (!Parse(&sa, src)) {
+    if (!Parse(&sa, src, 9)) {
         *addr = {};
         return false;
     }
@@ -39,7 +39,7 @@ std::ostream & operator<< (std::ostream & os, const NetAddr & addr) {
 ***/
 
 //===========================================================================
-bool Parse (SockAddr * addr, const char src[]) {
+bool Parse (SockAddr * addr, const char src[], int defaultPort) {
     sockaddr_storage sas;
     int sasLen = sizeof(sas);
     if (SOCKET_ERROR == WSAStringToAddress(
@@ -53,6 +53,8 @@ bool Parse (SockAddr * addr, const char src[]) {
         return false;
     }
     DimAddressFromStorage(addr, sas);
+    if (!addr->port)
+        addr->port = defaultPort;
     return true;
 }
 
@@ -193,6 +195,15 @@ void DimAddressQuery (
     task->evt.notify = task;
     task->id = *cancelId;
     task->notify = notify;
+
+    // if the name is the string form of an address just return the address
+    SockAddr addr;
+    if (Parse(&addr, name.c_str(), defaultPort)) {
+        task->addrs.push_back(addr);
+        DimTaskPushEvent(*task);
+        return;
+    }
+
     // Async completion requires wchar version of 
     wstring wname;
     wname.resize(name.size() + 1);
@@ -255,7 +266,7 @@ void DimAddressGetLocal (std::vector<NetAddr> * out) {
     // if there are no addresses toss on the loopback so we can at least
     // pretend.
     if (out->empty()) {
-        Parse(&addr, "127.0.0.1");
+        Parse(&addr, "127.0.0.1", 9);
         out->push_back(addr.addr);
     }
 }

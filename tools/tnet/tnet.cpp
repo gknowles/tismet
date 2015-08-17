@@ -25,7 +25,8 @@ enum {
 *
 ***/
 
-WORD s_consoleAttrs;
+static WORD s_consoleAttrs;
+static SockAddr s_localAddr;
 
 
 /****************************************************************************
@@ -77,13 +78,31 @@ static void SetConsoleText (WORD attr) {
 *
 ***/
 
-class SocketConn : public IDimSocketNotify {
+class SocketConn 
+    : public IDimSocketNotify 
+    , public IDimAddressNotify
+{
+    // IDimSocketNotify
     void OnSocketConnect (const DimSocketConnectInfo & info) override;
     void OnSocketConnectFailed () override;
     void OnSocketRead (const DimSocketData & data) override;
     void OnSocketDisconnect () override;
+
+    // IDimAddressNotify
+    void OnAddressFound (SockAddr * addrs, int count) override;
 };
 static SocketConn s_socket;
+
+//===========================================================================
+void SocketConn::OnAddressFound (SockAddr * addrs, int count) {
+    if (!count) {
+        cout << "Host not found" << endl;
+        DimAppSignalShutdown(kExitConnectFailed);
+    } else {
+        cout << "Connecting on " << s_localAddr << " to " << *addrs << endl;
+        DimSocketConnect(this, *addrs, s_localAddr);
+    }
+}
 
 //===========================================================================
 void SocketConn::OnSocketConnect (const DimSocketConnectInfo & info) {
@@ -214,13 +233,11 @@ void Start (int argc, char * argv[]) {
 
     InitializeConsole();
 
-    SockAddr remote;
-    Parse(&remote, argv[1]);
-    SockAddr local;
     if (argc > 2)
-        Parse(&local, argv[2]);
-    cout << "Connecting on " << local << " to " << remote << endl;
-    DimSocketConnect(&s_socket, remote, local);
+        Parse(&s_localAddr, argv[2], 0);
+
+    int cancelId;
+    DimAddressQuery(&cancelId, &s_socket, argv[1], 23);
     
     DimFileOpen(s_console.m_file, "conin$", IDimFile::kReadWrite);
     s_console.m_buffer = DimSocketGetBuffer();

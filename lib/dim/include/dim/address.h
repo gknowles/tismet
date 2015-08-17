@@ -21,7 +21,7 @@ struct SockAddr;
 bool Parse (NetAddr * addr, const char src[]);
 std::ostream & operator<< (std::ostream & os, const NetAddr & addr);
 
-bool Parse (SockAddr * addr, const char src[]);
+bool Parse (SockAddr * addr, const char src[], int defaultPort);
 std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
 
 //===========================================================================
