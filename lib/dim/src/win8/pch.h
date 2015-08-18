@@ -23,3 +23,4 @@
 #pragma comment(lib, "ws2_32.lib")
 
 #include "winint.h"
+#include "winsockint.h"

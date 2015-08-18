@@ -27,6 +27,7 @@ enum {
 
 static WORD s_consoleAttrs;
 static SockAddr s_localAddr;
+static int s_cancelAddrId;
 
 
 /****************************************************************************
@@ -197,6 +198,7 @@ class MainShutdown : public IDimAppShutdownNotify {
 //===========================================================================
 void MainShutdown::OnAppStartClientCleanup () {
     s_console.m_file.reset();
+    DimAddressCancelQuery(s_cancelAddrId);
     DimSocketDisconnect(&s_socket);
 }
 
@@ -236,8 +238,7 @@ void Start (int argc, char * argv[]) {
     if (argc > 2)
         Parse(&s_localAddr, argv[2], 0);
 
-    int cancelId;
-    DimAddressQuery(&cancelId, &s_socket, argv[1], 23);
+    DimAddressQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
     
     DimFileOpen(s_console.m_file, "conin$", IDimFile::kReadWrite);
     s_console.m_buffer = DimSocketGetBuffer();

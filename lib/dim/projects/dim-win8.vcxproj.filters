@@ -2,16 +2,18 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="..\src\win8\pch.cpp" />
-    <ClCompile Include="..\src\win8\winsocket.cpp" />
     <ClCompile Include="..\src\win8\winiocp.cpp" />
     <ClCompile Include="..\src\win8\winsync.cpp" />
     <ClCompile Include="..\src\win8\winsockbuf.cpp" />
     <ClCompile Include="..\src\win8\winaddress.cpp" />
     <ClCompile Include="..\src\win8\winfile.cpp" />
     <ClCompile Include="..\src\win8\winerror.cpp" />
+    <ClCompile Include="..\src\win8\winsock.cpp" />
+    <ClCompile Include="..\src\win8\winsockconn.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\pch.h" />
     <ClInclude Include="..\src\win8\winint.h" />
+    <ClInclude Include="..\src\win8\winsockint.h" />
   </ItemGroup>
 </Project>

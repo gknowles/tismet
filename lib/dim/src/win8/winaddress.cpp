@@ -206,6 +206,7 @@ void DimAddressQuery (
 
     // Async completion requires wchar version of 
     wstring wname;
+    wstring wport{to_wstring(defaultPort)};
     wname.resize(name.size() + 1);
     int chars = MultiByteToWideChar(
         CP_UTF8,
@@ -216,9 +217,17 @@ void DimAddressQuery (
         (int) wname.size()
     );
     wname.resize(chars);
+
+    // extract non-default port if present in name
+    size_t pos = wname.rfind(L':');
+    if (pos != string::npos) {
+        wport = wname.substr(pos + 1);
+        wname.resize(pos);
+    }
+
     WinError err = GetAddrInfoExW(
         wname.c_str(),
-        to_wstring(defaultPort).c_str(),
+        wport.c_str(),
         NS_ALL,
         NULL,       // namespace provider id
         NULL,       // hints

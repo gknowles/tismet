@@ -136,16 +136,18 @@
     <ClCompile Include="..\src\win8\winfile.cpp" />
     <ClCompile Include="..\src\win8\winiocp.cpp" />
     <ClCompile Include="..\src\win8\winsockbuf.cpp" />
-    <ClCompile Include="..\src\win8\winsocket.cpp">
+    <ClCompile Include="..\src\win8\winsock.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\win8\winsockconn.cpp" />
     <ClCompile Include="..\src\win8\winsync.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\winint.h" />
     <ClInclude Include="..\src\win8\pch.h" />
+    <ClInclude Include="..\src\win8\winsockint.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
