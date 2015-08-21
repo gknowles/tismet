@@ -11,6 +11,8 @@
 
 class DimSocket {
 public:
+    using Mode = IDimSocketNotify::Mode;
+
     class RequestTaskBase : public IDimTaskNotify {
         virtual void OnTask () override = 0;
     public:
@@ -30,7 +32,7 @@ public:
     };
 
 public:
-    static RunMode GetMode (IDimSocketNotify * notify);
+    static DimSocket::Mode GetMode (IDimSocketNotify * notify);
     static void Disconnect (IDimSocketNotify * notify);
     static void Write (
         IDimSocketNotify * notify, 
@@ -59,6 +61,7 @@ protected:
     IDimSocketNotify * m_notify{nullptr};
     SOCKET m_handle{INVALID_SOCKET};
     DimSocketConnectInfo m_connInfo;
+    Mode m_mode{Mode::kInactive};
 
 private:
     RIO_RQ m_rq{};
@@ -83,19 +86,6 @@ private:
 *   Socket connect
 *
 ***/
-
-class DimConnectSocket : public DimSocket {
-public:
-    static void Connect (
-        IDimSocketNotify * notify,
-        const SockAddr & remoteAddr,
-        const SockAddr & localAddr
-    );
-public:
-    using DimSocket::DimSocket;
-    void OnConnect (int error, int bytes);
-
-};
 
 void IDimSocketConnectInitialize ();
 

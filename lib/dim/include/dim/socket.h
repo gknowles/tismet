@@ -20,6 +20,15 @@ struct DimSocketData {
 
 class IDimSocketNotify {
 public:
+    enum Mode {
+        kInactive,      // not connected
+        kConnecting,
+        kActive,        // actively reading
+        kClosing,       // closed the handle
+        kClosed,        // final zero-length read received
+    };
+
+public:
     virtual ~IDimSocketNotify () {}
 
     virtual void OnSocketConnect (const DimSocketConnectInfo & info) {};
@@ -33,7 +42,7 @@ private:
 };
 
 
-RunMode DimSocketGetMode (IDimSocketNotify * notify);
+IDimSocketNotify::Mode DimSocketGetMode (IDimSocketNotify * notify);
 
 //===========================================================================
 // connecting and disconnecting
@@ -41,7 +50,8 @@ RunMode DimSocketGetMode (IDimSocketNotify * notify);
 void DimSocketConnect (
     IDimSocketNotify * notify,
     const SockAddr & remoteAddr,
-    const SockAddr & localAddr
+    const SockAddr & localAddr,
+    Duration timeout = {} // 0 for default timeout
 );
 void DimSocketDisconnect (IDimSocketNotify * notify);
 

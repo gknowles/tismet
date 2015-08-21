@@ -25,7 +25,7 @@ public:
     bool Connected () const;
 
     IDimTimerNotify * notify{nullptr};
-    TimePoint expiration;
+    TimePoint expiration{TimePoint::max()};
     unsigned instance{0};
 
     bool bugged{false};

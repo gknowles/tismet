@@ -156,9 +156,12 @@ void DimSocket::WriteTask::OnTask () {
 
 //===========================================================================
 // static
-RunMode DimSocket::GetMode (IDimSocketNotify * notify) {
+DimSocket::Mode DimSocket::GetMode (IDimSocketNotify * notify) {
     unique_lock<mutex> lk{s_mut};
-    return notify->m_socket ? kRunRunning : kRunStopped;
+    if (auto * sock = notify->m_socket) 
+        return sock->m_mode;
+
+    return Mode::kInactive;
 }
 
 //===========================================================================
@@ -214,6 +217,8 @@ void DimSocket::HardClose () {
     linger opt = {};
     setsockopt(m_handle, SOL_SOCKET, SO_LINGER, (char *) &opt, sizeof(opt));
     closesocket(m_handle);
+
+    m_mode = Mode::kClosing;
     m_handle = INVALID_SOCKET;
 }
 
@@ -249,11 +254,13 @@ bool DimSocket::CreateQueue () {
             return false;
         }
 
+        m_mode = Mode::kActive;
+        m_notify->m_socket = this;
+
         // start reading from socket
         QueueRead_LK();
     }
 
-    m_notify->m_socket = this;
     return true;
 }
 
@@ -477,7 +484,7 @@ void IDimSocketInitialize () {
 ***/
 
 //===========================================================================
-RunMode DimSocketGetMode (IDimSocketNotify * notify) {
+IDimSocketNotify::Mode DimSocketGetMode (IDimSocketNotify * notify) {
     return DimSocket::GetMode(notify);
 }
 
