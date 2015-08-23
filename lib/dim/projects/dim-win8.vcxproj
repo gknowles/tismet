@@ -149,6 +149,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\win8\winsockacc.cpp" />
     <ClCompile Include="..\src\win8\winsockbuf.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
@@ -165,6 +166,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\win8\wintypes.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\winint.h" />

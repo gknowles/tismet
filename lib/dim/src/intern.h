@@ -40,4 +40,13 @@ void IDimTaskDestroy ();
 void IDimTimerInitialize ();
 void IDimTimerDestroy ();
 
+
+/****************************************************************************
+*
+*   Types
+*
+***/
+
+int64_t IDimClockGetTicks ();
+
 #endif

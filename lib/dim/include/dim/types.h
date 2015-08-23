@@ -9,6 +9,8 @@
 #include <memory>
 #include <ratio>
 
+//using namespace std::literals;
+
 
 /****************************************************************************
 *
@@ -24,22 +26,11 @@ struct DimClock {
     static const bool is_monotonic = false;
     static const bool is_steady = false;
 
-    static time_point now() _NOEXCEPT
-    {	// get current time
-        return (time_point(duration(_Xtime_get_ticks())));
-    }
+    static time_point now() noexcept;
 
 // C conversions
-    static time_t to_time_t(const time_point& _Time) _NOEXCEPT
-    {	// convert to time_t
-        return ((time_t)(_Time.time_since_epoch().count()
-            / _XTIME_TICKS_PER_TIME_T));
-    }
-
-    static time_point from_time_t(time_t _Tm) _NOEXCEPT
-	{	// convert from time_t
-	    return (time_point(duration(_Tm * _XTIME_TICKS_PER_TIME_T)));
-    }
+    static time_t to_time_t(const time_point& time) noexcept;
+    static time_point from_time_t(time_t tm) noexcept;
 };
 
 typedef DimClock::duration Duration;

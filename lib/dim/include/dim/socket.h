@@ -6,10 +6,11 @@
 
 #include "dim/types.h"
 
-class IDimSocketListenNotify {
-};
-
 struct DimSocketConnectInfo {
+    SockAddr remoteAddr;
+    SockAddr localAddr;
+};
+struct DimSocketAcceptInfo {
     SockAddr remoteAddr;
     SockAddr localAddr;
 };
@@ -31,8 +32,13 @@ public:
 public:
     virtual ~IDimSocketNotify () {}
 
+    // for connectors
     virtual void OnSocketConnect (const DimSocketConnectInfo & info) {};
     virtual void OnSocketConnectFailed () {};
+
+    // for listeners
+    virtual void OnSocketAccept (const DimSocketAcceptInfo & info) {};
+
     virtual void OnSocketRead (const DimSocketData & data) = 0;
     virtual void OnSocketDisconnect () {};
 
@@ -41,11 +47,11 @@ private:
     DimSocket * m_socket{nullptr};
 };
 
-
 IDimSocketNotify::Mode DimSocketGetMode (IDimSocketNotify * notify);
+void DimSocketDisconnect (IDimSocketNotify * notify);
 
 //===========================================================================
-// connecting and disconnecting
+// connect
 //===========================================================================
 void DimSocketConnect (
     IDimSocketNotify * notify,
@@ -53,10 +59,25 @@ void DimSocketConnect (
     const SockAddr & localAddr,
     Duration timeout = {} // 0 for default timeout
 );
-void DimSocketDisconnect (IDimSocketNotify * notify);
 
 //===========================================================================
-// writing
+// listen
+//===========================================================================
+class IDimSocketListenNotify {
+public:
+    virtual ~IDimSocketListenNotify () {}
+    virtual void OnListenStop () = 0;
+    virtual IDimSocketNotify * OnListenCreateSocket () = 0;
+};
+void DimSocketListen (
+    IDimSocketListenNotify * notify,
+    const SockAddr & remoteAddr,
+    const SockAddr & localAddr
+);
+void DimSocketStop (IDimSocketListenNotify * notify);
+
+//===========================================================================
+// write
 //===========================================================================
 struct DimSocketBuffer {
     char * data;
