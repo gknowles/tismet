@@ -11,7 +11,7 @@
     <ClCompile Include="..\src\win8\winsock.cpp" />
     <ClCompile Include="..\src\win8\winsockconn.cpp" />
     <ClCompile Include="..\src\win8\winsockacc.cpp" />
-    <ClCompile Include="..\src\win8\wintypes.cpp" />
+    <ClCompile Include="..\src\win8\wintime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\pch.h" />

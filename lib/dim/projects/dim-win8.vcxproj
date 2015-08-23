@@ -166,7 +166,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
-    <ClCompile Include="..\src\win8\wintypes.cpp" />
+    <ClCompile Include="..\src\win8\wintime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\win8\winint.h" />
