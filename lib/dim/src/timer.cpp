@@ -47,6 +47,7 @@ struct TimerQueueNode {
 
     TimerQueueNode (shared_ptr<DimTimer> & timer);
     bool operator< (const TimerQueueNode & right) const;
+    bool operator> (const TimerQueueNode & right) const;
     bool operator== (const TimerQueueNode & right) const;
 };
 
@@ -63,7 +64,11 @@ static mutex s_mut;
 static condition_variable s_modeCv; // when run mode changes to stopped
 static RunMode s_mode{kRunStopped};
 static condition_variable s_queueCv; // when wait for next timer is reduced
-static priority_queue<TimerQueueNode> s_timers;
+static priority_queue<
+    TimerQueueNode, 
+    vector<TimerQueueNode>, 
+    greater<TimerQueueNode>
+> s_timers;
 static bool s_processing; // dispatch task has been queued and isn't done
 
 static thread::id s_processingThread; // thread running any current callback
@@ -195,6 +200,11 @@ TimerQueueNode::TimerQueueNode (shared_ptr<DimTimer> & timer)
 //===========================================================================
 bool TimerQueueNode::operator< (const TimerQueueNode & right) const {
     return expiration < right.expiration;
+}
+
+//===========================================================================
+bool TimerQueueNode::operator> (const TimerQueueNode & right) const {
+    return expiration > right.expiration;
 }
 
 //===========================================================================
