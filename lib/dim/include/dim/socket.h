@@ -23,6 +23,7 @@ class IDimSocketNotify {
 public:
     enum Mode {
         kInactive,      // not connected
+        kAccepting,
         kConnecting,
         kActive,        // actively reading
         kClosing,       // closed the handle
@@ -67,14 +68,16 @@ class IDimSocketListenNotify {
 public:
     virtual ~IDimSocketListenNotify () {}
     virtual void OnListenStop () = 0;
-    virtual IDimSocketNotify * OnListenCreateSocket () = 0;
+    virtual std::unique_ptr<IDimSocketNotify> OnListenCreateSocket () = 0;
 };
 void DimSocketListen (
     IDimSocketListenNotify * notify,
-    const SockAddr & remoteAddr,
     const SockAddr & localAddr
 );
-void DimSocketStop (IDimSocketListenNotify * notify);
+void DimSocketStop (
+    IDimSocketListenNotify * notify,
+    const SockAddr & localAddr
+);
 
 //===========================================================================
 // write

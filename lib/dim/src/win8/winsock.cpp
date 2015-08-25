@@ -281,7 +281,7 @@ void DimSocket::OnRead () {
             lk.unlock();
             delete this;
         } else {
-            m_closing = true;
+            m_mode = Mode::kClosed;
         }
     }
 }
@@ -313,7 +313,7 @@ void DimSocket::OnWrite (WriteTask * task) {
     m_numSending -= 1;
 
     // already disconnected and this was the last unresolved write? delete
-    if (m_closing && m_sending.empty()) {
+    if (m_mode == Mode::kClosed && m_sending.empty()) {
         lk.unlock();
         delete this;
         return;
@@ -446,8 +446,8 @@ void IDimSocketInitialize () {
         &extId, sizeof(extId),
         &s_rio, sizeof(s_rio),
         &bytes,
-        NULL,
-        NULL
+        nullptr,    // overlapped
+        nullptr     // completion routine
     )) {
         DimLog{kCrash} << "WSAIoctl(get RIO extension): " << WinError{};
     }
@@ -458,6 +458,7 @@ void IDimSocketInitialize () {
     // Don't register cleanup until all dependents (aka sockbuf) have
     // registered their cleanups (aka been initialized)
     DimAppMonitorShutdown(&s_cleanup);
+    IDimSocketAcceptInitialize();
     IDimSocketConnectInitialize();
 
     // create RIO completion queue
@@ -474,6 +475,100 @@ void IDimSocketInitialize () {
     DimTaskPush(taskq, s_dispatchThread);
 
     s_mode = kRunRunning;
+}
+
+
+/****************************************************************************
+*
+*   Win socket
+*
+***/
+
+//===========================================================================
+SOCKET WinSocketCreate () {
+    SOCKET handle = WSASocketW(
+        AF_UNSPEC,
+        SOCK_STREAM,
+        IPPROTO_TCP,
+        NULL,
+        0,
+        WSA_FLAG_REGISTERED_IO
+    );
+    if (handle == INVALID_SOCKET) {
+        DimLog{kError} << "WSASocket: " << WinError{};
+        return INVALID_SOCKET;
+    }
+
+    int yes = 1;
+
+    //DWORD bytes;
+    //if (SOCKET_ERROR == WSAIoctl(
+    //    handle,
+    //    SIO_LOOPBACK_FAST_PATH,
+    //    &yes, sizeof yes,
+    //    nullptr, 0, // output buffer, buffer size
+    //    &bytes,     // bytes returned
+    //    nullptr,    // overlapped
+    //    nullptr     // completion routine
+    //)) {
+    //    DimLog{kError} << "WSAIoctl(SIO_LOOPBACK_FAST_PATH): " << WinError{};
+    //}
+
+    if (SOCKET_ERROR == setsockopt(
+        handle,
+        SOL_SOCKET,
+        TCP_NODELAY,
+        (char *) &yes,
+        sizeof(yes)
+    )) {
+        DimLog{kError} << "WSAIoctl(FIONBIO): " << WinError{};
+    }
+
+#ifdef SO_REUSE_UNICASTPORT
+    if (SOCKET_ERROR == setsockopt(
+        handle,
+        SOL_SOCKET,
+        SO_REUSE_UNICASTPORT,
+        (char *) &yes,
+        sizeof(yes)
+    )) {
+#endif        
+        if (SOCKET_ERROR == setsockopt(
+            handle, 
+            SOL_SOCKET, 
+            SO_PORT_SCALABILITY, 
+            (char *) &yes, 
+            sizeof(yes)
+        )) {
+            DimLog{kError} << "setsockopt(SO_PORT_SCALABILITY): " 
+                << WinError{};
+        }
+#ifdef SO_REUSE_UNICASTPORT
+    }
+#endif
+
+    return handle;
+}
+
+//===========================================================================
+SOCKET WinSocketCreate (const SockAddr & addr) {
+    SOCKET handle = WinSocketCreate();
+    if (handle == INVALID_SOCKET) 
+        return handle;
+
+    sockaddr_storage sas;
+    DimAddressToStorage(&sas, addr);
+    if (SOCKET_ERROR == ::bind(
+        handle, 
+        (sockaddr *) &sas, 
+        sizeof(sas)
+    )) {
+        DimLog{kError} << "bind(" << addr << "): " << WinError{};
+        closesocket(handle);
+        return INVALID_SOCKET;
+    }
+
+    return handle;
 }
 
 

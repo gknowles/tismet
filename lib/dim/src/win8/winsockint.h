@@ -66,9 +66,6 @@ protected:
 private:
     RIO_RQ m_rq{};
     
-    // has received disconnect and is waiting for writes to complete
-    bool m_closing{false};
-
     // used by single read request
     ReadTask m_read;
     static const int kMaxReceiving{1};
@@ -79,6 +76,15 @@ private:
     int m_maxSending{0};
     std::list<WriteTask> m_unsent;
 };
+
+
+/****************************************************************************
+*
+*   Socket accept
+*
+***/
+
+void IDimSocketAcceptInitialize ();
 
 
 /****************************************************************************

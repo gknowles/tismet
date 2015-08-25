@@ -96,4 +96,13 @@ private:
 std::ostream & operator<< (std::ostream & os, const WinError & val);
 
 
+/****************************************************************************
+*
+*   Socket
+*
+***/
+
+SOCKET WinSocketCreate ();
+SOCKET WinSocketCreate (const SockAddr & localAddr);
+
 #endif

@@ -65,7 +65,7 @@ IWinEventWaitNotify::IWinEventWaitNotify () {
         &EventWaitCallback,
         this,
         INFINITE,   // timeout
-        WT_EXECUTEINWAITTHREAD | WT_EXECUTEONLYONCE
+        WT_EXECUTEINWAITTHREAD
     )) {
         DimLog{kCrash} << "RegisterWaitForSingleObject: " << WinError{};
     }

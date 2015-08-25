@@ -204,7 +204,7 @@ void MainShutdown::OnAppStartClientCleanup () {
 
 //===========================================================================
 bool MainShutdown::OnAppQueryClientDestroy () {
-    if (DimSocketGetMode(&s_socket) != kRunStopped 
+    if (DimSocketGetMode(&s_socket) != IDimSocketNotify::kInactive
         || !s_console.QueryDestroy()
     ) {
         return DimQueryDestroyFailed();

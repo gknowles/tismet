@@ -22,7 +22,53 @@ void AddrFind::OnAddressFound (SockAddr * addr, int count) {
     for (int i = 0; i < count; ++i) {
         cout << addr[i] << endl;
     }
-    DimAppSignalShutdown(9);
+    // DimAppSignalShutdown(9);
+}
+
+
+/****************************************************************************
+*
+*   ListenSocket
+*
+***/
+
+class ListenSocket : public IDimSocketNotify {
+    void OnSocketAccept (const DimSocketAcceptInfo & info) override;
+    void OnSocketRead (const DimSocketData & data) override;
+};
+
+//===========================================================================
+void ListenSocket::OnSocketAccept (const DimSocketAcceptInfo & info) {
+    cout << "*** ACCEPTED" << endl;
+}
+
+//===========================================================================
+void ListenSocket::OnSocketRead (const DimSocketData & data) {
+    cout.write(data.data, data.bytes);
+    cout.flush();
+}
+
+
+/****************************************************************************
+*
+*   ListenNotify
+*
+***/
+
+struct ListenNotify : IDimSocketListenNotify {
+    void OnListenStop () override;
+    unique_ptr<IDimSocketNotify> OnListenCreateSocket () override;
+};
+static ListenNotify s_listen;
+
+//===========================================================================
+void ListenNotify::OnListenStop () {
+    cout << "*** STOPPED LISTENING" << endl;
+}
+
+//===========================================================================
+unique_ptr<IDimSocketNotify> ListenNotify::OnListenCreateSocket () {
+    return make_unique<ListenSocket>();
 }
 
 
@@ -62,12 +108,17 @@ void Start (int argc, char * argv[]) {
         cout << addr << endl;
     }
 
-    if (argc > 1) {
-        int cancelId;
-        DimAddressQuery(&cancelId, &s_addrFind, argv[1], 0);
-    } else {
-        DimAppSignalShutdown(8);
-    }
+    SockAddr addr;
+    Parse(&addr, "127.0.0.1", 8888);
+    DimSocketListen(&s_listen, addr);
+    //DimSocketStop(nullptr, SockAddr{});
+
+    //if (argc > 1) {
+    //    int cancelId;
+    //    DimAddressQuery(&cancelId, &s_addrFind, argv[1], 0);
+    //} else {
+    //    DimAppSignalShutdown(8);
+    //}
 }
 
 

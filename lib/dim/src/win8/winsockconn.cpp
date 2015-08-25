@@ -174,54 +174,9 @@ void ConnSocket::Connect (
         timeout = kConnectTimeout;
 
     auto sock = make_unique<ConnSocket>(notify);
-    sock->m_handle = WSASocketW(
-        AF_UNSPEC,
-        SOCK_STREAM,
-        IPPROTO_TCP,
-        NULL,
-        0,
-        WSA_FLAG_REGISTERED_IO
-    );
-    if (sock->m_handle == INVALID_SOCKET) {
-        DimLog{kError} << "WSASocket: " << WinError{};
+    sock->m_handle = WinSocketCreate(localAddr);
+    if (sock->m_handle == INVALID_SOCKET) 
         return PushConnectFailed(notify);
-    }
-
-    // TODO: SIO_LOOPBACK_FAST_PATH
-
-    int yes = 1;
-#ifdef SO_REUSE_UNICASTPORT
-    if (SOCKET_ERROR == setsockopt(
-        sock->m_handle,
-        SOL_SOCKET,
-        SO_REUSE_UNICASTPORT,
-        (char *) &yes,
-        sizeof(yes)
-    )) {
-#endif        
-        if (SOCKET_ERROR == setsockopt(
-            sock->m_handle, 
-            SOL_SOCKET, 
-            SO_PORT_SCALABILITY, 
-            (char *) &yes, 
-            sizeof(yes)
-        )) {
-            DimLog{kError} << "setsockopt(SO_PORT_SCALABILITY): " << WinError{};
-        }
-#ifdef SO_REUSE_UNICASTPORT
-    }
-#endif
-
-    sockaddr_storage sas;
-    DimAddressToStorage(&sas, localAddr);
-    if (SOCKET_ERROR == ::bind(
-        sock->m_handle, 
-        (sockaddr *) &sas, 
-        sizeof(sas)
-    )) {
-        DimLog{kError} << "bind(" << localAddr << "): " << WinError{};
-        return PushConnectFailed(notify);
-    }
 
     // get ConnectEx function
     GUID extId = WSAID_CONNECTEX;
@@ -233,8 +188,8 @@ void ConnSocket::Connect (
         &extId, sizeof(extId),
         &fConnectEx, sizeof(fConnectEx),
         &bytes,
-        NULL,
-        NULL
+        nullptr,    // overlapped
+        nullptr     // completion routine
     )) {
         DimLog{kError} << "WSAIoctl(get ConnectEx): " << WinError{};
         return PushConnectFailed(notify);
@@ -260,6 +215,7 @@ void ConnSocket::Connect (
         it->m_expiration = expiration;
     }
 
+    sockaddr_storage sas;
     DimAddressToStorage(&sas, remoteAddr);
     bool error = !fConnectEx(
         it->m_socket->m_handle,
@@ -300,7 +256,7 @@ void ConnSocket::OnConnect (
         m_handle, 
         SOL_SOCKET,
         SO_UPDATE_CONNECT_CONTEXT,
-        NULL,
+        nullptr,
         0
     )) {
         DimLog{kError} 
