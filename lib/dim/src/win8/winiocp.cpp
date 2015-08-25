@@ -30,7 +30,6 @@ namespace {
 
 static RunMode s_mode{kRunStopped};
 static HANDLE s_iocp;
-static condition_variable s_shutdownCv; // when dispatch thread ends
 static mutex s_mut;
 
 
@@ -46,6 +45,8 @@ static void IocpDispatchThread () {
     ULONG_PTR key;
     ULONG bytes;
     for (;;) {
+        // TODO: use GetQueuedCompletionStatusEx and array version of
+        // DimTaskPushEvent
         if (!GetQueuedCompletionStatus(
             s_iocp,
             &bytes,
@@ -69,8 +70,8 @@ static void IocpDispatchThread () {
         DimTaskPushEvent(*evt->notify);
     }
 
+    lock_guard<mutex> lk{s_mut};
     s_iocp = 0;
-    s_shutdownCv.notify_one();
 }
 
 
@@ -89,13 +90,21 @@ static WinIocpShutdown s_cleanup;
 
 //===========================================================================
 bool WinIocpShutdown::OnAppQueryConsoleDestroy () {
-    s_mode = kRunStopping;
-    if (!CloseHandle(s_iocp))
-        DimLog{kError} << "CloseHandle(iocp): " << WinError{};
+    if (s_mode != kRunStopping) {
+        s_mode = kRunStopping;
+        if (!CloseHandle(s_iocp))
+            DimLog{kError} << "CloseHandle(iocp): " << WinError{};
 
-    unique_lock<mutex> lk(s_mut);
-    while (s_iocp)
-        s_shutdownCv.wait(lk);
+        Sleep(0);
+    }
+
+    bool closed;
+    {
+        unique_lock<mutex> lk(s_mut);
+        closed = !s_iocp;
+    }
+    if (!closed)
+        return DimQueryDestroyFailed();
 
     s_mode = kRunStopped;
     return true;
@@ -119,9 +128,8 @@ void WinIocpInitialize () {
         NULL,   // completion key
         0       // num threads, 0 for default
     );
-    if (!s_iocp) {
+    if (!s_iocp) 
         DimLog{kCrash} << "CreateIoCompletionPort(null): " << WinError{};
-    }
 
     thread thr{IocpDispatchThread};
     thr.detach();
