@@ -46,10 +46,16 @@ typedef DimClock::time_point TimePoint;
 // IP v4 or v6 address
 struct NetAddr {
     int32_t data[4]{};
+
+    bool operator== (const NetAddr & right) const;
+    explicit operator bool () const;
 };
 struct SockAddr {
     NetAddr addr;
     unsigned port{0};
+
+    bool operator== (const SockAddr & right) const;
+    explicit operator bool () const;
 };
 
 
