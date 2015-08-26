@@ -9,24 +9,24 @@ using namespace std;
 
 /****************************************************************************
 *
-*   SockAddr
+*   Endpoint
 *
 ***/
 
 //===========================================================================
-bool Parse (NetAddr * addr, const char src[]) {
-    SockAddr sa;
+bool Parse (Address * out, const char src[]) {
+    Endpoint sa;
     if (!Parse(&sa, src, 9)) {
-        *addr = {};
+        *out = {};
         return false;
     }
-    *addr = sa.addr;
+    *out = sa.addr;
     return true;
 }
 
 //===========================================================================
-std::ostream & operator<< (std::ostream & os, const NetAddr & addr) {
-    SockAddr sa;
+std::ostream & operator<< (std::ostream & os, const Address & addr) {
+    Endpoint sa;
     sa.addr = addr;
     return operator<<(os, sa);
 }
@@ -34,12 +34,12 @@ std::ostream & operator<< (std::ostream & os, const NetAddr & addr) {
 
 /****************************************************************************
 *
-*   SockAddr
+*   Endpoint
 *
 ***/
 
 //===========================================================================
-bool Parse (SockAddr * addr, const char src[], int defaultPort) {
+bool Parse (Endpoint * end, const char src[], int defaultPort) {
     sockaddr_storage sas;
     int sasLen = sizeof(sas);
     if (SOCKET_ERROR == WSAStringToAddress(
@@ -49,19 +49,19 @@ bool Parse (SockAddr * addr, const char src[], int defaultPort) {
         (sockaddr *) &sas,
         &sasLen
     )) {
-        *addr = {};
+        *end = {};
         return false;
     }
-    DimAddressFromStorage(addr, sas);
-    if (!addr->port)
-        addr->port = defaultPort;
+    DimEndpointFromStorage(end, sas);
+    if (!end->port)
+        end->port = defaultPort;
     return true;
 }
 
 //===========================================================================
-std::ostream & operator<< (std::ostream & os, const SockAddr & addr) {
+std::ostream & operator<< (std::ostream & os, const Endpoint & src) {
     sockaddr_storage sas;
-    DimAddressToStorage(&sas, addr);
+    DimEndpointToStorage(&sas, src);
     char tmp[256];
     DWORD tmpLen = sizeof(tmp);
     if (SOCKET_ERROR == WSAAddressToString(
@@ -86,17 +86,17 @@ std::ostream & operator<< (std::ostream & os, const SockAddr & addr) {
 ***/
 
 //===========================================================================
-void DimAddressToStorage (sockaddr_storage * out, const SockAddr & addr) {
+void DimEndpointToStorage (sockaddr_storage * out, const Endpoint & src) {
     *out = {};
     auto ia = reinterpret_cast<sockaddr_in*>(out);
     ia->sin_family = AF_INET;
-    ia->sin_port = htons((short) addr.port);
-    ia->sin_addr.s_addr = htonl(addr.addr.data[3]);
+    ia->sin_port = htons((short) src.port);
+    ia->sin_addr.s_addr = htonl(src.addr.data[3]);
 }
 
 //===========================================================================
-void DimAddressFromStorage (
-    SockAddr * out, 
+void DimEndpointFromStorage (
+    Endpoint * out, 
     const sockaddr_storage & storage
 ) {
     *out = {};
@@ -117,11 +117,11 @@ namespace {
     struct QueryTask : IDimTaskNotify {
         WinOverlappedEvent evt{};
         ADDRINFOEXW * results{nullptr};
-        IDimAddressNotify * notify{nullptr};
+        IDimEndpointNotify * notify{nullptr};
         HANDLE cancel{nullptr};
         int id;
 
-        vector<SockAddr> addrs;
+        vector<Endpoint> ends;
         WinError err{0};
 
         void OnTask () override;
@@ -150,11 +150,11 @@ static void CALLBACK AddressQueryCallback (
         ADDRINFOEXW * result = task->results;
         while (result) {
             if (result->ai_family == AF_INET) {
-                SockAddr addr;
+                Endpoint end;
                 sockaddr_storage sas{};
                 memcpy(&sas, result->ai_addr, result->ai_addrlen);
-                DimAddressFromStorage(&addr, sas);
-                task->addrs.push_back(addr);
+                DimEndpointFromStorage(&end, sas);
+                task->ends.push_back(end);
             }
             result = result->ai_next;
         }
@@ -170,16 +170,16 @@ void QueryTask::OnTask () {
     if (err && err != WSA_E_CANCELLED) {
         DimLog{kError} << "GetAddrInfoEx: " << err;
     }
-    notify->OnAddressFound(addrs.data(), (int) addrs.size());
+    notify->OnEndpointFound(ends.data(), (int) ends.size());
     s_tasks.erase(id);
 }
 
 //===========================================================================
 // Public API
 //===========================================================================
-void DimAddressQuery (
+void DimEndpointQuery (
     int * cancelId, 
-    IDimAddressNotify * notify, 
+    IDimEndpointNotify * notify, 
     const std::string & name,
     int defaultPort
 ) {
@@ -197,9 +197,9 @@ void DimAddressQuery (
     task->notify = notify;
 
     // if the name is the string form of an address just return the address
-    SockAddr addr;
-    if (Parse(&addr, name.c_str(), defaultPort)) {
-        task->addrs.push_back(addr);
+    Endpoint end;
+    if (Parse(&end, name.c_str(), defaultPort)) {
+        task->ends.push_back(end);
         DimTaskPushEvent(*task);
         return;
     }
@@ -242,14 +242,14 @@ void DimAddressQuery (
 }
 
 //===========================================================================
-void DimAddressCancelQuery (int cancelId) {
+void DimEndpointCancelQuery (int cancelId) {
     auto it = s_tasks.find(cancelId);
     if (it != s_tasks.end())
         GetAddrInfoExCancel(&it->second.cancel);
 }
 
 //===========================================================================
-void DimAddressGetLocal (std::vector<NetAddr> * out) {
+void DimAddressGetLocal (std::vector<Address> * out) {
     out->resize(0);
     ADDRINFO * result;
     WinError err = getaddrinfo(
@@ -261,13 +261,13 @@ void DimAddressGetLocal (std::vector<NetAddr> * out) {
     if (err)
         DimLog{kCrash} << "getaddrinfo(..localmachine): " << err;
 
-    SockAddr addr;
+    Endpoint end;
     sockaddr_storage sas;
     while (result) {
         if (result->ai_family == AF_INET) {
             memcpy(&sas, result->ai_addr, result->ai_addrlen);
-            DimAddressFromStorage(&addr, sas); 
-            out->push_back(addr.addr);
+            DimEndpointFromStorage(&end, sas); 
+            out->push_back(end.addr);
         }
         result = result->ai_next;
     }
@@ -275,7 +275,7 @@ void DimAddressGetLocal (std::vector<NetAddr> * out) {
     // if there are no addresses toss on the loopback so we can at least
     // pretend.
     if (out->empty()) {
-        Parse(&addr, "127.0.0.1", 9);
-        out->push_back(addr.addr);
+        Parse(&end, "127.0.0.1", 9);
+        out->push_back(end.addr);
     }
 }

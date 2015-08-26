@@ -7,12 +7,12 @@
 #include "dim/types.h"
 
 struct DimSocketConnectInfo {
-    SockAddr remoteAddr;
-    SockAddr localAddr;
+    Endpoint remoteEnd;
+    Endpoint localEnd;
 };
 struct DimSocketAcceptInfo {
-    SockAddr remoteAddr;
-    SockAddr localAddr;
+    Endpoint remoteEnd;
+    Endpoint localEnd;
 };
 struct DimSocketData {
     char * data;
@@ -56,8 +56,8 @@ void DimSocketDisconnect (IDimSocketNotify * notify);
 //===========================================================================
 void DimSocketConnect (
     IDimSocketNotify * notify,
-    const SockAddr & remoteAddr,
-    const SockAddr & localAddr,
+    const Endpoint & remoteEnd,
+    const Endpoint & localEnd,
     Duration timeout = {} // 0 for default timeout
 );
 
@@ -72,11 +72,11 @@ public:
 };
 void DimSocketListen (
     IDimSocketListenNotify * notify,
-    const SockAddr & localAddr
+    const Endpoint & localEnd
 );
 void DimSocketStop (
     IDimSocketListenNotify * notify,
-    const SockAddr & localAddr
+    const Endpoint & localEnd
 );
 
 //===========================================================================

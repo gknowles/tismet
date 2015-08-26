@@ -103,6 +103,6 @@ std::ostream & operator<< (std::ostream & os, const WinError & val);
 ***/
 
 SOCKET WinSocketCreate ();
-SOCKET WinSocketCreate (const SockAddr & localAddr);
+SOCKET WinSocketCreate (const Endpoint & localEnd);
 
 #endif

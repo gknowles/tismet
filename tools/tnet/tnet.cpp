@@ -26,7 +26,7 @@ enum {
 ***/
 
 static WORD s_consoleAttrs;
-static SockAddr s_localAddr;
+static Endpoint s_localEnd;
 static int s_cancelAddrId;
 
 
@@ -81,7 +81,7 @@ static void SetConsoleText (WORD attr) {
 
 class SocketConn 
     : public IDimSocketNotify 
-    , public IDimAddressNotify
+    , public IDimEndpointNotify
 {
     // IDimSocketNotify
     void OnSocketConnect (const DimSocketConnectInfo & info) override;
@@ -89,19 +89,19 @@ class SocketConn
     void OnSocketRead (const DimSocketData & data) override;
     void OnSocketDisconnect () override;
 
-    // IDimAddressNotify
-    void OnAddressFound (SockAddr * addrs, int count) override;
+    // IDimEndpointNotify
+    void OnEndpointFound (Endpoint * ends, int count) override;
 };
 static SocketConn s_socket;
 
 //===========================================================================
-void SocketConn::OnAddressFound (SockAddr * addrs, int count) {
+void SocketConn::OnEndpointFound (Endpoint * ends, int count) {
     if (!count) {
         cout << "Host not found" << endl;
         DimAppSignalShutdown(kExitConnectFailed);
     } else {
-        cout << "Connecting on " << s_localAddr << " to " << *addrs << endl;
-        DimSocketConnect(this, *addrs, s_localAddr);
+        cout << "Connecting on " << s_localEnd << " to " << *ends << endl;
+        DimSocketConnect(this, *ends, s_localEnd);
     }
 }
 
@@ -198,7 +198,7 @@ class MainShutdown : public IDimAppShutdownNotify {
 //===========================================================================
 void MainShutdown::OnAppStartClientCleanup () {
     s_console.m_file.reset();
-    DimAddressCancelQuery(s_cancelAddrId);
+    DimEndpointCancelQuery(s_cancelAddrId);
     DimSocketDisconnect(&s_socket);
 }
 
@@ -236,9 +236,9 @@ void Start (int argc, char * argv[]) {
     InitializeConsole();
 
     if (argc > 2)
-        Parse(&s_localAddr, argv[2], 0);
+        Parse(&s_localEnd, argv[2], 0);
 
-    DimAddressQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
+    DimEndpointQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
     
     DimFileOpen(s_console.m_file, "conin$", IDimFile::kReadWrite);
     s_console.m_buffer = DimSocketGetBuffer();

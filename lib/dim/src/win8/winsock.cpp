@@ -551,19 +551,19 @@ SOCKET WinSocketCreate () {
 }
 
 //===========================================================================
-SOCKET WinSocketCreate (const SockAddr & addr) {
+SOCKET WinSocketCreate (const Endpoint & end) {
     SOCKET handle = WinSocketCreate();
     if (handle == INVALID_SOCKET) 
         return handle;
 
     sockaddr_storage sas;
-    DimAddressToStorage(&sas, addr);
+    DimEndpointToStorage(&sas, end);
     if (SOCKET_ERROR == ::bind(
         handle, 
         (sockaddr *) &sas, 
         sizeof(sas)
     )) {
-        DimLog{kError} << "bind(" << addr << "): " << WinError{};
+        DimLog{kError} << "bind(" << end << "): " << WinError{};
         closesocket(handle);
         return INVALID_SOCKET;
     }

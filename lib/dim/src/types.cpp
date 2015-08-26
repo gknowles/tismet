@@ -14,12 +14,12 @@ using namespace std;
 
 /****************************************************************************
 *
-*   SockAddr
+*   Endpoint
 *
 ***/
 
-bool Parse (SockAddr * addr, const char src[]);
-std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
+bool Parse (Endpoint * out, const char src[]);
+std::ostream & operator<< (std::ostream & os, const Endpoint & src);
 
 
 /****************************************************************************

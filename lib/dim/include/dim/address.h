@@ -8,51 +8,51 @@
 #include <string>
 #include <vector>
 
-struct NetAddr;
-struct SockAddr;
+struct Address;
+struct Endpoint;
 
 
 /****************************************************************************
 *
-*   NetAddr & SockAddr
+*   Address & Endpoint
 *
 ***/
 
-bool Parse (NetAddr * addr, const char src[]);
-std::ostream & operator<< (std::ostream & os, const NetAddr & addr);
+bool Parse (Address * addr, const char src[]);
+std::ostream & operator<< (std::ostream & os, const Address & addr);
 
-bool Parse (SockAddr * addr, const char src[], int defaultPort);
-std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
+bool Parse (Endpoint * end, const char src[], int defaultPort);
+std::ostream & operator<< (std::ostream & os, const Endpoint & end);
 
 //===========================================================================
 // Native
 //===========================================================================
 struct sockaddr_storage;
 
-void DimAddressToStorage (sockaddr_storage * out, const SockAddr & addr);
-void DimAddressFromStorage (SockAddr * out, const sockaddr_storage & storage);
+void DimEndpointToStorage (sockaddr_storage * out, const Endpoint & end);
+void DimEndpointFromStorage (Endpoint * out, const sockaddr_storage & storage);
 
 
 /****************************************************************************
 *
-*   Address lookup
+*   Lookup
 *
 ***/
 
-class IDimAddressNotify {
+void DimAddressGetLocal (std::vector<Address> * out);
+
+class IDimEndpointNotify {
 public:
-    virtual ~IDimAddressNotify () {}
-    virtual void OnAddressFound (SockAddr * addr, int count) = 0;
+    virtual ~IDimEndpointNotify () {}
+    virtual void OnEndpointFound (Endpoint * ptr, int count) = 0;
 };
 
-void DimAddressQuery (
+void DimEndpointQuery (
     int * cancelId, 
-    IDimAddressNotify * notify, 
+    IDimEndpointNotify * notify, 
     const std::string & name,
     int defaultPort
 );
-void DimAddressCancelQuery (int cancelId);
-
-void DimAddressGetLocal (std::vector<NetAddr> * out);
+void DimEndpointCancelQuery (int cancelId);
 
 #endif

@@ -44,18 +44,22 @@ typedef DimClock::time_point TimePoint;
 ***/
 
 // IP v4 or v6 address
-struct NetAddr {
+struct Address {
     int32_t data[4]{};
 
-    bool operator== (const NetAddr & right) const;
+    bool operator== (const Address & right) const;
     explicit operator bool () const;
 };
-struct SockAddr {
-    NetAddr addr;
+struct Endpoint {
+    Address addr;
     unsigned port{0};
 
-    bool operator== (const SockAddr & right) const;
+    bool operator== (const Endpoint & right) const;
     explicit operator bool () const;
+};
+struct Network {
+    Address addr;
+    int mask{0};
 };
 
 

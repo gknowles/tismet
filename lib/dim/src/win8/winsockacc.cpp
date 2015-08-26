@@ -34,7 +34,7 @@ public:
 class ListenSocket : public IWinEventWaitNotify {
 public:
     SOCKET m_handle{INVALID_SOCKET};
-    SockAddr m_localAddr;
+    Endpoint m_localEnd;
     unique_ptr<AcceptSocket> m_socket;
     IDimSocketListenNotify * m_notify{nullptr};
     char m_addrBuf[2 * sizeof sockaddr_storage];
@@ -42,7 +42,7 @@ public:
 public:
     ListenSocket (
         IDimSocketListenNotify * notify,
-        const SockAddr & addr
+        const Endpoint & end
     );
 
     void OnTask () override;
@@ -95,10 +95,10 @@ void ListenStopTask::OnTask () {
 //===========================================================================
 ListenSocket::ListenSocket (
     IDimSocketListenNotify * notify,
-    const SockAddr & addr
+    const Endpoint & end
 ) 
     : m_notify{notify}
-    , m_localAddr{addr}
+    , m_localEnd{end}
 {}
 
 //===========================================================================
@@ -182,18 +182,64 @@ void AcceptSocket::Accept (ListenSocket * listen) {
         listen->m_socket->m_handle,
         listen->m_addrBuf,
         0,  // receive data length
-        sizeof sockaddr_storage, // localAddr length
-        sizeof sockaddr_storage, // remoteAddr length
+        sizeof sockaddr_storage, // localEnd length
+        sizeof sockaddr_storage, // remoteEnd length
         nullptr, // bytes received
         &listen->m_overlapped
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        DimLog{kError} << "AcceptEx(" << listen->m_localAddr << "): " << err;
+        DimLog{kError} << "AcceptEx(" << listen->m_localEnd << "): " << err;
         return PushListenStop(listen);
     }
 }
 
+//===========================================================================
+static bool GetAcceptInfo (
+    DimSocketAcceptInfo * out,
+    SOCKET s,
+    void * buffer
+) {
+    GUID extId = WSAID_GETACCEPTEXSOCKADDRS;
+    LPFN_GETACCEPTEXSOCKADDRS fGetAcceptExSockAddrs;
+    DWORD bytes;
+    if (WSAIoctl(
+        s,
+        SIO_GET_EXTENSION_FUNCTION_POINTER,
+        &extId, sizeof(extId),
+        &fGetAcceptExSockAddrs, sizeof(fGetAcceptExSockAddrs),
+        &bytes,
+        nullptr,    // overlapped
+        nullptr     // completion routine
+    )) {
+        DimLog{kError} << "WSAIoctl(get GetAcceptExSockAddrs): " 
+            << WinError{};
+        return false;
+    }
+
+    sockaddr * lsa;
+    int lsaLen;
+    sockaddr * rsa;    
+    int rsaLen;
+    fGetAcceptExSockAddrs(
+        buffer, 
+        0, 
+        sizeof(sockaddr_storage),
+        sizeof(sockaddr_storage),
+        &lsa,
+        &lsaLen,
+        &rsa,
+        &rsaLen
+    );
+    
+    sockaddr_storage sas;
+    memcpy(&sas, lsa, lsaLen);
+    DimEndpointFromStorage(&out->localEnd, sas);
+    memcpy(&sas, rsa, rsaLen);
+    DimEndpointFromStorage(&out->remoteEnd, sas);
+    return true;
+}
+     
 //===========================================================================
 void AcceptSocket::OnAccept (
     ListenSocket * listen,
@@ -202,15 +248,19 @@ void AcceptSocket::OnAccept (
 ) {
     unique_ptr<AcceptSocket> hostage{move(listen->m_socket)};
 
+    DimSocketAcceptInfo info;
+    bool ok = !xferError 
+        && GetAcceptInfo(&info, m_handle, listen->m_addrBuf);
+
     Accept(listen);
 
     if (xferError) {
         DimLog{kError} << "OnAccept: " << WinError(xferError);
         return;
     }
+    if (!ok)
+        return;
 
-    //-----------------------------------------------------------------------
-    // update socket
     if (SOCKET_ERROR == setsockopt(
         m_handle, 
         SOL_SOCKET,
@@ -224,28 +274,6 @@ void AcceptSocket::OnAccept (
         return;
     }
 
-    //-----------------------------------------------------------------------
-    // get AcceptEx function
-    GUID extId = WSAID_GETACCEPTEXSOCKADDRS;
-    LPFN_GETACCEPTEXSOCKADDRS fGetAcceptExSockAddrs;
-    DWORD bytes;
-    if (WSAIoctl(
-        m_handle,
-        SIO_GET_EXTENSION_FUNCTION_POINTER,
-        &extId, sizeof(extId),
-        &fGetAcceptExSockAddrs, sizeof(fGetAcceptExSockAddrs),
-        &bytes,
-        nullptr,    // overlapped
-        nullptr     // completion routine
-    )) {
-        DimLog{kError} << "WSAIoctl(get GetAcceptExSockAddrs): " 
-            << WinError{};
-        return;
-    }
-    
-    DimSocketAcceptInfo info;
-
-    //-----------------------------------------------------------------------
     // create read/write queue
     if (!CreateQueue()) 
         return;
@@ -301,11 +329,11 @@ static void PushListenStop (IDimSocketListenNotify * notify) {
 //===========================================================================
 void DimSocketListen (
     IDimSocketListenNotify * notify,
-    const SockAddr & localAddr
+    const Endpoint & localEnd
 ) {
-    auto hostage = make_unique<ListenSocket>(notify, localAddr);
+    auto hostage = make_unique<ListenSocket>(notify, localEnd);
     auto sock = hostage.get();
-    sock->m_handle = WinSocketCreate(localAddr);
+    sock->m_handle = WinSocketCreate(localEnd);
     if (sock->m_handle == INVALID_SOCKET) 
         return PushListenStop(notify); 
 
@@ -327,12 +355,12 @@ void DimSocketListen (
 //===========================================================================
 void DimSocketStop (
     IDimSocketListenNotify * notify,
-    const SockAddr & localAddr
+    const Endpoint & localEnd
 ) {
     lock_guard<mutex> lk{s_mut};
     for (auto&& ptr : s_listeners) {
         if (ptr->m_notify == notify 
-            && ptr->m_localAddr == localAddr
+            && ptr->m_localEnd == localEnd
             && ptr->m_handle != INVALID_SOCKET
         ) {
             if (SOCKET_ERROR == closesocket(ptr->m_handle)) {

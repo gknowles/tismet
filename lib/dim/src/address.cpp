@@ -14,35 +14,35 @@ using namespace std;
 
 /****************************************************************************
 *
-*   NetAddr
+*   Address
 *
 ***/
 
 //===========================================================================
-bool NetAddr::operator== (const NetAddr & right) const {
+bool Address::operator== (const Address & right) const {
     return memcmp(this, &right, sizeof *this) == 0;
 }
 
 //===========================================================================
-NetAddr::operator bool () const {
+Address::operator bool () const {
     return data[3] || data[0] || data[1] || data[2];
 }
 
 /****************************************************************************
 *
-*   SockAddr
+*   Endpoint
 *
 ***/
 
 //===========================================================================
-bool SockAddr::operator== (const SockAddr & right) const {
+bool Endpoint::operator== (const Endpoint & right) const {
     return port == right.port && addr == right.addr;
 }
 
 //===========================================================================
-SockAddr::operator bool () const {
+Endpoint::operator bool () const {
     return port || addr;
 }
 
-bool Parse (SockAddr * addr, const char src[]);
-std::ostream & operator<< (std::ostream & os, const SockAddr & addr);
+bool Parse (Endpoint * out, const char src[]);
+std::ostream & operator<< (std::ostream & os, const Endpoint & src);

@@ -26,8 +26,8 @@ class ConnSocket : public DimSocket {
 public:
     static void Connect (
         IDimSocketNotify * notify,
-        const SockAddr & remoteAddr,
-        const SockAddr & localAddr,
+        const Endpoint & remoteEnd,
+        const Endpoint & localEnd,
         Duration timeout
     );
 public:
@@ -164,8 +164,8 @@ static void PushConnectFailed (IDimSocketNotify * notify) {
 // static
 void ConnSocket::Connect (
     IDimSocketNotify * notify,
-    const SockAddr & remoteAddr,
-    const SockAddr & localAddr,
+    const Endpoint & remoteEnd,
+    const Endpoint & localEnd,
     Duration timeout
 ) {
     assert(GetMode(notify) == Mode::kInactive);
@@ -174,7 +174,7 @@ void ConnSocket::Connect (
         timeout = kConnectTimeout;
 
     auto sock = make_unique<ConnSocket>(notify);
-    sock->m_handle = WinSocketCreate(localAddr);
+    sock->m_handle = WinSocketCreate(localEnd);
     if (sock->m_handle == INVALID_SOCKET) 
         return PushConnectFailed(notify);
 
@@ -216,7 +216,7 @@ void ConnSocket::Connect (
     }
 
     sockaddr_storage sas;
-    DimAddressToStorage(&sas, remoteAddr);
+    DimEndpointToStorage(&sas, remoteEnd);
     bool error = !fConnectEx(
         it->m_socket->m_handle,
         (sockaddr *) &sas,
@@ -228,7 +228,7 @@ void ConnSocket::Connect (
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        DimLog{kError} << "ConnectEx(" << remoteAddr << "): " << err;
+        DimLog{kError} << "ConnectEx(" << remoteEnd << "): " << err;
         lock_guard<mutex> lk{s_mut};
         s_connecting.pop_back();
         return PushConnectFailed(notify);
@@ -281,7 +281,7 @@ void ConnSocket::OnConnect (
         DimLog{kError} << "getpeername: " << WinError{};
         return m_notify->OnSocketConnectFailed();
     }
-    DimAddressFromStorage(&m_connInfo.remoteAddr, sas);
+    DimEndpointFromStorage(&m_connInfo.remoteEnd, sas);
 
     // locally bound address
     if (SOCKET_ERROR == getsockname(
@@ -292,7 +292,7 @@ void ConnSocket::OnConnect (
         DimLog{kError} << "getsockname: " << WinError{};
         return m_notify->OnSocketConnectFailed();
     }
-    DimAddressFromStorage(&m_connInfo.localAddr, sas);
+    DimEndpointFromStorage(&m_connInfo.localEnd, sas);
 
     //-----------------------------------------------------------------------
     // create read/write queue
@@ -358,9 +358,9 @@ void IDimSocketConnectInitialize () {
 //===========================================================================
 void DimSocketConnect (
     IDimSocketNotify * notify,
-    const SockAddr & remoteAddr,
-    const SockAddr & localAddr,
+    const Endpoint & remoteEnd,
+    const Endpoint & localEnd,
     Duration timeout
 ) {
-    ConnSocket::Connect(notify, remoteAddr, localAddr, timeout);
+    ConnSocket::Connect(notify, remoteEnd, localEnd, timeout);
 }

@@ -7,20 +7,20 @@ using namespace std;
 
 /****************************************************************************
 *
-*   AddrFind
+*   EndpointFind
 *
 ***/
 
-class AddrFind : public IDimAddressNotify {
-    void OnAddressFound (SockAddr * addr, int count) override;
+class EndpointFind : public IDimEndpointNotify {
+    void OnEndpointFound (Endpoint * ptr, int count) override;
 };
-static AddrFind s_addrFind;
+static EndpointFind s_endFind;
 
 //===========================================================================
-void AddrFind::OnAddressFound (SockAddr * addr, int count) {
+void EndpointFind::OnEndpointFound (Endpoint * ptr, int count) {
     cout << "\nDNS Addresses:" << endl;
     for (int i = 0; i < count; ++i) {
-        cout << addr[i] << endl;
+        cout << ptr[i] << endl;
     }
     // DimAppSignalShutdown(9);
 }
@@ -34,12 +34,19 @@ void AddrFind::OnAddressFound (SockAddr * addr, int count) {
 
 class ListenSocket : public IDimSocketNotify {
     void OnSocketAccept (const DimSocketAcceptInfo & info) override;
+    void OnSocketDisconnect () override;
     void OnSocketRead (const DimSocketData & data) override;
 };
 
 //===========================================================================
 void ListenSocket::OnSocketAccept (const DimSocketAcceptInfo & info) {
-    cout << "*** ACCEPTED" << endl;
+    cout << "\n*** ACCEPTED " << info.remoteEnd << " to " 
+        << info.localEnd << endl;
+}
+
+//===========================================================================
+void ListenSocket::OnSocketDisconnect () {
+    cout << "\n*** DISCONNECTED" << endl;
 }
 
 //===========================================================================
@@ -101,21 +108,21 @@ bool MainShutdown::OnAppQueryClientDestroy () {
 
 //===========================================================================
 void Start (int argc, char * argv[]) {
-    vector<NetAddr> addrs;
+    vector<Address> addrs;
     DimAddressGetLocal(&addrs);
     cout << "Local Addresses:" << endl;
     for (auto&& addr : addrs) {
         cout << addr << endl;
     }
 
-    SockAddr addr;
-    Parse(&addr, "127.0.0.1", 8888);
-    DimSocketListen(&s_listen, addr);
-    //DimSocketStop(nullptr, SockAddr{});
+    Endpoint end;
+    Parse(&end, "127.0.0.1", 8888);
+    DimSocketListen(&s_listen, end);
+    //DimSocketStop(nullptr, Endpoint{});
 
     //if (argc > 1) {
     //    int cancelId;
-    //    DimAddressQuery(&cancelId, &s_addrFind, argv[1], 0);
+    //    DimEndpointQuery(&cancelId, &s_endFind, argv[1], 0);
     //} else {
     //    DimAppSignalShutdown(8);
     //}
