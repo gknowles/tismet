@@ -22,6 +22,7 @@
     <ClInclude Include="..\include\dim.h" />
     <ClInclude Include="..\include\dim\address.h" />
     <ClInclude Include="..\include\dim\app.h" />
+    <ClInclude Include="..\include\dim\charbuf.h" />
     <ClInclude Include="..\include\dim\cmdline.h" />
     <ClInclude Include="..\include\dim\compiler\visualc.h" />
     <ClInclude Include="..\include\dim\config.h" />
@@ -30,6 +31,7 @@
     <ClInclude Include="..\include\dim\handle.h" />
     <ClInclude Include="..\include\dim\socket.h" />
     <ClInclude Include="..\include\dim\task.h" />
+    <ClInclude Include="..\include\dim\tempheap.h" />
     <ClInclude Include="..\include\dim\timer.h" />
     <ClInclude Include="..\include\dim\types.h" />
     <ClInclude Include="..\src\intern.h" />
@@ -44,6 +46,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\charbuf.cpp" />
     <ClCompile Include="..\src\cmdline.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>

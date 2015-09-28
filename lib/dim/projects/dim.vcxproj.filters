@@ -57,6 +57,12 @@
     <ClInclude Include="..\include\dim\file.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\dim\tempheap.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\charbuf.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.cpp">
@@ -84,6 +90,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\types.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\charbuf.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
