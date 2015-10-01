@@ -29,6 +29,7 @@
     <ClInclude Include="..\include\dim\error.h" />
     <ClInclude Include="..\include\dim\file.h" />
     <ClInclude Include="..\include\dim\handle.h" />
+    <ClInclude Include="..\include\dim\httpmsg.h" />
     <ClInclude Include="..\include\dim\socket.h" />
     <ClInclude Include="..\include\dim\task.h" />
     <ClInclude Include="..\include\dim\tempheap.h" />

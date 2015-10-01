@@ -11,6 +11,7 @@
 #include "dim/error.h"
 #include "dim/file.h"
 #include "dim/handle.h"
+#include "dim/httpmsg.h"
 #include "dim/socket.h"
 #include "dim/task.h"
 #include "dim/tempheap.h"
