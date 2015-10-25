@@ -1,4 +1,4 @@
-// types.h - dim core
+// types.h - dim services
 #ifndef DIM_ADDRESS_INCLUDED
 #define DIM_ADDRESS_INCLUDED
 

@@ -1,4 +1,4 @@
-// charbuf.h - dim core
+// charbuf.h - dim services
 #ifndef DIM_CHARBUF_INCLUDED
 #define DIM_CHARBUF_INCLUDED
 

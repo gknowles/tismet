@@ -11,7 +11,7 @@ using namespace std;
 *
 ***/
 
-const unsigned DEFAULT_BLOCK_SIZE = 4096;
+const unsigned kDefaultBlockSize = 4096;
 
 
 /****************************************************************************
@@ -22,9 +22,9 @@ const unsigned DEFAULT_BLOCK_SIZE = 4096;
 
 struct CharBuf::Buffer {
     int m_used{0};
-    int m_reserved{DEFAULT_BLOCK_SIZE};
+    int m_reserved{kDefaultBlockSize};
     bool m_heapUsed{false};
-    char m_data[DEFAULT_BLOCK_SIZE];
+    char m_data[kDefaultBlockSize];
 
     char * Base () { return m_data; }
     char * Unused () { return Base() + m_used; }
@@ -377,6 +377,12 @@ void CharBuf::Swap (CharBuf & other) {
     swap(m_buffers, other.m_buffers);
     swap(m_lastUsed, other.m_lastUsed);
     swap(m_size, other.m_size);
+}
+
+//===========================================================================
+// ITempHeap
+char * CharBuf::Alloc (size_t bytes, size_t align) {
+    return nullptr;
 }
 
 //===========================================================================

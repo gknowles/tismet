@@ -1,4 +1,4 @@
-// tempheap.h - dim core
+// tempheap.h - dim services
 #ifndef DIM_TEMPHEAP_INCLUDED
 #define DIM_TEMPHEAP_INCLUDED
 
@@ -12,6 +12,8 @@ public:
 
     template <typename T, typename... Args>
     T * New (Args&&... args);
+    template <typename T>
+    T * Alloc (int num);
 
     char * StrDup (const char * src);
 
@@ -27,6 +29,13 @@ inline T * ITempHeap::New (Args&&... args) {
 }
 
 //===========================================================================
+template <typename T>
+inline T * ITempHeap::Alloc (int num) {
+    char * tmp = Alloc(num * sizeof(T), alignof(T));
+    return new(tmp) T[num];
+}
+
+//===========================================================================
 inline char * ITempHeap::StrDup (const char * src) {
     size_t count = std::strlen(src);
     return Alloc(sizeof(*src) * count, alignof(char));
@@ -34,7 +43,7 @@ inline char * ITempHeap::StrDup (const char * src) {
 
 //===========================================================================
 inline char * ITempHeap::Alloc (size_t bytes) {
-    return Alloc(bytes, 1);
+    return Alloc(bytes, alignof(char));
 }
 
 #endif
