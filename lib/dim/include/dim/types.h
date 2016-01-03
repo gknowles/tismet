@@ -41,6 +41,10 @@ typedef DimClock::time_point TimePoint;
 *
 *   Networking
 *
+*   Address - machine location (IP)
+*   Endpoint - machine location (IP) and service at location (port)
+*   Network - network location (IP) and size (net mask)
+*
 ***/
 
 // IP v4 or v6 address

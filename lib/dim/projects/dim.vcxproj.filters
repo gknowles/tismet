@@ -63,8 +63,11 @@
     <ClInclude Include="..\include\dim\charbuf.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\dim\httpmsg.h">
+    <ClInclude Include="..\include\dim\http.h">
       <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\httpint.h">
+      <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

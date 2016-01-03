@@ -29,12 +29,13 @@
     <ClInclude Include="..\include\dim\error.h" />
     <ClInclude Include="..\include\dim\file.h" />
     <ClInclude Include="..\include\dim\handle.h" />
-    <ClInclude Include="..\include\dim\httpmsg.h" />
+    <ClInclude Include="..\include\dim\http.h" />
     <ClInclude Include="..\include\dim\socket.h" />
     <ClInclude Include="..\include\dim\task.h" />
     <ClInclude Include="..\include\dim\tempheap.h" />
     <ClInclude Include="..\include\dim\timer.h" />
     <ClInclude Include="..\include\dim\types.h" />
+    <ClInclude Include="..\src\httpint.h" />
     <ClInclude Include="..\src\intern.h" />
     <ClInclude Include="..\src\pch.h" />
   </ItemGroup>
@@ -79,7 +80,7 @@
     <ProjectGuid>{73784937-0004-4A1B-9352-EADDB9499541}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>dim</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.10240.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

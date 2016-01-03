@@ -118,6 +118,12 @@ void Start (int argc, char * argv[]) {
     Endpoint end;
     Parse(&end, "127.0.0.1", 8888);
     DimSocketListen(&s_listen, end);
+
+    //DimHttpConn context;
+    //std::list<std::unique_ptr<DimHttpMsg>> msgs;
+    //CharBuf reply;
+    //context.Recv(&msgs, &reply, NULL, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24);
+
     //DimSocketStop(nullptr, Endpoint{});
 
     //if (argc > 1) {

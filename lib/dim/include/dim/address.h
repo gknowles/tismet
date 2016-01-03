@@ -44,6 +44,7 @@ void DimAddressGetLocal (std::vector<Address> * out);
 class IDimEndpointNotify {
 public:
     virtual ~IDimEndpointNotify () {}
+    // count of 0 means either no results or some kind of error occurred
     virtual void OnEndpointFound (Endpoint * ptr, int count) = 0;
 };
 
