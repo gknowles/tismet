@@ -61,6 +61,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\http.cpp" />
     <ClCompile Include="..\src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

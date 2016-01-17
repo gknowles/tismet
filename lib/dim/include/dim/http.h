@@ -1,4 +1,9 @@
 // http.h - dim services
+//
+// implements http/2, as defined by:
+//  rfc7540 - Hypertext Transfer Protocol Version 2 (HTTP/2)
+//  rfc7541 - HPACK: Header Compression for HTTP/2
+
 #ifndef DIM_HTTPMSG_INCLUDED
 #define DIM_HTTPMSG_INCLUDED
 
@@ -30,7 +35,8 @@ enum HttpHdr {
 class DimHttpMsg {
 public:
     struct Hdr;
-    class HdrList;
+    struct HdrValue;
+    class HdrRange;
     class HdrIterator;
 
 public:
@@ -42,16 +48,16 @@ public:
     
     int Status () const;
 
-    const Hdr * FirstHeader (int header) const;
-    Hdr * FirstHeader (int header);
-    const Hdr * LastHeader (int header) const;
-    Hdr * LastHeader (int header);
+    const Hdr * FindFirst (int header) const;
+    Hdr * FindFirst (int header);
+    const Hdr * FindLast (int header) const;
+    Hdr * FindLast (int header);
     const Hdr * Next (const Hdr * hdr) const;
     Hdr * Next (Hdr * hdr);
     const Hdr * Prev (const Hdr * hdr) const;
     Hdr * Prev (Hdr * hdr);
 
-    HdrList Headers (
+    HdrRange Headers (
         int header = kHttpInvalid // defaults to all
     ) const;
 
@@ -63,10 +69,23 @@ private:
 };
 
 struct DimHttpMsg::Hdr {
-    const char * name;
-    const char * value;
+    HttpHdr Id () const;
+    const char * Name () const;
+    const char * Value () const;
 private:
     ~Hdr ();
+
+    HttpHdr m_id{kHttpInvalid};
+    const char * m_name{nullptr};
+    DimHttpMsg::HdrValue * value{nullptr};
+    Hdr * m_next{nullptr};
+};
+
+struct DimHttpMsg::HdrValue {
+    const char * value;
+private:
+    HdrValue * m_next{nullptr};
+    ~HdrValue ();
 };
 
 class DimHttpMsg::HdrIterator {
@@ -86,8 +105,8 @@ public:
     }
 };
 
-class DimHttpMsg::HdrList {
-    DimHttpMsg::HdrList (DimHttpMsg & msg, int header);
+class DimHttpMsg::HdrRange {
+    DimHttpMsg::HdrRange (DimHttpMsg & msg, int header);
     DimHttpMsg::HdrIterator it;
 
     DimHttpMsg::HdrIterator begin () { return it; }
