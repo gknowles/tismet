@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tismet", "projects\tismet.vcxproj", "{399A47BF-2A33-4EE1-AC44-4AA0602D7A31}"
 EndProject
@@ -12,6 +12,8 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dim-win8", "lib\dim\projects\dim-win8.vcxproj", "{65F1630F-2F4E-4D9A-8DAF-D59C392EA6B9}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tnet", "projects\tnet.vcxproj", "{8F78DA84-DF3F-4D7B-9A42-081D72023513}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hpack", "lib\dim\projects\hpack.vcxproj", "{E3B7C050-FF67-45B7-A4B9-57388B61C23B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -57,6 +59,14 @@ Global
 		{8F78DA84-DF3F-4D7B-9A42-081D72023513}.Release|x64.ActiveCfg = Release|x64
 		{8F78DA84-DF3F-4D7B-9A42-081D72023513}.Release|x64.Build.0 = Release|x64
 		{8F78DA84-DF3F-4D7B-9A42-081D72023513}.Release|x86.ActiveCfg = Release|x64
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Debug|x64.ActiveCfg = Debug|x64
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Debug|x64.Build.0 = Debug|x64
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Debug|x86.ActiveCfg = Debug|Win32
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Debug|x86.Build.0 = Debug|Win32
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Release|x64.ActiveCfg = Release|x64
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Release|x64.Build.0 = Release|x64
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Release|x86.ActiveCfg = Release|Win32
+		{E3B7C050-FF67-45B7-A4B9-57388B61C23B}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

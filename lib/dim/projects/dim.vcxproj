@@ -29,6 +29,7 @@
     <ClInclude Include="..\include\dim\error.h" />
     <ClInclude Include="..\include\dim\file.h" />
     <ClInclude Include="..\include\dim\handle.h" />
+    <ClInclude Include="..\include\dim\hpack.h" />
     <ClInclude Include="..\include\dim\http.h" />
     <ClInclude Include="..\include\dim\socket.h" />
     <ClInclude Include="..\include\dim\task.h" />
@@ -61,6 +62,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\hpack.cpp" />
     <ClCompile Include="..\src\http.cpp" />
     <ClCompile Include="..\src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -71,6 +73,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\tempheap.cpp" />
     <ClCompile Include="..\src\timer.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>

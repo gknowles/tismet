@@ -12,6 +12,7 @@ using namespace std;
 ***/
 
 const unsigned kDefaultBlockSize = 4096;
+const unsigned kDefaultHeaderTableSize = 4096;
 
 
 /****************************************************************************

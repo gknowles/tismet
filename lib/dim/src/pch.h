@@ -1,6 +1,8 @@
 // pch.h - dim core
 #include "dim.h"
+#include "dim/hpack.h"
 #include "intern.h"
+#include "httpint.h"
 
 #include <atomic>
 #include <cassert>

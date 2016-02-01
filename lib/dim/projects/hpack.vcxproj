@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{6078BC7B-760D-4ADF-982B-B8AABE65E9D4}</ProjectGuid>
+    <ProjectGuid>{E3B7C050-FF67-45B7-A4B9-57388B61C23B}</ProjectGuid>
     <RootNamespace>cmdline</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.10240.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
@@ -135,11 +135,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\tests\cmdline\cmdlinetest.cpp">
+    <ClCompile Include="..\tests\hpack\hpacktest.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
-    <ClCompile Include="..\tests\cmdline\pch.cpp">
+    <ClCompile Include="..\tests\hpack\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
@@ -151,7 +151,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\tests\cmdline\pch.h" />
+    <ClInclude Include="..\tests\hpack\pch.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
