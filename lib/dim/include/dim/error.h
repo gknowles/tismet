@@ -4,7 +4,7 @@
 
 #include "dim/config.h"
 
-enum DimErrorSeverity {
+enum DimLogSeverity {
     kDebug,
     kInfo,
     kError,
@@ -12,10 +12,21 @@ enum DimErrorSeverity {
 };
 
 class DimLog : public std::ostringstream {
-    DimErrorSeverity m_severity;
+    DimLogSeverity m_severity;
 public:
-    DimLog (DimErrorSeverity severity) : m_severity(severity) {}
+    DimLog (DimLogSeverity severity) : m_severity(severity) {}
     ~DimLog ();
 };
+
+
+class IDimLogNotify {
+public:
+    virtual void OnLog (
+        DimLogSeverity severity,
+        const std::string & msg
+    ) = 0;
+};
+
+void DimLogRegisterHandler (IDimLogNotify * notify);
 
 #endif
