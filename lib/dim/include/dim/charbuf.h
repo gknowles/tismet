@@ -7,7 +7,7 @@
 
 #include <list>
 
-class CharBuf : public ITempHeap {
+class CharBuf : public IDimTempHeap {
 public:
     CharBuf ();
     CharBuf (CharBuf && from);
@@ -55,7 +55,7 @@ public:
     size_t Copy (char * out, size_t count, size_t pos = 0) const;
     void Swap (CharBuf & other);
 
-    // ITempHeap
+    // IDimTempHeap
     char * Alloc (size_t bytes, size_t align) override;
 
 private:
