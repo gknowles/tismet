@@ -345,7 +345,6 @@ void IDimSocketConnectInitialize () {
     // Don't register cleanup until all dependents (aka sockbuf) have
     // registered their cleanups (aka been initialized)
     DimAppMonitorShutdown(&s_cleanup);
-
 }
 
 
