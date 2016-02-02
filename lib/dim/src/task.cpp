@@ -96,8 +96,8 @@ static void TaskQueueThread (DimTaskQueue * ptr) {
 }
 
 //===========================================================================
-static void SetThreads_Lock (DimTaskQueue & q, int threads) {
-    q.wantThreads = threads;
+static void SetThreads_Lock (DimTaskQueue & q, size_t threads) {
+    q.wantThreads = (int) threads;
     int num = q.wantThreads - q.curThreads;
     if (num > 0) {
         q.curThreads = q.wantThreads;
@@ -186,27 +186,27 @@ void IDimTaskDestroy () {
 //===========================================================================
 void DimTaskPushEvent (IDimTaskNotify & task) {
     IDimTaskNotify * list[] = { &task };
-    DimTaskPushEvent(list, _countof(list));
+    DimTaskPushEvent(list, size(list));
 }
 
 //===========================================================================
-void DimTaskPushEvent (IDimTaskNotify * tasks[], int numTasks) {
+void DimTaskPushEvent (IDimTaskNotify * tasks[], size_t numTasks) {
     DimTaskPush(s_eventQ, tasks, numTasks);
 }
 
 //===========================================================================
 void DimTaskPushCompute (IDimTaskNotify & task) {
     IDimTaskNotify * list[] = { &task };
-    DimTaskPushCompute(list, _countof(list));
+    DimTaskPushCompute(list, size(list));
 }
 
 //===========================================================================
-void DimTaskPushCompute (IDimTaskNotify * tasks[], int numTasks) {
+void DimTaskPushCompute (IDimTaskNotify * tasks[], size_t numTasks) {
     DimTaskPush(s_computeQ, tasks, numTasks);
 }
 
 //===========================================================================
-HDimTaskQueue DimTaskCreateQueue (const string & name, unsigned threads) {
+HDimTaskQueue DimTaskCreateQueue (const string & name, int threads) {
     assert(s_running);
     assert(threads);
     auto * q = new DimTaskQueue;
@@ -221,7 +221,7 @@ HDimTaskQueue DimTaskCreateQueue (const string & name, unsigned threads) {
 }
 
 //===========================================================================
-void DimTaskSetQueueThreads (HDimTaskQueue hq, unsigned threads) {
+void DimTaskSetQueueThreads (HDimTaskQueue hq, int threads) {
     assert(s_running || !threads);
 
     lock_guard<mutex> lk{s_mut};
@@ -232,11 +232,15 @@ void DimTaskSetQueueThreads (HDimTaskQueue hq, unsigned threads) {
 //===========================================================================
 void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify & task) {
     IDimTaskNotify * list[] = { &task };
-    DimTaskPush(hq, list, _countof(list));
+    DimTaskPush(hq, list, size(list));
 }
 
 //===========================================================================
-void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify * tasks[], int numTasks) {
+void DimTaskPush (
+    HDimTaskQueue hq, 
+    IDimTaskNotify * tasks[], 
+    size_t numTasks
+) {
     assert(s_running);
 
     lock_guard<mutex> lk{s_mut};

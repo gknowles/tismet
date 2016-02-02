@@ -86,7 +86,7 @@ std::ostream & operator<< (std::ostream & os, const WinError & val) {
         val,
         0,      // language
         buf,
-        _countof(buf),
+        (DWORD) size(buf),
         NULL
     );
 

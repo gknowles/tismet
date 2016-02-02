@@ -512,7 +512,7 @@ void Encode::Write (size_t val, char prefix, int prefixBits) {
 
 /****************************************************************************
 *     
-*   Encoding data
+*   Decoding data
 *     
 ***/  
 

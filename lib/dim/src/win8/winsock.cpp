@@ -79,7 +79,7 @@ static RioDispatchThread s_dispatchThread;
 void RioDispatchThread::OnTask () {
     static const int kNumResults = 100;
     RIORESULT results[kNumResults];
-    IDimTaskNotify * tasks[_countof(results)];
+    IDimTaskNotify * tasks[size(results)];
     int count;
 
     for (;;) {
@@ -92,7 +92,7 @@ void RioDispatchThread::OnTask () {
         count = s_rio.RIODequeueCompletion(
             s_cq,
             results,
-            _countof(results)
+            (ULONG) size(results)
         );
         if (count == RIO_CORRUPT_CQ)
             DimLog{kCrash} << "RIODequeueCompletion: " << WinError{};
