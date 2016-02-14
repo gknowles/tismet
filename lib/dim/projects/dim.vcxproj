@@ -63,7 +63,8 @@
       </PrecompiledHeaderFile>
     </ClCompile>
     <ClCompile Include="..\src\hpack.cpp" />
-    <ClCompile Include="..\src\http.cpp" />
+    <ClCompile Include="..\src\httpconn.cpp" />
+    <ClCompile Include="..\src\httpmsg.cpp" />
     <ClCompile Include="..\src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

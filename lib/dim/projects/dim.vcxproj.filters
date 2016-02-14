@@ -104,13 +104,16 @@
     <ClCompile Include="..\src\charbuf.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\http.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\tempheap.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\hpack.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\httpconn.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\httpmsg.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
