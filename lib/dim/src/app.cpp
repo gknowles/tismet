@@ -43,7 +43,7 @@ public:
     bool QueryDestroyFailed (Duration grace);
 
     // IDimTimerNotify
-    Duration OnTimer () override;
+    Duration OnTimer (TimePoint now) override;
 
 private:
     void StartCleanup (CleanFn notify);
@@ -82,12 +82,12 @@ static RunMode s_runMode{kRunStopped};
 ***/
 
 //===========================================================================
-Duration MainTimer::OnTimer () {
+Duration MainTimer::OnTimer (TimePoint now) {
     bool next = true;
     switch (m_mode) {
         case MAIN_SC: 
             s_runMode = kRunStopping;
-            m_shutdownStart = DimClock::now();
+            m_shutdownStart = now;
             break;
         case MAIN_QD:
             break;

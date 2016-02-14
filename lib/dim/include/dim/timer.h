@@ -29,7 +29,7 @@ const auto DIM_TIMER_INFINITE = Duration::max();
 class IDimTimerNotify {
 public:
     virtual ~IDimTimerNotify ();
-    virtual Duration OnTimer () = 0;
+    virtual Duration OnTimer (TimePoint now) = 0;
 
 private:
     friend class DimTimer;

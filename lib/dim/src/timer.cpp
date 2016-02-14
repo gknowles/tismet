@@ -22,6 +22,8 @@ public:
     static void StopSync (IDimTimerNotify * notify);
 
     DimTimer (IDimTimerNotify * notify);
+
+    // is the notify still pointing back at this timer?
     bool Connected () const;
 
     IDimTimerNotify * notify{nullptr};
@@ -115,7 +117,7 @@ void CRunTimers::OnTask () {
         timer->expiration = TimePoint::max();
         s_processingNotify = timer->notify;
         lk.unlock();
-        wait = timer->notify->OnTimer();
+        wait = timer->notify->OnTimer(now);
 
         // update timer
         lk.lock();

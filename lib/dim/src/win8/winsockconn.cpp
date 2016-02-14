@@ -53,7 +53,7 @@ public:
 };
 
 class ConnectTimer : public IDimTimerNotify {
-    Duration OnTimer () override;
+    Duration OnTimer (TimePoint now) override;
 };
 
 } // namespace
@@ -78,8 +78,7 @@ static ConnectTimer s_connectTimer;
 ***/
 
 //===========================================================================
-Duration ConnectTimer::OnTimer () {
-    TimePoint now{DimClock::now()};
+Duration ConnectTimer::OnTimer (TimePoint now) {
     lock_guard<mutex> lk{s_mut};
     while (!s_connecting.empty()) {
         auto it = s_connecting.begin();
