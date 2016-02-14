@@ -38,7 +38,7 @@ private:
 struct Test {
     const char * name;
     bool reset;
-    const char * src;
+    const char * input;
     bool result;
     vector<NameValue> headers;
     vector<NameValue> dynTable;
@@ -463,8 +463,8 @@ int main(int argc, char *argv[]) {
         out.headers.clear();
         if (test.reset) 
             decode.Reset();
-        size_t srcLen = strlen(test.src);
-        result = decode.Parse(&out, &heap, test.src, srcLen);
+        size_t srcLen = strlen(test.input);
+        result = decode.Parse(&out, &heap, test.input, srcLen);
         if (result != test.result) {
             DimLog{kError} << "result: " << result << " != " << test.result 
                  << " (FAILED)";
