@@ -8,6 +8,13 @@
 
 #include <string>
 
+
+/****************************************************************************
+*
+*   Task queue
+*
+***/
+
 struct HDimTaskQueue : DimHandleBase {};
 
 class IDimTaskNotify {

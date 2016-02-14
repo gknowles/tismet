@@ -13,24 +13,77 @@
 #include <map>
 #include <set>
 
+
+/****************************************************************************
+*
+*   Constants
+*
+***/
+
 enum HttpHdr {
     kHttpInvalid,
+    KHttp_Authority,
+    kHttp_Method,
+    kHttp_Path,
+    kHttp_Schema,
+    kHttp_Status,
+    kHttpAccept,
+    kHttpAcceptCharset,
+    kHttpAcceptEncoding,
+    kHttpAcceptLanguage,
+    kHttpAcceptRanges,
+    kHttpAccessControlAllowOrigin,
+    kHttpAge,
+    kHttpAllow,
+    kHttpAuthorization,
     kHttpCacheControl,
     kHttpConnection,
+    kHttpContentDisposition,
     kHttpContentEncoding,
+    kHttpContentLanguage,
     kHttpContentLength,
+    kHttpContentLocation,
+    kHttpContentRange,
     kHttpContentType,
     kHttpCookie,
     kHttpDate,
+    kHttpETag,
+    kHttpExpect,
+    kHttpExpires,
     kHttpForwardedFor,
+    kHttpFrom,
     kHttpHost,
     kHttpIfMatch,
-    kHttpIfModified_since,
+    kHttpIfModifiedSince,
     kHttpIfNoneMatch,
+    kHttpIfRange,
+    kHttpIfUnmodifiedSince,
     kHttpLastModified,
+    kHttpLink,
+    kHttpLocation,
+    kHttpMaxForwards,
+    kHttpProxyAuthenticate,
+    kHttpProxyAuthorization,
+    kHttpRange,
+    kHttpReferer,
+    kHttpRefresh,
+    kHttpRetryAfter,
     kHttpServer,
     kHttpSetCookie,
+    kHttpStrictTransportSecurity,
+    kHttpTransferEncoding,
+    kHttpUserAgent,
+    kHttpVary,
+    kHttpVia,
+    kHttpWwwAuthenticate,
 };
+
+
+/****************************************************************************
+*
+*   Http message
+*
+***/
 
 class DimHttpMsg {
 public:
@@ -40,13 +93,7 @@ public:
     class HdrIterator;
 
 public:
-    const char * Method () const;
-    const char * Scheme () const;
-    const char * Authority () const;
-    const char * Path () const;
-    const char * Fragment () const;
-    
-    int Status () const;
+    virtual ~DimHttpMsg () {}
 
     const Hdr * FindFirst (int header) const;
     Hdr * FindFirst (int header);
@@ -57,15 +104,40 @@ public:
     const Hdr * Prev (const Hdr * hdr) const;
     Hdr * Prev (Hdr * hdr);
 
+    void AddHeader (HttpHdr id, const char value[]);
+    void AddHeader (const char name[], const char value[]);
+
+    // When adding references the memory referenced by the name and value 
+    // pointers must be valid for the life of the http msg, such as constants 
+    // or strings allocated from this messages Heap().
+    void AddHeaderRef (HttpHdr id, const char value[]);
+    void AddHeaderRef (const char name[], const char value[]);
+
     HdrRange Headers (
         int header = kHttpInvalid // defaults to all
     ) const;
 
-    CharBuf * Data ();
-    const CharBuf * Data () const;
+    CharBuf * Body ();
+    const CharBuf * Body () const;
+
+    IDimTempHeap & Heap ();
+
+protected:
+    virtual bool CheckPseudoHeaders () const = 0;
+
+    enum {
+        kFlagHasStatus = 0x01,
+        kFlagHasMethod = 0x02,
+        kFlagHasScheme = 0x04,
+        kFlagHasAuthority = 0x08,
+        kFlagHasPath = 0x10,
+        kFlagHasHeader = 0x20,
+    };
+    int m_flags{0}; // kFlag*
 
 private:
     CharBuf m_data;
+    DimTempHeap m_heap;
 };
 
 struct DimHttpMsg::Hdr {
@@ -79,13 +151,6 @@ private:
     const char * m_name{nullptr};
     DimHttpMsg::HdrValue * value{nullptr};
     Hdr * m_next{nullptr};
-};
-
-struct DimHttpMsg::HdrValue {
-    const char * value;
-private:
-    HdrValue * m_next{nullptr};
-    ~HdrValue ();
 };
 
 class DimHttpMsg::HdrIterator {
@@ -113,146 +178,82 @@ class DimHttpMsg::HdrRange {
     DimHttpMsg::HdrIterator end () { return DimHttpMsg::HdrIterator(); }
 };
 
-struct DimHttpStream {
-    // if msg is empty, the msg has been passed on to the application but
-    // the app hasn't yet sent a reply
-    std::unique_ptr<DimHttpMsg> m_msg;
+
+class DimHttpRequestMsg : public DimHttpMsg {
+public:
+    const char * Method () const;
+    const char * Scheme () const;
+    const char * Authority () const;
+
+    // includes path, query, and fragment
+    const char * PathAbsolute () const;
+
+    const char * Path () const;
+    const char * Query () const;
+    const char * Fragment () const;
+    
+private:
+    bool CheckPseudoHeaders () const override;
 };
 
-class DimHttpConn {
+class DimHttpResponseMsg : public DimHttpMsg {
 public:
-    DimHttpConn ();
-
-    // Returns false when no more data will be accepted, either by request
-    // of the input or due to error.
-    // Even after an error, msgs and reply should be processed.
-    //  - msg: zero or more requests, push promises, and/or replies are appended
-    //  - reply: data to send to the remote endpoint is appended
-    bool Recv (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const void * src, 
-        int srcLen
-    );
-
-    // Serializes a request and returns the stream id used
-    int Request (
-        CharBuf * out,
-        std::unique_ptr<DimHttpMsg> msg
-    );
-
-    // Serializes a push promise
-    void PushPromise (
-        CharBuf * out,
-        std::unique_ptr<DimHttpMsg> msg
-    );
-
-    // Serializes a reply on the specified stream
-    void Reply (
-        CharBuf * out,
-        int stream,
-        std::unique_ptr<DimHttpMsg> msg
-    );
-
-    void ResetStream (CharBuf * out, int stream);
+    int Status () const;
 
 private:
-    enum class ByteMode;
-    enum class FrameMode;
-    bool OnFrame (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[]
-    );
-    bool OnContinuation (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnData (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnGoAway (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnHeaders (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnPing (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnPriority (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnPushPromise (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnRstStream (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnSettings (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-    bool OnWindowUpdate (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
-        CharBuf * reply,
-        const char src[],
-        int stream,
-        int flags
-    );
-
-    // byte parsing
-    ByteMode m_byteMode;
-    int m_inputPos{0};
-    std::vector<char> m_input;
-    int m_inputFrameLen{0};
-    int m_maxInputFrame{16384};
-
-    // frame parsing
-    int m_lastInputStream{0};
-    FrameMode m_frameMode;
-    int m_continueStream{0};
-
-    int m_nextOutputStream{0};
-    int m_lastOutputStream{0};
-    int m_maxOutputFrame{16384};
-
-    std::map<int, DimHttpStream> m_streams;
-    std::set<unsigned> m_closedStreams;
+    bool CheckPseudoHeaders () const override;
 };
+
+
+/****************************************************************************
+*
+*   Http connection context
+*
+***/
+
+struct HDimHttpConn : DimHandleBase {};
+
+HDimHttpConn DimHttpConnect (CharBuf * out);
+HDimHttpConn DimHttpListen ();
+
+void DimHttpClose (HDimHttpConn conn);
+
+// Returns false when no more data will be accepted, either by request
+// of the input or due to error.
+// Even after an error, msgs and out should be processed.
+//  - msg: zero or more requests, push promises, and/or replies are appended
+//  - out: data to send to the remote endpoint is appended
+bool DimHttpRecv (
+    HDimHttpConn conn,
+    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    CharBuf * out,
+    const void * src, 
+    size_t srcLen
+);
+
+// Serializes a request and returns the stream id used
+int DimHttpRequest (
+    HDimHttpConn conn,
+    CharBuf * out,
+    std::unique_ptr<DimHttpMsg> msg
+);
+
+// Serializes a push promise
+void DimHttpPushPromise (
+    HDimHttpConn conn,
+    CharBuf * out,
+    std::unique_ptr<DimHttpMsg> msg
+);
+
+// Serializes a reply on the specified stream
+void DimHttpReply (
+    HDimHttpConn conn,
+    CharBuf * out,
+    int stream,
+    std::unique_ptr<DimHttpMsg> msg
+);
+
+void DimHttpResetStream (HDimHttpConn conn, CharBuf * out, int stream);
+
 
 #endif

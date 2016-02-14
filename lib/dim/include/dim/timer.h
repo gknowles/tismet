@@ -10,7 +10,21 @@
 #include <limits>
 #include <memory>
 
+
+/****************************************************************************
+*
+*   Constants
+*
+***/
+
 const auto DIM_TIMER_INFINITE = Duration::max();
+
+
+/****************************************************************************
+*
+*   Implemented by clients
+*
+***/
 
 class IDimTimerNotify {
 public:
@@ -21,6 +35,13 @@ private:
     friend class DimTimer;
     std::shared_ptr<DimTimer> m_timer;
 };
+
+
+/****************************************************************************
+*
+*   Public API
+*
+***/
 
 void DimTimerUpdate (
     IDimTimerNotify * notify, 

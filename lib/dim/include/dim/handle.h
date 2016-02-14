@@ -7,9 +7,21 @@
 #include <string>
 #include <vector>
 
+
+/****************************************************************************
+*
+*   Base handle class
+*   Clients inherit from this class to make different kinds of handles
+*
+*   Expected usage:
+*   struct HWidget : DimHandleBase {};
+*
+***/
+
 struct DimHandleBase {
     int pos;
 
+    explicit operator bool () const { return pos != 0; }
     template<typename H> 
     H As () const {
         H handle;
@@ -17,6 +29,13 @@ struct DimHandleBase {
         return handle;
     }
 };
+
+
+/****************************************************************************
+*
+*   Handle map base type - internal only
+*
+***/
 
 class DimHandleMapBase {
 public:
@@ -91,6 +110,17 @@ template<typename H, typename T>
 inline auto DimHandleMapBase::end () -> Iterator<H,T> {
     return Iterator<H,T>{};
 }
+
+
+/****************************************************************************
+*
+*   Handle map
+*   Container of handles
+*
+*   Expected usage:
+*   DimHandleMap<HWidget, WidgetClass> widgets;
+*
+***/
 
 template<typename H, typename T>
 class DimHandleMap : public DimHandleMapBase {
