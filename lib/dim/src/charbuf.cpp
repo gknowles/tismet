@@ -228,6 +228,80 @@ CharBuf & CharBuf::Append (const string & str, size_t pos, size_t count) {
 }
 
 //===========================================================================
+int CharBuf::Compare (const char s[], size_t count) const {
+    for (auto&& buf : m_buffers) {
+        if (count < buf.m_used) {
+            if (memcmp(buf.m_data, s, count) < 0)
+                return -1;
+            return 1;
+        }
+        if (int rc = memcmp(buf.m_data, s, buf.m_used))
+            return rc;
+        s += buf.m_used;
+        count -= buf.m_used;
+    }
+    return count ? -1 : 0;
+}
+
+//===========================================================================
+int CharBuf::Compare (const string & str) const {
+    return Compare(data(str), size(str));
+}
+
+//===========================================================================
+int CharBuf::Compare (const CharBuf & buf) const {
+    auto myi = m_buffers.begin();
+    auto mye = m_buffers.end();
+    const char * mydata;
+    int mycount;
+    auto ri = buf.m_buffers.begin();
+    auto re = buf.m_buffers.end();
+    const char * rdata;
+    int rcount;
+    goto compare_new_buffers;
+
+    for (;;) {
+        if (mycount < rcount) {
+            int rc = memcmp(mydata, rdata, mycount);
+            if (rc)
+                return rc;
+            if (++myi == mye)
+                return -1;
+            rdata += mycount;
+            rcount -= mycount;
+            mydata = myi->m_data;
+            mycount = myi->m_used;
+            continue;
+        }
+
+        int rc = memcmp(mydata, rdata, rcount);
+        if (rc)
+            return rc;
+        if (mycount > rcount) {
+            if (++ri == re)
+                return 1;
+            mydata += rcount;
+            mycount -= rcount;
+            rdata = ri->m_data;
+            rcount = ri->m_used;
+            continue;
+        }
+        ++myi;
+        ++ri;
+
+    compare_new_buffers:
+        if (myi == mye) 
+            return (ri == re) ? 0 : -1;
+        if (ri == re)
+            return 1;
+        mydata = myi->m_data;
+        mycount = myi->m_used;
+        rdata = ri->m_data;
+        rcount = ri->m_used;
+    }
+}
+
+//===========================================================================
 CharBuf & CharBuf::Replace (size_t pos, size_t count, const char s[]) {
     assert(pos + count <= m_size);
 

@@ -20,6 +20,7 @@ public:
     CharBuf & operator+= (char ch) { return Append(1, ch); }
     CharBuf & operator+= (const char s[]) { return Append(s); }
     CharBuf & operator+= (const std::string & str) { return Append(str); }
+    CharBuf & operator+= (const CharBuf & src) { return Append(src); }
     CharBuf & Assign (char ch) { return Assign(&ch, 1); }
     CharBuf & Assign (const char s[]);
     CharBuf & Assign (const char s[], size_t count);
@@ -42,7 +43,19 @@ public:
     CharBuf & Append (const char s[], size_t count);
     CharBuf & Append (const std::string & str, size_t pos = 0, size_t count = -1);
     CharBuf & Append (const CharBuf & src, size_t pos = 0, size_t count = -1);
+    int Compare (const char s[], size_t count) const;
+    int Compare (size_t pos, size_t count, const char src[], size_t srcLen) const;
+    int Compare (const std::string & str) const;
+    int Compare (size_t pos, size_t count, const std::string & str) const;
     int Compare (const CharBuf & buf) const;
+    int Compare (size_t pos, size_t count, const CharBuf & buf) const;
+    int Compare (
+        size_t pos, 
+        size_t count, 
+        const CharBuf & buf, 
+        size_t bufPos, 
+        size_t bufLen
+    ) const;
     CharBuf & Replace (size_t pos, size_t count, const char src[]);
     CharBuf & Replace (size_t pos, size_t count, const char src[], size_t srcLen);
     CharBuf & Replace (
@@ -68,6 +81,10 @@ private:
     int m_lastUsed{0};
     int m_size{0};
 };
+
+bool operator== (const CharBuf & left, const std::string & right);
+bool operator== (const std::string & left, const CharBuf & right);
+bool operator== (const CharBuf & left, const CharBuf & right);
 
 std::string to_string (const CharBuf & buf);
 
