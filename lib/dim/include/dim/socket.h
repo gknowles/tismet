@@ -3,23 +3,24 @@
 #define DIM_SOCKET_INCLUDED
 
 #include "dim/config.h"
-
 #include "dim/types.h"
 
-struct DimSocketConnectInfo {
+namespace Dim {
+
+struct SocketConnectInfo {
     Endpoint remoteEnd;
     Endpoint localEnd;
 };
-struct DimSocketAcceptInfo {
+struct SocketAcceptInfo {
     Endpoint remoteEnd;
     Endpoint localEnd;
 };
-struct DimSocketData {
+struct SocketData {
     char * data;
     int bytes;
 };
 
-class IDimSocketNotify {
+class ISocketNotify {
 public:
     enum Mode {
         kInactive,      // not connected
@@ -31,31 +32,31 @@ public:
     };
 
 public:
-    virtual ~IDimSocketNotify () {}
+    virtual ~ISocketNotify () {}
 
     // for connectors
-    virtual void OnSocketConnect (const DimSocketConnectInfo & info) {};
-    virtual void OnSocketConnectFailed () {};
+    virtual void onSocketConnect (const SocketConnectInfo & info) {};
+    virtual void onSocketConnectFailed () {};
 
     // for listeners
-    virtual void OnSocketAccept (const DimSocketAcceptInfo & info) {};
+    virtual void onSocketAccept (const SocketAcceptInfo & info) {};
 
-    virtual void OnSocketRead (const DimSocketData & data) = 0;
-    virtual void OnSocketDisconnect () {};
+    virtual void onSocketRead (const SocketData & data) = 0;
+    virtual void onSocketDisconnect () {};
 
 private:
-    friend class DimSocket;
-    DimSocket * m_socket{nullptr};
+    friend class SocketBase;
+    SocketBase * m_socket{nullptr};
 };
 
-IDimSocketNotify::Mode DimSocketGetMode (IDimSocketNotify * notify);
-void DimSocketDisconnect (IDimSocketNotify * notify);
+ISocketNotify::Mode socketGetMode (ISocketNotify * notify);
+void socketDisconnect (ISocketNotify * notify);
 
 //===========================================================================
 // connect
 //===========================================================================
-void DimSocketConnect (
-    IDimSocketNotify * notify,
+void socketConnect (
+    ISocketNotify * notify,
     const Endpoint & remoteEnd,
     const Endpoint & localEnd,
     Duration timeout = {} // 0 for default timeout
@@ -64,37 +65,39 @@ void DimSocketConnect (
 //===========================================================================
 // listen
 //===========================================================================
-class IDimSocketListenNotify {
+class ISocketListenNotify {
 public:
-    virtual ~IDimSocketListenNotify () {}
-    virtual void OnListenStop () = 0;
-    virtual std::unique_ptr<IDimSocketNotify> OnListenCreateSocket () = 0;
+    virtual ~ISocketListenNotify () {}
+    virtual void onListenStop () = 0;
+    virtual std::unique_ptr<ISocketNotify> onListenCreateSocket () = 0;
 };
-void DimSocketListen (
-    IDimSocketListenNotify * notify,
+void socketListen (
+    ISocketListenNotify * notify,
     const Endpoint & localEnd
 );
-void DimSocketStop (
-    IDimSocketListenNotify * notify,
+void socketStop (
+    ISocketListenNotify * notify,
     const Endpoint & localEnd
 );
 
 //===========================================================================
 // write
 //===========================================================================
-struct DimSocketBuffer {
+struct SocketBuffer {
     char * data;
     int len;
 
-    ~DimSocketBuffer ();
+    ~SocketBuffer ();
 };
-std::unique_ptr<DimSocketBuffer> DimSocketGetBuffer ();
+std::unique_ptr<SocketBuffer> socketGetBuffer ();
 
 // Writes the data and deletes the buffer.
-void DimSocketWrite (
-    IDimSocketNotify * notify, 
-    std::unique_ptr<DimSocketBuffer> buffer,
+void socketWrite (
+    ISocketNotify * notify, 
+    std::unique_ptr<SocketBuffer> buffer,
     size_t bytes
 );
+
+} // namespace
 
 #endif

@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -44,5 +46,7 @@ Endpoint::operator bool () const {
     return port || addr;
 }
 
-bool Parse (Endpoint * out, const char src[]);
+bool parse (Endpoint * out, const char src[]);
 std::ostream & operator<< (std::ostream & os, const Endpoint & src);
+
+} // namespace

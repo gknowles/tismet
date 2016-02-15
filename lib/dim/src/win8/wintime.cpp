@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -12,7 +14,7 @@ using namespace std;
 ***/
 
 //===========================================================================
-int64_t IDimClockGetTicks () {
+int64_t iClockGetTicks () {
     LARGE_INTEGER out;
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
@@ -20,3 +22,5 @@ int64_t IDimClockGetTicks () {
     out.LowPart = ft.dwLowDateTime;
     return out.QuadPart;
 }
+
+} // namespace

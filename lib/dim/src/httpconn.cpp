@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -85,9 +87,9 @@ struct UnpaddedData {
 
 struct ResetStream {
     TimePoint closed;
-    HDimHttpConn hc;
+    HttpConnHandle hc;
     int stream;
-    shared_ptr<DimHttpStream> sm;
+    shared_ptr<HttpStream> sm;
 };
 
 } // namespace
@@ -99,7 +101,7 @@ struct ResetStream {
 *
 ***/
 
-static DimHandleMap<HDimHttpConn, DimHttpConn> s_conns;
+static HandleMap<HttpConnHandle, HttpConn> s_conns;
 
 
 /****************************************************************************
@@ -111,14 +113,14 @@ static DimHandleMap<HDimHttpConn, DimHttpConn> s_conns;
 const Duration kMaxResetStreamAge = 10s;
 const Duration kMinResetStreamCheckInterval = 2s;
 
-class ResetStreamTimer : public IDimTimerNotify {
-    Duration OnTimer (TimePoint now) override;
+class ResetStreamTimer : public ITimerNotify {
+    Duration onTimer (TimePoint now) override;
 };
 
 static deque<ResetStream> s_resetStreams;
 
 //===========================================================================
-Duration ResetStreamTimer::OnTimer (TimePoint now) {
+Duration ResetStreamTimer::onTimer (TimePoint now) {
     TimePoint expire = now - kMaxResetStreamAge;
     Duration sleep;
     while (!empty(s_resetStreams)) {
@@ -127,17 +129,17 @@ Duration ResetStreamTimer::OnTimer (TimePoint now) {
         if (sleep > 0s) 
             return min(sleep, kMinResetStreamCheckInterval);
 
-        if (rs.sm->m_state == DimHttpStream::kClosed) {
-            DimHttpConn * conn = s_conns.Find(rs.hc);
-            conn->DeleteStream(rs.stream, rs.sm.get());
+        if (rs.sm->m_state == HttpStream::kClosed) {
+            HttpConn * conn = s_conns.find(rs.hc);
+            conn->deleteStream(rs.stream, rs.sm.get());
         } else {
-            assert(rs.sm->m_state == DimHttpStream::kDeleted);
+            assert(rs.sm->m_state == HttpStream::kDeleted);
         }
 
         s_resetStreams.pop_front();
     }
 
-    return DIM_TIMER_INFINITE;
+    return kTimerInfinite;
 }
 
 
@@ -147,41 +149,41 @@ Duration ResetStreamTimer::OnTimer (TimePoint now) {
 *
 ***/
 
-class MsgDecoder : public DimHpack::IDecodeNotify {
+class MsgDecoder : public IHpackDecodeNotify {
 public:
-    MsgDecoder (DimHttpMsg & msg);
+    MsgDecoder (HttpMsg & msg);
 
     explicit operator bool () const;
     FrameError Error () const;
 
 private:
-    void OnHpackHeader (
+    void onHpackHeader (
         HttpHdr id,
         const char name[],
         const char value[],
         int flags // Flags::*
     ) override;
 
-    DimHttpMsg & m_msg;
+    HttpMsg & m_msg;
     FrameError m_error{FrameError::kNoError};
 };
 
 //===========================================================================
-MsgDecoder::MsgDecoder (DimHttpMsg & msg) 
+MsgDecoder::MsgDecoder (HttpMsg & msg) 
     : m_msg(msg)
 {}
 
 //===========================================================================
-void MsgDecoder::OnHpackHeader (
+void MsgDecoder::onHpackHeader (
     HttpHdr id,
     const char name[],
     const char value[],
     int flags // Flags::*
 ) {
     if (id) {
-        m_msg.AddHeader(id, value);
+        m_msg.addHeader(id, value);
     } else {
-        m_msg.AddHeader(name, value);
+        m_msg.addHeader(name, value);
     }
     // m_error = FrameError::kInternalError;
 }
@@ -203,21 +205,21 @@ FrameError MsgDecoder::Error () const {
 *
 ***/
 
-enum class DimHttpConn::ByteMode {
+enum class HttpConn::ByteMode {
     kInvalid,
     kPreface,
     kHeader,
     kPayload,
 };
 
-enum class DimHttpConn::FrameMode {
+enum class HttpConn::FrameMode {
     kSettings,
     kNormal,
     kContinuation,
 };
 
 //===========================================================================
-DimHttpConn::DimHttpConn () 
+HttpConn::HttpConn () 
     : m_byteMode{ByteMode::kPreface}
     , m_frameMode{FrameMode::kSettings}
     , m_encoder{kDefaultHeaderTableSize}
@@ -265,7 +267,7 @@ static void StartFrame (
     buf[6] = (uint8_t) (stream >> 16);
     buf[7] = (uint8_t) (stream >> 8);
     buf[8] = (uint8_t) stream;
-    out->Append((char *) &buf, sizeof(buf));
+    out->append((char *) &buf, sizeof(buf));
 }
 
 //===========================================================================
@@ -326,7 +328,7 @@ static void ReplyGoAway (
 static void ReplyRstStream (
     CharBuf * out,
     int stream,
-    DimHttpStream * sm,
+    HttpStream * sm,
     FrameError error
 ) {
 }
@@ -389,8 +391,8 @@ static void UpdatePriority () {
 }
 
 //===========================================================================
-bool DimHttpConn::Recv (
-    std::list<std::unique_ptr<DimHttpMsg>> * msg, 
+bool HttpConn::recv (
+    std::list<std::unique_ptr<HttpMsg>> * msg, 
     CharBuf * out,
     const void * src, 
     size_t srcLen
@@ -428,14 +430,14 @@ bool DimHttpConn::Recv (
             m_inputFrameLen = GetFrameLen(data(m_input));
             if (avail < m_inputFrameLen) {
                 if (m_inputFrameLen > m_maxInputFrame)
-                    return OnFrame(msg, out, data(m_input));
+                    return onFrame(msg, out, data(m_input));
                 m_input.insert(m_input.end(), ptr, eptr);
                 m_byteMode = ByteMode::kPayload;
                 return true;
             }
             m_input.insert(m_input.end(), ptr, ptr + m_inputFrameLen);
             ptr += m_inputFrameLen;
-            if (!OnFrame(msg, out, data(m_input)))
+            if (!onFrame(msg, out, data(m_input)))
                 return false;
             m_input.clear();
             goto next_frame;
@@ -451,7 +453,7 @@ bool DimHttpConn::Recv (
             m_input.assign(ptr, eptr);
             return true;
         }
-        if (!OnFrame(msg, out, ptr))
+        if (!onFrame(msg, out, ptr))
             return false;
         ptr += kFrameHeaderLen + m_inputFrameLen;
         goto next_frame;
@@ -470,7 +472,7 @@ bool DimHttpConn::Recv (
         }
         m_input.insert(m_input.end(), ptr, ptr + need);
         ptr += need;
-        if (!OnFrame(msg, out, data(m_input)))
+        if (!onFrame(msg, out, data(m_input)))
             return false;
         m_input.clear();
         m_byteMode = ByteMode::kHeader;
@@ -479,7 +481,7 @@ bool DimHttpConn::Recv (
 }
 
 //===========================================================================
-DimHttpStream * DimHttpConn::FindAlways (CharBuf * out, int stream) {
+HttpStream * HttpConn::findAlways (CharBuf * out, int stream) {
     auto ib = m_streams.emplace(stream, nullptr);
     if (!ib.second)
         return ib.first->second.get();
@@ -493,13 +495,13 @@ DimHttpStream * DimHttpConn::FindAlways (CharBuf * out, int stream) {
     }
 
     m_lastInputStream = stream;
-    ib.first->second = make_shared<DimHttpStream>();
+    ib.first->second = make_shared<HttpStream>();
     return ib.first->second.get();
 }
 
 //===========================================================================
-bool DimHttpConn::OnFrame (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onFrame (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[]
 ) {
@@ -522,25 +524,25 @@ bool DimHttpConn::OnFrame (
 
     switch (type) {
     case FrameType::kContinuation: 
-        return OnContinuation(msgs, out, src, stream, flags);
+        return onContinuation(msgs, out, src, stream, flags);
     case FrameType::kData: 
-        return OnData(msgs, out, src, stream, flags);
+        return onData(msgs, out, src, stream, flags);
     case FrameType::kGoAway: 
-        return OnGoAway(msgs, out, src, stream, flags);
+        return onGoAway(msgs, out, src, stream, flags);
     case FrameType::kHeaders: 
-        return OnHeaders(msgs, out, src, stream, flags);
+        return onHeaders(msgs, out, src, stream, flags);
     case FrameType::kPing: 
-        return OnPing(msgs, out, src, stream, flags);
+        return onPing(msgs, out, src, stream, flags);
     case FrameType::kPriority: 
-        return OnPriority(msgs, out, src, stream, flags);
+        return onPriority(msgs, out, src, stream, flags);
     case FrameType::kPushPromise: 
-        return OnPushPromise(msgs, out, src, stream, flags);
+        return onPushPromise(msgs, out, src, stream, flags);
     case FrameType::kRstStream: 
-        return OnRstStream(msgs, out, src, stream, flags);
+        return onRstStream(msgs, out, src, stream, flags);
     case FrameType::kSettings: 
-        return OnSettings(msgs, out, src, stream, flags);
+        return onSettings(msgs, out, src, stream, flags);
     case FrameType::kWindowUpdate: 
-        return OnWindowUpdate(msgs, out, src, stream, flags);
+        return onWindowUpdate(msgs, out, src, stream, flags);
     };
 
     // ignore unknown frames unless a specific frame type is required
@@ -551,8 +553,8 @@ bool DimHttpConn::OnFrame (
 }
 
 //===========================================================================
-bool DimHttpConn::OnData (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onData (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -575,8 +577,8 @@ bool DimHttpConn::OnData (
     auto it = m_streams.find(stream);
     auto * sm = (it == m_streams.end()) ? it->second.get() : nullptr;
     if (!sm 
-        || sm->m_state != DimHttpStream::kOpen
-           && sm->m_state != DimHttpStream::kLocalClosed
+        || sm->m_state != HttpStream::kOpen
+           && sm->m_state != HttpStream::kLocalClosed
     ) {
         // data frame on non-open stream
         ReplyRstStream(out, stream, sm, FrameError::kStreamClosed);
@@ -594,8 +596,8 @@ bool DimHttpConn::OnData (
 
     // TODO: check total buffer size
 
-    CharBuf * buf = sm->m_msg->Body();
-    buf->Append(data.data, data.dataLen);
+    CharBuf * buf = sm->m_msg->body();
+    buf->append(data.data, data.dataLen);
     if (flags & kEndStream) {
         msgs->push_back(move(sm->m_msg));
     }
@@ -603,8 +605,8 @@ bool DimHttpConn::OnData (
 }
 
 //===========================================================================
-bool DimHttpConn::OnHeaders (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onHeaders (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -647,29 +649,29 @@ bool DimHttpConn::OnHeaders (
     }
 
     // find stream
-    DimHttpStream * sm = FindAlways(out, stream);
+    HttpStream * sm = findAlways(out, stream);
     if (!sm)
         return false;
 
     switch (sm->m_state) {
-        case DimHttpStream::kIdle:
+        case HttpStream::kIdle:
             if (~flags & kEndStream) {
-                sm->m_state = DimHttpStream::kOpen;
+                sm->m_state = HttpStream::kOpen;
             } else {
-                sm->m_state = DimHttpStream::kRemoteClosed;
+                sm->m_state = HttpStream::kRemoteClosed;
             }
-            sm->m_msg = make_unique<DimHttpRequestMsg>();
+            sm->m_msg = make_unique<HttpRequest>();
             break;
-        case DimHttpStream::kRemoteReserved:
+        case HttpStream::kRemoteReserved:
             if (~flags & kEndStream) {
-                sm->m_state = DimHttpStream::kLocalClosed;
+                sm->m_state = HttpStream::kLocalClosed;
             } else {
-                sm->m_state = DimHttpStream::kClosed;
+                sm->m_state = HttpStream::kClosed;
             }
-            sm->m_msg = make_unique<DimHttpRequestMsg>();
+            sm->m_msg = make_unique<HttpRequest>();
             break;
-        case DimHttpStream::kOpen:
-        case DimHttpStream::kLocalClosed:
+        case HttpStream::kOpen:
+        case HttpStream::kLocalClosed:
             if (flags & kEndStream) {
                 // trailing headers not supported
                 // !!! should probably send a stream error and process
@@ -692,7 +694,7 @@ bool DimHttpConn::OnHeaders (
 
     auto * msg = sm->m_msg.get();
     MsgDecoder notify(*msg);
-    if (!m_decoder.Parse(&notify, &msg->Heap(), ud.data, ud.dataLen)) {
+    if (!m_decoder.parse(&notify, &msg->heap(), ud.data, ud.dataLen)) {
         ReplyGoAway(out, m_lastInputStream, FrameError::kCompressionError);
         return false;
     }
@@ -703,8 +705,8 @@ bool DimHttpConn::OnHeaders (
 }
 
 //===========================================================================
-bool DimHttpConn::OnPriority (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onPriority (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -738,8 +740,8 @@ bool DimHttpConn::OnPriority (
 }
 
 //===========================================================================
-bool DimHttpConn::OnRstStream (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onRstStream (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -767,8 +769,8 @@ bool DimHttpConn::OnRstStream (
 }
 
 //===========================================================================
-bool DimHttpConn::OnSettings (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onSettings (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -815,8 +817,8 @@ bool DimHttpConn::OnSettings (
 }
 
 //===========================================================================
-bool DimHttpConn::OnPushPromise (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onPushPromise (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -834,8 +836,8 @@ bool DimHttpConn::OnPushPromise (
 }
 
 //===========================================================================
-bool DimHttpConn::OnPing (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onPing (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -848,8 +850,8 @@ bool DimHttpConn::OnPing (
 }
 
 //===========================================================================
-bool DimHttpConn::OnGoAway (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onGoAway (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -888,8 +890,8 @@ bool DimHttpConn::OnGoAway (
 }
 
 //===========================================================================
-bool DimHttpConn::OnWindowUpdate (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onWindowUpdate (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -914,8 +916,8 @@ bool DimHttpConn::OnWindowUpdate (
 }
 
 //===========================================================================
-bool DimHttpConn::OnContinuation (
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool HttpConn::onContinuation (
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -944,36 +946,36 @@ bool DimHttpConn::OnContinuation (
 
 //===========================================================================
 // Serializes a request and returns the stream id used
-int DimHttpConn::Request (
+int HttpConn::request (
     CharBuf * out,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 ) {
     return 0;
 }
 
 //===========================================================================
 // Serializes a push promise
-void DimHttpConn::PushPromise (
+void HttpConn::pushPromise (
     CharBuf * out,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 ) {
 }
 
 //===========================================================================
 // Serializes a reply on the specified stream
-void DimHttpConn::Reply (
+void HttpConn::reply (
     CharBuf * out,
     int stream,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 ) {
 }
 
 //===========================================================================
-void DimHttpConn::ResetStream (CharBuf * out, int stream) {
+void HttpConn::resetStream (CharBuf * out, int stream) {
 }
 
 //===========================================================================
-void DimHttpConn::DeleteStream (int stream, DimHttpStream * sm) {
+void HttpConn::deleteStream (int stream, HttpStream * sm) {
     auto it = m_streams.find(stream);
     if (it != m_streams.end() && sm == it->second.get()) {
         sm->m_state = sm->kDeleted;
@@ -989,25 +991,27 @@ void DimHttpConn::DeleteStream (int stream, DimHttpStream * sm) {
 ***/
 
 //===========================================================================
-HDimHttpConn DimHttpListen () {
-    auto * conn = new DimHttpConn;
-    return s_conns.Insert(conn);
+HttpConnHandle httpListen () {
+    auto * conn = new HttpConn;
+    return s_conns.insert(conn);
 }
 
 //===========================================================================
-void DimHttpClose (HDimHttpConn hc) {
-    s_conns.Erase(hc);
+void httpClose (HttpConnHandle hc) {
+    s_conns.erase(hc);
 }
 
 //===========================================================================
-bool DimHttpRecv (
-    HDimHttpConn hc,
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool httpRecv (
+    HttpConnHandle hc,
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const void * src, 
     size_t srcLen
 ) {
-    if (auto * conn = s_conns.Find(hc))
-        return conn->Recv(msgs, out, src, srcLen);
+    if (auto * conn = s_conns.find(hc))
+        return conn->recv(msgs, out, src, srcLen);
     return false;
 }
+
+} // namespace

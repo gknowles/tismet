@@ -2,8 +2,8 @@
 #include "pch.h"
 #pragma hdrstop
 
-using namespace DimHpack;
 using namespace std;
+using namespace Dim;
 
 
 /****************************************************************************
@@ -22,12 +22,12 @@ struct NameValue {
     bool operator== (const NameValue & right) const;
 };
 
-class Reader : public IDecodeNotify {
+class Reader : public IHpackDecodeNotify {
 public:
     vector<NameValue> headers;
 
 private:
-    void OnHpackHeader (
+    void onHpackHeader (
         HttpHdr id,
         const char name[],
         const char value[],
@@ -398,9 +398,9 @@ bool NameValue::operator== (const NameValue & right) const {
 ***/  
 
 namespace {
-class Logger : public IDimLogNotify {
-    void OnLog (
-        DimLogSeverity severity,
+class Logger : public ILogNotify {
+    void onLog (
+        LogSeverity severity,
         const string & msg
     ) override;
 };
@@ -410,8 +410,8 @@ static Logger s_logger;
 static int s_errors;
 
 //===========================================================================
-void Logger::OnLog (
-    DimLogSeverity severity,
+void Logger::onLog (
+    LogSeverity severity,
     const string & msg
 ) {
     if (severity >= kError) {
@@ -430,7 +430,7 @@ void Logger::OnLog (
 ***/  
 
 //===========================================================================
-void Reader::OnHpackHeader (
+void Reader::onHpackHeader (
     HttpHdr id,
     const char name[],
     const char value[],
@@ -452,25 +452,25 @@ int main(int argc, char *argv[]) {
         | _CRTDBG_LEAK_CHECK_DF
     );
     _set_error_mode(_OUT_TO_MSGBOX);
-    DimLogRegisterHandler(&s_logger);
+    logAddNotify(&s_logger);
 
-    DimTempHeap heap;
-    Decode decode(256);
+    TempHeap heap;
+    HpackDecode decode(256);
     Reader out;
     bool result;
     for (auto&& test : s_tests) {
         cout << "Test - " << test.name << endl;
         out.headers.clear();
         if (test.reset) 
-            decode.Reset();
+            decode.reset();
         size_t srcLen = strlen(test.input);
-        result = decode.Parse(&out, &heap, test.input, srcLen);
+        result = decode.parse(&out, &heap, test.input, srcLen);
         if (result != test.result) {
-            DimLog{kError} << "result: " << result << " != " << test.result 
+            Log{kError} << "result: " << result << " != " << test.result 
                  << " (FAILED)";
         }
         if (test.headers != out.headers)
-            DimLog{kError} << "headers mismatch (FAILED)";
+            Log{kError} << "headers mismatch (FAILED)";
         //if (test.dynTable != decode.DynamicTable())
         //    cout << "dynamic table mismatch (FAILED)" << endl;
     }

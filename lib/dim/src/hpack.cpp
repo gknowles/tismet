@@ -10,7 +10,9 @@
 #pragma hdrstop
 
 using namespace std;
-using namespace DimHpack;
+
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -25,15 +27,10 @@ using namespace DimHpack;
 *
 ***/
 
-//===========================================================================
-namespace DimHpack {
-
-struct FieldView {
+struct HpackFieldView {
     const char * name;
     const char * value;
 };
-
-} // namespace
 
 //===========================================================================
 namespace {
@@ -52,9 +49,9 @@ class HuffDecoder {
 public:
     HuffDecoder (const EncodeItem items[], size_t count);
 
-    bool Decode (
+    bool decode (
         const char ** out, 
-        IDimTempHeap * heap, 
+        ITempHeap * heap, 
         size_t unusedBits,
         const char src[],
         size_t count
@@ -76,7 +73,7 @@ private:
 
 // static table has the following 61 members (not counting 0) as defined by 
 // rfc7541 appendix A
-const FieldView s_staticTable[] = {
+const HpackFieldView s_staticTable[] = {
     {},
     { ":authority", "" },
     { ":method", "GET" },
@@ -421,12 +418,12 @@ static HuffDecoder s_decode(s_encodeTable, size(s_encodeTable));
 ***/  
 
 //===========================================================================
-static size_t FieldSize (const FieldView & fld) {
+static size_t fieldSize (const HpackFieldView & fld) {
     return strlen(fld.name) + strlen(fld.value) + 32;
 }
 
 //===========================================================================
-static size_t FieldSize (const DynField & fld) {
+static size_t fieldSize (const HpackDynField & fld) {
     return size(fld.name) + size(fld.value) + 32;
 }
 
@@ -438,39 +435,39 @@ static size_t FieldSize (const DynField & fld) {
 ***/  
 
 //===========================================================================
-Encode::Encode (size_t tableSize) {
-    SetTableSize(tableSize);
+HpackEncode::HpackEncode (size_t tableSize) {
+    setTableSize(tableSize);
 }
 
 //===========================================================================
-void Encode::SetTableSize (size_t tableSize) {
+void HpackEncode::setTableSize (size_t tableSize) {
     m_dynSize = tableSize;
 }
 
 //===========================================================================
-void Encode::StartBlock (CharBuf * out) {
+void HpackEncode::startBlock (CharBuf * out) {
     m_out = out;
 }
 
 //===========================================================================
-void Encode::EndBlock () {
+void HpackEncode::endBlock () {
 }
 
 //===========================================================================
-void Encode::Header (
+void HpackEncode::header (
     const char name[], 
     const char value[], 
     int flags
 ) {
     // (0x00) - literal header field without indexing (new name)
     // (0x10) - literal header field never indexed (new name)
-    m_out->Append(1, (flags & kNeverIndexed) ? 0x10 : 0x00);
-    Write(name);
-    Write(value);
+    m_out->append(1, (flags & kNeverIndexed) ? 0x10 : 0x00);
+    write(name);
+    write(value);
 }
 
 //===========================================================================
-void Encode::Header (
+void HpackEncode::header (
     HttpHdr name, 
     const char value[], 
     int flags
@@ -478,35 +475,35 @@ void Encode::Header (
 }
 
 //===========================================================================
-void Encode::Write (const char str[]) {
+void HpackEncode::write (const char str[]) {
     size_t len = strlen(str);
-    Write(str, len);
+    write(str, len);
 }
 
 //===========================================================================
-void Encode::Write (const char str[], size_t len) {
+void HpackEncode::write (const char str[], size_t len) {
     // high bit 0 - encode as raw bytes (not huffman)
-    Write(len, 0x00, 7);
-    m_out->Append(str, len);
+    write(len, 0x00, 7);
+    m_out->append(str, len);
 }
 
 //===========================================================================
-void Encode::Write (size_t val, char prefix, int prefixBits) {
+void HpackEncode::write (size_t val, char prefix, int prefixBits) {
     assert(prefixBits >= 1 && prefixBits <= 8);
     int limit = (1 << prefixBits) - 1;
     if (val < limit) {
         prefix |= (char) val;
-        m_out->Append(1, prefix);
+        m_out->append(1, prefix);
         return;
     }
     prefix |= limit;
-    m_out->Append(1, prefix);
+    m_out->append(1, prefix);
     val -= limit;
     while (val >= 128) {
-        m_out->Append(1, char(val % 128) + 128);
+        m_out->append(1, char(val % 128) + 128);
         val /= 128;
     }
-    m_out->Append(1, (char) val);
+    m_out->append(1, (char) val);
 }
 
 
@@ -561,7 +558,7 @@ HuffDecoder::HuffDecoder (const EncodeItem items[], size_t count) {
 }
 
 //===========================================================================
-static bool Read (
+static bool read (
     int * out, 
     int bits,
     int & availBits, 
@@ -599,9 +596,9 @@ static bool Read (
 }
 
 //===========================================================================
-bool HuffDecoder::Decode (
+bool HuffDecoder::decode (
     const char ** out, 
-    IDimTempHeap * heap, 
+    ITempHeap * heap, 
     size_t unusedBits,
     const char src[],
     size_t count
@@ -610,16 +607,16 @@ bool HuffDecoder::Decode (
     int avail = (int) unusedBits;
     const char * ptr = src;
     const char * eptr = src + count;
-    char * optr = heap->Alloc<char>(2 * count);
+    char * optr = heap->alloc<char>(2 * count);
     *out = optr;
     int val;
     for (;;) {
         int key = 0;
-        if (!Read(&key, m_prefixBits, avail, ptr, eptr))
+        if (!read(&key, m_prefixBits, avail, ptr, eptr))
             goto done;
         do {
             DecodeItem & di = m_decodeTable[key];
-            if (!Read(&key, 1, avail, ptr, eptr))
+            if (!read(&key, 1, avail, ptr, eptr))
                 goto done;
             val = (key & 1) ? di.one : di.zero;
             key = val;
@@ -635,43 +632,43 @@ done:
 }
 
 //===========================================================================
-// Decode
+// HpackDecode
 //===========================================================================
-Decode::Decode (size_t tableSize) 
+HpackDecode::HpackDecode (size_t tableSize) 
     : m_dynSize{tableSize}
 {}
 
 //===========================================================================
-void Decode::Reset () {
+void HpackDecode::reset () {
     size_t size = m_dynSize;
-    SetTableSize(0);
-    SetTableSize(size);
+    setTableSize(0);
+    setTableSize(size);
 }
 
 //===========================================================================
-void Decode::SetTableSize (size_t tableSize) {
+void HpackDecode::setTableSize (size_t tableSize) {
     m_dynSize = tableSize;
-    PruneDynTable();
+    pruneDynTable();
 }
 
 //===========================================================================
-bool Decode::Parse (
-    IDecodeNotify * notify,
-    IDimTempHeap * heap,
+bool HpackDecode::parse (
+    IHpackDecodeNotify * notify,
+    ITempHeap * heap,
     const char src[],
     size_t srcLen
 ) {
     while (srcLen) {
-        if (!ReadInstruction(notify, heap, src, srcLen))
+        if (!readInstruction(notify, heap, src, srcLen))
             return false;
     }
     return true;
 }
 
 //===========================================================================
-bool Decode::ReadInstruction (
-    IDecodeNotify * notify,
-    IDimTempHeap * heap,
+bool HpackDecode::readInstruction (
+    IHpackDecodeNotify * notify,
+    ITempHeap * heap,
     const char *& src, 
     size_t & srcLen
 ) {
@@ -680,23 +677,23 @@ bool Decode::ReadInstruction (
         kNotIndexed,
         kIndexed,
     } mode = kIndexed;
-    FieldView fld;
+    HpackFieldView fld;
     int ch = (unsigned char) *src;
     if (ch & 0x80) {
         // indexed header field
-        if (!ReadIndexedField(&fld, heap, 7, src, srcLen))
+        if (!readIndexedField(&fld, heap, 7, src, srcLen))
             return false;
         mode = kNotIndexed;
     } else if (ch & 0x40) {
         // literal header field with incremental indexing
         if (ch & 0x3f) {
             // indexed
-            if (!ReadIndexedName(&fld, heap, 6, src, srcLen))
+            if (!readIndexedName(&fld, heap, 6, src, srcLen))
                 return false;
         } else {
             // new name
-            if (!Read(&fld.name, heap, ++src, --srcLen)
-                || !Read(&fld.value, heap, src, srcLen)
+            if (!read(&fld.name, heap, ++src, --srcLen)
+                || !read(&fld.value, heap, src, srcLen)
             ) {
                 return false;
             }
@@ -704,9 +701,9 @@ bool Decode::ReadInstruction (
     } else if (ch & 0x20) {
         // table size update
         size_t size;
-        if (!Read(&size, 5, src, srcLen))
+        if (!read(&size, 5, src, srcLen))
             return false;
-        SetTableSize(size);
+        setTableSize(size);
         return true;
     } else {
         // literal header field without indexing
@@ -717,12 +714,12 @@ bool Decode::ReadInstruction (
         }
         if (ch & 0x0f) {
             // indexed
-            if (!ReadIndexedName(&fld, heap, 4, src, srcLen))
+            if (!readIndexedName(&fld, heap, 4, src, srcLen))
                 return false;
         } else {
             // new name
-            if (!Read(&fld.name, heap, ++src, --srcLen)
-                || !Read(&fld.value, heap, src, srcLen)
+            if (!read(&fld.name, heap, ++src, --srcLen)
+                || !read(&fld.value, heap, src, srcLen)
             ) {
                 return false;
             }
@@ -734,29 +731,29 @@ bool Decode::ReadInstruction (
         auto & front = m_dynTable.front();
         front.name = fld.name;
         front.value = fld.value;
-        m_dynUsed += FieldSize(fld);
-        PruneDynTable();
+        m_dynUsed += fieldSize(fld);
+        pruneDynTable();
     }
 
-    notify->OnHpackHeader(
+    notify->onHpackHeader(
         kHttpInvalid, 
         fld.name, 
         fld.value, 
-        kNeverIndexed ? DimHpack::kNeverIndexed : 0
+        mode == kNeverIndexed ? kNeverIndexed : 0
     );
     return true;
 }
 
 //===========================================================================
-bool Decode::ReadIndexedField (
-    FieldView * out,
-    IDimTempHeap * heap,
+bool HpackDecode::readIndexedField (
+    HpackFieldView * out,
+    ITempHeap * heap,
     size_t prefixBits,
     const char *& src, 
     size_t & srcLen
 ) {
     size_t index;
-    if (!Read(&index, prefixBits, src, srcLen))
+    if (!read(&index, prefixBits, src, srcLen))
         return false;
     if (index < size(s_staticTable)) {
         if (!index)
@@ -766,23 +763,23 @@ bool Decode::ReadIndexedField (
         index -= size(s_staticTable);
         if (index >= size(m_dynTable))
             return false;
-        DynField & dfld = m_dynTable[index];
-        out->name = heap->StrDup(data(dfld.name), size(dfld.name));
-        out->value = heap->StrDup(data(dfld.value), size(dfld.value));
+        HpackDynField & dfld = m_dynTable[index];
+        out->name = heap->strDup(data(dfld.name), size(dfld.name));
+        out->value = heap->strDup(data(dfld.value), size(dfld.value));
     }
     return true;
 }
 
 //===========================================================================
-bool Decode::ReadIndexedName (
-    FieldView * out,
-    IDimTempHeap * heap,
+bool HpackDecode::readIndexedName (
+    HpackFieldView * out,
+    ITempHeap * heap,
     size_t prefixBits,
     const char *& src, 
     size_t & srcLen
 ) {
     size_t index;
-    if (!Read(&index, prefixBits, src, srcLen))
+    if (!read(&index, prefixBits, src, srcLen))
         return false;
     if (index < size(s_staticTable)) {
         if (!index)
@@ -792,24 +789,24 @@ bool Decode::ReadIndexedName (
         index -= size(s_staticTable);
         if (index >= size(m_dynTable))
             return false;
-        DynField & dfld = m_dynTable[index];
-        out->name = heap->StrDup(data(dfld.name));
+        HpackDynField & dfld = m_dynTable[index];
+        out->name = heap->strDup(data(dfld.name));
     }
-    if (!Read(&out->value, heap, src, srcLen))
+    if (!read(&out->value, heap, src, srcLen))
         return false;
     return true;
 }
 
 //===========================================================================
-void Decode::PruneDynTable () {
+void HpackDecode::pruneDynTable () {
     while (m_dynUsed > m_dynSize) {
-        m_dynUsed -= FieldSize(m_dynTable.back());
+        m_dynUsed -= fieldSize(m_dynTable.back());
         m_dynTable.pop_back();
     }
 }
 
 //===========================================================================
-bool Decode::Read (
+bool HpackDecode::read (
     size_t * out,
     size_t prefixBits, 
     const char *& src, 
@@ -840,23 +837,23 @@ bool Decode::Read (
 }
 
 //===========================================================================
-bool Decode::Read (
+bool HpackDecode::read (
     const char ** out,
-    IDimTempHeap * heap,
+    ITempHeap * heap,
     const char *& src, 
     size_t & srcLen
 ) {
     size_t len;
     bool huffman = (*src & 0x80) != 0;
-    if (!Read(&len, 7, src, srcLen))
+    if (!read(&len, 7, src, srcLen))
         return false;
     if (srcLen < len)
         return false;
     
     if (!huffman) {
-        *out = heap->StrDup(src, len);
+        *out = heap->strDup(src, len);
     } else {
-        if (!s_decode.Decode(out, heap, 8, src, len))
+        if (!s_decode.decode(out, heap, 8, src, len))
             return false;
     }
 
@@ -864,3 +861,5 @@ bool Decode::Read (
     srcLen -= len;
     return true;
 }
+
+} // namespace

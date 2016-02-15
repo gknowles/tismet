@@ -3,6 +3,7 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace Dim;
 
 
 /****************************************************************************
@@ -37,11 +38,11 @@ static int s_cancelAddrId;
 ***/
 
 //===========================================================================
-static BOOL WINAPI ControlCallback (DWORD ctrl) {
+static BOOL WINAPI controlCallback (DWORD ctrl) {
     switch (ctrl) {
         case CTRL_C_EVENT:
         case CTRL_BREAK_EVENT:
-            DimAppSignalShutdown(kExitCtrlBreak);
+            appSignalShutdown(kExitCtrlBreak);
             return true;
     }
 
@@ -49,9 +50,9 @@ static BOOL WINAPI ControlCallback (DWORD ctrl) {
 }
 
 //===========================================================================
-static void InitializeConsole () {
+static void initializeConsole () {
     // set ctrl-c handler
-    SetConsoleCtrlHandler(&ControlCallback, true);
+    SetConsoleCtrlHandler(&controlCallback, true);
 
     // disable echo
     HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
@@ -61,13 +62,13 @@ static void InitializeConsole () {
     HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO info;
     if (!GetConsoleScreenBufferInfo(hOutput, &info)) {
-        DimLog{kCrash} << "GetConsoleScreenBufferInfo: " << GetLastError();
+        Log{kCrash} << "GetConsoleScreenBufferInfo: " << GetLastError();
     }
     s_consoleAttrs = info.wAttributes;
 }
 
 //===========================================================================
-static void SetConsoleText (WORD attr) {
+static void setConsoleText (WORD attr) {
     HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     SetConsoleTextAttribute(hOutput, attr);
 }
@@ -80,52 +81,52 @@ static void SetConsoleText (WORD attr) {
 ***/
 
 class SocketConn 
-    : public IDimSocketNotify 
-    , public IDimEndpointNotify
+    : public ISocketNotify 
+    , public IEndpointNotify
 {
-    // IDimSocketNotify
-    void OnSocketConnect (const DimSocketConnectInfo & info) override;
-    void OnSocketConnectFailed () override;
-    void OnSocketRead (const DimSocketData & data) override;
-    void OnSocketDisconnect () override;
+    // ISocketNotify
+    void onSocketConnect (const SocketConnectInfo & info) override;
+    void onSocketConnectFailed () override;
+    void onSocketRead (const SocketData & data) override;
+    void onSocketDisconnect () override;
 
     // IDimEndpointNotify
-    void OnEndpointFound (Endpoint * ends, int count) override;
+    void onEndpointFound (Endpoint * ends, int count) override;
 };
 static SocketConn s_socket;
 
 //===========================================================================
-void SocketConn::OnEndpointFound (Endpoint * ends, int count) {
+void SocketConn::onEndpointFound (Endpoint * ends, int count) {
     if (!count) {
         cout << "Host not found" << endl;
-        DimAppSignalShutdown(kExitConnectFailed);
+        appSignalShutdown(kExitConnectFailed);
     } else {
         cout << "Connecting on " << s_localEnd << " to " << *ends << endl;
-        DimSocketConnect(this, *ends, s_localEnd);
+        socketConnect(this, *ends, s_localEnd);
     }
 }
 
 //===========================================================================
-void SocketConn::OnSocketConnect (const DimSocketConnectInfo & info) {
-    SetConsoleText(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+void SocketConn::onSocketConnect (const SocketConnectInfo & info) {
+    setConsoleText(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     cout << "Connected" << endl;
 }
 
 //===========================================================================
-void SocketConn::OnSocketConnectFailed () {
+void SocketConn::onSocketConnectFailed () {
     cout << "Connect failed" << endl;
-    DimAppSignalShutdown(kExitConnectFailed);
+    appSignalShutdown(kExitConnectFailed);
 }
 
 //===========================================================================
-void SocketConn::OnSocketRead (const DimSocketData & data) {
+void SocketConn::onSocketRead (const SocketData & data) {
     cout.write(data.data, data.bytes);
     cout.flush();
 }
 
 //===========================================================================
-void SocketConn::OnSocketDisconnect () {
-    DimAppSignalShutdown(kExitDisconnect);
+void SocketConn::onSocketDisconnect () {
+    appSignalShutdown(kExitDisconnect);
 }
 
 
@@ -135,43 +136,43 @@ void SocketConn::OnSocketDisconnect () {
 *
 ***/
 
-class ConsoleReader : public IDimFileNotify {
+class ConsoleReader : public IFileNotify {
 public:
-    unique_ptr<DimSocketBuffer> m_buffer;
-    unique_ptr<IDimFile> m_file;
+    unique_ptr<SocketBuffer> m_buffer;
+    unique_ptr<IFile> m_file;
 
     bool QueryDestroy () const { return !m_file && !m_buffer; }
 
-    bool OnFileRead (
+    bool onFileRead (
         char * data, 
         int bytes,
         int64_t offset,
-        IDimFile * file
+        IFile * file
     ) override;
-    void OnFileEnd (
+    void onFileEnd (
         int64_t offset, 
-        IDimFile * file
+        IFile * file
     ) override;
 };
 static ConsoleReader s_console;
 
 //===========================================================================
-bool ConsoleReader::OnFileRead (
+bool ConsoleReader::onFileRead (
     char * data, 
     int bytes,
     int64_t offset,
-    IDimFile * file
+    IFile * file
 ) {
-    DimSocketWrite(&s_socket, move(m_buffer), bytes);
+    socketWrite(&s_socket, move(m_buffer), bytes);
     // stop reading (return false) so we can get a new buffer
     return false;
 }
 
 //===========================================================================
-void ConsoleReader::OnFileEnd (int64_t offset, IDimFile * file) {
+void ConsoleReader::onFileEnd (int64_t offset, IFile * file) {
     if (m_file) {
-        m_buffer = DimSocketGetBuffer();
-        DimFileRead(
+        m_buffer = socketGetBuffer();
+        fileRead(
             this, 
             m_buffer->data,
             m_buffer->len,
@@ -189,33 +190,33 @@ void ConsoleReader::OnFileEnd (int64_t offset, IDimFile * file) {
 *
 ***/
 
-class MainShutdown : public IDimAppShutdownNotify {
-    void OnAppStartClientCleanup () override;
-    bool OnAppQueryClientDestroy () override;
-    void OnAppStartConsoleCleanup () override;
+class MainShutdown : public IAppShutdownNotify {
+    void onAppStartClientCleanup () override;
+    bool onAppQueryClientDestroy () override;
+    void onAppStartConsoleCleanup () override;
 };
 
 //===========================================================================
-void MainShutdown::OnAppStartClientCleanup () {
+void MainShutdown::onAppStartClientCleanup () {
     s_console.m_file.reset();
-    DimEndpointCancelQuery(s_cancelAddrId);
-    DimSocketDisconnect(&s_socket);
+    endpointCancelQuery(s_cancelAddrId);
+    socketDisconnect(&s_socket);
 }
 
 //===========================================================================
-bool MainShutdown::OnAppQueryClientDestroy () {
-    if (DimSocketGetMode(&s_socket) != IDimSocketNotify::kInactive
+bool MainShutdown::onAppQueryClientDestroy () {
+    if (socketGetMode(&s_socket) != ISocketNotify::kInactive
         || !s_console.QueryDestroy()
     ) {
-        return DimQueryDestroyFailed();
+        return appQueryDestroyFailed();
     }
     return true;
 }
 
 //===========================================================================
-void MainShutdown::OnAppStartConsoleCleanup () {
+void MainShutdown::onAppStartConsoleCleanup () {
     if (s_consoleAttrs)
-        SetConsoleText(s_consoleAttrs);
+        setConsoleText(s_consoleAttrs);
 }
 
 
@@ -226,23 +227,23 @@ void MainShutdown::OnAppStartConsoleCleanup () {
 ***/
 
 //===========================================================================
-void Start (int argc, char * argv[]) {
+void start (int argc, char * argv[]) {
     if (argc < 2) {
         cout << "tnet v1.0 (" __DATE__ ")\n"
             << "usage: tnet <remote address> [<local address>]\n";
-        return DimAppSignalShutdown(kExitBadArgs);
+        return appSignalShutdown(kExitBadArgs);
     }
 
-    InitializeConsole();
+    initializeConsole();
 
     if (argc > 2)
-        Parse(&s_localEnd, argv[2], 0);
+        parse(&s_localEnd, argv[2], 0);
 
-    DimEndpointQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
+    endpointQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
     
-    DimFileOpen(s_console.m_file, "conin$", IDimFile::kReadWrite);
-    s_console.m_buffer = DimSocketGetBuffer();
-    DimFileRead(
+    fileOpen(s_console.m_file, "conin$", IFile::kReadWrite);
+    s_console.m_buffer = socketGetBuffer();
+    fileRead(
         &s_console, 
         s_console.m_buffer->data,
         s_console.m_buffer->len,
@@ -256,11 +257,11 @@ int main(int argc, char * argv[]) {
     _set_error_mode(_OUT_TO_MSGBOX);
 
     MainShutdown cleanup;
-    DimAppInitialize();
-    DimAppMonitorShutdown(&cleanup);
+    appInitialize();
+    appMonitorShutdown(&cleanup);
 
-    Start(argc, argv);    
+    start(argc, argv);    
 
-    int code = DimAppWaitForShutdown();
+    int code = appWaitForShutdown();
     return code;
 }

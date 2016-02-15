@@ -3,13 +3,16 @@
 #define DIM_ADDRESS_INCLUDED
 
 #include "dim/config.h"
+#include "dim/types.h"
 
 #include <iosfwd>
 #include <string>
 #include <vector>
 
-struct Address;
-struct Endpoint;
+// forward declarations
+struct sockaddr_storage;
+
+namespace Dim {
 
 
 /****************************************************************************
@@ -18,19 +21,17 @@ struct Endpoint;
 *
 ***/
 
-bool Parse (Address * addr, const char src[]);
-std::ostream & operator<< (std::ostream & os, const Address & addr);
+bool parse (Address * addr, const char src[]);
+bool parse (Endpoint * end, const char src[], int defaultPort);
 
-bool Parse (Endpoint * end, const char src[], int defaultPort);
-std::ostream & operator<< (std::ostream & os, const Endpoint & end);
+::std::ostream & operator<< (::std::ostream & os, const Address & addr);
+::std::ostream & operator<< (::std::ostream & os, const Endpoint & end);
 
 //===========================================================================
 // Native
 //===========================================================================
-struct sockaddr_storage;
-
-void DimEndpointToStorage (sockaddr_storage * out, const Endpoint & end);
-void DimEndpointFromStorage (Endpoint * out, const sockaddr_storage & storage);
+void copy (sockaddr_storage * out, const Endpoint & end);
+void copy (Endpoint * out, const sockaddr_storage & storage);
 
 
 /****************************************************************************
@@ -39,21 +40,23 @@ void DimEndpointFromStorage (Endpoint * out, const sockaddr_storage & storage);
 *
 ***/
 
-void DimAddressGetLocal (std::vector<Address> * out);
+void addressGetLocal (std::vector<Address> * out);
 
-class IDimEndpointNotify {
+class IEndpointNotify {
 public:
-    virtual ~IDimEndpointNotify () {}
+    virtual ~IEndpointNotify () {}
     // count of 0 means either no results or some kind of error occurred
-    virtual void OnEndpointFound (Endpoint * ptr, int count) = 0;
+    virtual void onEndpointFound (Endpoint * ptr, int count) = 0;
 };
 
-void DimEndpointQuery (
+void endpointQuery (
     int * cancelId, 
-    IDimEndpointNotify * notify, 
+    IEndpointNotify * notify, 
     const std::string & name,
     int defaultPort
 );
-void DimEndpointCancelQuery (int cancelId);
+void endpointCancelQuery (int cancelId);
+
+} // namespace dim
 
 #endif

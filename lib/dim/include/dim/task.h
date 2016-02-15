@@ -3,11 +3,11 @@
 #define DIM_TASK_INCLUDED
 
 #include "dim/config.h"
-
 #include "dim/handle.h"
 
 #include <string>
 
+namespace Dim {
 
 /****************************************************************************
 *
@@ -15,27 +15,29 @@
 *
 ***/
 
-struct HDimTaskQueue : DimHandleBase {};
+struct TaskQueueHandle : HandleBase {};
 
-class IDimTaskNotify {
+class ITaskNotify {
 public:
-    virtual ~IDimTaskNotify () {}
-    virtual void OnTask () { delete this; }
+    virtual ~ITaskNotify () {}
+    virtual void onTask () { delete this; }
 
 private:
-    friend class DimTaskQueue;
-    IDimTaskNotify * m_taskNext = nullptr;
+    friend class TaskQueue;
+    ITaskNotify * m_taskNext = nullptr;
 };
 
-void DimTaskPushEvent (IDimTaskNotify & task);
-void DimTaskPushEvent (IDimTaskNotify * tasks[], size_t numTasks);
+void taskPushEvent (ITaskNotify & task);
+void taskPushEvent (ITaskNotify * tasks[], size_t numTasks);
 
-void DimTaskPushCompute (IDimTaskNotify & task);
-void DimTaskPushCompute (IDimTaskNotify * tasks[], size_t numTasks);
+void taskPushCompute (ITaskNotify & task);
+void taskPushCompute (ITaskNotify * tasks[], size_t numTasks);
 
-HDimTaskQueue DimTaskCreateQueue (const std::string & name, int threads);
-void DimTaskSetQueueThreads (HDimTaskQueue q, int threads);
-void DimTaskPush (HDimTaskQueue q, IDimTaskNotify & task);
-void DimTaskPush (HDimTaskQueue q, IDimTaskNotify * tasks[], size_t numTasks);
+TaskQueueHandle taskCreateQueue (const std::string & name, int threads);
+void taskSetQueueThreads (TaskQueueHandle q, int threads);
+void taskPush (TaskQueueHandle q, ITaskNotify & task);
+void taskPush (TaskQueueHandle q, ITaskNotify * tasks[], size_t numTasks);
+
+} // namespace
 
 #endif

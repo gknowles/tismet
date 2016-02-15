@@ -4,6 +4,9 @@
 
 using namespace std;
 
+namespace Dim {
+
+
 /****************************************************************************
 *
 *   Tuning parameters
@@ -20,7 +23,7 @@ const unsigned kDefaultBufferSliceSize = 4096;
 *
 ***/
 
-static void DestroyBufferSlice (void * ptr);
+static void destroyBufferSlice (void * ptr);
 
 //===========================================================================
 namespace {
@@ -74,13 +77,13 @@ static mutex s_mut;
 ***/
 
 //===========================================================================
-static BufferSlice * GetSlice (const Buffer & buf, int pos) {
+static BufferSlice * getSlice (const Buffer & buf, int pos) {
     char * ptr = (char *) buf.base + pos * buf.sliceSize;
     return (BufferSlice *) ptr;
 }
 
 //===========================================================================
-static void FindBufferSlice (
+static void findBufferSlice (
     BufferSlice ** sliceOut, 
     Buffer ** bufferOut, 
     void * ptr
@@ -90,7 +93,7 @@ static void FindBufferSlice (
     int rbufPos = slice->ownerPos;
     auto * buf = &s_buffers[rbufPos];
     // BufferSlice must be aligned within the owning registered buffer
-    assert((char *) slice >= buf->base && slice < GetSlice(*buf, buf->size));
+    assert((char *) slice >= buf->base && slice < getSlice(*buf, buf->size));
     assert(((char *) slice - buf->base) % buf->sliceSize == 0);
 
     *sliceOut = slice;
@@ -98,7 +101,7 @@ static void FindBufferSlice (
 }
 
 //===========================================================================
-static void CreateEmptyBuffer () {
+static void createEmptyBuffer () {
     size_t bytes = s_bufferSize;
     size_t granularity = s_minAlloc;
     if (s_minLargeAlloc && s_bufferSize >= s_minLargeAlloc) {
@@ -130,13 +133,13 @@ static void CreateEmptyBuffer () {
 
     buf.id = s_rio.RIORegisterBuffer(buf.base, (DWORD) bytes);
     if (buf.id == RIO_INVALID_BUFFERID) {
-        DimLog{kCrash} << "RIORegisterBuffer failed, " 
+        Log{kCrash} << "RIORegisterBuffer failed, " 
             << WinError();
     }
 }
 
 //===========================================================================
-static void DestroyEmptyBuffer () {
+static void destroyEmptyBuffer () {
     assert(!s_buffers.empty());
     Buffer & buf = s_buffers.back();
     assert(!buf.used);
@@ -146,11 +149,11 @@ static void DestroyEmptyBuffer () {
 }
 
 //===========================================================================
-static void DestroyBufferSlice (void * ptr) {
+static void destroyBufferSlice (void * ptr) {
     // get the header 
     BufferSlice * slice;
     Buffer * pbuf;
-    FindBufferSlice(&slice, &pbuf, ptr);
+    findBufferSlice(&slice, &pbuf, ptr);
     auto & buf = *pbuf;
     int rbufPos = slice->ownerPos;
 
@@ -166,7 +169,7 @@ static void DestroyBufferSlice (void * ptr) {
         s_numPartial += 1;
     } else if (!buf.used) {
         // newly empty: move to empty list
-        buf.lastUsed = DimClock::now();
+        buf.lastUsed = Clock::now();
         int pos = s_numFull + s_numPartial - 1;
         if (rbufPos != pos)
             swap(buf, s_buffers[pos]);
@@ -174,20 +177,20 @@ static void DestroyBufferSlice (void * ptr) {
 
         // over half the rbufs are empty? destroy one
         if (s_buffers.size() > 2 * (s_numFull + s_numPartial))
-            DestroyEmptyBuffer();
+            destroyEmptyBuffer();
     }
 }
 
 
 /****************************************************************************
 *
-*   DimSocketBuffer
+*   SocketBuffer
 *
 ***/
 
 //===========================================================================
-DimSocketBuffer::~DimSocketBuffer () {
-    DestroyBufferSlice(data);
+SocketBuffer::~SocketBuffer () {
+    destroyBufferSlice(data);
 }
 
 
@@ -198,18 +201,18 @@ DimSocketBuffer::~DimSocketBuffer () {
 ***/
 
 namespace {
-    class Shutdown : public IDimAppShutdownNotify {
-        bool OnAppQueryConsoleDestroy () override;
+    class Shutdown : public IAppShutdownNotify {
+        bool onAppQueryConsoleDestroy () override;
     };
 } // namespace
 static Shutdown s_cleanup;
 
 //===========================================================================
-bool Shutdown::OnAppQueryConsoleDestroy () {
+bool Shutdown::onAppQueryConsoleDestroy () {
     lock_guard<mutex> lk{s_mut};
 
     while (!s_buffers.empty())
-        DestroyEmptyBuffer();
+        destroyEmptyBuffer();
 
     return true;
 }
@@ -222,8 +225,8 @@ bool Shutdown::OnAppQueryConsoleDestroy () {
 ***/
 
 //===========================================================================
-void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
-    DimAppMonitorShutdown(&s_cleanup);
+void iSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
+    appMonitorShutdown(&s_cleanup);
 
     s_rio = rio;
 
@@ -239,9 +242,9 @@ void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio) {
 }
 
 //===========================================================================
-void IDimSocketGetRioBuffer (
+void iSocketGetRioBuffer (
     RIO_BUF * out, 
-    DimSocketBuffer * sbuf,
+    SocketBuffer * sbuf,
     size_t bytes
 ) {
     lock_guard<mutex> lk{s_mut};
@@ -249,7 +252,7 @@ void IDimSocketGetRioBuffer (
     assert(bytes <= sbuf->len);
     BufferSlice * slice;
     Buffer * pbuf;
-    FindBufferSlice(&slice, &pbuf, sbuf->data);
+    findBufferSlice(&slice, &pbuf, sbuf->data);
     out->BufferId = pbuf->id;
     out->Offset = ULONG((char *) sbuf->data - (char *) pbuf->base);
     out->Length = (int) bytes;
@@ -263,12 +266,12 @@ void IDimSocketGetRioBuffer (
 ***/
 
 //===========================================================================
-unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
+unique_ptr<SocketBuffer> socketGetBuffer () {
     lock_guard<mutex> lk{s_mut};
 
     // all buffers full? create a new one
     if (s_numFull == s_buffers.size())
-        CreateEmptyBuffer();
+        createEmptyBuffer();
     // use the last partial or, if there aren't any, the first empty
     auto & buf = s_numPartial
         ? s_buffers[s_numFull + s_numPartial - 1]
@@ -276,18 +279,18 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
 
     BufferSlice * slice;
     if (buf.used < buf.size) {
-        slice = GetSlice(buf, buf.firstFree);
+        slice = getSlice(buf, buf.firstFree);
         buf.firstFree = slice->nextPos;
     } else {
         assert(buf.size < buf.reserved);
-        slice = GetSlice(buf, buf.size);
+        slice = getSlice(buf, buf.size);
         buf.size += 1;
     }
     slice->ownerPos = int(&buf - s_buffers.data());
     buf.used += 1;
 
     // set pointer to just passed the header
-    auto out = make_unique<DimSocketBuffer>();
+    auto out = make_unique<SocketBuffer>();
     out->data = (char *) (slice + 1);
     out->len = buf.sliceSize - sizeof(*slice);
 
@@ -304,3 +307,5 @@ unique_ptr<DimSocketBuffer> DimSocketGetBuffer () {
 
     return out;
 }
+
+} // namespace

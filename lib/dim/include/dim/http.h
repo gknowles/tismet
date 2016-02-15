@@ -13,6 +13,7 @@
 #include <map>
 #include <set>
 
+namespace Dim {
 
 /****************************************************************************
 *
@@ -85,7 +86,7 @@ enum HttpHdr {
 *
 ***/
 
-class DimHttpMsg {
+class HttpMsg {
 public:
     struct Hdr;
     struct HdrValue;
@@ -93,37 +94,37 @@ public:
     class HdrIterator;
 
 public:
-    virtual ~DimHttpMsg () {}
+    virtual ~HttpMsg () {}
 
-    const Hdr * FindFirst (int header) const;
-    Hdr * FindFirst (int header);
-    const Hdr * FindLast (int header) const;
-    Hdr * FindLast (int header);
-    const Hdr * Next (const Hdr * hdr) const;
-    Hdr * Next (Hdr * hdr);
-    const Hdr * Prev (const Hdr * hdr) const;
-    Hdr * Prev (Hdr * hdr);
+    const Hdr * findFirst (int header) const;
+    Hdr * findFirst (int header);
+    const Hdr * findLast (int header) const;
+    Hdr * findLast (int header);
+    const Hdr * next (const Hdr * hdr) const;
+    Hdr * next (Hdr * hdr);
+    const Hdr * prev (const Hdr * hdr) const;
+    Hdr * prev (Hdr * hdr);
 
-    void AddHeader (HttpHdr id, const char value[]);
-    void AddHeader (const char name[], const char value[]);
+    void addHeader (HttpHdr id, const char value[]);
+    void addHeader (const char name[], const char value[]);
 
     // When adding references the memory referenced by the name and value 
     // pointers must be valid for the life of the http msg, such as constants 
     // or strings allocated from this messages Heap().
-    void AddHeaderRef (HttpHdr id, const char value[]);
-    void AddHeaderRef (const char name[], const char value[]);
+    void addHeaderRef (HttpHdr id, const char value[]);
+    void addHeaderRef (const char name[], const char value[]);
 
-    HdrRange Headers (
+    HdrRange headers (
         int header = kHttpInvalid // defaults to all
     ) const;
 
-    CharBuf * Body ();
-    const CharBuf * Body () const;
+    CharBuf * body ();
+    const CharBuf * body () const;
 
-    IDimTempHeap & Heap ();
+    ITempHeap & heap ();
 
 protected:
-    virtual bool CheckPseudoHeaders () const = 0;
+    virtual bool checkPseudoHeaders () const = 0;
 
     enum {
         kFlagHasStatus = 0x01,
@@ -137,31 +138,31 @@ protected:
 
 private:
     CharBuf m_data;
-    DimTempHeap m_heap;
+    TempHeap m_heap;
 };
 
-struct DimHttpMsg::Hdr {
-    HttpHdr Id () const;
-    const char * Name () const;
-    const char * Value () const;
+struct HttpMsg::Hdr {
+    HttpHdr id () const;
+    const char * name () const;
+    const char * value () const;
 private:
     ~Hdr ();
 
     HttpHdr m_id{kHttpInvalid};
     const char * m_name{nullptr};
-    DimHttpMsg::HdrValue * value{nullptr};
+    HttpMsg::HdrValue * m_value{nullptr};
     Hdr * m_next{nullptr};
 };
 
-class DimHttpMsg::HdrIterator {
-    DimHttpMsg * m_msg{nullptr};
+class HttpMsg::HdrIterator {
+    HttpMsg * m_msg{nullptr};
     Hdr * m_current{nullptr};
 public:
     HdrIterator ();
-    HdrIterator (DimHttpMsg & msg, int header);
+    HdrIterator (HttpMsg & msg, int header);
     auto operator++ () {
         if (m_msg)
-            m_current = m_msg->Next(m_current);
+            m_current = m_msg->next(m_current);
         return *this;
     }
     Hdr & operator* () {
@@ -170,38 +171,38 @@ public:
     }
 };
 
-class DimHttpMsg::HdrRange {
-    DimHttpMsg::HdrRange (DimHttpMsg & msg, int header);
-    DimHttpMsg::HdrIterator it;
+class HttpMsg::HdrRange {
+    HttpMsg::HdrRange (HttpMsg & msg, int header);
+    HttpMsg::HdrIterator it;
 
-    DimHttpMsg::HdrIterator begin () { return it; }
-    DimHttpMsg::HdrIterator end () { return DimHttpMsg::HdrIterator(); }
+    HttpMsg::HdrIterator begin () { return it; }
+    HttpMsg::HdrIterator end () { return HttpMsg::HdrIterator(); }
 };
 
 
-class DimHttpRequestMsg : public DimHttpMsg {
+class HttpRequest : public HttpMsg {
 public:
-    const char * Method () const;
-    const char * Scheme () const;
-    const char * Authority () const;
+    const char * method () const;
+    const char * scheme () const;
+    const char * authority () const;
 
     // includes path, query, and fragment
-    const char * PathAbsolute () const;
+    const char * pathAbsolute () const;
 
-    const char * Path () const;
-    const char * Query () const;
-    const char * Fragment () const;
+    const char * path () const;
+    const char * query () const;
+    const char * fragment () const;
     
 private:
-    bool CheckPseudoHeaders () const override;
+    bool checkPseudoHeaders () const override;
 };
 
-class DimHttpResponseMsg : public DimHttpMsg {
+class HttpResponse : public HttpMsg {
 public:
-    int Status () const;
+    int status () const;
 
 private:
-    bool CheckPseudoHeaders () const override;
+    bool checkPseudoHeaders () const override;
 };
 
 
@@ -211,49 +212,50 @@ private:
 *
 ***/
 
-struct HDimHttpConn : DimHandleBase {};
+struct HttpConnHandle : HandleBase {};
 
-HDimHttpConn DimHttpConnect (CharBuf * out);
-HDimHttpConn DimHttpListen ();
+HttpConnHandle httpConnect (CharBuf * out);
+HttpConnHandle httpListen ();
 
-void DimHttpClose (HDimHttpConn conn);
+void httpClose (HttpConnHandle conn);
 
 // Returns false when no more data will be accepted, either by request
 // of the input or due to error.
 // Even after an error, msgs and out should be processed.
 //  - msg: zero or more requests, push promises, and/or replies are appended
 //  - out: data to send to the remote endpoint is appended
-bool DimHttpRecv (
-    HDimHttpConn conn,
-    std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+bool httpRecv (
+    HttpConnHandle conn,
+    std::list<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const void * src, 
     size_t srcLen
 );
 
 // Serializes a request and returns the stream id used
-int DimHttpRequest (
-    HDimHttpConn conn,
+int httpRequest (
+    HttpConnHandle conn,
     CharBuf * out,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 );
 
 // Serializes a push promise
-void DimHttpPushPromise (
-    HDimHttpConn conn,
+void httpPushPromise (
+    HttpConnHandle conn,
     CharBuf * out,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 );
 
 // Serializes a reply on the specified stream
-void DimHttpReply (
-    HDimHttpConn conn,
+void httpReply (
+    HttpConnHandle conn,
     CharBuf * out,
     int stream,
-    std::unique_ptr<DimHttpMsg> msg
+    std::unique_ptr<HttpMsg> msg
 );
 
-void DimHttpResetStream (HDimHttpConn conn, CharBuf * out, int stream);
+void httpResetStream (HttpConnHandle conn, CharBuf * out, int stream);
 
+} // namespace
 
 #endif

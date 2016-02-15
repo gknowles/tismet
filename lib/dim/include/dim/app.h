@@ -4,31 +4,35 @@
 
 #include "dim/config.h"
 
+namespace Dim {
+
 // forward declarations
 enum RunMode;
 
 
-class IDimAppShutdownNotify {
+class IAppShutdownNotify {
 public:
-    virtual ~IDimAppShutdownNotify () {}
+    virtual ~IAppShutdownNotify () {}
 
-    virtual void OnAppStartClientCleanup () {}
-    virtual bool OnAppQueryClientDestroy () { return true; }
-    virtual void OnAppStartServerCleanup () {}
-    virtual bool OnAppQueryServerDestroy () { return true; }
-    virtual void OnAppStartConsoleCleanup () {}
-    virtual bool OnAppQueryConsoleDestroy () { return true; }
+    virtual void onAppStartClientCleanup () {}
+    virtual bool onAppQueryClientDestroy () { return true; }
+    virtual void onAppStartServerCleanup () {}
+    virtual bool onAppQueryServerDestroy () { return true; }
+    virtual void onAppStartConsoleCleanup () {}
+    virtual bool onAppQueryConsoleDestroy () { return true; }
 };
 
-void DimAppInitialize ();
-void DimAppSignalShutdown (int exitcode = 0);
+void appInitialize ();
+void appSignalShutdown (int exitcode = 0);
 
 // returns exit code
-int DimAppWaitForShutdown ();
+int appWaitForShutdown ();
 
-void DimAppMonitorShutdown (IDimAppShutdownNotify * cleanup);
-bool DimQueryDestroyFailed ();
+void appMonitorShutdown (IAppShutdownNotify * cleanup);
+bool appQueryDestroyFailed ();
 
-RunMode DimAppMode ();
+RunMode appMode ();
+
+} // namespace
 
 #endif

@@ -2,6 +2,8 @@
 #ifndef DIM_INTERN_INCLUDED
 #define DIM_INTERN_INCLUDED
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -9,7 +11,7 @@
 *
 ***/
 
-void IDimFileInitialize ();
+void iFileInitialize ();
 
 
 /****************************************************************************
@@ -18,7 +20,7 @@ void IDimFileInitialize ();
 *
 ***/
 
-void IDimSocketInitialize ();
+void iSocketInitialize ();
 
 
 /****************************************************************************
@@ -27,8 +29,8 @@ void IDimSocketInitialize ();
 *
 ***/
 
-void IDimTaskInitialize ();
-void IDimTaskDestroy ();
+void iTaskInitialize ();
+void iTaskDestroy ();
 
 
 /****************************************************************************
@@ -37,8 +39,8 @@ void IDimTaskDestroy ();
 *
 ***/
 
-void IDimTimerInitialize ();
-void IDimTimerDestroy ();
+void iTimerInitialize ();
+void iTimerDestroy ();
 
 
 /****************************************************************************
@@ -47,6 +49,8 @@ void IDimTimerDestroy ();
 *
 ***/
 
-int64_t IDimClockGetTicks ();
+int64_t iClockGetTicks ();
+
+} // namespace
 
 #endif

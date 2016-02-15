@@ -3,8 +3,8 @@
 #pragma hdrstop
 
 using namespace std;
-
-namespace CmdLine {
+using namespace Dim;
+using namespace Dim::CmdLine;
 
 
 /****************************************************************************
@@ -126,7 +126,7 @@ static bool ParseOptions (const vector<string> & argv) {
 }
 
 //===========================================================================
-bool ParseOptions(int argc, char * argv[]) {
+bool Dim::CmdLine::ParseOptions(int argc, char * argv[]) {
     ostringstream os;
     int args = 0;
     for (char * ptr = *argv; ptr; ptr = *++argv) {
@@ -149,14 +149,11 @@ bool ParseOptions(int argc, char * argv[]) {
 }
 
 //===========================================================================
-bool ParseOptions(const char cmdline[]) {
+bool Dim::CmdLine::ParseOptions(const char cmdline[]) {
     vector<string> argv;
-    ParseOptions(argv, cmdline);
-    return ParseOptions(argv);
+    ::ParseOptions(argv, cmdline);
+    return ::ParseOptions(argv);
 }
 
-void PrintError(std::ostream & os);
-void PrintHelp(std::ostream & os);
-
-//===========================================================================
-} // namespace
+void Dim::CmdLine::PrintError(std::ostream & os);
+void Dim::CmdLine::PrintHelp(std::ostream & os);

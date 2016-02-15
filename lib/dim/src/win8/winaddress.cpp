@@ -6,17 +6,19 @@ using namespace std;
 
 #pragma warning(disable: 4996) // deprecated
 
+namespace Dim {
+
 
 /****************************************************************************
 *
-*   Endpoint
+*   Address
 *
 ***/
 
 //===========================================================================
-bool Parse (Address * out, const char src[]) {
+bool parse (Address * out, const char src[]) {
     Endpoint sa;
-    if (!Parse(&sa, src, 9)) {
+    if (!parse(&sa, src, 9)) {
         *out = {};
         return false;
     }
@@ -39,7 +41,7 @@ std::ostream & operator<< (std::ostream & os, const Address & addr) {
 ***/
 
 //===========================================================================
-bool Parse (Endpoint * end, const char src[], int defaultPort) {
+bool parse (Endpoint * end, const char src[], int defaultPort) {
     sockaddr_storage sas;
     int sasLen = sizeof(sas);
     if (SOCKET_ERROR == WSAStringToAddress(
@@ -52,7 +54,7 @@ bool Parse (Endpoint * end, const char src[], int defaultPort) {
         *end = {};
         return false;
     }
-    DimEndpointFromStorage(end, sas);
+    copy(end, sas);
     if (!end->port)
         end->port = defaultPort;
     return true;
@@ -61,7 +63,7 @@ bool Parse (Endpoint * end, const char src[], int defaultPort) {
 //===========================================================================
 std::ostream & operator<< (std::ostream & os, const Endpoint & src) {
     sockaddr_storage sas;
-    DimEndpointToStorage(&sas, src);
+    copy(&sas, src);
     char tmp[256];
     DWORD tmpLen = sizeof(tmp);
     if (SOCKET_ERROR == WSAAddressToString(
@@ -86,7 +88,7 @@ std::ostream & operator<< (std::ostream & os, const Endpoint & src) {
 ***/
 
 //===========================================================================
-void DimEndpointToStorage (sockaddr_storage * out, const Endpoint & src) {
+void copy (sockaddr_storage * out, const Endpoint & src) {
     *out = {};
     auto ia = reinterpret_cast<sockaddr_in*>(out);
     ia->sin_family = AF_INET;
@@ -95,10 +97,7 @@ void DimEndpointToStorage (sockaddr_storage * out, const Endpoint & src) {
 }
 
 //===========================================================================
-void DimEndpointFromStorage (
-    Endpoint * out, 
-    const sockaddr_storage & storage
-) {
+void copy (Endpoint * out, const sockaddr_storage & storage) {
     *out = {};
     auto ia = reinterpret_cast<const sockaddr_in&>(storage);
     assert(ia.sin_family == AF_INET);
@@ -114,17 +113,17 @@ void DimEndpointFromStorage (
 ***/
 
 namespace {
-    struct QueryTask : IDimTaskNotify {
+    struct QueryTask : ITaskNotify {
         WinOverlappedEvent evt{};
         ADDRINFOEXW * results{nullptr};
-        IDimEndpointNotify * notify{nullptr};
+        IEndpointNotify * notify{nullptr};
         HANDLE cancel{nullptr};
         int id;
 
         vector<Endpoint> ends;
         WinError err{0};
 
-        void OnTask () override;
+        void onTask () override;
     };
 } // namespace
 
@@ -137,7 +136,7 @@ static unordered_map<int, QueryTask> s_tasks;
 //===========================================================================
 // Callback
 //===========================================================================
-static void CALLBACK AddressQueryCallback (
+static void CALLBACK addressQueryCallback (
     DWORD error,
     DWORD bytes,
     OVERLAPPED * overlapped
@@ -153,33 +152,33 @@ static void CALLBACK AddressQueryCallback (
                 Endpoint end;
                 sockaddr_storage sas{};
                 memcpy(&sas, result->ai_addr, result->ai_addrlen);
-                DimEndpointFromStorage(&end, sas);
+                copy(&end, sas);
                 task->ends.push_back(end);
             }
             result = result->ai_next;
         }
         FreeAddrInfoExW(task->results);
     }
-    DimTaskPushEvent(*task);
+    taskPushEvent(*task);
 }
 
 //===========================================================================
 // QueryTask
 //===========================================================================
-void QueryTask::OnTask () {
+void QueryTask::onTask () {
     if (err && err != WSA_E_CANCELLED) {
-        DimLog{kError} << "GetAddrInfoEx: " << err;
+        Log{kError} << "GetAddrInfoEx: " << err;
     }
-    notify->OnEndpointFound(ends.data(), (int) ends.size());
+    notify->onEndpointFound(ends.data(), (int) ends.size());
     s_tasks.erase(id);
 }
 
 //===========================================================================
 // Public API
 //===========================================================================
-void DimEndpointQuery (
+void endpointQuery (
     int * cancelId, 
-    IDimEndpointNotify * notify, 
+    IEndpointNotify * notify, 
     const std::string & name,
     int defaultPort
 ) {
@@ -198,9 +197,9 @@ void DimEndpointQuery (
 
     // if the name is the string form of an address just return the address
     Endpoint end;
-    if (Parse(&end, name.c_str(), defaultPort)) {
+    if (parse(&end, name.c_str(), defaultPort)) {
         task->ends.push_back(end);
-        DimTaskPushEvent(*task);
+        taskPushEvent(*task);
         return;
     }
 
@@ -234,22 +233,22 @@ void DimEndpointQuery (
         &task->results,
         NULL,       // timeout
         &task->evt.overlapped,
-        &AddressQueryCallback,
+        &addressQueryCallback,
         &task->cancel
     );
     if (err != ERROR_IO_PENDING)
-        AddressQueryCallback(err, 0, &task->evt.overlapped);
+        addressQueryCallback(err, 0, &task->evt.overlapped);
 }
 
 //===========================================================================
-void DimEndpointCancelQuery (int cancelId) {
+void endpointCancelQuery (int cancelId) {
     auto it = s_tasks.find(cancelId);
     if (it != s_tasks.end())
         GetAddrInfoExCancel(&it->second.cancel);
 }
 
 //===========================================================================
-void DimAddressGetLocal (std::vector<Address> * out) {
+void addressGetLocal (std::vector<Address> * out) {
     out->resize(0);
     ADDRINFO * result;
     WinError err = getaddrinfo(
@@ -259,14 +258,14 @@ void DimAddressGetLocal (std::vector<Address> * out) {
         &result
     );
     if (err)
-        DimLog{kCrash} << "getaddrinfo(..localmachine): " << err;
+        Log{kCrash} << "getaddrinfo(..localmachine): " << err;
 
     Endpoint end;
     sockaddr_storage sas;
     while (result) {
         if (result->ai_family == AF_INET) {
             memcpy(&sas, result->ai_addr, result->ai_addrlen);
-            DimEndpointFromStorage(&end, sas); 
+            copy(&end, sas); 
             out->push_back(end.addr);
         }
         result = result->ai_next;
@@ -275,7 +274,9 @@ void DimAddressGetLocal (std::vector<Address> * out) {
     // if there are no addresses toss on the loopback so we can at least
     // pretend.
     if (out->empty()) {
-        Parse(&end, "127.0.0.1", 9);
+        parse(&end, "127.0.0.1", 9);
         out->push_back(end.addr);
     }
 }
+
+} // namespace

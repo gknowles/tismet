@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -22,17 +24,17 @@ const Duration kConnectTimeout{10s};
 
 namespace {
 
-class ConnSocket : public DimSocket {
+class ConnSocket : public SocketBase {
 public:
-    static void Connect (
-        IDimSocketNotify * notify,
+    static void connect (
+        ISocketNotify * notify,
         const Endpoint & remoteEnd,
         const Endpoint & localEnd,
         Duration timeout
     );
 public:
-    using DimSocket::DimSocket;
-    void OnConnect (int error, int bytes);
+    using SocketBase::SocketBase;
+    void onConnect (int error, int bytes);
 };
 
 class ConnectTask : public IWinEventWaitNotify {
@@ -42,18 +44,18 @@ public:
     list<ConnectTask>::iterator m_iter;
 public:
     ConnectTask (unique_ptr<ConnSocket> && sock);
-    void OnTask () override;
+    void onTask () override;
 };
 
-class ConnectFailedTask : public IDimTaskNotify {
-    IDimSocketNotify * m_notify{nullptr};
+class ConnectFailedTask : public ITaskNotify {
+    ISocketNotify * m_notify{nullptr};
 public:
-    ConnectFailedTask (IDimSocketNotify * notify);
-    void OnTask () override;
+    ConnectFailedTask (ISocketNotify * notify);
+    void onTask () override;
 };
 
-class ConnectTimer : public IDimTimerNotify {
-    Duration OnTimer (TimePoint now) override;
+class ConnectTimer : public ITimerNotify {
+    Duration onTimer (TimePoint now) override;
 };
 
 } // namespace
@@ -78,18 +80,18 @@ static ConnectTimer s_connectTimer;
 ***/
 
 //===========================================================================
-Duration ConnectTimer::OnTimer (TimePoint now) {
+Duration ConnectTimer::onTimer (TimePoint now) {
     lock_guard<mutex> lk{s_mut};
     while (!s_connecting.empty()) {
         auto it = s_connecting.begin();
         if (now < it->m_expiration) {
             return it->m_expiration - now;
         }
-        it->m_socket->HardClose();
+        it->m_socket->hardClose();
         it->m_expiration = TimePoint::max();
         s_closing.splice(s_closing.end(), s_connecting, it);
     }
-    return DIM_TIMER_INFINITE;
+    return kTimerInfinite;
 }
 
 
@@ -103,11 +105,11 @@ Duration ConnectTimer::OnTimer (TimePoint now) {
 ConnectTask::ConnectTask (unique_ptr<ConnSocket> && sock) 
     : m_socket(move(sock))
 {
-    m_expiration = DimClock::now() + kConnectTimeout;
+    m_expiration = Clock::now() + kConnectTimeout;
 }
 
 //===========================================================================
-void ConnectTask::OnTask () {
+void ConnectTask::onTask () {
     DWORD bytesTransferred;
     WinError err{0};
     if (!GetOverlappedResult(
@@ -118,7 +120,7 @@ void ConnectTask::OnTask () {
     )) {
         err = WinError{};
     }
-    m_socket.release()->OnConnect(err, bytesTransferred);
+    m_socket.release()->onConnect(err, bytesTransferred);
 
     lock_guard<mutex> lk{s_mut};
     if (m_expiration == TimePoint::max()) {
@@ -136,13 +138,13 @@ void ConnectTask::OnTask () {
 ***/
 
 //===========================================================================
-ConnectFailedTask::ConnectFailedTask (IDimSocketNotify * notify)
+ConnectFailedTask::ConnectFailedTask (ISocketNotify * notify)
     : m_notify(notify)
 {}
 
 //===========================================================================
-void ConnectFailedTask::OnTask () {
-    m_notify->OnSocketConnectFailed();
+void ConnectFailedTask::onTask () {
+    m_notify->onSocketConnectFailed();
     delete this;
 }
 
@@ -154,28 +156,28 @@ void ConnectFailedTask::OnTask () {
 ***/
 
 //===========================================================================
-static void PushConnectFailed (IDimSocketNotify * notify) {
+static void pushConnectFailed (ISocketNotify * notify) {
     auto ptr = new ConnectFailedTask(notify);
-    DimTaskPushEvent(*ptr);
+    taskPushEvent(*ptr);
 }
 
 //===========================================================================
 // static
-void ConnSocket::Connect (
-    IDimSocketNotify * notify,
+void ConnSocket::connect (
+    ISocketNotify * notify,
     const Endpoint & remoteEnd,
     const Endpoint & localEnd,
     Duration timeout
 ) {
-    assert(GetMode(notify) == Mode::kInactive);
+    assert(getMode(notify) == Mode::kInactive);
 
     if (timeout == 0ms)
         timeout = kConnectTimeout;
 
     auto sock = make_unique<ConnSocket>(notify);
-    sock->m_handle = WinSocketCreate(localEnd);
+    sock->m_handle = winSocketCreate(localEnd);
     if (sock->m_handle == INVALID_SOCKET) 
-        return PushConnectFailed(notify);
+        return pushConnectFailed(notify);
 
     // get ConnectEx function
     GUID extId = WSAID_CONNECTEX;
@@ -190,17 +192,17 @@ void ConnSocket::Connect (
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        DimLog{kError} << "WSAIoctl(get ConnectEx): " << WinError{};
-        return PushConnectFailed(notify);
+        Log{kError} << "WSAIoctl(get ConnectEx): " << WinError{};
+        return pushConnectFailed(notify);
     }
 
     sock->m_mode = Mode::kConnecting;
     list<ConnectTask>::iterator it;
-    DimTimerUpdate(&s_connectTimer, timeout, true);
+    timerUpdate(&s_connectTimer, timeout, true);
 
     {
         lock_guard<mutex> lk{s_mut};
-        TimePoint expiration = DimClock::now() + timeout;
+        TimePoint expiration = Clock::now() + timeout;
         
         // TODO: check if this really puts them in expiration order!
         auto rhint = find_if(
@@ -215,7 +217,7 @@ void ConnSocket::Connect (
     }
 
     sockaddr_storage sas;
-    DimEndpointToStorage(&sas, remoteEnd);
+    copy(&sas, remoteEnd);
     bool error = !fConnectEx(
         it->m_socket->m_handle,
         (sockaddr *) &sas,
@@ -227,27 +229,27 @@ void ConnSocket::Connect (
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        DimLog{kError} << "ConnectEx(" << remoteEnd << "): " << err;
+        Log{kError} << "ConnectEx(" << remoteEnd << "): " << err;
         lock_guard<mutex> lk{s_mut};
         s_connecting.pop_back();
-        return PushConnectFailed(notify);
+        return pushConnectFailed(notify);
     }
 }
 
 //===========================================================================
-void ConnSocket::OnConnect (
+void ConnSocket::onConnect (
     int error,
     int bytes
 ) {
     unique_ptr<ConnSocket> hostage(this);
 
-    if (m_mode == IDimSocketNotify::kClosing) 
-        return m_notify->OnSocketConnectFailed();
+    if (m_mode == ISocketNotify::kClosing) 
+        return m_notify->onSocketConnectFailed();
 
-    assert(m_mode == IDimSocketNotify::kConnecting);
+    assert(m_mode == ISocketNotify::kConnecting);
 
     if (error)
-        return m_notify->OnSocketConnectFailed();
+        return m_notify->onSocketConnectFailed();
 
     //-----------------------------------------------------------------------
     // update socket and start receiving
@@ -258,10 +260,10 @@ void ConnSocket::OnConnect (
         nullptr,
         0
     )) {
-        DimLog{kError} 
+        Log{kError} 
             << "setsockopt(SO_UPDATE_CONNECT_CONTEXT): " 
             << WinError{};
-        return m_notify->OnSocketConnectFailed();
+        return m_notify->onSocketConnectFailed();
     }
 
     //-----------------------------------------------------------------------
@@ -277,10 +279,10 @@ void ConnSocket::OnConnect (
         (sockaddr *) &sas, 
         &sasLen
     )) {
-        DimLog{kError} << "getpeername: " << WinError{};
-        return m_notify->OnSocketConnectFailed();
+        Log{kError} << "getpeername: " << WinError{};
+        return m_notify->onSocketConnectFailed();
     }
-    DimEndpointFromStorage(&m_connInfo.remoteEnd, sas);
+    copy(&m_connInfo.remoteEnd, sas);
 
     // locally bound address
     if (SOCKET_ERROR == getsockname(
@@ -288,19 +290,19 @@ void ConnSocket::OnConnect (
         (sockaddr *) &sas, 
         &sasLen
     )) {
-        DimLog{kError} << "getsockname: " << WinError{};
-        return m_notify->OnSocketConnectFailed();
+        Log{kError} << "getsockname: " << WinError{};
+        return m_notify->onSocketConnectFailed();
     }
-    DimEndpointFromStorage(&m_connInfo.localEnd, sas);
+    copy(&m_connInfo.localEnd, sas);
 
     //-----------------------------------------------------------------------
     // create read/write queue
-    if (!CreateQueue()) 
-        return m_notify->OnSocketConnectFailed();
+    if (!createQueue()) 
+        return m_notify->onSocketConnectFailed();
 
     // notify socket connect event
     hostage.release();
-    m_notify->OnSocketConnect(m_connInfo);
+    m_notify->onSocketConnect(m_connInfo);
 }
 
 
@@ -311,22 +313,22 @@ void ConnSocket::OnConnect (
 ***/
 
 namespace {
-    class ShutdownNotify : public IDimAppShutdownNotify {
-        void OnAppStartConsoleCleanup () override;
-        bool OnAppQueryConsoleDestroy () override;
+    class ShutdownNotify : public IAppShutdownNotify {
+        void onAppStartConsoleCleanup () override;
+        bool onAppQueryConsoleDestroy () override;
     };
 } // namespace
 static ShutdownNotify s_cleanup;
 
 //===========================================================================
-void ShutdownNotify::OnAppStartConsoleCleanup () {
+void ShutdownNotify::onAppStartConsoleCleanup () {
     lock_guard<mutex> lk{s_mut};
     for (auto&& task : s_connecting)
-        task.m_socket->HardClose();
+        task.m_socket->hardClose();
 }
 
 //===========================================================================
-bool ShutdownNotify::OnAppQueryConsoleDestroy () {
+bool ShutdownNotify::onAppQueryConsoleDestroy () {
     lock_guard<mutex> lk{s_mut};
     return s_connecting.empty()
         && s_closing.empty();
@@ -340,10 +342,10 @@ bool ShutdownNotify::OnAppQueryConsoleDestroy () {
 ***/
 
 //===========================================================================
-void IDimSocketConnectInitialize () {
+void iSocketConnectInitialize () {
     // Don't register cleanup until all dependents (aka sockbuf) have
     // registered their cleanups (aka been initialized)
-    DimAppMonitorShutdown(&s_cleanup);
+    appMonitorShutdown(&s_cleanup);
 }
 
 
@@ -354,11 +356,13 @@ void IDimSocketConnectInitialize () {
 ***/
 
 //===========================================================================
-void DimSocketConnect (
-    IDimSocketNotify * notify,
+void socketConnect (
+    ISocketNotify * notify,
     const Endpoint & remoteEnd,
     const Endpoint & localEnd,
     Duration timeout
 ) {
-    ConnSocket::Connect(notify, remoteEnd, localEnd, timeout);
+    ConnSocket::connect(notify, remoteEnd, localEnd, timeout);
 }
+
+} // namespace

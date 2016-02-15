@@ -5,6 +5,8 @@
 using namespace std;
 using namespace std::rel_ops;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -12,9 +14,9 @@ using namespace std::rel_ops;
 *
 ***/
 
-class DimTaskQueue {
+class TaskQueue {
 public:
-    HDimTaskQueue hq;
+    TaskQueueHandle hq;
     string name;
 
     // current threads have been created, haven't exited, but may not have
@@ -22,13 +24,13 @@ public:
     int curThreads{0};
     int wantThreads{0};
 
-    IDimTaskNotify * first{nullptr};
-    IDimTaskNotify * last{nullptr};
+    ITaskNotify * first{nullptr};
+    ITaskNotify * last{nullptr};
 
     condition_variable cv;
 
-    void Push (IDimTaskNotify & task);
-    void Pop ();
+    void push (ITaskNotify & task);
+    void pop ();
 };
 
 
@@ -40,7 +42,7 @@ public:
 
 namespace {
 
-class EndThreadTask : public IDimTaskNotify {};
+class EndThreadTask : public ITaskNotify {};
 
 } // namespace
 
@@ -51,15 +53,15 @@ class EndThreadTask : public IDimTaskNotify {};
 *
 ***/
 
-static DimHandleMap<HDimTaskQueue, DimTaskQueue> s_queues;
+static HandleMap<TaskQueueHandle, TaskQueue> s_queues;
 static int s_numThreads;
 static mutex s_mut;
 static condition_variable s_destroyed;
 static int s_numDestroyed;
 static int s_numEnded;
 
-static HDimTaskQueue s_eventQ;
-static HDimTaskQueue s_computeQ;
+static TaskQueueHandle s_eventQ;
+static TaskQueueHandle s_computeQ;
 static atomic_bool s_running;
 
 
@@ -70,8 +72,8 @@ static atomic_bool s_running;
 ***/
 
 //===========================================================================
-static void TaskQueueThread (DimTaskQueue * ptr) {
-    DimTaskQueue & q{*ptr};
+static void taskQueueThread (TaskQueue * ptr) {
+    TaskQueue & q{*ptr};
     bool more{true};
     unique_lock<mutex> lk{s_mut};
     while (more) {
@@ -79,10 +81,10 @@ static void TaskQueueThread (DimTaskQueue * ptr) {
             q.cv.wait(lk);
 
         auto * task = q.first;
-        q.Pop();
+        q.pop();
         more = !dynamic_cast<EndThreadTask *>(task);
         lk.unlock();
-        task->OnTask();
+        task->onTask();
         lk.lock();
     }
     q.curThreads -= 1;
@@ -96,7 +98,7 @@ static void TaskQueueThread (DimTaskQueue * ptr) {
 }
 
 //===========================================================================
-static void SetThreads_Lock (DimTaskQueue & q, size_t threads) {
+static void setThreads_LK (TaskQueue & q, size_t threads) {
     q.wantThreads = (int) threads;
     int num = q.wantThreads - q.curThreads;
     if (num > 0) {
@@ -106,14 +108,14 @@ static void SetThreads_Lock (DimTaskQueue & q, size_t threads) {
 
     if (num > 0) {
         for (int i = 0; i < num; ++i) {
-            thread thr{TaskQueueThread, &q};
+            thread thr{taskQueueThread, &q};
             thr.detach();
         }
     } else if (num < 0) {
         for (int i = 0; i > num; --i) {
             s_numEnded += 1;
             auto * task = new EndThreadTask;
-            q.Push(*task);
+            q.push(*task);
         }
         q.cv.notify_all();
     }
@@ -122,12 +124,12 @@ static void SetThreads_Lock (DimTaskQueue & q, size_t threads) {
 
 /****************************************************************************
 *
-*   DimTaskQueue
+*   TaskQueue
 *
 ***/
 
 //===========================================================================
-void DimTaskQueue::Push (IDimTaskNotify & task) {
+void TaskQueue::push (ITaskNotify & task) {
     task.m_taskNext = nullptr;
     if (!first) {
         first = &task;
@@ -138,7 +140,7 @@ void DimTaskQueue::Push (IDimTaskNotify & task) {
 }
 
 //===========================================================================
-void DimTaskQueue::Pop () {
+void TaskQueue::pop () {
     auto * task = first;
     first = task->m_taskNext;
     task->m_taskNext = nullptr;
@@ -152,20 +154,20 @@ void DimTaskQueue::Pop () {
 ***/
 
 //===========================================================================
-void IDimTaskInitialize () {
+void iTaskInitialize () {
     s_running = true;
-    s_eventQ = DimTaskCreateQueue("Event", 1);
-    s_computeQ = DimTaskCreateQueue("Compute", 5);
+    s_eventQ = taskCreateQueue("Event", 1);
+    s_computeQ = taskCreateQueue("Compute", 5);
 }
 
 //===========================================================================
-void IDimTaskDestroy () {
+void iTaskDestroy () {
     s_running = false;
     unique_lock<mutex> lk{s_mut};
 
     // send shutdown task to all task threads
     for (auto&& q : s_queues)
-        SetThreads_Lock(*q.second, 0);
+        setThreads_LK(*q.second, 0);
 
     // wait for all threads to stop
     while (s_numThreads)
@@ -173,7 +175,7 @@ void IDimTaskDestroy () {
 
     // delete task queues
     for (auto&& q : s_queues)
-        s_queues.Erase(q.first);
+        s_queues.erase(q.first);
 }
 
 
@@ -184,69 +186,69 @@ void IDimTaskDestroy () {
 ***/
 
 //===========================================================================
-void DimTaskPushEvent (IDimTaskNotify & task) {
-    IDimTaskNotify * list[] = { &task };
-    DimTaskPushEvent(list, size(list));
+void taskPushEvent (ITaskNotify & task) {
+    ITaskNotify * list[] = { &task };
+    taskPushEvent(list, size(list));
 }
 
 //===========================================================================
-void DimTaskPushEvent (IDimTaskNotify * tasks[], size_t numTasks) {
-    DimTaskPush(s_eventQ, tasks, numTasks);
+void taskPushEvent (ITaskNotify * tasks[], size_t numTasks) {
+    taskPush(s_eventQ, tasks, numTasks);
 }
 
 //===========================================================================
-void DimTaskPushCompute (IDimTaskNotify & task) {
-    IDimTaskNotify * list[] = { &task };
-    DimTaskPushCompute(list, size(list));
+void taskPushCompute (ITaskNotify & task) {
+    ITaskNotify * list[] = { &task };
+    taskPushCompute(list, size(list));
 }
 
 //===========================================================================
-void DimTaskPushCompute (IDimTaskNotify * tasks[], size_t numTasks) {
-    DimTaskPush(s_computeQ, tasks, numTasks);
+void taskPushCompute (ITaskNotify * tasks[], size_t numTasks) {
+    taskPush(s_computeQ, tasks, numTasks);
 }
 
 //===========================================================================
-HDimTaskQueue DimTaskCreateQueue (const string & name, int threads) {
+TaskQueueHandle taskCreateQueue (const string & name, int threads) {
     assert(s_running);
     assert(threads);
-    auto * q = new DimTaskQueue;
+    auto * q = new TaskQueue;
     q->name = name;
     q->wantThreads = 0;
     q->curThreads = 0;
 
     lock_guard<mutex> lk(s_mut);
-    q->hq = s_queues.Insert(q);
-    SetThreads_Lock(*q, threads);
+    q->hq = s_queues.insert(q);
+    setThreads_LK(*q, threads);
     return q->hq;
 }
 
 //===========================================================================
-void DimTaskSetQueueThreads (HDimTaskQueue hq, int threads) {
+void taskSetQueueThreads (TaskQueueHandle hq, int threads) {
     assert(s_running || !threads);
 
     lock_guard<mutex> lk{s_mut};
-    auto * q = s_queues.Find(hq);
-    SetThreads_Lock(*q, threads);
+    auto * q = s_queues.find(hq);
+    setThreads_LK(*q, threads);
 }
 
 //===========================================================================
-void DimTaskPush (HDimTaskQueue hq, IDimTaskNotify & task) {
-    IDimTaskNotify * list[] = { &task };
-    DimTaskPush(hq, list, size(list));
+void taskPush (TaskQueueHandle hq, ITaskNotify & task) {
+    ITaskNotify * list[] = { &task };
+    taskPush(hq, list, size(list));
 }
 
 //===========================================================================
-void DimTaskPush (
-    HDimTaskQueue hq, 
-    IDimTaskNotify * tasks[], 
+void taskPush (
+    TaskQueueHandle hq, 
+    ITaskNotify * tasks[], 
     size_t numTasks
 ) {
     assert(s_running);
 
     lock_guard<mutex> lk{s_mut};
-    auto * q = s_queues.Find(hq);
+    auto * q = s_queues.find(hq);
     for (int i = 0; i < numTasks; ++tasks, ++i) 
-        q->Push(**tasks);
+        q->push(**tasks);
 
     if (numTasks > 1 && q->curThreads > 1) {
         q->cv.notify_all();
@@ -254,3 +256,5 @@ void DimTaskPush (
         q->cv.notify_one();
     }
 }
+
+} // namespace

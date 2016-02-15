@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -23,12 +25,13 @@ namespace {
 
 class ListenSocket;
 
-class AcceptSocket : public DimSocket {
+
+class AcceptSocket : public SocketBase {
 public:
-    static void Accept (ListenSocket * notify);
+    static void accept (ListenSocket * notify);
 public:
-    using DimSocket::DimSocket;
-    void OnAccept (ListenSocket * listen, int xferError, int xferBytes);
+    using SocketBase::SocketBase;
+    void onAccept (ListenSocket * listen, int xferError, int xferBytes);
 };
 
 class ListenSocket : public IWinEventWaitNotify {
@@ -36,23 +39,23 @@ public:
     SOCKET m_handle{INVALID_SOCKET};
     Endpoint m_localEnd;
     unique_ptr<AcceptSocket> m_socket;
-    IDimSocketListenNotify * m_notify{nullptr};
+    ISocketListenNotify * m_notify{nullptr};
     char m_addrBuf[2 * sizeof sockaddr_storage];
 
 public:
     ListenSocket (
-        IDimSocketListenNotify * notify,
+        ISocketListenNotify * notify,
         const Endpoint & end
     );
 
-    void OnTask () override;
+    void onTask () override;
 };
 
-class ListenStopTask : public IDimTaskNotify {
-    IDimSocketListenNotify * m_notify{nullptr};
+class ListenStopTask : public ITaskNotify {
+    ISocketListenNotify * m_notify{nullptr};
 public:
-    ListenStopTask (IDimSocketListenNotify * notify);
-    void OnTask () override;
+    ListenStopTask (ISocketListenNotify * notify);
+    void onTask () override;
 };
 
 } // namespace
@@ -75,13 +78,13 @@ static list<unique_ptr<ListenSocket>> s_listeners;
 ***/
 
 //===========================================================================
-ListenStopTask::ListenStopTask (IDimSocketListenNotify * notify)
+ListenStopTask::ListenStopTask (ISocketListenNotify * notify)
     : m_notify(notify)
 {}
 
 //===========================================================================
-void ListenStopTask::OnTask () {
-    m_notify->OnListenStop();
+void ListenStopTask::onTask () {
+    m_notify->onListenStop();
     delete this;
 }
 
@@ -94,7 +97,7 @@ void ListenStopTask::OnTask () {
 
 //===========================================================================
 ListenSocket::ListenSocket (
-    IDimSocketListenNotify * notify,
+    ISocketListenNotify * notify,
     const Endpoint & end
 ) 
     : m_notify{notify}
@@ -102,7 +105,7 @@ ListenSocket::ListenSocket (
 {}
 
 //===========================================================================
-void ListenSocket::OnTask () {
+void ListenSocket::onTask () {
     DWORD bytesTransferred;
     WinError err{0};
     if (!GetOverlappedResult(
@@ -113,7 +116,7 @@ void ListenSocket::OnTask () {
     )) {
         err = WinError{};
     }
-    m_socket->OnAccept(this, err, bytesTransferred);
+    m_socket->onAccept(this, err, bytesTransferred);
 }
 
 
@@ -124,14 +127,14 @@ void ListenSocket::OnTask () {
 ***/
 
 //===========================================================================
-static void PushListenStop (ListenSocket * listen) {
+static void pushListenStop (ListenSocket * listen) {
     auto ptr = new ListenStopTask(listen->m_notify);
 
     {
         lock_guard<mutex> lk{s_mut};
         if (listen->m_handle != INVALID_SOCKET) {
             if (SOCKET_ERROR == closesocket(listen->m_handle))
-                DimLog{kCrash} << "closesocket(listen): " << WinError{};
+                Log{kCrash} << "closesocket(listen): " << WinError{};
             listen->m_handle = INVALID_SOCKET;
         }
         auto it = s_listeners.begin();
@@ -143,19 +146,19 @@ static void PushListenStop (ListenSocket * listen) {
         }
     }
 
-    DimTaskPushEvent(*ptr);
+    taskPushEvent(*ptr);
 }
 
 //===========================================================================
 // static
-void AcceptSocket::Accept (ListenSocket * listen) {
+void AcceptSocket::accept (ListenSocket * listen) {
     assert(!listen->m_socket.get());
     auto sock = make_unique<AcceptSocket>(
-        listen->m_notify->OnListenCreateSocket().release()
+        listen->m_notify->onListenCreateSocket().release()
     );
-    sock->m_handle = WinSocketCreate();
+    sock->m_handle = winSocketCreate();
     if (sock->m_handle == INVALID_SOCKET) 
-        return PushListenStop(listen);
+        return pushListenStop(listen);
 
     // get AcceptEx function
     GUID extId = WSAID_ACCEPTEX;
@@ -170,8 +173,8 @@ void AcceptSocket::Accept (ListenSocket * listen) {
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        DimLog{kError} << "WSAIoctl(get AcceptEx): " << WinError{};
-        return PushListenStop(listen);
+        Log{kError} << "WSAIoctl(get AcceptEx): " << WinError{};
+        return pushListenStop(listen);
     }
 
     sock->m_mode = Mode::kAccepting;
@@ -189,14 +192,14 @@ void AcceptSocket::Accept (ListenSocket * listen) {
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        DimLog{kError} << "AcceptEx(" << listen->m_localEnd << "): " << err;
-        return PushListenStop(listen);
+        Log{kError} << "AcceptEx(" << listen->m_localEnd << "): " << err;
+        return pushListenStop(listen);
     }
 }
 
 //===========================================================================
-static bool GetAcceptInfo (
-    DimSocketAcceptInfo * out,
+static bool getAcceptInfo (
+    SocketAcceptInfo * out,
     SOCKET s,
     void * buffer
 ) {
@@ -212,7 +215,7 @@ static bool GetAcceptInfo (
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        DimLog{kError} << "WSAIoctl(get GetAcceptExSockAddrs): " 
+        Log{kError} << "WSAIoctl(get GetAcceptExSockAddrs): " 
             << WinError{};
         return false;
     }
@@ -234,28 +237,28 @@ static bool GetAcceptInfo (
     
     sockaddr_storage sas;
     memcpy(&sas, lsa, lsaLen);
-    DimEndpointFromStorage(&out->localEnd, sas);
+    copy(&out->localEnd, sas);
     memcpy(&sas, rsa, rsaLen);
-    DimEndpointFromStorage(&out->remoteEnd, sas);
+    copy(&out->remoteEnd, sas);
     return true;
 }
      
 //===========================================================================
-void AcceptSocket::OnAccept (
+void AcceptSocket::onAccept (
     ListenSocket * listen,
     int xferError,
     int xferBytes
 ) {
     unique_ptr<AcceptSocket> hostage{move(listen->m_socket)};
 
-    DimSocketAcceptInfo info;
+    SocketAcceptInfo info;
     bool ok = !xferError 
-        && GetAcceptInfo(&info, m_handle, listen->m_addrBuf);
+        && getAcceptInfo(&info, m_handle, listen->m_addrBuf);
 
-    Accept(listen);
+    accept(listen);
 
     if (xferError) {
-        DimLog{kError} << "OnAccept: " << WinError(xferError);
+        Log{kError} << "onAccept: " << WinError(xferError);
         return;
     }
     if (!ok)
@@ -268,18 +271,18 @@ void AcceptSocket::OnAccept (
         (char *) &listen->m_handle,
         sizeof listen->m_handle
     )) {
-        DimLog{kError} 
+        Log{kError} 
             << "setsockopt(SO_UPDATE_ACCEPT_CONTEXT): " 
             << WinError{};
         return;
     }
 
     // create read/write queue
-    if (!CreateQueue()) 
+    if (!createQueue()) 
         return;
 
     hostage.release();
-    m_notify->OnSocketAccept(info);
+    m_notify->onSocketAccept(info);
 }
 
 
@@ -290,14 +293,14 @@ void AcceptSocket::OnAccept (
 ***/
 
 namespace {
-    class ShutdownNotify : public IDimAppShutdownNotify {
-        void OnAppStartConsoleCleanup () override;
+    class ShutdownNotify : public IAppShutdownNotify {
+        void onAppStartConsoleCleanup () override;
     };
 } // namespace
 static ShutdownNotify s_cleanup;
 
 //===========================================================================
-void ShutdownNotify::OnAppStartConsoleCleanup () {
+void ShutdownNotify::onAppStartConsoleCleanup () {
     assert(s_listeners.empty());
 }
 
@@ -309,8 +312,8 @@ void ShutdownNotify::OnAppStartConsoleCleanup () {
 ***/
 
 //===========================================================================
-void IDimSocketAcceptInitialize () {
-    DimAppMonitorShutdown(&s_cleanup);
+void iSocketAcceptInitialize () {
+    appMonitorShutdown(&s_cleanup);
 }
 
 
@@ -321,27 +324,27 @@ void IDimSocketAcceptInitialize () {
 ***/
 
 //===========================================================================
-static void PushListenStop (IDimSocketListenNotify * notify) {
+static void pushListenStop (ISocketListenNotify * notify) {
     auto ptr = new ListenStopTask(notify);
-    DimTaskPushEvent(*ptr);
+    taskPushEvent(*ptr);
 }
 
 //===========================================================================
-void DimSocketListen (
-    IDimSocketListenNotify * notify,
+void socketListen (
+    ISocketListenNotify * notify,
     const Endpoint & localEnd
 ) {
     auto hostage = make_unique<ListenSocket>(notify, localEnd);
     auto sock = hostage.get();
-    sock->m_handle = WinSocketCreate(localEnd);
+    sock->m_handle = winSocketCreate(localEnd);
     if (sock->m_handle == INVALID_SOCKET) 
-        return PushListenStop(notify); 
+        return pushListenStop(notify); 
 
     if (SOCKET_ERROR == listen(sock->m_handle, SOMAXCONN)) {
-        DimLog{kError} << "listen(SOMAXCONN): " << WinError{};
+        Log{kError} << "listen(SOMAXCONN): " << WinError{};
         if (SOCKET_ERROR == closesocket(sock->m_handle)) 
-            DimLog{kError} << "closesocket(listen): " << WinError{};
-        return PushListenStop(notify);
+            Log{kError} << "closesocket(listen): " << WinError{};
+        return pushListenStop(notify);
     }
 
     {
@@ -349,12 +352,12 @@ void DimSocketListen (
         s_listeners.push_back(move(hostage));
     }
 
-    AcceptSocket::Accept(sock);
+    AcceptSocket::accept(sock);
 }
 
 //===========================================================================
-void DimSocketStop (
-    IDimSocketListenNotify * notify,
+void socketStop (
+    ISocketListenNotify * notify,
     const Endpoint & localEnd
 ) {
     lock_guard<mutex> lk{s_mut};
@@ -364,10 +367,12 @@ void DimSocketStop (
             && ptr->m_handle != INVALID_SOCKET
         ) {
             if (SOCKET_ERROR == closesocket(ptr->m_handle)) {
-                DimLog{kError} << "closesocket(listen): " << WinError{};
+                Log{kError} << "closesocket(listen): " << WinError{};
             }
             ptr->m_handle = INVALID_SOCKET;
             return;
         }
     }
 }
+
+} // namespace

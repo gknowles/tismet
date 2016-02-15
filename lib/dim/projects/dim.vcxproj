@@ -26,7 +26,7 @@
     <ClInclude Include="..\include\dim\cmdline.h" />
     <ClInclude Include="..\include\dim\compiler\visualc.h" />
     <ClInclude Include="..\include\dim\config.h" />
-    <ClInclude Include="..\include\dim\error.h" />
+    <ClInclude Include="..\include\dim\log.h" />
     <ClInclude Include="..\include\dim\file.h" />
     <ClInclude Include="..\include\dim\handle.h" />
     <ClInclude Include="..\include\dim\hpack.h" />
@@ -54,7 +54,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
-    <ClCompile Include="..\src\error.cpp">
+    <ClCompile Include="..\src\log.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>

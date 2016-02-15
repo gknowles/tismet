@@ -10,10 +10,9 @@
 
 #include <cassert>
 #include <deque>
+#include <string>
 
-//===========================================================================
-namespace DimHpack {
-//===========================================================================
+namespace Dim {
 
 /****************************************************************************
 *     
@@ -21,12 +20,12 @@ namespace DimHpack {
 *     
 ***/  
 
-struct FieldView;
-enum Flags {
+struct HpackFieldView;
+enum HpackFlags {
     kNeverIndexed = 1,
 };
 
-struct DynField {
+struct HpackDynField {
     std::string name;
     std::string value;
 };
@@ -34,33 +33,33 @@ struct DynField {
 
 /****************************************************************************
 *     
-*   Encode
+*   HpackEncode
 *     
 ***/  
 
-class Encode {
+class HpackEncode {
 public:
-    Encode (size_t tableSize);
-    void SetTableSize (size_t tableSize);
+    HpackEncode (size_t tableSize);
+    void setTableSize (size_t tableSize);
     
-    void StartBlock (CharBuf * out);
-    void EndBlock ();
+    void startBlock (CharBuf * out);
+    void endBlock ();
 
-    void Header (
+    void header (
         const char name[], 
         const char value[], 
         int flags = 0 // DimHpack::*
     );
-    void Header (
+    void header (
         HttpHdr name, 
         const char value[], 
         int flags = 0 // DimHpack::*
     );
 
 private:
-    void Write (const char str[]);
-    void Write (const char str[], size_t len);
-    void Write (size_t val, char prefix, int prefixBits);
+    void write (const char str[]);
+    void write (const char str[], size_t len);
+    void write (size_t val, char prefix, int prefixBits);
 
     size_t m_dynSize{0};
     CharBuf * m_out{nullptr};
@@ -69,15 +68,15 @@ private:
 
 /****************************************************************************
 *     
-*   Decode
+*   HpackDecode
 *     
 ***/  
 
-class IDecodeNotify {
+class IHpackDecodeNotify {
 public:
-    virtual ~IDecodeNotify () {}
+    virtual ~IHpackDecodeNotify () {}
 
-    virtual void OnHpackHeader (
+    virtual void onHpackHeader (
         HttpHdr id,
         const char name[],
         const char value[],
@@ -85,61 +84,60 @@ public:
     ) = 0;
 };
 
-class Decode {
+class HpackDecode {
 public:
-    Decode (size_t tableSize);
-    void Reset ();
-    void SetTableSize (size_t tableSize);
+    HpackDecode (size_t tableSize);
+    void reset ();
+    void setTableSize (size_t tableSize);
 
-    bool Parse (
-        IDecodeNotify * notify,
-        IDimTempHeap * heap,
+    bool parse (
+        IHpackDecodeNotify * notify,
+        ITempHeap * heap,
         const char src[],
         size_t srcLen
     );
 
 private:
-    void PruneDynTable();
+    void pruneDynTable();
 
-    bool ReadInstruction (
-        IDecodeNotify * notify, 
-        IDimTempHeap * heap, 
+    bool readInstruction (
+        IHpackDecodeNotify * notify, 
+        ITempHeap * heap, 
         const char *& src, 
         size_t & srcLen
     );
-    bool ReadIndexedField (
-        FieldView * out, 
-        IDimTempHeap * heap, 
+    bool readIndexedField (
+        HpackFieldView * out, 
+        ITempHeap * heap, 
         size_t prefixBits, 
         const char *& src, 
         size_t & srcLen
     );
-    bool ReadIndexedName (
-        FieldView * out, 
-        IDimTempHeap * heap, 
+    bool readIndexedName (
+        HpackFieldView * out, 
+        ITempHeap * heap, 
         size_t prefixBits, 
         const char *& src, 
         size_t & srcLen
     );
-    bool Read (
+    bool read (
         size_t * out, 
         size_t prefixBits, 
         const char *& src, 
         size_t & srcLen
     );
-    bool Read (
+    bool read (
         const char ** out,
-        IDimTempHeap * heap, 
+        ITempHeap * heap, 
         const char *& src, 
         size_t & srcLen
     );
 
     size_t m_dynSize{0};
-    std::deque<DynField> m_dynTable;
+    std::deque<HpackDynField> m_dynTable;
     size_t m_dynUsed{0};
 };
 
-//===========================================================================
 } // namespace
 
 #endif

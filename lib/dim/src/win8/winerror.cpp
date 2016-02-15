@@ -4,6 +4,17 @@
 
 using namespace std;
 
+namespace Dim {
+
+
+/****************************************************************************
+*
+*   Private declarations
+*
+***/
+
+using RtlNtStatusToDosErrorFn = ULONG (WINAPI *)(int ntStatus);
+
 
 /****************************************************************************
 *
@@ -11,7 +22,6 @@ using namespace std;
 *
 ***/
 
-typedef ULONG (WINAPI *RtlNtStatusToDosErrorFn)(int ntStatus);
 static RtlNtStatusToDosErrorFn s_RtlNtStatusToDosError;
 static once_flag s_loadOnce;
 
@@ -23,17 +33,17 @@ static once_flag s_loadOnce;
 ***/
 
 //===========================================================================
-static void LoadProc () {
+static void loadProc () {
     HMODULE mod = LoadLibrary("ntdll.dll");
     if (!mod)
-        DimLog{kCrash} << "LoadLibrary(ntdll): " << WinError{};
+        Log{kCrash} << "LoadLibrary(ntdll): " << WinError{};
 
     s_RtlNtStatusToDosError = (RtlNtStatusToDosErrorFn) GetProcAddress(
         mod,
         "RtlNtStatusToDosError"
     );
     if (!s_RtlNtStatusToDosError) {
-        DimLog{kCrash} << "GetProcAddress(RtlNtStatusToDosError): " 
+        Log{kCrash} << "GetProcAddress(RtlNtStatusToDosError): " 
             << WinError{};
     }
 }
@@ -71,7 +81,7 @@ WinError & WinError::operator= (NtStatus status) {
     if (!status) {
         m_value = 0;
     } else {
-        call_once(s_loadOnce, LoadProc);
+        call_once(s_loadOnce, loadProc);
         m_value = s_RtlNtStatusToDosError(status);
     }
     return *this;
@@ -99,3 +109,4 @@ std::ostream & operator<< (std::ostream & os, const WinError & val) {
     return os;
 }
 
+} // namespace

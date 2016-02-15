@@ -9,12 +9,9 @@
 #include <experimental/filesystem>
 #include <limits>
 
-enum DimFileAccess {
-    kDimFileWrite,
-    kDimFile
-};
+namespace Dim {
 
-class IDimFile {
+class IFile {
 public:
     enum OpenMode {
         kReadOnly   = 0x01,
@@ -27,41 +24,43 @@ public:
     };
 
 public:
-    virtual ~IDimFile () {}
+    virtual ~IFile () {}
 };
 
-class IDimFileNotify {
+class IFileNotify {
 public:
-    virtual ~IDimFileNotify () {}
+    virtual ~IFileNotify () {}
 
     // return false to prevent more reads, otherwise reads continue until the
     // requested length has been received.
-    virtual bool OnFileRead (
+    virtual bool onFileRead (
         char * data, 
         int bytes,
         int64_t offset,
-        IDimFile * file
+        IFile * file
     ) = 0;
 
-    virtual void OnFileEnd (
+    virtual void onFileEnd (
         int64_t offset, 
-        IDimFile * file
+        IFile * file
     ) = 0;
 };
 
-bool DimFileOpen (
-    std::unique_ptr<IDimFile> & file,
+bool fileOpen (
+    std::unique_ptr<IFile> & file,
     const std::experimental::filesystem::path & path,
-    IDimFile::OpenMode mode
+    IFile::OpenMode mode
 );
 
-void DimFileRead (
-    IDimFileNotify * notify,
+void fileRead (
+    IFileNotify * notify,
     void * outBuffer,
     size_t outBufferSize,
-    IDimFile * file,
+    IFile * file,
     int64_t offset = 0,
     int64_t length = 0  // 0 to read until the end
 );
+
+} // namespace
 
 #endif

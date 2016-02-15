@@ -10,19 +10,19 @@
 #include <ratio>
 
 //using namespace std::literals;
-
+namespace Dim {
 
 /****************************************************************************
 *
-*   DimClock
+*   Clock
 *
 ***/
 
-struct DimClock {
+struct Clock {
     typedef int64_t rep;
     typedef std::ratio_multiply<std::ratio<100, 1>, std::nano> period;
     typedef std::chrono::duration<rep, period> duration;
-    typedef std::chrono::time_point<DimClock> time_point;
+    typedef std::chrono::time_point<Clock> time_point;
     static const bool is_monotonic = false;
     static const bool is_steady = false;
 
@@ -33,8 +33,8 @@ struct DimClock {
     static time_point from_time_t(time_t tm) noexcept;
 };
 
-typedef DimClock::duration Duration;
-typedef DimClock::time_point TimePoint;
+typedef Clock::duration Duration;
+typedef Clock::time_point TimePoint;
 
 
 /****************************************************************************
@@ -80,5 +80,6 @@ enum RunMode {
     kRunStopping,
 };
 
+} // namespace
 
 #endif

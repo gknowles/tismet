@@ -5,6 +5,8 @@
 using namespace std;
 using namespace std::chrono;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -28,12 +30,12 @@ WinEvent::~WinEvent () {
 }
 
 //===========================================================================
-void WinEvent::Signal () {
+void WinEvent::signal () {
     SetEvent(m_handle);
 }
 
 //===========================================================================
-void WinEvent::Wait (Duration wait) {
+void WinEvent::wait (Duration wait) {
     auto waitMs = duration_cast<milliseconds>(wait);
     if (wait <= 0ms || waitMs >= chrono::milliseconds(INFINITE)) {
         WaitForSingleObject(m_handle, INFINITE);
@@ -50,9 +52,9 @@ void WinEvent::Wait (Duration wait) {
 ***/
 
 //===========================================================================
-static void __stdcall EventWaitCallback (void * param, uint8_t timeout) {
+static void __stdcall eventWaitCallback (void * param, uint8_t timeout) {
     auto notify = reinterpret_cast<IWinEventWaitNotify *>(param);
-    DimTaskPushEvent(*notify);
+    taskPushEvent(*notify);
 }
 
 //===========================================================================
@@ -62,21 +64,23 @@ IWinEventWaitNotify::IWinEventWaitNotify () {
     if (!RegisterWaitForSingleObject(
         &m_registeredWait,
         m_overlapped.hEvent,
-        &EventWaitCallback,
+        &eventWaitCallback,
         this,
         INFINITE,   // timeout
         WT_EXECUTEINWAITTHREAD
     )) {
-        DimLog{kCrash} << "RegisterWaitForSingleObject: " << WinError{};
+        Log{kCrash} << "RegisterWaitForSingleObject: " << WinError{};
     }
 }
 
 //===========================================================================
 IWinEventWaitNotify::~IWinEventWaitNotify () {
     if (m_registeredWait && !UnregisterWaitEx(m_registeredWait, nullptr)) {
-        DimLog{kError} << "UnregisterWaitEx: " << WinError{};
+        Log{kError} << "UnregisterWaitEx: " << WinError{};
     }
     if (m_overlapped.hEvent && !CloseHandle(m_overlapped.hEvent)) {
-        DimLog{kError} << "CloseHandle(overlapped.hEvent): " << WinError{};
+        Log{kError} << "CloseHandle(overlapped.hEvent): " << WinError{};
     }
 }
+
+} // namespace

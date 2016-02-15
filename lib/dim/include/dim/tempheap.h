@@ -6,6 +6,7 @@
 
 #include <cstring>
 
+namespace Dim {
 
 /****************************************************************************
 *
@@ -13,74 +14,76 @@
 *
 ***/
 
-class IDimTempHeap {
+class ITempHeap {
 public:
-    virtual ~IDimTempHeap () {}
+    virtual ~ITempHeap () {}
 
     template <typename T, typename... Args>
-    T * New (Args&&... args);
+    T * emplace (Args&&... args);
     template <typename T>
-    T * Alloc (size_t num);
+    T * alloc (size_t num);
 
-    char * StrDup (const char src[]);
-    char * StrDup (
+    char * strDup (const char src[]);
+    char * strDup (
         const char src[], 
         size_t len          // does not include null terminator
     );
 
-    char * Alloc (size_t bytes);
-    virtual char * Alloc (size_t bytes, size_t align) = 0;
+    char * alloc (size_t bytes);
+    virtual char * alloc (size_t bytes, size_t align) = 0;
 };
 
 //===========================================================================
 template <typename T, typename... Args>
-inline T * IDimTempHeap::New (Args&&... args) {
-    char * tmp = Alloc(sizeof(T), alignof(T));
+inline T * ITempHeap::emplace (Args&&... args) {
+    char * tmp = alloc(sizeof(T), alignof(T));
     return new(tmp) T(args);
 }
 
 //===========================================================================
 template <typename T>
-inline T * IDimTempHeap::Alloc (size_t num) {
-    char * tmp = Alloc(num * sizeof(T), alignof(T));
+inline T * ITempHeap::alloc (size_t num) {
+    char * tmp = alloc(num * sizeof(T), alignof(T));
     return new(tmp) T[num];
 }
 
 //===========================================================================
-inline char * IDimTempHeap::StrDup (const char src[]) {
+inline char * ITempHeap::strDup (const char src[]) {
     size_t len = std::strlen(src);
-    return StrDup(src, len);
+    return strDup(src, len);
 }
 
 //===========================================================================
-inline char * IDimTempHeap::StrDup (const char src[], size_t len) {
-    char * out = Alloc(sizeof(*src) * (len + 1), alignof(char));
+inline char * ITempHeap::strDup (const char src[], size_t len) {
+    char * out = alloc(sizeof(*src) * (len + 1), alignof(char));
     std::memcpy(out, src, len);
     out[len] = 0;
     return out;
 }
 
 //===========================================================================
-inline char * IDimTempHeap::Alloc (size_t bytes) {
-    return Alloc(bytes, alignof(char));
+inline char * ITempHeap::alloc (size_t bytes) {
+    return alloc(bytes, alignof(char));
 }
 
 
 /****************************************************************************
 *
-*   DimTempHeap
+*   TempHeap
 *
 ***/
 
-class DimTempHeap : public IDimTempHeap {
+class TempHeap : public ITempHeap {
 public:
-    ~DimTempHeap ();
+    ~TempHeap ();
 
-    // IDimTempHeap
-    char * Alloc (size_t bytes, size_t align) override;
+    // ITempHeap
+    char * alloc (size_t bytes, size_t align) override;
 
 private:
     void * m_buffer{nullptr};
 };
+
+} // namespace
 
 #endif

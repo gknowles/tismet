@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -26,9 +28,9 @@ struct CharBuf::Buffer {
     bool m_heapUsed{false};
     char m_data[kDefaultBlockSize];
 
-    char * Base () { return m_data; }
-    char * Unused () { return Base() + m_used; }
-    char * End () { return Base() + m_reserved; }
+    char * base () { return m_data; }
+    char * unused () { return base() + m_used; }
+    char * end () { return base() + m_reserved; }
 };
 
 
@@ -47,19 +49,19 @@ CharBuf::~CharBuf()
 {}
 
 //===========================================================================
-CharBuf & CharBuf::Assign (const char s[]) {
-    return Replace(0, m_size, s);
+CharBuf & CharBuf::assign (const char s[]) {
+    return replace(0, m_size, s);
 }
 
 //===========================================================================
-CharBuf & CharBuf::Assign (const char s[], size_t count) {
-    return Replace(0, m_size, s, count);
+CharBuf & CharBuf::assign (const char s[], size_t count) {
+    return replace(0, m_size, s, count);
 }
 
 //===========================================================================
-CharBuf & CharBuf::Assign (const string & str, size_t pos, size_t count) {
+CharBuf & CharBuf::assign (const string & str, size_t pos, size_t count) {
     assert(pos < str.size());
-    return Replace(
+    return replace(
         0, 
         m_size, 
         str.data() + pos, 
@@ -68,72 +70,72 @@ CharBuf & CharBuf::Assign (const string & str, size_t pos, size_t count) {
 }
 
 //===========================================================================
-char & CharBuf::Front () {
+char & CharBuf::front () {
     assert(m_size);
     auto & buf = m_buffers.front();
     return *buf.m_data;
 }
 
 //===========================================================================
-const char & CharBuf::Front () const {
+const char & CharBuf::front () const {
     assert(m_size);
     auto & buf = m_buffers.front();
     return *buf.m_data;
 }
 
 //===========================================================================
-char & CharBuf::Back () {
+char & CharBuf::back () {
     assert(m_size);
     auto & buf = m_buffers.back();
     return buf.m_data[buf.m_used - 1];
 }
 
 //===========================================================================
-const char & CharBuf::Back () const {
+const char & CharBuf::back () const {
     assert(m_size);
     auto & buf = m_buffers.back();
     return buf.m_data[buf.m_used - 1];
 }
 
 //===========================================================================
-bool CharBuf::Empty () const {
+bool CharBuf::empty () const {
     return !m_size;
 }
 
 //===========================================================================
-int CharBuf::Size () const {
+int CharBuf::size () const {
     return m_size;
 }
 
 //===========================================================================
-void CharBuf::Clear () {
+void CharBuf::clear () {
     if (m_size)
-        Erase(m_buffers.begin(), 0, m_size);
+        erase(m_buffers.begin(), 0, m_size);
 }
 
 //===========================================================================
-CharBuf & CharBuf::Insert (size_t pos, const char s[]) {
-    return Replace(pos, 0, s);
+CharBuf & CharBuf::insert (size_t pos, const char s[]) {
+    return replace(pos, 0, s);
 }
 
 //===========================================================================
-CharBuf & CharBuf::Insert (size_t pos, const char s[], size_t count) {
-    return Replace(pos, 0, s, count);
+CharBuf & CharBuf::insert (size_t pos, const char s[], size_t count) {
+    return replace(pos, 0, s, count);
 }
 
 //===========================================================================
-CharBuf & CharBuf::Erase (size_t pos, size_t count) {
-    auto ic = Find(pos);
-    return Erase(ic.first, ic.second, (int) count);
+CharBuf & CharBuf::erase (size_t pos, size_t count) {
+    auto ic = find(pos);
+    return erase(ic.first, ic.second, (int) count);
 }
 
 //===========================================================================
-void CharBuf::PushBack (char ch) {
-    Append(1, ch);
+void CharBuf::pushBack (char ch) {
+    append(1, ch);
 }
 
 //===========================================================================
-void CharBuf::PopBack () {
+void CharBuf::popBack () {
     assert(m_size);
     m_size -= 1;
     auto it = m_buffers.end();
@@ -145,7 +147,7 @@ void CharBuf::PopBack () {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Append (size_t count, char ch) {
+CharBuf & CharBuf::append (size_t count, char ch) {
     assert(m_size + count < numeric_limits<int>::max());
     int add = (int) count;
     if (!add)
@@ -170,7 +172,7 @@ CharBuf & CharBuf::Append (size_t count, char ch) {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Append (const char s[]) {
+CharBuf & CharBuf::append (const char s[]) {
     if (!*s)
         return *this;
 
@@ -200,7 +202,7 @@ CharBuf & CharBuf::Append (const char s[]) {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Append (const char src[], size_t srcLen) {
+CharBuf & CharBuf::append (const char src[], size_t srcLen) {
     int add = (int) srcLen;
     if (!add)
         return *this;
@@ -222,13 +224,13 @@ CharBuf & CharBuf::Append (const char src[], size_t srcLen) {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Append (const string & str, size_t pos, size_t count) {
+CharBuf & CharBuf::append (const string & str, size_t pos, size_t count) {
     assert(pos < str.size());
-    return Append(str.data() + pos, min(str.size(), pos + count) - pos);
+    return append(str.data() + pos, min(str.size(), pos + count) - pos);
 }
 
 //===========================================================================
-int CharBuf::Compare (const char s[], size_t count) const {
+int CharBuf::compare (const char s[], size_t count) const {
     for (auto&& buf : m_buffers) {
         if (count < buf.m_used) {
             if (memcmp(buf.m_data, s, count) < 0)
@@ -244,12 +246,12 @@ int CharBuf::Compare (const char s[], size_t count) const {
 }
 
 //===========================================================================
-int CharBuf::Compare (const string & str) const {
-    return Compare(data(str), size(str));
+int CharBuf::compare (const string & str) const {
+    return compare(data(str), ::size(str));
 }
 
 //===========================================================================
-int CharBuf::Compare (const CharBuf & buf) const {
+int CharBuf::compare (const CharBuf & buf) const {
     auto myi = m_buffers.begin();
     auto mye = m_buffers.end();
     const char * mydata;
@@ -302,14 +304,14 @@ int CharBuf::Compare (const CharBuf & buf) const {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Replace (size_t pos, size_t count, const char s[]) {
+CharBuf & CharBuf::replace (size_t pos, size_t count, const char s[]) {
     assert(pos + count <= m_size);
 
     if (pos == m_size)
-        return Append(s);
+        return append(s);
 
     int remove = (int) count;
-    auto ic = Find(pos);
+    auto ic = find(pos);
     auto eb = m_buffers.end();
 
     list<Buffer>::iterator next;
@@ -318,7 +320,7 @@ CharBuf & CharBuf::Replace (size_t pos, size_t count, const char s[]) {
     char * eptr = ptr + min(ic.first->m_used - ic.second, remove);
     for (;;) {
         if (!*s) {
-            return Erase(
+            return erase(
                 ic.first, 
                 int(ptr - ic.first->m_data), 
                 remove - int(ptr - base)
@@ -370,7 +372,7 @@ CharBuf & CharBuf::Replace (size_t pos, size_t count, const char s[]) {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Replace (
+CharBuf & CharBuf::replace (
     size_t pos, 
     size_t count, 
     const char src[], 
@@ -378,11 +380,11 @@ CharBuf & CharBuf::Replace (
 ) {
     assert(pos + count <= m_size);
     if (pos == m_size)
-        return Append(src, srcLen);
+        return append(src, srcLen);
 
     int remove = (int) count;
     int copy = (int) srcLen;
-    auto ic = Find(pos);
+    auto ic = find(pos);
     auto eb = m_buffers.end();
     m_size += copy - remove;
 
@@ -392,7 +394,7 @@ CharBuf & CharBuf::Replace (
     int replaced;
     for (;;) {
         if (!copy) {
-            return Erase(
+            return erase(
                 ic.first, 
                 int(ptr - ic.first->m_data), 
                 remove
@@ -447,29 +449,29 @@ CharBuf & CharBuf::Replace (
 }
 
 //===========================================================================
-void CharBuf::Swap (CharBuf & other) {
-    swap(m_buffers, other.m_buffers);
-    swap(m_lastUsed, other.m_lastUsed);
-    swap(m_size, other.m_size);
+void CharBuf::swap (CharBuf & other) {
+    ::swap(m_buffers, other.m_buffers);
+    ::swap(m_lastUsed, other.m_lastUsed);
+    ::swap(m_size, other.m_size);
 }
 
 //===========================================================================
 // ITempHeap
-char * CharBuf::Alloc (size_t bytes, size_t align) {
+char * CharBuf::alloc (size_t bytes, size_t align) {
     return nullptr;
 }
 
 //===========================================================================
 // private
 //===========================================================================
-CharBuf::Buffer * CharBuf::AllocBuffer () {
+CharBuf::Buffer * CharBuf::allocBuffer () {
     m_buffers.emplace_back();
     Buffer & buf = m_buffers.back();
     return &buf;
 };
 
 //===========================================================================
-pair<list<CharBuf::Buffer>::iterator, int> CharBuf::Find (size_t pos) {
+pair<list<CharBuf::Buffer>::iterator, int> CharBuf::find (size_t pos) {
     int off = (int) pos;
     if (off <= m_size / 2) {
         auto it = m_buffers.begin();
@@ -500,7 +502,7 @@ pair<list<CharBuf::Buffer>::iterator, int> CharBuf::Find (size_t pos) {
 }
 
 //===========================================================================
-CharBuf & CharBuf::Erase (
+CharBuf & CharBuf::erase (
     list<CharBuf::Buffer>::iterator it,
     int pos,
     int remove
@@ -545,3 +547,5 @@ CharBuf & CharBuf::Erase (
     memmove(ptr, eptr, it->m_used);
     return *this;
 }
+
+} // namespace

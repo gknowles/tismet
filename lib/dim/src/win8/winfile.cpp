@@ -5,6 +5,8 @@
 using namespace std;
 using namespace std::experimental::filesystem;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -19,35 +21,35 @@ using namespace std::experimental::filesystem;
 ***/
 
 namespace {
-    class DimFile : public IDimFile {
+    class File : public IFile {
     public:
         path m_path;
         HANDLE m_handle;
         OpenMode m_mode;
 
-        virtual ~DimFile ();
+        virtual ~File ();
     };
 
-    class FileReader : public IDimTaskNotify {
+    class FileReader : public ITaskNotify {
     public:
         FileReader (
-            DimFile * file,
-            IDimFileNotify * notify,
+            File * file,
+            IFileNotify * notify,
             void * outBuf,
             size_t outBufLen
         );
-        void Read (int64_t off, int64_t len);
+        void read (int64_t off, int64_t len);
 
-        // IDimTaskNotify
-        void OnTask () override;
+        // ITaskNotify
+        void onTask () override;
 
     private:
         WinOverlappedEvent m_iocpEvt;
         int64_t m_offset{0};
         int64_t m_length{0};
 
-        DimFile * m_file;
-        IDimFileNotify * m_notify;
+        File * m_file;
+        IFileNotify * m_notify;
         char * m_outBuf;
         int m_outBufLen;
     };
@@ -67,7 +69,7 @@ namespace {
 ***/
 
 //===========================================================================
-static bool SetErrno (int error) {
+static bool setErrno (int error) {
     _set_doserrno(error);
 
     switch (error) {
@@ -96,8 +98,8 @@ static bool SetErrno (int error) {
 
 //===========================================================================
 FileReader::FileReader (
-    DimFile * file,
-    IDimFileNotify * notify,
+    File * file,
+    IFileNotify * notify,
     void * outBuf,
     size_t outBufLen
 )
@@ -111,7 +113,7 @@ FileReader::FileReader (
 }
 
 //===========================================================================
-void FileReader::Read (int64_t off, int64_t len) {
+void FileReader::read (int64_t off, int64_t len) {
     m_offset = off;
     m_length = len;
     m_iocpEvt.overlapped = {};
@@ -130,46 +132,46 @@ void FileReader::Read (int64_t off, int64_t len) {
     )) {
         WinError err;
         if (err != ERROR_IO_PENDING) {
-            DimLog{kError} << "ReadFile (" << m_file->m_path << "): " << err;
-            m_notify->OnFileEnd(m_offset, m_file);
+            Log{kError} << "ReadFile (" << m_file->m_path << "): " << err;
+            m_notify->onFileEnd(m_offset, m_file);
             delete this;
         }
     }
 }
 
 //===========================================================================
-void FileReader::OnTask () {
+void FileReader::onTask () {
     DWORD bytes;
     if (!GetOverlappedResult(NULL, &m_iocpEvt.overlapped, &bytes, false)) {
         WinError err;
         if (err != ERROR_OPERATION_ABORTED)
-            DimLog{kError} << "ReadFile result, " << err;
-        m_notify->OnFileEnd(m_offset, m_file);
+            Log{kError} << "ReadFile result, " << err;
+        m_notify->onFileEnd(m_offset, m_file);
         delete this;
         return;
     }
 
     bool more = bytes
-        ? m_notify->OnFileRead(m_outBuf, bytes, m_offset, m_file)
+        ? m_notify->onFileRead(m_outBuf, bytes, m_offset, m_file)
         : false;
 
     if (!more || m_length && m_length <= bytes) {
-        m_notify->OnFileEnd(m_offset + bytes, m_file);
+        m_notify->onFileEnd(m_offset + bytes, m_file);
         delete this;
     } else {
-        Read(m_offset + bytes, m_length ? m_length - bytes : 0);
+        read(m_offset + bytes, m_length ? m_length - bytes : 0);
     }
 }
 
 
 /****************************************************************************
 *
-*   DimFile
+*   File
 *
 ***/
 
 //===========================================================================
-DimFile::~DimFile () {
+File::~File () {
     if (m_handle != INVALID_HANDLE_VALUE)
         CloseHandle(m_handle);
 }
@@ -182,8 +184,8 @@ DimFile::~DimFile () {
 ***/
 
 //===========================================================================
-void IDimFileInitialize () {
-    WinIocpInitialize();
+void iFileInitialize () {
+    winIocpInitialize();
 }
 
 
@@ -194,15 +196,15 @@ void IDimFileInitialize () {
 ***/
 
 //===========================================================================
-bool DimFileOpen (
-    unique_ptr<IDimFile> & out,
+bool fileOpen (
+    unique_ptr<IFile> & out,
     const path & path,
-    IDimFile::OpenMode mode
+    IFile::OpenMode mode
 ) {
-    using om = IDimFile::OpenMode;
+    using om = IFile::OpenMode;
 
     out.reset();
-    auto file = make_unique<DimFile>();
+    auto file = make_unique<File>();
     file->m_mode = mode;
     file->m_path = path;
 
@@ -254,29 +256,31 @@ bool DimFileOpen (
         NULL        // template file
     );
     if (file->m_handle == INVALID_HANDLE_VALUE)
-        return SetErrno(WinError{});
+        return setErrno(WinError{});
 
-    if (!WinIocpBindHandle(file->m_handle))
-        return SetErrno(WinError{});
+    if (!winIocpBindHandle(file->m_handle))
+        return setErrno(WinError{});
 
     out = move(file);
     return true;
 }
 
 //===========================================================================
-void DimFileRead (
-    IDimFileNotify * notify,
+void fileRead (
+    IFileNotify * notify,
     void * outBuf,
     size_t outBufLen,
-    IDimFile * file,
+    IFile * file,
     int64_t off,
     int64_t len
 ) {
     auto ptr = new FileReader(
-        static_cast<DimFile *>(file), 
+        static_cast<File *>(file), 
         notify, 
         outBuf, 
         outBufLen
     );
-    ptr->Read(off, len);
+    ptr->read(off, len);
 }
+
+} // namespace

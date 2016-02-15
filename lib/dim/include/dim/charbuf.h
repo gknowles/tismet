@@ -7,75 +7,77 @@
 
 #include <list>
 
-class CharBuf : public IDimTempHeap {
+namespace Dim {
+
+class CharBuf : public ITempHeap {
 public:
     CharBuf ();
     CharBuf (CharBuf && from);
     ~CharBuf ();
 
-    CharBuf & operator= (char ch) { return Assign(ch); }
-    CharBuf & operator= (const char s[]) { return Assign(s); }
-    CharBuf & operator= (const std::string & str) { return Assign(str); }
+    CharBuf & operator= (char ch) { return assign(ch); }
+    CharBuf & operator= (const char s[]) { return assign(s); }
+    CharBuf & operator= (const std::string & str) { return assign(str); }
     CharBuf & operator= (CharBuf && buf);
-    CharBuf & operator+= (char ch) { return Append(1, ch); }
-    CharBuf & operator+= (const char s[]) { return Append(s); }
-    CharBuf & operator+= (const std::string & str) { return Append(str); }
-    CharBuf & operator+= (const CharBuf & src) { return Append(src); }
-    CharBuf & Assign (char ch) { return Assign(&ch, 1); }
-    CharBuf & Assign (const char s[]);
-    CharBuf & Assign (const char s[], size_t count);
-    CharBuf & Assign (const std::string & str, size_t pos = 0, size_t count = -1);
-    CharBuf & Assign (const CharBuf & src, size_t pos = 0, size_t count = -1);
-    char & Front ();
-    const char & Front () const;
-    char & Back ();
-    const char & Back () const;
-    bool Empty () const;
-    int Size () const;
-    void Clear ();
-    CharBuf & Insert (size_t pos, const char s[]);
-    CharBuf & Insert (size_t pos, const char s[], size_t count);
-    CharBuf & Erase (size_t pos = 0, size_t count = -1);
-    void PushBack (char ch);
-    void PopBack ();
-    CharBuf & Append (size_t count, char ch);
-    CharBuf & Append (const char s[]);
-    CharBuf & Append (const char s[], size_t count);
-    CharBuf & Append (const std::string & str, size_t pos = 0, size_t count = -1);
-    CharBuf & Append (const CharBuf & src, size_t pos = 0, size_t count = -1);
-    int Compare (const char s[], size_t count) const;
-    int Compare (size_t pos, size_t count, const char src[], size_t srcLen) const;
-    int Compare (const std::string & str) const;
-    int Compare (size_t pos, size_t count, const std::string & str) const;
-    int Compare (const CharBuf & buf) const;
-    int Compare (size_t pos, size_t count, const CharBuf & buf) const;
-    int Compare (
+    CharBuf & operator+= (char ch) { return append(1, ch); }
+    CharBuf & operator+= (const char s[]) { return append(s); }
+    CharBuf & operator+= (const std::string & str) { return append(str); }
+    CharBuf & operator+= (const CharBuf & src) { return append(src); }
+    CharBuf & assign (char ch) { return assign(&ch, 1); }
+    CharBuf & assign (const char s[]);
+    CharBuf & assign (const char s[], size_t count);
+    CharBuf & assign (const std::string & str, size_t pos = 0, size_t count = -1);
+    CharBuf & assign (const CharBuf & src, size_t pos = 0, size_t count = -1);
+    char & front ();
+    const char & front () const;
+    char & back ();
+    const char & back () const;
+    bool empty () const;
+    int size () const;
+    void clear ();
+    CharBuf & insert (size_t pos, const char s[]);
+    CharBuf & insert (size_t pos, const char s[], size_t count);
+    CharBuf & erase (size_t pos = 0, size_t count = -1);
+    void pushBack (char ch);
+    void popBack ();
+    CharBuf & append (size_t count, char ch);
+    CharBuf & append (const char s[]);
+    CharBuf & append (const char s[], size_t count);
+    CharBuf & append (const std::string & str, size_t pos = 0, size_t count = -1);
+    CharBuf & append (const CharBuf & src, size_t pos = 0, size_t count = -1);
+    int compare (const char s[], size_t count) const;
+    int compare (size_t pos, size_t count, const char src[], size_t srcLen) const;
+    int compare (const std::string & str) const;
+    int compare (size_t pos, size_t count, const std::string & str) const;
+    int compare (const CharBuf & buf) const;
+    int compare (size_t pos, size_t count, const CharBuf & buf) const;
+    int compare (
         size_t pos, 
         size_t count, 
         const CharBuf & buf, 
         size_t bufPos, 
         size_t bufLen
     ) const;
-    CharBuf & Replace (size_t pos, size_t count, const char src[]);
-    CharBuf & Replace (size_t pos, size_t count, const char src[], size_t srcLen);
-    CharBuf & Replace (
+    CharBuf & replace (size_t pos, size_t count, const char src[]);
+    CharBuf & replace (size_t pos, size_t count, const char src[], size_t srcLen);
+    CharBuf & replace (
         size_t pos, 
         size_t count, 
         const CharBuf & src, 
         size_t srcPos = 0, 
         size_t srcLen = -1
     );
-    size_t Copy (char * out, size_t count, size_t pos = 0) const;
-    void Swap (CharBuf & other);
+    size_t copy (char * out, size_t count, size_t pos = 0) const;
+    void swap (CharBuf & other);
 
-    // IDimTempHeap
-    char * Alloc (size_t bytes, size_t align) override;
+    // ITempHeap
+    char * alloc (size_t bytes, size_t align) override;
 
 private:
     struct Buffer;
-    Buffer * AllocBuffer ();
-    std::pair<std::list<Buffer>::iterator, int> Find (size_t pos);
-    CharBuf & Erase (std::list<Buffer>::iterator it, int pos, int count);
+    Buffer * allocBuffer ();
+    std::pair<std::list<Buffer>::iterator, int> find (size_t pos);
+    CharBuf & erase (std::list<Buffer>::iterator it, int pos, int count);
 
     std::list<Buffer> m_buffers;
     int m_lastUsed{0};
@@ -87,5 +89,7 @@ bool operator== (const std::string & left, const CharBuf & right);
 bool operator== (const CharBuf & left, const CharBuf & right);
 
 std::string to_string (const CharBuf & buf);
+
+} // namespace
 
 #endif

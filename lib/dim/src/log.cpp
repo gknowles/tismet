@@ -1,8 +1,10 @@
-// error.cpp - dim services
+// log.cpp - dim services
 #include "pch.h"
 #pragma hdrstop
 
 using namespace std;
+
+namespace Dim {
 
 
 /****************************************************************************
@@ -11,7 +13,7 @@ using namespace std;
 *
 ***/
 
-static vector<IDimLogNotify *> s_notifiers;
+static vector<ILogNotify *> s_notifiers;
 
 
 /****************************************************************************
@@ -21,12 +23,12 @@ static vector<IDimLogNotify *> s_notifiers;
 ***/
 
 //===========================================================================
-static void LogMsg (DimLogSeverity severity, const string & msg) {
+static void LogMsg (LogSeverity severity, const string & msg) {
     if (s_notifiers.empty()) {
         cout << msg << endl;
     } else {
         for (auto&& notify : s_notifiers) {
-            notify->OnLog(severity, msg);
+            notify->onLog(severity, msg);
         }
     }
 
@@ -37,12 +39,12 @@ static void LogMsg (DimLogSeverity severity, const string & msg) {
 
 /****************************************************************************
 *
-*   DimLog
+*   Log
 *
 ***/
 
 //===========================================================================
-DimLog::~DimLog () {
+Log::~Log () {
     LogMsg(m_severity, str());
 }
 
@@ -54,6 +56,8 @@ DimLog::~DimLog () {
 ***/
 
 //===========================================================================
-void DimLogRegisterHandler (IDimLogNotify * notify) {
+void logAddNotify (ILogNotify * notify) {
     s_notifiers.push_back(notify);
 }
+
+} // namespace

@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -18,7 +20,7 @@ using namespace std;
 *
 ***/
 
-struct DimHttpMsg::HdrValue {
+struct HttpMsg::HdrValue {
     const char * value;
 private:
     HdrValue * m_next{nullptr};
@@ -39,63 +41,65 @@ namespace {
 
 /****************************************************************************
 *
-*   DimHttpMsg::Hdr
+*   HttpMsg::Hdr
 *
 ***/
 
 
 /****************************************************************************
 *
-*   DimHttpMsg::HdrIterator
+*   HttpMsg::HdrIterator
 *
 ***/
 
 
 /****************************************************************************
 *
-*   DimHttpMsg::HdrRange
+*   HttpMsg::HdrRange
 *
 ***/
 
 
 /****************************************************************************
 *
-*   DimHttpMsg
+*   HttpMsg
 *
 ***/
 
 //===========================================================================
-void DimHttpMsg::AddHeader (HttpHdr id, const char value[]) {
+void HttpMsg::addHeader (HttpHdr id, const char value[]) {
 }
 
 //===========================================================================
-void DimHttpMsg::AddHeader (const char name[], const char value[]) {
+void HttpMsg::addHeader (const char name[], const char value[]) {
 }
 
 //===========================================================================
-CharBuf * DimHttpMsg::Body () {
+CharBuf * HttpMsg::body () {
     return &m_data;
 }
 
 //===========================================================================
-const CharBuf * DimHttpMsg::Body () const {
+const CharBuf * HttpMsg::body () const {
     return &m_data;
 }
 
 //===========================================================================
-IDimTempHeap & DimHttpMsg::Heap () {
+ITempHeap & HttpMsg::heap () {
     return m_heap;
 }
 
 
 /****************************************************************************
 *
-*   DimHttpRequestMsg
+*   HttpRequest
 *
 ***/
 
-bool DimHttpRequestMsg::CheckPseudoHeaders () const {
+bool HttpRequest::checkPseudoHeaders () const {
     const int must = kFlagHasMethod | kFlagHasScheme | kFlagHasPath;
     const int mustNot = kFlagHasStatus;
     return (m_flags & must) == must && (~m_flags & mustNot);
 }
+
+} // namespace

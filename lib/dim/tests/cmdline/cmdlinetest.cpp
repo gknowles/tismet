@@ -2,7 +2,7 @@
 #include "pch.h"
 #pragma hdrstop
 
-using namespace CmdLine;
+using namespace Dim::CmdLine;
 
 int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 

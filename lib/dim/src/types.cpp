@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -14,37 +16,29 @@ using namespace std;
 
 /****************************************************************************
 *
-*   Endpoint
+*   Clock
 *
 ***/
 
-bool Parse (Endpoint * out, const char src[]);
-std::ostream & operator<< (std::ostream & os, const Endpoint & src);
-
-
-/****************************************************************************
-*
-*   DimClock
-*
-***/
-
-const int64_t kDimClockTicksPerTimeT{10'000'000};
+const int64_t kClockTicksPerTimeT{10'000'000};
 
 //===========================================================================
 // static
-DimClock::time_point DimClock::now() noexcept {
-    return (time_point(duration(IDimClockGetTicks())));
+Clock::time_point Clock::now() noexcept {
+    return (time_point(duration(iClockGetTicks())));
 }
 
 //===========================================================================
 // static 
-time_t DimClock::to_time_t(const time_point& time) noexcept {
+time_t Clock::to_time_t(const time_point& time) noexcept {
     return ((time_t)(time.time_since_epoch().count()
-        / kDimClockTicksPerTimeT));
+        / kClockTicksPerTimeT));
 }
 
 //===========================================================================
 // static 
-DimClock::time_point DimClock::from_time_t(time_t tm) noexcept {
-    return (time_point(duration(tm * kDimClockTicksPerTimeT)));
+Clock::time_point Clock::from_time_t(time_t tm) noexcept {
+    return (time_point(duration(tm * kClockTicksPerTimeT)));
 }
+
+} // namespace

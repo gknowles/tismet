@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -41,7 +43,7 @@ static atomic_int s_numSockets;
 ***/
 
 //===========================================================================
-static void AddCqUsed_LK (int delta) {
+static void addCqUsed_LK (int delta) {
     s_cqUsed += delta;
     assert(s_cqUsed >= 0);
 
@@ -53,7 +55,7 @@ static void AddCqUsed_LK (int delta) {
     }
     if (size != s_cqSize) {
         if (!s_rio.RIOResizeCompletionQueue(s_cq, size)) {
-            DimLog{kError} << "RIOResizeCompletionQueue(" 
+            Log{kError} << "RIOResizeCompletionQueue(" 
                 << size << "): " << WinError{};
         } else {
             s_cqSize = size;
@@ -69,17 +71,17 @@ static void AddCqUsed_LK (int delta) {
 ***/
 
 namespace {
-    class RioDispatchThread : public IDimTaskNotify {
-        void OnTask () override;
+    class RioDispatchThread : public ITaskNotify {
+        void onTask () override;
     };
 }
 static RioDispatchThread s_dispatchThread;
 
 //===========================================================================
-void RioDispatchThread::OnTask () {
+void RioDispatchThread::onTask () {
     static const int kNumResults = 100;
     RIORESULT results[kNumResults];
-    IDimTaskNotify * tasks[size(results)];
+    ITaskNotify * tasks[size(results)];
     int count;
 
     for (;;) {
@@ -95,26 +97,26 @@ void RioDispatchThread::OnTask () {
             (ULONG) size(results)
         );
         if (count == RIO_CORRUPT_CQ)
-            DimLog{kCrash} << "RIODequeueCompletion: " << WinError{};
+            Log{kCrash} << "RIODequeueCompletion: " << WinError{};
 
         for (int i = 0; i < count; ++i) {
             auto&& rr = results[i];
-            auto task = (DimSocket::RequestTaskBase *) rr.RequestContext;
-            task->m_socket = (DimSocket *) rr.SocketContext;
+            auto task = (SocketRequestTaskBase *) rr.RequestContext;
+            task->m_socket = (SocketBase *) rr.SocketContext;
             task->m_xferError = (WinError::NtStatus) rr.Status;
             task->m_xferBytes = rr.BytesTransferred;
             tasks[i] = task;
         }
 
         if (int error = s_rio.RIONotify(s_cq)) 
-            DimLog{kCrash} << "RIONotify: " << WinError{};
+            Log{kCrash} << "RIONotify: " << WinError{};
 
         lk.unlock();
 
         if (count) 
-            DimTaskPushEvent(tasks, count);
+            taskPushEvent(tasks, count);
 
-        s_cqReady.Wait();
+        s_cqReady.wait();
     }
 
     s_modeCv.notify_one();
@@ -123,40 +125,40 @@ void RioDispatchThread::OnTask () {
 
 /****************************************************************************
 *
-*   DimSocket::ReadTask
+*   SocketReadTask
 *
 ***/
 
 //===========================================================================
-void DimSocket::ReadTask::OnTask () {
-    m_socket->OnRead();
-    // task object is a member of DimSocket and will be deleted when the 
+void SocketReadTask::onTask () {
+    m_socket->onRead();
+    // task object is a member of SocketBase and will be deleted when the 
     // socket is deleted
 }
 
 
 /****************************************************************************
 *
-*   DimSocket::WriteTask
+*   DSocketWriteTask
 *
 ***/
 
 //===========================================================================
-void DimSocket::WriteTask::OnTask () {
+void SocketWriteTask::onTask () {
     // deleted via containing list
-    m_socket->OnWrite(this);
+    m_socket->onWrite(this);
 }
 
 
 /****************************************************************************
 *
-*   DimSocket
+*   SocketBase
 *
 ***/
 
 //===========================================================================
 // static
-DimSocket::Mode DimSocket::GetMode (IDimSocketNotify * notify) {
+SocketBase::Mode SocketBase::getMode (ISocketNotify * notify) {
     unique_lock<mutex> lk{s_mut};
     if (auto * sock = notify->m_socket) 
         return sock->m_mode;
@@ -166,51 +168,51 @@ DimSocket::Mode DimSocket::GetMode (IDimSocketNotify * notify) {
 
 //===========================================================================
 // static 
-void DimSocket::Disconnect (IDimSocketNotify * notify) {
+void SocketBase::disconnect (ISocketNotify * notify) {
     unique_lock<mutex> lk{s_mut};
     if (notify->m_socket)
-        notify->m_socket->HardClose();
+        notify->m_socket->hardClose();
 }
 
 //===========================================================================
 // static
-void DimSocket::Write (
-    IDimSocketNotify * notify, 
-    unique_ptr<DimSocketBuffer> buffer,
+void SocketBase::write (
+    ISocketNotify * notify, 
+    unique_ptr<SocketBuffer> buffer,
     size_t bytes
 ) {
     assert(bytes <= buffer->len);
     unique_lock<mutex> lk{s_mut};
-    DimSocket * sock = notify->m_socket;
+    SocketBase * sock = notify->m_socket;
     if (!sock)
         return;
 
-    sock->QueueWrite_LK(move(buffer), bytes);
+    sock->queueWrite_LK(move(buffer), bytes);
 }
 
 //===========================================================================
-DimSocket::DimSocket (IDimSocketNotify * notify)
+SocketBase::SocketBase (ISocketNotify * notify)
     : m_notify(notify)
 {
     s_numSockets += 1;
 }
 
 //===========================================================================
-DimSocket::~DimSocket () {
+SocketBase::~SocketBase () {
     lock_guard<mutex> lk{s_mut};
     if (m_notify)
         m_notify->m_socket = nullptr;
 
-    HardClose();
+    hardClose();
 
     if (m_maxSending)
-        AddCqUsed_LK(-(m_maxSending + kMaxReceiving));
+        addCqUsed_LK(-(m_maxSending + kMaxReceiving));
 
     s_numSockets -= 1;
 }
 
 //===========================================================================
-void DimSocket::HardClose () {
+void SocketBase::hardClose () {
     if (m_handle == INVALID_SOCKET)
         return;
 
@@ -223,9 +225,9 @@ void DimSocket::HardClose () {
 }
 
 //===========================================================================
-bool DimSocket::CreateQueue () {
-    m_read.m_buffer = DimSocketGetBuffer();
-    IDimSocketGetRioBuffer(
+bool SocketBase::createQueue () {
+    m_read.m_buffer = socketGetBuffer();
+    iSocketGetRioBuffer(
         &m_read.m_rbuf, 
         m_read.m_buffer.get(), 
         m_read.m_buffer->len
@@ -236,7 +238,7 @@ bool DimSocket::CreateQueue () {
 
         // adjust size of completion queue if required
         m_maxSending = kInitialSendQueueSize;
-        AddCqUsed_LK(m_maxSending + kMaxReceiving);
+        addCqUsed_LK(m_maxSending + kMaxReceiving);
 
         // create request queue
         m_rq = s_rio.RIOCreateRequestQueue(
@@ -250,7 +252,7 @@ bool DimSocket::CreateQueue () {
             this            // socket context
         );
         if (m_rq == RIO_INVALID_RQ) {
-            DimLog{kError} << "RIOCreateRequestQueue: " << WinError{};
+            Log{kError} << "RIOCreateRequestQueue: " << WinError{};
             return false;
         }
 
@@ -258,24 +260,24 @@ bool DimSocket::CreateQueue () {
         m_notify->m_socket = this;
 
         // start reading from socket
-        QueueRead_LK();
+        queueRead_LK();
     }
 
     return true;
 }
 
 //===========================================================================
-void DimSocket::OnRead () {
+void SocketBase::onRead () {
     if (m_read.m_xferBytes) {
-        DimSocketData data;
+        SocketData data;
         data.data = (char *) m_read.m_buffer->data;
         data.bytes = m_read.m_xferBytes;
-        m_notify->OnSocketRead(data);
+        m_notify->onSocketRead(data);
 
         lock_guard<mutex> lk{s_mut};
-        QueueRead_LK();
+        queueRead_LK();
     } else {
-        m_notify->OnSocketDisconnect();
+        m_notify->onSocketDisconnect();
         unique_lock<mutex> lk{s_mut};
         if (m_sending.empty()) {
             lk.unlock();
@@ -287,7 +289,7 @@ void DimSocket::OnRead () {
 }
 
 //===========================================================================
-void DimSocket::QueueRead_LK () {
+void SocketBase::queueRead_LK () {
     if (!s_rio.RIOReceive(
         m_rq,
         &m_read.m_rbuf,
@@ -295,12 +297,12 @@ void DimSocket::QueueRead_LK () {
         0,      // RIO_MSG_* flags
         &m_read
     )) {
-        DimLog{kCrash} << "RIOReceive: " << WinError{};
+        Log{kCrash} << "RIOReceive: " << WinError{};
     }
 }
 
 //===========================================================================
-void DimSocket::OnWrite (WriteTask * task) {
+void SocketBase::onWrite (SocketWriteTask * task) {
     unique_lock<mutex> lk{s_mut};
 
     auto it = find_if(
@@ -319,12 +321,12 @@ void DimSocket::OnWrite (WriteTask * task) {
         return;
     }
 
-    QueueWriteFromUnsent_LK();
+    queueWriteFromUnsent_LK();
 }
 
 //===========================================================================
-void DimSocket::QueueWrite_LK (
-    unique_ptr<DimSocketBuffer> buffer,
+void SocketBase::queueWrite_LK (
+    unique_ptr<SocketBuffer> buffer,
     size_t bytes
 ) {
     if (!m_unsent.empty()) {
@@ -350,21 +352,21 @@ void DimSocket::QueueWrite_LK (
     if (bytes) {
         m_unsent.emplace_back();
         auto & task = m_unsent.back();
-        IDimSocketGetRioBuffer(&task.m_rbuf, buffer.get(), bytes);
+        iSocketGetRioBuffer(&task.m_rbuf, buffer.get(), bytes);
         task.m_buffer = move(buffer);
     }
 
-    QueueWriteFromUnsent_LK();
+    queueWriteFromUnsent_LK();
 }
 
 //===========================================================================
-void DimSocket::QueueWriteFromUnsent_LK () {
+void SocketBase::queueWriteFromUnsent_LK () {
     while (m_numSending < m_maxSending && !m_unsent.empty()) {
         m_sending.splice(m_sending.end(), m_unsent, m_unsent.begin());
         m_numSending += 1;
         auto & task = m_sending.back();
         if (!s_rio.RIOSend(m_rq, &task.m_rbuf, 1, 0, &task)) {
-            DimLog{kCrash} << "RIOSend: " << WinError{};
+            Log{kCrash} << "RIOSend: " << WinError{};
             m_sending.pop_back();
             m_numSending -= 1;
         }
@@ -379,29 +381,29 @@ void DimSocket::QueueWriteFromUnsent_LK () {
 ***/
 
 namespace {
-    class ShutdownNotify : public IDimAppShutdownNotify {
-        bool OnAppQueryConsoleDestroy () override;
+    class ShutdownNotify : public IAppShutdownNotify {
+        bool onAppQueryConsoleDestroy () override;
     };
 } // namespace
 static ShutdownNotify s_cleanup;
 
 //===========================================================================
-bool ShutdownNotify::OnAppQueryConsoleDestroy () {
+bool ShutdownNotify::onAppQueryConsoleDestroy () {
     if (s_numSockets)
-        return DimQueryDestroyFailed();
+        return appQueryDestroyFailed();
 
     unique_lock<mutex> lk{s_mut};
     s_mode = kRunStopping;
 
     // wait for dispatch thread to stop
-    s_cqReady.Signal();
+    s_cqReady.signal();
     while (s_mode != kRunStopped)
         s_modeCv.wait(lk);
 
     // close windows sockets
     s_rio.RIOCloseCompletionQueue(s_cq);
     if (WSACleanup()) 
-        DimLog{kError} << "WSACleanup: " << WinError{};
+        Log{kError} << "WSACleanup: " << WinError{};
 
     return true;
 }
@@ -414,13 +416,13 @@ bool ShutdownNotify::OnAppQueryConsoleDestroy () {
 ***/
 
 //===========================================================================
-void IDimSocketInitialize () {
+void iSocketInitialize () {
     s_mode = kRunStarting;
 
     WSADATA data = {};
     WinError err = WSAStartup(WINSOCK_VERSION, &data);
     if (err || data.wVersion != WINSOCK_VERSION) {
-        DimLog{kCrash} << "WSAStartup(version=" << hex << WINSOCK_VERSION
+        Log{kCrash} << "WSAStartup(version=" << hex << WINSOCK_VERSION
             << "): " << err << ", version " << data.wVersion;
     }
 
@@ -434,7 +436,7 @@ void IDimSocketInitialize () {
         WSA_FLAG_REGISTERED_IO
     );
     if (s == INVALID_SOCKET) 
-        DimLog{kCrash} << "socket: " << WinError{};
+        Log{kCrash} << "socket: " << WinError{};
 
     // get RIO functions
     GUID extId = WSAID_MULTIPLE_RIO;
@@ -449,30 +451,30 @@ void IDimSocketInitialize () {
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        DimLog{kCrash} << "WSAIoctl(get RIO extension): " << WinError{};
+        Log{kCrash} << "WSAIoctl(get RIO extension): " << WinError{};
     }
     closesocket(s);
 
     // initialize buffer allocator
-    IDimSocketBufferInitialize(s_rio);
+    iSocketBufferInitialize(s_rio);
     // Don't register cleanup until all dependents (aka sockbuf) have
     // registered their cleanups (aka been initialized)
-    DimAppMonitorShutdown(&s_cleanup);
-    IDimSocketAcceptInitialize();
-    IDimSocketConnectInitialize();
+    appMonitorShutdown(&s_cleanup);
+    iSocketAcceptInitialize();
+    iSocketConnectInitialize();
 
     // create RIO completion queue
     RIO_NOTIFICATION_COMPLETION ctype = {};
     ctype.Type = RIO_EVENT_COMPLETION;
-    ctype.Event.EventHandle = s_cqReady.NativeHandle();
+    ctype.Event.EventHandle = s_cqReady.nativeHandle();
     ctype.Event.NotifyReset = false;
     s_cq = s_rio.RIOCreateCompletionQueue(s_cqSize, &ctype);
     if (s_cq == RIO_INVALID_CQ)
-        DimLog{kCrash} << "RIOCreateCompletionQueue: " << WinError{};
+        Log{kCrash} << "RIOCreateCompletionQueue: " << WinError{};
 
     // start rio dispatch task
-    HDimTaskQueue taskq = DimTaskCreateQueue("RIO Dispatch", 1);
-    DimTaskPush(taskq, s_dispatchThread);
+    TaskQueueHandle taskq = taskCreateQueue("RIO Dispatch", 1);
+    taskPush(taskq, s_dispatchThread);
 
     s_mode = kRunRunning;
 }
@@ -485,7 +487,7 @@ void IDimSocketInitialize () {
 ***/
 
 //===========================================================================
-SOCKET WinSocketCreate () {
+SOCKET winSocketCreate () {
     SOCKET handle = WSASocketW(
         AF_UNSPEC,
         SOCK_STREAM,
@@ -495,7 +497,7 @@ SOCKET WinSocketCreate () {
         WSA_FLAG_REGISTERED_IO
     );
     if (handle == INVALID_SOCKET) {
-        DimLog{kError} << "WSASocket: " << WinError{};
+        Log{kError} << "WSASocket: " << WinError{};
         return INVALID_SOCKET;
     }
 
@@ -511,7 +513,7 @@ SOCKET WinSocketCreate () {
     //    nullptr,    // overlapped
     //    nullptr     // completion routine
     //)) {
-    //    DimLog{kError} << "WSAIoctl(SIO_LOOPBACK_FAST_PATH): " << WinError{};
+    //    Log{kError} << "WSAIoctl(SIO_LOOPBACK_FAST_PATH): " << WinError{};
     //}
 
     if (SOCKET_ERROR == setsockopt(
@@ -521,7 +523,7 @@ SOCKET WinSocketCreate () {
         (char *) &yes,
         sizeof(yes)
     )) {
-        DimLog{kError} << "WSAIoctl(FIONBIO): " << WinError{};
+        Log{kError} << "WSAIoctl(FIONBIO): " << WinError{};
     }
 
 #ifdef SO_REUSE_UNICASTPORT
@@ -540,7 +542,7 @@ SOCKET WinSocketCreate () {
             (char *) &yes, 
             sizeof(yes)
         )) {
-            DimLog{kError} << "setsockopt(SO_PORT_SCALABILITY): " 
+            Log{kError} << "setsockopt(SO_PORT_SCALABILITY): " 
                 << WinError{};
         }
 #ifdef SO_REUSE_UNICASTPORT
@@ -551,19 +553,19 @@ SOCKET WinSocketCreate () {
 }
 
 //===========================================================================
-SOCKET WinSocketCreate (const Endpoint & end) {
-    SOCKET handle = WinSocketCreate();
+SOCKET winSocketCreate (const Endpoint & end) {
+    SOCKET handle = winSocketCreate();
     if (handle == INVALID_SOCKET) 
         return handle;
 
     sockaddr_storage sas;
-    DimEndpointToStorage(&sas, end);
+    copy(&sas, end);
     if (SOCKET_ERROR == ::bind(
         handle, 
         (sockaddr *) &sas, 
         sizeof(sas)
     )) {
-        DimLog{kError} << "bind(" << end << "): " << WinError{};
+        Log{kError} << "bind(" << end << "): " << WinError{};
         closesocket(handle);
         return INVALID_SOCKET;
     }
@@ -579,20 +581,22 @@ SOCKET WinSocketCreate (const Endpoint & end) {
 ***/
 
 //===========================================================================
-IDimSocketNotify::Mode DimSocketGetMode (IDimSocketNotify * notify) {
-    return DimSocket::GetMode(notify);
+ISocketNotify::Mode socketGetMode (ISocketNotify * notify) {
+    return SocketBase::getMode(notify);
 }
 
 //===========================================================================
-void DimSocketDisconnect (IDimSocketNotify * notify) {
-    DimSocket::Disconnect(notify);
+void socketDisconnect (ISocketNotify * notify) {
+    SocketBase::disconnect(notify);
 }
 
 //===========================================================================
-void DimSocketWrite (
-    IDimSocketNotify * notify, 
-    unique_ptr<DimSocketBuffer> buffer,
+void socketWrite (
+    ISocketNotify * notify, 
+    unique_ptr<SocketBuffer> buffer,
     size_t bytes
 ) {
-    DimSocket::Write (notify, move(buffer), bytes);
+    SocketBase::write (notify, move(buffer), bytes);
 }
+
+} // namespace

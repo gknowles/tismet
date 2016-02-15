@@ -4,6 +4,8 @@
 
 #include <iosfwd>
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -13,7 +15,7 @@
 
 struct WinOverlappedEvent {
     OVERLAPPED overlapped{};
-    IDimTaskNotify * notify{nullptr};
+    ITaskNotify * notify{nullptr};
 };
 
 
@@ -28,10 +30,10 @@ public:
     WinEvent ();
     ~WinEvent ();
 
-    void Signal ();
-    void Wait (Duration wait = DIM_TIMER_INFINITE);
+    void signal ();
+    void wait (Duration wait = kTimerInfinite);
 
-    HANDLE NativeHandle () const { return m_handle; };
+    HANDLE nativeHandle () const { return m_handle; };
 
 private:
     HANDLE m_handle;
@@ -44,9 +46,9 @@ private:
 *
 ***/
 
-void WinIocpInitialize ();
+void winIocpInitialize ();
 
-bool WinIocpBindHandle (HANDLE handle);
+bool winIocpBindHandle (HANDLE handle);
 
 
 /****************************************************************************
@@ -55,12 +57,12 @@ bool WinIocpBindHandle (HANDLE handle);
 *
 ***/
 
-class IWinEventWaitNotify : public IDimTaskNotify {
+class IWinEventWaitNotify : public ITaskNotify {
 public:
     IWinEventWaitNotify ();
     ~IWinEventWaitNotify ();
 
-    virtual void OnTask () override = 0;
+    virtual void onTask () override = 0;
 
     OVERLAPPED m_overlapped{};
     HANDLE m_registeredWait{nullptr};
@@ -102,7 +104,9 @@ std::ostream & operator<< (std::ostream & os, const WinError & val);
 *
 ***/
 
-SOCKET WinSocketCreate ();
-SOCKET WinSocketCreate (const Endpoint & localEnd);
+SOCKET winSocketCreate ();
+SOCKET winSocketCreate (const Endpoint & localEnd);
+
+} // namespace
 
 #endif

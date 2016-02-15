@@ -48,9 +48,6 @@
     <ClInclude Include="..\src\pch.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\dim\error.h">
-      <Filter>include</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\dim\address.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -70,6 +67,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\include\dim\hpack.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\log.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
@@ -92,9 +92,6 @@
     <ClCompile Include="..\src\pch.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\error.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\address.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -114,6 +111,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\httpmsg.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\log.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>

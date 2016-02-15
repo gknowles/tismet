@@ -4,6 +4,8 @@
 
 using namespace std;
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -12,29 +14,29 @@ using namespace std;
 ***/
 
 //===========================================================================
-DimHandleMapBase::DimHandleMapBase () {
+HandleMapBase::HandleMapBase () {
     m_values.push_back({nullptr, 0});
 }
 
 //===========================================================================
-DimHandleMapBase::~DimHandleMapBase() {
-    assert(Empty());
+HandleMapBase::~HandleMapBase() {
+    assert(empty());
 }
 
 //===========================================================================
-bool DimHandleMapBase::Empty () const {
+bool HandleMapBase::empty () const {
     return !m_numUsed;
 }
 
 //===========================================================================
-void * DimHandleMapBase::Find (DimHandleBase handle) {
+void * HandleMapBase::find (HandleBase handle) {
     return handle.pos >= (int) m_values.size() 
         ? NULL 
         : m_values[handle.pos].value;
 }
 
 //===========================================================================
-DimHandleBase DimHandleMapBase::Insert (void * value) {
+HandleBase HandleMapBase::insert (void * value) {
     int pos;
     if (!m_firstFree) {
         m_values.push_back({value, 0});
@@ -51,7 +53,7 @@ DimHandleBase DimHandleMapBase::Insert (void * value) {
 }
 
 //===========================================================================
-void * DimHandleMapBase::Release (DimHandleBase handle) {
+void * HandleMapBase::release (HandleBase handle) {
     if (handle.pos >= (int) m_values.size())
         return nullptr;
     Node & node = m_values[handle.pos];
@@ -64,3 +66,5 @@ void * DimHandleMapBase::Release (DimHandleBase handle) {
     m_firstFree = handle.pos;
     return value;
 }
+
+} // namespace

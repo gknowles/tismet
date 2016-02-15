@@ -2,6 +2,8 @@
 #ifndef DIM_WINSOCKINT_INCLUDED
 #define DIM_WINSOCKINT_INCLUDED
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -9,72 +11,74 @@
 *
 ***/
 
-class DimSocket {
+class SocketRequestTaskBase : public ITaskNotify {
+    virtual void onTask () override = 0;
 public:
-    using Mode = IDimSocketNotify::Mode;
+    RIO_BUF m_rbuf{};
+    std::unique_ptr<SocketBuffer> m_buffer;
 
-    class RequestTaskBase : public IDimTaskNotify {
-        virtual void OnTask () override = 0;
-    public:
-        RIO_BUF m_rbuf{};
-        std::unique_ptr<DimSocketBuffer> m_buffer;
+    // filled in after completion
+    WinError m_xferError{(WinError::NtStatus) 0};
+    int m_xferBytes{0};
+    SocketBase * m_socket{nullptr};
+};
 
-        // filled in after completion
-        WinError m_xferError{(WinError::NtStatus) 0};
-        int m_xferBytes{0};
-        DimSocket * m_socket{nullptr};
-    };
-    class ReadTask : public RequestTaskBase {
-        void OnTask () override;
-    };
-    class WriteTask : public RequestTaskBase {
-        void OnTask () override;
-    };
+class SocketReadTask : public SocketRequestTaskBase {
+    void onTask () override;
+};
+
+class SocketWriteTask : public SocketRequestTaskBase {
+    void onTask () override;
+};
+
+class SocketBase {
+public:
+    using Mode = ISocketNotify::Mode;
 
 public:
-    static DimSocket::Mode GetMode (IDimSocketNotify * notify);
-    static void Disconnect (IDimSocketNotify * notify);
-    static void Write (
-        IDimSocketNotify * notify, 
-        std::unique_ptr<DimSocketBuffer> buffer,
+    static SocketBase::Mode getMode (ISocketNotify * notify);
+    static void disconnect (ISocketNotify * notify);
+    static void write (
+        ISocketNotify * notify, 
+        std::unique_ptr<SocketBuffer> buffer,
         size_t bytes
     );
 
 public:
-    DimSocket (IDimSocketNotify * notify);
-    virtual ~DimSocket ();
+    SocketBase (ISocketNotify * notify);
+    virtual ~SocketBase ();
 
-    void HardClose ();
+    void hardClose ();
 
-    bool CreateQueue ();
-    void OnRead ();
-    void OnWrite (WriteTask * task);
+    bool createQueue ();
+    void onRead ();
+    void onWrite (SocketWriteTask * task);
 
-    void QueueRead_LK ();
-    void QueueWrite_LK (
-        std::unique_ptr<DimSocketBuffer> buffer,
+    void queueRead_LK ();
+    void queueWrite_LK (
+        std::unique_ptr<SocketBuffer> buffer,
         size_t bytes
     );
-    void QueueWriteFromUnsent_LK ();
+    void queueWriteFromUnsent_LK ();
 
 protected:
-    IDimSocketNotify * m_notify{nullptr};
+    ISocketNotify * m_notify{nullptr};
     SOCKET m_handle{INVALID_SOCKET};
-    DimSocketConnectInfo m_connInfo;
+    SocketConnectInfo m_connInfo;
     Mode m_mode{Mode::kInactive};
 
 private:
     RIO_RQ m_rq{};
     
     // used by single read request
-    ReadTask m_read;
+    SocketReadTask m_read;
     static const int kMaxReceiving{1};
 
     // used by write requests
-    std::list<WriteTask> m_sending;
+    std::list<SocketWriteTask> m_sending;
     int m_numSending{0};
     int m_maxSending{0};
-    std::list<WriteTask> m_unsent;
+    std::list<SocketWriteTask> m_unsent;
 };
 
 
@@ -84,7 +88,7 @@ private:
 *
 ***/
 
-void IDimSocketAcceptInitialize ();
+void iSocketAcceptInitialize ();
 
 
 /****************************************************************************
@@ -93,7 +97,7 @@ void IDimSocketAcceptInitialize ();
 *
 ***/
 
-void IDimSocketConnectInitialize ();
+void iSocketConnectInitialize ();
 
 
 /****************************************************************************
@@ -102,12 +106,13 @@ void IDimSocketConnectInitialize ();
 *
 ***/
 
-void IDimSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio);
-void IDimSocketGetRioBuffer (
+void iSocketBufferInitialize (RIO_EXTENSION_FUNCTION_TABLE & rio);
+void iSocketGetRioBuffer (
     RIO_BUF * out, 
-    DimSocketBuffer * buf,
+    SocketBuffer * buf,
     size_t bytes
 );
 
+} // namespace
 
 #endif

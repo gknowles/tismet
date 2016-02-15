@@ -3,6 +3,7 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace Dim;
 
 
 /****************************************************************************
@@ -11,13 +12,13 @@ using namespace std;
 *
 ***/
 
-class EndpointFind : public IDimEndpointNotify {
-    void OnEndpointFound (Endpoint * ptr, int count) override;
+class EndpointFind : public IEndpointNotify {
+    void onEndpointFound (Endpoint * ptr, int count) override;
 };
 static EndpointFind s_endFind;
 
 //===========================================================================
-void EndpointFind::OnEndpointFound (Endpoint * ptr, int count) {
+void EndpointFind::onEndpointFound (Endpoint * ptr, int count) {
     cout << "\nDNS Addresses:" << endl;
     for (int i = 0; i < count; ++i) {
         cout << ptr[i] << endl;
@@ -32,25 +33,25 @@ void EndpointFind::OnEndpointFound (Endpoint * ptr, int count) {
 *
 ***/
 
-class ListenSocket : public IDimSocketNotify {
-    void OnSocketAccept (const DimSocketAcceptInfo & info) override;
-    void OnSocketDisconnect () override;
-    void OnSocketRead (const DimSocketData & data) override;
+class ListenSocket : public ISocketNotify {
+    void onSocketAccept (const SocketAcceptInfo & info) override;
+    void onSocketDisconnect () override;
+    void onSocketRead (const SocketData & data) override;
 };
 
 //===========================================================================
-void ListenSocket::OnSocketAccept (const DimSocketAcceptInfo & info) {
+void ListenSocket::onSocketAccept (const SocketAcceptInfo & info) {
     cout << "\n*** ACCEPTED " << info.remoteEnd << " to " 
         << info.localEnd << endl;
 }
 
 //===========================================================================
-void ListenSocket::OnSocketDisconnect () {
+void ListenSocket::onSocketDisconnect () {
     cout << "\n*** DISCONNECTED" << endl;
 }
 
 //===========================================================================
-void ListenSocket::OnSocketRead (const DimSocketData & data) {
+void ListenSocket::onSocketRead (const SocketData & data) {
     cout.write(data.data, data.bytes);
     cout.flush();
 }
@@ -62,19 +63,19 @@ void ListenSocket::OnSocketRead (const DimSocketData & data) {
 *
 ***/
 
-struct ListenNotify : IDimSocketListenNotify {
-    void OnListenStop () override;
-    unique_ptr<IDimSocketNotify> OnListenCreateSocket () override;
+struct ListenNotify : ISocketListenNotify {
+    void onListenStop () override;
+    unique_ptr<ISocketNotify> onListenCreateSocket () override;
 };
 static ListenNotify s_listen;
 
 //===========================================================================
-void ListenNotify::OnListenStop () {
+void ListenNotify::onListenStop () {
     cout << "*** STOPPED LISTENING" << endl;
 }
 
 //===========================================================================
-unique_ptr<IDimSocketNotify> ListenNotify::OnListenCreateSocket () {
+unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket () {
     return make_unique<ListenSocket>();
 }
 
@@ -85,17 +86,17 @@ unique_ptr<IDimSocketNotify> ListenNotify::OnListenCreateSocket () {
 *
 ***/
 
-class MainShutdown : public IDimAppShutdownNotify {
-    void OnAppStartClientCleanup () override;
-    bool OnAppQueryClientDestroy () override;
+class MainShutdown : public IAppShutdownNotify {
+    void onAppStartClientCleanup () override;
+    bool onAppQueryClientDestroy () override;
 };
 
 //===========================================================================
-void MainShutdown::OnAppStartClientCleanup () {
+void MainShutdown::onAppStartClientCleanup () {
 }
 
 //===========================================================================
-bool MainShutdown::OnAppQueryClientDestroy () {
+bool MainShutdown::onAppQueryClientDestroy () {
     return true;
 }
 
@@ -107,30 +108,30 @@ bool MainShutdown::OnAppQueryClientDestroy () {
 ***/
 
 //===========================================================================
-void Start (int argc, char * argv[]) {
+static void start (int argc, char * argv[]) {
     vector<Address> addrs;
-    DimAddressGetLocal(&addrs);
+    addressGetLocal(&addrs);
     cout << "Local Addresses:" << endl;
     for (auto&& addr : addrs) {
         cout << addr << endl;
     }
 
     Endpoint end;
-    Parse(&end, "127.0.0.1", 8888);
-    DimSocketListen(&s_listen, end);
+    parse(&end, "127.0.0.1", 8888);
+    socketListen(&s_listen, end);
 
-    //DimHttpConn context;
-    //std::list<std::unique_ptr<DimHttpMsg>> msgs;
+    //HttpConn context;
+    //std::list<std::unique_ptr<HttpMsg>> msgs;
     //CharBuf reply;
-    //context.Recv(&msgs, &reply, NULL, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24);
+    //context.recv(&msgs, &reply, NULL, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24);
 
-    //DimSocketStop(nullptr, Endpoint{});
+    //socketStop(nullptr, Endpoint{});
 
     //if (argc > 1) {
     //    int cancelId;
-    //    DimEndpointQuery(&cancelId, &s_endFind, argv[1], 0);
+    //    endpointQuery(&cancelId, &s_endFind, argv[1], 0);
     //} else {
-    //    DimAppSignalShutdown(8);
+    //    appSignalShutdown(8);
     //}
 }
 
@@ -149,9 +150,9 @@ int main(int argc, char *argv[]) {
     _set_error_mode(_OUT_TO_MSGBOX);
 
     MainShutdown cleanup;
-    DimAppInitialize();
-    DimAppMonitorShutdown(&cleanup);
-    Start(argc, argv);
-    int code = DimAppWaitForShutdown();
+    appInitialize();
+    appMonitorShutdown(&cleanup);
+    start(argc, argv);
+    int code = appWaitForShutdown();
     return code;
 }

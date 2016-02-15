@@ -4,6 +4,8 @@
 
 #include <unordered_map>
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -11,7 +13,7 @@
 *
 ***/
 
-struct DimHttpStream {
+struct HttpStream {
     enum State {
         kIdle,
         kLocalReserved,
@@ -26,124 +28,124 @@ struct DimHttpStream {
 
     State m_state{kIdle};
     TimePoint m_closed;
-    std::unique_ptr<DimHttpMsg> m_msg;
+    std::unique_ptr<HttpMsg> m_msg;
 };
 
-class DimHttpConn {
+class HttpConn {
 public:
-    DimHttpConn ();
+    HttpConn ();
 
     // Returns false when no more data will be accepted, either by request
     // of the input or due to error.
     // Even after an error, msgs and reply should be processed.
     //  - msg: zero or more requests, push promises, and/or replies are appended
     //  - reply: data to send to the remote endpoint is appended
-    bool Recv (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool recv (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * reply,
         const void * src, 
         size_t srcLen
     );
 
     // Serializes a request and returns the stream id used
-    int Request (
+    int request (
         CharBuf * out,
-        std::unique_ptr<DimHttpMsg> msg
+        std::unique_ptr<HttpMsg> msg
     );
 
     // Serializes a push promise
-    void PushPromise (
+    void pushPromise (
         CharBuf * out,
-        std::unique_ptr<DimHttpMsg> msg
+        std::unique_ptr<HttpMsg> msg
     );
 
     // Serializes a reply on the specified stream
-    void Reply (
+    void reply (
         CharBuf * out,
         int stream,
-        std::unique_ptr<DimHttpMsg> msg
+        std::unique_ptr<HttpMsg> msg
     );
 
-    void ResetStream (CharBuf * out, int stream);
+    void resetStream (CharBuf * out, int stream);
 
-    void DeleteStream (int stream, DimHttpStream * sm);
+    void deleteStream (int stream, HttpStream * sm);
 
 private:
     enum class ByteMode;
     enum class FrameMode;
 
-    DimHttpStream * FindAlways (CharBuf * out, int stream);
+    HttpStream * findAlways (CharBuf * out, int stream);
 
-    bool OnFrame (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onFrame (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[]
     );
-    bool OnContinuation (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onContinuation (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnData (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onData (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnGoAway (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onGoAway (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnHeaders (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onHeaders (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnPing (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onPing (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnPriority (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onPriority (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnPushPromise (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onPushPromise (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnRstStream (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onRstStream (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnSettings (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onSettings (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
-    bool OnWindowUpdate (
-        std::list<std::unique_ptr<DimHttpMsg>> * msgs, 
+    bool onWindowUpdate (
+        std::list<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
@@ -166,9 +168,11 @@ private:
     int m_lastOutputStream{0};
     int m_maxOutputFrame{16384};
 
-    std::unordered_map<int, std::shared_ptr<DimHttpStream>> m_streams;
-    DimHpack::Encode m_encoder;
-    DimHpack::Decode m_decoder;
+    std::unordered_map<int, std::shared_ptr<HttpStream>> m_streams;
+    HpackEncode m_encoder;
+    HpackDecode m_decoder;
 };
+
+} // namespace
 
 #endif

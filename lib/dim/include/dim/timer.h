@@ -3,13 +3,13 @@
 #define DIM_TIMER_INCLUDED
 
 #include "dim/config.h"
-
 #include "dim/types.h"
 
 #include <chrono>
 #include <limits>
 #include <memory>
 
+namespace Dim {
 
 /****************************************************************************
 *
@@ -17,7 +17,7 @@
 *
 ***/
 
-const auto DIM_TIMER_INFINITE = Duration::max();
+const auto kTimerInfinite = Duration::max();
 
 
 /****************************************************************************
@@ -26,14 +26,14 @@ const auto DIM_TIMER_INFINITE = Duration::max();
 *
 ***/
 
-class IDimTimerNotify {
+class ITimerNotify {
 public:
-    virtual ~IDimTimerNotify ();
-    virtual Duration OnTimer (TimePoint now) = 0;
+    virtual ~ITimerNotify ();
+    virtual Duration onTimer (TimePoint now) = 0;
 
 private:
-    friend class DimTimer;
-    std::shared_ptr<DimTimer> m_timer;
+    friend class Timer;
+    std::shared_ptr<Timer> m_timer;
 };
 
 
@@ -43,11 +43,13 @@ private:
 *
 ***/
 
-void DimTimerUpdate (
-    IDimTimerNotify * notify, 
+void timerUpdate (
+    ITimerNotify * notify, 
     Duration wait, 
     bool onlyIfSooner = false
 );
-void DimTimerStopSync (IDimTimerNotify * notify);
+void timerStopSync (ITimerNotify * notify);
+
+} // namespace
 
 #endif

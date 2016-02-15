@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+namespace Dim {
 namespace CmdLine {
 
 
@@ -167,6 +168,7 @@ bool ParseOptions (const char cmdline[]);
 void PrintError (std::ostream & os);
 void PrintHelp (std::ostream & os);
 
+} // namespace
 } // namespace
 
 #endif

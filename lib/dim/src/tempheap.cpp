@@ -2,6 +2,8 @@
 #include "pch.h"
 #pragma hdrstop
 
+namespace Dim {
+
 
 /****************************************************************************
 *
@@ -38,12 +40,12 @@ struct Buffer {
 
 /****************************************************************************
 *
-*   DimTempHeap
+*   TempHeap
 *
 ***/
 
 //===========================================================================
-DimTempHeap::~DimTempHeap () {
+TempHeap::~TempHeap () {
     Buffer * ptr = (Buffer *) m_buffer;
     while (ptr) {
         Buffer * next = ptr->m_next;
@@ -53,7 +55,7 @@ DimTempHeap::~DimTempHeap () {
 }
 
 //===========================================================================
-char * DimTempHeap::Alloc (size_t bytes, size_t align) {
+char * TempHeap::alloc (size_t bytes, size_t align) {
     for (;;) {
         Buffer * buf = (Buffer *) m_buffer;
         if (buf) {
@@ -76,3 +78,5 @@ char * DimTempHeap::Alloc (size_t bytes, size_t align) {
         }
     }
 }
+
+} // namespace

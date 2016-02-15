@@ -3,6 +3,7 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace Dim;
 
 
 /****************************************************************************
@@ -88,9 +89,9 @@ const Test s_tests[] = {
 ***/  
 
 namespace {
-class Logger : public IDimLogNotify {
-    void OnLog (
-        DimLogSeverity severity,
+class Logger : public ILogNotify {
+    void onLog (
+        LogSeverity severity,
         const string & msg
     ) override;
 };
@@ -100,8 +101,8 @@ static Logger s_logger;
 static int s_errors;
 
 //===========================================================================
-void Logger::OnLog (
-    DimLogSeverity severity,
+void Logger::onLog (
+    LogSeverity severity,
     const string & msg
 ) {
     if (severity >= kError) {
@@ -131,18 +132,18 @@ int main(int argc, char *argv[]) {
         | _CRTDBG_LEAK_CHECK_DF
     );
     _set_error_mode(_OUT_TO_MSGBOX);
-    DimLogRegisterHandler(&s_logger);
+    logAddNotify(&s_logger);
 
     CharBuf output;
-    HDimHttpConn conn{};
+    HttpConnHandle conn{};
     bool result;
     for (auto&& test : s_tests) {
         cout << "Test - " << test.name << endl;
         if (test.reset && conn)
-            DimHttpClose(conn);
+            httpClose(conn);
         if (!conn)
-            conn = DimHttpListen();
-        result = DimHttpRecv(
+            conn = httpListen();
+        result = httpRecv(
             conn, 
             NULL, 
             &output, 
@@ -150,13 +151,13 @@ int main(int argc, char *argv[]) {
             size(test.input)
         );
         if (result != test.result) {
-            DimLog{kError} << "result: " << result << " != " << test.result 
+            Log{kError} << "result: " << result << " != " << test.result 
                  << " (FAILED)";
         }
-        if (output.Compare(test.output) != 0) 
-            DimLog{kError} << "headers mismatch (FAILED)";
+        if (output.compare(test.output) != 0) 
+            Log{kError} << "headers mismatch (FAILED)";
     }
-    DimHttpClose(conn);
+    httpClose(conn);
 
     if (s_errors) {
         cout << "*** " << s_errors << " FAILURES" << endl;
