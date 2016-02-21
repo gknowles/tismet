@@ -8,6 +8,7 @@ namespace Dim {
 
 // forward declarations
 enum RunMode;
+class ITaskNotify;
 
 
 class IAppShutdownNotify {
@@ -22,11 +23,10 @@ public:
     virtual bool onAppQueryConsoleDestroy () { return true; }
 };
 
-void appInitialize ();
-void appSignalShutdown (int exitcode = 0);
-
 // returns exit code
-int appWaitForShutdown ();
+int appRun (ITaskNotify & app);
+
+void appSignalShutdown (int exitcode = 0);
 
 void appMonitorShutdown (IAppShutdownNotify * cleanup);
 bool appQueryDestroyFailed ();

@@ -169,13 +169,23 @@ bool MainTimer::queryDestroy (QueryFn notify) {
 ***/
 
 //===========================================================================
-void appInitialize () {
+int appRun (ITaskNotify & app) {
     iHashInitialize();
     iTaskInitialize();
     iTimerInitialize();
     iFileInitialize();
     iSocketInitialize();
     s_runMode = kRunRunning;
+
+    taskPushEvent(app);
+
+    unique_lock<mutex> lk{s_runMut};
+    while (!s_mainTimer.stopped())
+        s_stopped.wait(lk);
+    iTimerDestroy();
+    iTaskDestroy();
+    s_runMode = kRunStopped;
+    return s_exitcode;
 }
 
 //===========================================================================
@@ -184,17 +194,6 @@ void appSignalShutdown (int exitcode) {
         s_exitcode = exitcode;
     s_mainTimer = {};
     timerUpdate(&s_mainTimer, 0ms);
-}
-
-//===========================================================================
-int appWaitForShutdown () {
-    unique_lock<mutex> lk{s_runMut};
-    while (!s_mainTimer.stopped())
-        s_stopped.wait(lk);
-    iTimerDestroy();
-    iTaskDestroy();
-    s_runMode = kRunStopped;
-    return s_exitcode;
 }
 
 //===========================================================================

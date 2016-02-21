@@ -195,6 +195,7 @@ class MainShutdown : public IAppShutdownNotify {
     bool onAppQueryClientDestroy () override;
     void onAppStartConsoleCleanup () override;
 };
+static MainShutdown s_cleanup;
 
 //===========================================================================
 void MainShutdown::onAppStartClientCleanup () {
@@ -221,14 +222,32 @@ void MainShutdown::onAppStartConsoleCleanup () {
 
 
 /****************************************************************************
-*
-*   main
-*
+*     
+*   Application
+*     
 ***/
 
+namespace {
+class Application : public ITaskNotify {
+    int m_argc;
+    char ** m_argv;
+public:
+    Application (int argc, char * argv[]);
+    void onTask () override;
+};
+} // namespace
+
 //===========================================================================
-void start (int argc, char * argv[]) {
-    if (argc < 2) {
+Application::Application (int argc, char * argv[]) 
+    : m_argc(argc)
+    , m_argv(argv)
+{}
+
+//===========================================================================
+void Application::onTask () {
+    appMonitorShutdown(&s_cleanup);
+
+    if (m_argc < 2) {
         cout << "tnet v1.0 (" __DATE__ ")\n"
             << "usage: tnet <remote address> [<local address>]\n";
         return appSignalShutdown(kExitBadArgs);
@@ -236,10 +255,10 @@ void start (int argc, char * argv[]) {
 
     initializeConsole();
 
-    if (argc > 2)
-        parse(&s_localEnd, argv[2], 0);
+    if (m_argc > 2)
+        parse(&s_localEnd, m_argv[2], 0);
 
-    endpointQuery(&s_cancelAddrId, &s_socket, argv[1], 23);
+    endpointQuery(&s_cancelAddrId, &s_socket, m_argv[1], 23);
     
     fileOpen(s_console.m_file, "conin$", IFile::kReadWrite);
     s_console.m_buffer = socketGetBuffer();
@@ -251,17 +270,18 @@ void start (int argc, char * argv[]) {
     );
 }
 
+
+/****************************************************************************
+*
+*   Externals
+*
+***/
+
 //===========================================================================
 int main(int argc, char * argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    MainShutdown cleanup;
-    appInitialize();
-    appMonitorShutdown(&cleanup);
-
-    start(argc, argv);    
-
-    int code = appWaitForShutdown();
-    return code;
+    Application app(argc, argv);
+    return appRun(app);
 }

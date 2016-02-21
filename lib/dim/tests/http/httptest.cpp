@@ -84,55 +84,40 @@ const Test s_tests[] = {
 
 /****************************************************************************
 *     
-*   Logging
+*   Application
 *     
-***/  
+***/
 
 namespace {
-class Logger : public ILogNotify {
-    void onLog (
-        LogSeverity severity,
-        const string & msg
-    ) override;
+class Application 
+    : public ITaskNotify 
+    , public ILogNotify
+{
+    // ITaskNotify
+    void onTask () override;
+
+    // ILogNotify
+    void onLog (LogSeverity severity, const string & msg) override;
+
+    int m_errors;
 };
 } // namespace
 
-static Logger s_logger;
-static int s_errors;
-
 //===========================================================================
-void Logger::onLog (
+void Application::onLog (
     LogSeverity severity,
     const string & msg
 ) {
     if (severity >= kError) {
-        s_errors += 1;
+        m_errors += 1;
         cout << "ERROR: " << msg << endl;
     } else {
         cout << msg << endl;
     }
 }
 
-
-/****************************************************************************
-*     
-*   Reader
-*     
-***/  
-
-
-/****************************************************************************
-*     
-*   External
-*     
-***/  
-
-int main (int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-    _set_error_mode(_OUT_TO_MSGBOX);
-    logAddNotify(&s_logger);
-    appInitialize();
-
+//===========================================================================
+void Application::onTask () {
     CharBuf output;
     HttpConnHandle conn{};
     bool result;
@@ -158,12 +143,26 @@ int main (int argc, char *argv[]) {
     }
     httpClose(conn);
 
-    if (s_errors) {
-        cout << "*** " << s_errors << " FAILURES" << endl;
+    if (m_errors) {
+        cout << "*** " << m_errors << " FAILURES" << endl;
         appSignalShutdown(1);
     } else {
         cout << "All tests passed" << endl;
         appSignalShutdown(0);
     }
-    return appWaitForShutdown();
+}
+
+
+/****************************************************************************
+*     
+*   External
+*     
+***/  
+
+int main (int argc, char *argv[]) {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+    _set_error_mode(_OUT_TO_MSGBOX);
+    Application app;
+    logAddNotify(&app);
+    return appRun(app);
 }

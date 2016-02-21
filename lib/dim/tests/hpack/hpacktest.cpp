@@ -393,38 +393,6 @@ bool NameValue::operator== (const NameValue & right) const {
 
 /****************************************************************************
 *     
-*   Logging
-*     
-***/  
-
-namespace {
-class Logger : public ILogNotify {
-    void onLog (
-        LogSeverity severity,
-        const string & msg
-    ) override;
-};
-} // namespace
-
-static Logger s_logger;
-static int s_errors;
-
-//===========================================================================
-void Logger::onLog (
-    LogSeverity severity,
-    const string & msg
-) {
-    if (severity >= kError) {
-        s_errors += 1;
-        cout << "ERROR: " << msg << endl;
-    } else {
-        cout << msg << endl;
-    }
-}
-
-
-/****************************************************************************
-*     
 *   Reader
 *     
 ***/  
@@ -443,16 +411,40 @@ void Reader::onHpackHeader (
 
 /****************************************************************************
 *     
-*   External
+*   Application
 *     
-***/  
+***/
 
-int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-    _set_error_mode(_OUT_TO_MSGBOX);
-    logAddNotify(&s_logger);
-    appInitialize();
+namespace {
+class Application 
+    : public ITaskNotify 
+    , public ILogNotify
+{
+    // ITaskNotify
+    void onTask () override;
 
+    // ILogNotify
+    void onLog (LogSeverity severity, const string & msg) override;
+
+    int m_errors;
+};
+} // namespace
+
+//===========================================================================
+void Application::onLog (
+    LogSeverity severity,
+    const string & msg
+) {
+    if (severity >= kError) {
+        m_errors += 1;
+        cout << "ERROR: " << msg << endl;
+    } else {
+        cout << msg << endl;
+    }
+}
+
+//===========================================================================
+void Application::onTask () {
     TempHeap heap;
     HpackDecode decode(256);
     Reader out;
@@ -474,12 +466,27 @@ int main(int argc, char *argv[]) {
         //    cout << "dynamic table mismatch (FAILED)" << endl;
     }
 
-    if (s_errors) {
-        cout << "*** " << s_errors << " FAILURES" << endl;
+    if (m_errors) {
+        cout << "*** " << m_errors << " FAILURES" << endl;
         appSignalShutdown(1);
     } else {
         cout << "All tests passed" << endl;
         appSignalShutdown(0);
     }
-    return appWaitForShutdown();
+}
+
+
+/****************************************************************************
+*     
+*   External
+*     
+***/  
+
+//===========================================================================
+int main(int argc, char *argv[]) {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+    _set_error_mode(_OUT_TO_MSGBOX);
+    Application app;
+    logAddNotify(&app);
+    return appRun(app);
 }
