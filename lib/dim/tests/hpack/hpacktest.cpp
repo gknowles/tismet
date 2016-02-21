@@ -448,11 +448,10 @@ void Reader::onHpackHeader (
 ***/  
 
 int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
-        | _CRTDBG_LEAK_CHECK_DF
-    );
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
     logAddNotify(&s_logger);
+    appInitialize();
 
     TempHeap heap;
     HpackDecode decode(256);
@@ -477,8 +476,10 @@ int main(int argc, char *argv[]) {
 
     if (s_errors) {
         cout << "*** " << s_errors << " FAILURES" << endl;
-        return 1;
+        appSignalShutdown(1);
+    } else {
+        cout << "All tests passed" << endl;
+        appSignalShutdown(0);
     }
-    cout << "All tests passed" << endl;
-    return 0;
+    return appWaitForShutdown();
 }

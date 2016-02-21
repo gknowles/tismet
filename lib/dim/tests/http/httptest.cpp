@@ -127,12 +127,11 @@ void Logger::onLog (
 *     
 ***/  
 
-int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
-        | _CRTDBG_LEAK_CHECK_DF
-    );
+int main (int argc, char *argv[]) {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
     logAddNotify(&s_logger);
+    appInitialize();
 
     CharBuf output;
     HttpConnHandle conn{};
@@ -145,7 +144,7 @@ int main(int argc, char *argv[]) {
             conn = httpListen();
         result = httpRecv(
             conn, 
-            NULL, 
+           NULL, 
             &output, 
             data(test.input), 
             size(test.input)
@@ -161,8 +160,10 @@ int main(int argc, char *argv[]) {
 
     if (s_errors) {
         cout << "*** " << s_errors << " FAILURES" << endl;
-        return 1;
+        appSignalShutdown(1);
+    } else {
+        cout << "All tests passed" << endl;
+        appSignalShutdown(0);
     }
-    cout << "All tests passed" << endl;
-    return 0;
+    return appWaitForShutdown();
 }
