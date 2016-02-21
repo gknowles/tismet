@@ -13,6 +13,7 @@
 #include "dim/http.h"
 #include "dim/log.h"
 #include "dim/socket.h"
+#include "dim/str.h"
 #include "dim/task.h"
 #include "dim/tempheap.h"
 #include "dim/timer.h"

@@ -4,6 +4,10 @@
 #include "intern.h"
 #include "httpint.h"
 
+#define SODIUM_STATIC
+#include <sodium.h>
+#undef SODIUM_STATIC
+
 #include <atomic>
 #include <cassert>
 #include <condition_variable>

@@ -3,6 +3,7 @@
 #define DIM_VISUALC_INCLUDED
 
 #pragma warning(disable: 4100) // unreferenced formal parameter
+#pragma warning(disable: 4324) // structure was padded due to alignment specifier
 
 // #pragma warning(disable: 4103) // alignment changed after including header
 // #pragma warning(disable: 4366) // the result of the unary '&' operator may be unaligned
