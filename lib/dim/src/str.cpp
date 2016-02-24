@@ -39,4 +39,17 @@ size_t strHash (const char src[]) {
     return hash;
 }
 
+//===========================================================================
+size_t strHash (const char src[], size_t maxlen) {
+    size_t len = min(strlen(src), maxlen);
+    int64_t hash;
+    crypto_shorthash(
+        (uint8_t *) &hash, 
+        (uint8_t *) src, 
+        len, 
+        s_key
+    );
+    return hash;
+}
+
 } // namespace

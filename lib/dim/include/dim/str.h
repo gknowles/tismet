@@ -8,6 +8,9 @@ namespace Dim {
 
 size_t strHash (const char src[]);
 
+// calculates hash up to trailing null or maxlen, whichever comes first
+size_t strHash (const char src[], size_t maxlen);
+
 } // namespace
 
 #endif
