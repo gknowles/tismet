@@ -37,7 +37,7 @@ public:
 template <typename T, typename... Args>
 inline T * ITempHeap::emplace (Args&&... args) {
     char * tmp = alloc(sizeof(T), alignof(T));
-    return new(tmp) T(args);
+    return new(tmp) T(args...);
 }
 
 //===========================================================================
