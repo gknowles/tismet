@@ -181,9 +181,9 @@ void MsgDecoder::onHpackHeader (
     int flags // Flags::*
 ) {
     if (id) {
-        m_msg.addHeader(id, value);
+        m_msg.addHeaderRef(id, value);
     } else {
-        m_msg.addHeader(name, value);
+        m_msg.addHeaderRef(name, value);
     }
     // m_error = FrameError::kInternalError;
 }
@@ -700,6 +700,9 @@ bool HttpConn::onHeaders (
     }
     if (!notify) {
         ReplyRstStream(out, stream, sm, notify.Error());
+    } else {
+        if (sm->m_state == HttpStream::kRemoteClosed)
+            msgs->push_back(move(sm->m_msg));
     }
     return true;
 }

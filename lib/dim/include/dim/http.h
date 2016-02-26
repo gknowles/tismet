@@ -77,6 +77,7 @@ enum HttpHdr {
     kHttpVary,
     kHttpVia,
     kHttpWwwAuthenticate,
+    kHttps
 };
 
 
@@ -88,22 +89,13 @@ enum HttpHdr {
 
 class HttpMsg {
 public:
-    struct Hdr;
+    struct HdrName;
+    class HdrNameIterator;
     struct HdrValue;
-    class HdrRange;
-    class HdrIterator;
+    class HdrValueIterator;
 
 public:
     virtual ~HttpMsg () {}
-
-    const Hdr * findFirst (int header) const;
-    Hdr * findFirst (int header);
-    const Hdr * findLast (int header) const;
-    Hdr * findLast (int header);
-    const Hdr * next (const Hdr * hdr) const;
-    Hdr * next (Hdr * hdr);
-    const Hdr * prev (const Hdr * hdr) const;
-    Hdr * prev (Hdr * hdr);
 
     void addHeader (HttpHdr id, const char value[]);
     void addHeader (const char name[], const char value[]);
@@ -114,9 +106,11 @@ public:
     void addHeaderRef (HttpHdr id, const char value[]);
     void addHeaderRef (const char name[], const char value[]);
 
-    HdrRange headers (
-        int header = kHttpInvalid // defaults to all
-    ) const;
+    HdrNameIterator begin ();
+    HdrNameIterator end ();
+
+    HdrName headers (HttpHdr header);
+    HdrName headers (const char name[]);
 
     CharBuf * body ();
     const CharBuf * body () const;
@@ -137,46 +131,60 @@ protected:
     int m_flags{0}; // kFlag*
 
 private:
+    void addHeaderRef (HttpHdr id, const char name[], const char value[]);
+
     CharBuf m_data;
     TempHeap m_heap;
+    HdrName * m_firstHeader{nullptr};
 };
 
-struct HttpMsg::Hdr {
-    HttpHdr id () const;
-    const char * name () const;
-    const char * value () const;
-private:
-    ~Hdr ();
-
+struct HttpMsg::HdrName {
     HttpHdr m_id{kHttpInvalid};
     const char * m_name{nullptr};
-    HttpMsg::HdrValue * m_value{nullptr};
-    Hdr * m_next{nullptr};
+    HdrName * m_next{nullptr};
+
+    HdrValueIterator begin ();
+    HdrValueIterator end ();
 };
 
-class HttpMsg::HdrIterator {
-    HttpMsg * m_msg{nullptr};
-    Hdr * m_current{nullptr};
+class HttpMsg::HdrNameIterator {
+    HdrName * m_current{nullptr};
 public:
-    HdrIterator ();
-    HdrIterator (HttpMsg & msg, int header);
+    HdrNameIterator (HdrName * hdr) : m_current(hdr) {}
+    bool operator!= (const HdrNameIterator & right) {
+        return m_current != right.m_current;
+    }
     auto operator++ () {
-        if (m_msg)
-            m_current = m_msg->next(m_current);
+        m_current = m_current->m_next;
         return *this;
     }
-    Hdr & operator* () {
+    HdrName & operator* () {
         assert(m_current);
         return *m_current;
     }
 };
 
-class HttpMsg::HdrRange {
-    HttpMsg::HdrRange (HttpMsg & msg, int header);
-    HttpMsg::HdrIterator it;
+struct HttpMsg::HdrValue {
+    const char * m_value;
+    HdrValue * m_next{nullptr};
+    HdrValue * m_prev{nullptr};
+};
 
-    HttpMsg::HdrIterator begin () { return it; }
-    HttpMsg::HdrIterator end () { return HttpMsg::HdrIterator(); }
+class HttpMsg::HdrValueIterator {
+    HdrValue * m_current{nullptr};
+public:
+    HdrValueIterator (HdrValue * hdr) : m_current(hdr) {}
+    bool operator!= (const HdrValueIterator & right) {
+        return m_current != right.m_current;
+    }
+    auto operator++ () {
+        m_current = m_current->m_next;
+        return *this;
+    }
+    HdrValue & operator* () {
+        assert(m_current);
+        return *m_current;
+    }
 };
 
 

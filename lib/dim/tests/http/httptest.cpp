@@ -22,14 +22,18 @@ struct NameValue {
     bool operator== (const NameValue & right) const;
 };
 
+struct TestMsg {
+    vector<NameValue> headers;
+    const char * body;
+};
+
 struct Test {
     const char * name;
     bool reset;
     string input;
     bool result;
     string output;
-    vector<NameValue> headers;
-    const char * body;
+    vector<TestMsg> msgs;
 };
 
 } // namespace
@@ -41,36 +45,40 @@ struct Test {
 *     
 ***/  
 
-const char s_inputA[] =
-    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-    "\x00\x00\x00\x04\x00\x00\x00\x00\x00" // settings
-    "\x00\x00\x26\x01\x05\x00\x00\x00\x01" // headers (38 bytes) + eoh + eos
-        "\x82"                      // :method: GET
-        "\x87"                      // :scheme: https
-        "\x44\x09" "/resource"      // :path: /resource
-        "\x66\x0b" "example.org"    // host: example.org
-        "\x53\x0a" "image/jpeg"     // accept: image/jpeg
-;
-const char s_outputA[] =
-    "\x00\x00\x00\x04\x00\x00\x00\x00\x00" // settings
-    "\x00\x00\x00\x04\x01\x00\x00\x00\x00" // settings + ack
-;
-
 const Test s_tests[] = {
     {
         "/a",
         true,
-        { s_inputA, end(s_inputA) - 1 },
-        true,
-        { s_outputA, end(s_outputA) - 1 },
-        {
-            { ":method", "GET" },
-            { ":scheme", "https" },
-            { ":path", "/resource" },
-            { "host", "example.org" },
-            { "accept", "image/jpeg" },
+        { 
+            'P','R','I',' ','*',' ','H','T','T','P','/','2','.','0','\r','\n',
+            '\r','\n',
+            'S','M','\r','\n',
+            '\r','\n',
+            0, 0, 0, 4, 0, 0, 0, 0, 0,  // settings
+            0, 0, 38, 1, 5, 0, 0, 0, 1, // headers (38 bytes) + eoh + eos
+                '\x82',     // :method: GET
+                '\x87',     // :scheme: https
+                0x44, 0x09, '/','r','e','s','o','u','r','c','e',
+                0x66, 0x0b, 'e','x','a','m','p','l','e','.','o','r','g',
+                0x53, 0x0a, 'i','m','a','g','e','/','j','p','e','g',
         },
-        ""
+        true,
+        { 
+            0, 0, 0, 4, 0, 0, 0, 0, 0,  // settings
+            0, 0, 0, 4, 1, 0, 0, 0, 0,  // settings + ack
+        },
+        {
+            {
+                {
+                    { ":method", "GET" },
+                    { ":scheme", "https" },
+                    { ":path", "/resource" },
+                    { "host", "example.org" },
+                    { "accept", "image/jpeg" },
+                },
+                ""
+            },
+        }
     },
 };
 
@@ -121,6 +129,7 @@ void Application::onTask () {
     CharBuf output;
     HttpConnHandle conn{};
     bool result;
+    list<unique_ptr<HttpMsg>> msgs;
     for (auto&& test : s_tests) {
         cout << "Test - " << test.name << endl;
         if (test.reset && conn)
@@ -129,7 +138,7 @@ void Application::onTask () {
             conn = httpListen();
         result = httpRecv(
             conn, 
-           NULL, 
+            &msgs, 
             &output, 
             data(test.input), 
             size(test.input)
@@ -140,6 +149,39 @@ void Application::onTask () {
         }
         if (output.compare(test.output) != 0) 
             Log{kError} << "headers mismatch (FAILED)";
+        auto tmi = test.msgs.begin();
+        for (auto&& msg : msgs) {
+            if (tmi == test.msgs.end()) {
+                Log{kError} << "too many messages (FAILED)";
+                break;
+            }
+            if (msg->body()->compare(tmi->body) != 0)
+                Log{kError} << "body mismatch (FAILED)";
+            auto thi = tmi->headers.begin(),
+                ethi = tmi->headers.end();
+            for (auto&& hdr : *msg) {
+                for (auto&& hv : hdr) {
+                    if (thi == ethi) {
+                        Log{kError} << "expected fewer headers";
+                        goto finished_headers;
+                    }
+                    if (strcmp(thi->name, hdr.m_name) != 0
+                        || strcmp(thi->value, hv.m_value) != 0
+                    ) {
+                        Log{kError} << "header mismatch, '"
+                            << hdr.m_name << ": " << hv.m_value 
+                            << "', expected '"
+                            << thi->name << ": " << thi->value
+                            << "'";
+                    }
+                    ++thi;
+                }
+            }
+        finished_headers:
+            if (thi != ethi)
+                Log{kError} << "expected more headers";
+        }
+        msgs.clear();
     }
     httpClose(conn);
 
