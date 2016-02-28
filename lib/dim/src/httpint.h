@@ -50,20 +50,20 @@ public:
     // Serializes a request and returns the stream id used
     int request (
         CharBuf * out,
-        std::unique_ptr<HttpMsg> msg
+        const HttpMsg & msg
     );
 
     // Serializes a push promise
     void pushPromise (
         CharBuf * out,
-        std::unique_ptr<HttpMsg> msg
+        const HttpMsg & msg
     );
 
     // Serializes a reply on the specified stream
     void reply (
         CharBuf * out,
         int stream,
-        std::unique_ptr<HttpMsg> msg
+        const HttpMsg & msg
     );
 
     void resetStream (CharBuf * out, int stream);

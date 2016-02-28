@@ -250,6 +250,25 @@ static bool Skip (
 }
 
 //===========================================================================
+static void SetFrameHeader (
+    uint8_t out[kFrameHeaderLen],
+    unsigned stream,
+    FrameType type,
+    unsigned length,
+    unsigned flags
+) {
+    out[0] = (uint8_t) (length >> 16);
+    out[1] = (uint8_t) (length >> 8);
+    out[2] = (uint8_t) length;
+    out[3] = (uint8_t) type;
+    out[4] = (uint8_t) flags;
+    out[5] = (uint8_t) (stream >> 24);
+    out[6] = (uint8_t) (stream >> 16);
+    out[7] = (uint8_t) (stream >> 8);
+    out[8] = (uint8_t) stream;
+}
+
+//===========================================================================
 static void StartFrame (
     CharBuf * out,
     unsigned stream,
@@ -258,15 +277,7 @@ static void StartFrame (
     unsigned flags
 ) {
     uint8_t buf[kFrameHeaderLen];
-    buf[0] = (uint8_t) (length >> 16);
-    buf[1] = (uint8_t) (length >> 8);
-    buf[2] = (uint8_t) length;
-    buf[3] = (uint8_t) type;
-    buf[4] = (uint8_t) flags;
-    buf[5] = (uint8_t) (stream >> 24);
-    buf[6] = (uint8_t) (stream >> 16);
-    buf[7] = (uint8_t) (stream >> 8);
-    buf[8] = (uint8_t) stream;
+    SetFrameHeader(buf, stream, type, length, flags);
     out->append((char *) &buf, sizeof(buf));
 }
 
@@ -596,8 +607,8 @@ bool HttpConn::onData (
 
     // TODO: check total buffer size
 
-    CharBuf * buf = sm->m_msg->body();
-    buf->append(data.data, data.dataLen);
+    CharBuf & buf = sm->m_msg->body();
+    buf.append(data.data, data.dataLen);
     if (flags & kEndStream) {
         msgs->push_back(move(sm->m_msg));
     }
@@ -951,7 +962,7 @@ bool HttpConn::onContinuation (
 // Serializes a request and returns the stream id used
 int HttpConn::request (
     CharBuf * out,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 ) {
     return 0;
 }
@@ -960,7 +971,7 @@ int HttpConn::request (
 // Serializes a push promise
 void HttpConn::pushPromise (
     CharBuf * out,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 ) {
 }
 
@@ -969,8 +980,87 @@ void HttpConn::pushPromise (
 void HttpConn::reply (
     CharBuf * out,
     int stream,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 ) {
+    auto it = m_streams.find(stream);
+    if (it == m_streams.end())
+        return;
+
+    HttpStream * strm = it->second.get();
+    switch (strm->m_state) {
+        case HttpStream::kOpen:
+            strm->m_state = HttpStream::kLocalClosed;
+            break;
+        case HttpStream::kLocalReserved:
+        case HttpStream::kRemoteClosed:
+            strm->m_state = HttpStream::kClosed;
+            break;
+        default:
+            Log{kCrash} << "httpReply invalid state, {" 
+                << strm->m_state << "}";
+            return;
+    }
+
+    const CharBuf & body = msg.body();
+    size_t framePos = out->size();
+    size_t maxEndPos = framePos + m_maxOutputFrame + kFrameHeaderLen;
+    FrameType ftype = FrameType::kHeaders;
+    int flags = size(body) ? 0 : FrameFlag::kEndStream;
+    uint8_t frameHdr[kFrameHeaderLen];
+    SetFrameHeader(frameHdr, stream, ftype, 0, 0);
+    out->append((char *) frameHdr, size(frameHdr));
+    m_encoder.startBlock(out);
+    for (auto&& hdr : msg) {
+        for (auto&& hv : hdr) {
+            if (hdr.m_id) {
+                m_encoder.header(hdr.m_id, hv.m_value);
+            } else {
+                m_encoder.header(hdr.m_name, hv.m_value);
+            }
+            if (size(*out) > maxEndPos) {
+                SetFrameHeader(
+                    frameHdr, 
+                    stream, 
+                    ftype,
+                    m_maxOutputFrame,
+                    flags
+                );
+                out->replace(framePos, size(frameHdr), (char *) frameHdr);
+                ftype = FrameType::kContinuation;
+                flags = 0;
+                framePos = maxEndPos;
+                maxEndPos += m_maxOutputFrame + kFrameHeaderLen;
+                out->insert(framePos, (char *) frameHdr, size(frameHdr));
+            }
+        }
+    }
+    SetFrameHeader(
+        frameHdr,
+        stream, 
+        ftype,
+        int(size(*out) - framePos),
+        flags | FrameFlag::kEndHeaders
+    );
+    out->replace(framePos, size(frameHdr), (char *) frameHdr);
+    
+    size_t bodyLen = size(body);
+    if (!bodyLen)
+        return;
+
+    size_t bodyPos = 0;
+    while (bodyPos + m_maxOutputFrame < bodyLen) {
+        StartFrame(out, stream, FrameType::kData, m_maxOutputFrame, 0);
+        out->append(body, bodyPos, m_maxOutputFrame);
+        bodyPos += m_maxOutputFrame;
+    }
+    StartFrame(
+        out, 
+        stream, 
+        FrameType::kData, 
+        int(bodyLen - bodyPos), 
+        FrameFlag::kEndStream
+    );
+    out->append(body, bodyPos);
 }
 
 //===========================================================================
@@ -1015,6 +1105,17 @@ bool httpRecv (
     if (auto * conn = s_conns.find(hc))
         return conn->recv(msgs, out, src, srcLen);
     return false;
+}
+
+//===========================================================================
+void httpReply (
+    HttpConnHandle hc,
+    CharBuf * out,
+    int stream,
+    const HttpMsg & msg
+) {
+    auto * conn = s_conns.find(hc);
+    conn->reply(out, stream, msg);
 }
 
 } // namespace

@@ -155,7 +155,7 @@ void Application::onTask () {
                 Log{kError} << "too many messages (FAILED)";
                 break;
             }
-            if (msg->body()->compare(tmi->body) != 0)
+            if (msg->body().compare(tmi->body) != 0)
                 Log{kError} << "body mismatch (FAILED)";
             auto thi = tmi->headers.begin(),
                 ethi = tmi->headers.end();
@@ -172,14 +172,14 @@ void Application::onTask () {
                             << hdr.m_name << ": " << hv.m_value 
                             << "', expected '"
                             << thi->name << ": " << thi->value
-                            << "'";
+                            << "' (FAILED)";
                     }
                     ++thi;
                 }
             }
         finished_headers:
             if (thi != ethi)
-                Log{kError} << "expected more headers";
+                Log{kError} << "expected more headers (FAILED)";
         }
         msgs.clear();
     }

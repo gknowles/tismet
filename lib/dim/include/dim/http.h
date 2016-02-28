@@ -90,9 +90,8 @@ enum HttpHdr {
 class HttpMsg {
 public:
     struct HdrName;
-    class HdrNameIterator;
     struct HdrValue;
-    class HdrValueIterator;
+    template <typename T> class Iterator;
 
 public:
     virtual ~HttpMsg () {}
@@ -106,14 +105,16 @@ public:
     void addHeaderRef (HttpHdr id, const char value[]);
     void addHeaderRef (const char name[], const char value[]);
 
-    HdrNameIterator begin ();
-    HdrNameIterator end ();
+    Iterator<HdrName> begin ();
+    Iterator<HdrName> end ();
+    Iterator<const HdrName> begin () const;
+    Iterator<const HdrName> end () const;
 
     HdrName headers (HttpHdr header);
     HdrName headers (const char name[]);
 
-    CharBuf * body ();
-    const CharBuf * body () const;
+    CharBuf & body ();
+    const CharBuf & body () const;
 
     ITempHeap & heap ();
 
@@ -143,25 +144,10 @@ struct HttpMsg::HdrName {
     const char * m_name{nullptr};
     HdrName * m_next{nullptr};
 
-    HdrValueIterator begin ();
-    HdrValueIterator end ();
-};
-
-class HttpMsg::HdrNameIterator {
-    HdrName * m_current{nullptr};
-public:
-    HdrNameIterator (HdrName * hdr) : m_current(hdr) {}
-    bool operator!= (const HdrNameIterator & right) {
-        return m_current != right.m_current;
-    }
-    auto operator++ () {
-        m_current = m_current->m_next;
-        return *this;
-    }
-    HdrName & operator* () {
-        assert(m_current);
-        return *m_current;
-    }
+    Iterator<HdrValue> begin ();
+    Iterator<HdrValue> end ();
+    Iterator<const HdrValue> begin () const;
+    Iterator<const HdrValue> end () const;
 };
 
 struct HttpMsg::HdrValue {
@@ -170,18 +156,19 @@ struct HttpMsg::HdrValue {
     HdrValue * m_prev{nullptr};
 };
 
-class HttpMsg::HdrValueIterator {
-    HdrValue * m_current{nullptr};
+template <typename T>
+class HttpMsg::Iterator {
+    T * m_current{nullptr};
 public:
-    HdrValueIterator (HdrValue * hdr) : m_current(hdr) {}
-    bool operator!= (const HdrValueIterator & right) {
+    Iterator (T * hdr) : m_current(hdr) {}
+    bool operator!= (const Iterator & right) {
         return m_current != right.m_current;
     }
     auto operator++ () {
         m_current = m_current->m_next;
         return *this;
     }
-    HdrValue & operator* () {
+    T & operator* () {
         assert(m_current);
         return *m_current;
     }
@@ -244,14 +231,14 @@ bool httpRecv (
 int httpRequest (
     HttpConnHandle conn,
     CharBuf * out,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 );
 
 // Serializes a push promise
 void httpPushPromise (
     HttpConnHandle conn,
     CharBuf * out,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 );
 
 // Serializes a reply on the specified stream
@@ -259,7 +246,7 @@ void httpReply (
     HttpConnHandle conn,
     CharBuf * out,
     int stream,
-    std::unique_ptr<HttpMsg> msg
+    const HttpMsg & msg
 );
 
 void httpResetStream (HttpConnHandle conn, CharBuf * out, int stream);

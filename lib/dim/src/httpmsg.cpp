@@ -110,14 +110,25 @@ struct HdrNameInfo : HttpMsg::HdrName {
 ***/
 
 //===========================================================================
-auto HttpMsg::HdrName::begin () -> HdrValueIterator {
+auto HttpMsg::HdrName::begin () -> Iterator<HdrValue> {
     auto * hdr = static_cast<HdrNameInfo *>(this);
-    return HdrValueIterator(&hdr->m_value);
+    return Iterator<HdrValue>(&hdr->m_value);
 }
 
 //===========================================================================
-auto HttpMsg::HdrName::end () -> HdrValueIterator {
-    return HdrValueIterator(nullptr);
+auto HttpMsg::HdrName::end () -> Iterator<HdrValue> {
+    return Iterator<HdrValue>(nullptr);
+}
+
+//===========================================================================
+auto HttpMsg::HdrName::begin () const -> Iterator<const HdrValue> {
+    auto * hdr = static_cast<const HdrNameInfo *>(this);
+    return Iterator<const HdrValue>(&hdr->m_value);
+}
+
+//===========================================================================
+auto HttpMsg::HdrName::end () const -> Iterator<const HdrValue> {
+    return Iterator<const HdrValue>(nullptr);
 }
 
 
@@ -204,23 +215,33 @@ void HttpMsg::addHeaderRef (const char name[], const char value[]) {
 }
 
 //===========================================================================
-HttpMsg::HdrNameIterator HttpMsg::begin () {
-    return HdrNameIterator{m_firstHeader};
+auto HttpMsg::begin () -> Iterator<HdrName> {
+    return Iterator<HdrName>{m_firstHeader};
 }
 
 //===========================================================================
-HttpMsg::HdrNameIterator HttpMsg::end () {
-    return HdrNameIterator{nullptr};
+auto HttpMsg::end () -> Iterator<HdrName> {
+    return Iterator<HdrName>{nullptr};
 }
 
 //===========================================================================
-CharBuf * HttpMsg::body () {
-    return &m_data;
+auto HttpMsg::begin () const -> Iterator<const HdrName> {
+    return Iterator<const HdrName>{m_firstHeader};
 }
 
 //===========================================================================
-const CharBuf * HttpMsg::body () const {
-    return &m_data;
+auto HttpMsg::end () const -> Iterator<const HdrName> {
+    return Iterator<const HdrName>{nullptr};
+}
+
+//===========================================================================
+CharBuf & HttpMsg::body () {
+    return m_data;
+}
+
+//===========================================================================
+const CharBuf & HttpMsg::body () const {
+    return m_data;
 }
 
 //===========================================================================

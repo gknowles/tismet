@@ -37,21 +37,41 @@ class ListenSocket : public ISocketNotify {
     void onSocketAccept (const SocketAcceptInfo & info) override;
     void onSocketDisconnect () override;
     void onSocketRead (const SocketData & data) override;
+
+    HttpConnHandle m_conn;
 };
 
 //===========================================================================
 void ListenSocket::onSocketAccept (const SocketAcceptInfo & info) {
     cout << "\n*** ACCEPTED " << info.remoteEnd << " to " 
         << info.localEnd << endl;
+
+    m_conn = httpListen();
 }
 
 //===========================================================================
 void ListenSocket::onSocketDisconnect () {
     cout << "\n*** DISCONNECTED" << endl;
+
+    httpClose(m_conn);
 }
 
 //===========================================================================
 void ListenSocket::onSocketRead (const SocketData & data) {
+    //list<unique_ptr<HttpMsg>> msgs;
+    //CharBuf out;
+    //bool disconnect = !httpRecv(
+    //    m_conn,
+    //    &msgs, 
+    //    &out,
+    //    data.data,
+    //    data.bytes
+    //);
+    //unique_ptr<SocketBuffer> sbuf = socketGetBuffer();
+    //socketWrite(this, move(sbuf), 0);
+    //if (disconnect)
+    //    socketDisconnect(this);
+
     cout.write(data.data, data.bytes);
     cout.flush();
 }
