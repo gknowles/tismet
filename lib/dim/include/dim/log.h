@@ -4,6 +4,9 @@
 
 #include "dim/config.h"
 
+#include <sstream>
+#include <string>
+
 namespace Dim {
 
 enum LogSeverity {

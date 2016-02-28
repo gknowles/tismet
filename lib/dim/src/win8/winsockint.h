@@ -2,6 +2,9 @@
 #ifndef DIM_WINSOCKINT_INCLUDED
 #define DIM_WINSOCKINT_INCLUDED
 
+#include <list>
+#include <memory>
+
 namespace Dim {
 
 

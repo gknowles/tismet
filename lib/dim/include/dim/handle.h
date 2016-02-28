@@ -4,7 +4,7 @@
 
 #include "dim/config.h"
 
-#include <string>
+#include <utility>
 #include <vector>
 
 namespace Dim {

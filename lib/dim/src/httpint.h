@@ -2,7 +2,10 @@
 #ifndef DIM_HTTPINT_INCLUDED
 #define DIM_HTTPINT_INCLUDED
 
+#include <list>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace Dim {
 

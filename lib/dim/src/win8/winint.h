@@ -95,7 +95,7 @@ private:
     int m_value;
 };
 
-std::ostream & operator<< (std::ostream & os, const WinError & val);
+::std::ostream & operator<< (::std::ostream & os, const WinError & val);
 
 
 /****************************************************************************

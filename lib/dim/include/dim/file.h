@@ -7,7 +7,7 @@
 #include "dim/types.h"
 
 #include <experimental/filesystem>
-#include <limits>
+#include <memory>
 
 namespace Dim {
 

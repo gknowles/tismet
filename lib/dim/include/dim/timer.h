@@ -5,8 +5,6 @@
 #include "dim/config.h"
 #include "dim/types.h"
 
-#include <chrono>
-#include <limits>
 #include <memory>
 
 namespace Dim {

@@ -8,7 +8,6 @@
 
 #include "dim/config.h"
 
-#include <cassert>
 #include <deque>
 #include <string>
 

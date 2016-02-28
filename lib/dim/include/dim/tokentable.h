@@ -4,6 +4,8 @@
 
 #include "dim/config.h"
 
+#include <cassert>
+
 namespace Dim {
 
 class TokenTable {

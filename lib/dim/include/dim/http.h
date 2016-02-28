@@ -10,8 +10,6 @@
 #include "dim/config.h"
 
 #include <cassert>
-#include <map>
-#include <set>
 
 namespace Dim {
 
