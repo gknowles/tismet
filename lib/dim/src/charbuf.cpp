@@ -230,6 +230,24 @@ CharBuf & CharBuf::append (const string & str, size_t pos, size_t count) {
 }
 
 //===========================================================================
+CharBuf & CharBuf::append (const CharBuf & buf, size_t pos, size_t count) {
+    assert(pos < buf.size());
+    auto ic = find(pos);
+    auto eb = m_buffers.end();
+    int add = (int) count;
+    int copied = min(ic.first->m_used - ic.second, add);
+    append(ic.first->m_data + ic.second, copied);
+
+    for (;;) {    
+        add -= copied;
+        if (!add || ++ic.first == eb)
+            return *this;
+        copied = min(ic.first->m_used, add);
+        append(ic.first->m_data, copied);
+    }
+}
+
+//===========================================================================
 int CharBuf::compare (const char s[], size_t count) const {
     for (auto&& buf : m_buffers) {
         if (count < buf.m_used) {
