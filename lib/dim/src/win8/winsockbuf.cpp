@@ -28,7 +28,6 @@ static void destroyBufferSlice (void * ptr);
 //===========================================================================
 namespace {
 
-struct Buffer;
 struct BufferSlice {
     union {
         int ownerPos;
