@@ -130,6 +130,36 @@ CharBuf & CharBuf::erase (size_t pos, size_t count) {
 }
 
 //===========================================================================
+CharBuf & CharBuf::rtrim (char ch) {
+    auto it = m_buffers.end();
+    --it;
+    for (;;) {
+        if (!m_size)
+            return *this;
+        const char * base = it->base();
+        const char * ptr = it->unused() - 1;
+        for (;;) {
+            if (*ptr != ch) {
+                int num = int(it->unused() - ptr - 1);
+                if (num) {
+                    m_size -= num;
+                    if ((it->m_used -= num) == 0)
+                        m_buffers.erase(it);
+                }
+                return *this;
+            }
+            if (ptr == base)
+                break;
+            ptr -= 1;
+        }
+        m_size -= it->m_used;
+        auto tmp = it;
+        --it;
+        m_buffers.erase(tmp);
+    }
+}
+
+//===========================================================================
 void CharBuf::pushBack (char ch) {
     append(1, ch);
 }

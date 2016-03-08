@@ -40,6 +40,8 @@ public:
     CharBuf & insert (size_t pos, const char s[]);
     CharBuf & insert (size_t pos, const char s[], size_t count);
     CharBuf & erase (size_t pos = 0, size_t count = -1);
+    CharBuf & ltrim (char ch);
+    CharBuf & rtrim (char ch);
     void pushBack (char ch);
     void popBack ();
     CharBuf & append (size_t count, char ch);
