@@ -295,7 +295,7 @@ int CharBuf::compare (const char s[], size_t count) const {
 
 //===========================================================================
 int CharBuf::compare (const string & str) const {
-    return compare(data(str), ::size(str));
+    return compare(str.data(), str.size());
 }
 
 //===========================================================================
