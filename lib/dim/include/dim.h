@@ -17,6 +17,7 @@
 #include "dim/task.h"
 #include "dim/tempheap.h"
 #include "dim/timer.h"
+#include "dim/tls.h"
 #include "dim/tokentable.h"
 #include "dim/types.h"
 

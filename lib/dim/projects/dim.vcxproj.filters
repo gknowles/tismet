@@ -78,6 +78,12 @@
     <ClInclude Include="..\include\dim\tokentable.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\dim\tls.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\tlsrecord.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.cpp">
@@ -129,6 +135,12 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\tokentable.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tls.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tlsrecord.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>

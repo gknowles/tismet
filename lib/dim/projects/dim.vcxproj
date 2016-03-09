@@ -36,6 +36,8 @@
     <ClInclude Include="..\include\dim\task.h" />
     <ClInclude Include="..\include\dim\tempheap.h" />
     <ClInclude Include="..\include\dim\timer.h" />
+    <ClInclude Include="..\include\dim\tls.h" />
+    <ClInclude Include="..\include\dim\tlsrecord.h" />
     <ClInclude Include="..\include\dim\tokentable.h" />
     <ClInclude Include="..\include\dim\types.h" />
     <ClInclude Include="..\src\httpint.h" />
@@ -83,6 +85,8 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\src\tls.cpp" />
+    <ClCompile Include="..\src\tlsrecord.cpp" />
     <ClCompile Include="..\src\tokentable.cpp">
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EnableFastChecks</BasicRuntimeChecks>
     </ClCompile>

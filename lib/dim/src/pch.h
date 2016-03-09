@@ -1,6 +1,7 @@
 // pch.h - dim core
 #include "dim.h"
 #include "dim/hpack.h"
+#include "dim/tlsrecord.h"
 #include "intern.h"
 #include "httpint.h"
 
@@ -8,6 +9,7 @@
 #include <sodium.h>
 #undef SODIUM_STATIC
 
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
