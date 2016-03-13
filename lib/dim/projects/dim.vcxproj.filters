@@ -84,6 +84,9 @@
     <ClInclude Include="..\include\dim\tlsrecord.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\dim\list.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.cpp">

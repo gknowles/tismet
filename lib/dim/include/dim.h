@@ -11,6 +11,7 @@
 #include "dim/file.h"
 #include "dim/handle.h"
 #include "dim/http.h"
+#include "dim/list.h"
 #include "dim/log.h"
 #include "dim/socket.h"
 #include "dim/str.h"

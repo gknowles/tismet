@@ -26,6 +26,7 @@
     <ClInclude Include="..\include\dim\cmdline.h" />
     <ClInclude Include="..\include\dim\compiler\visualc.h" />
     <ClInclude Include="..\include\dim\config.h" />
+    <ClInclude Include="..\include\dim\list.h" />
     <ClInclude Include="..\include\dim\str.h" />
     <ClInclude Include="..\include\dim\log.h" />
     <ClInclude Include="..\include\dim\file.h" />
