@@ -18,20 +18,6 @@ namespace {
 const unsigned kMaxPlaintext = 16'384;
 const unsigned kMaxCiphertext = kMaxPlaintext + 256;
 
-enum HandshakeType : uint8_t {
-    kClientHello = 1,
-    kServerHello = 2,
-    kSessionTicket = 4,
-    kHelloRetryRequest = 6,
-    kEncryptedExtensions = 8,
-    kCertificate = 11,
-    kCertificateRequest = 13,
-    kCertificateVerify = 15,
-    kServerConfiguration = 17,
-    kFinished = 20,
-    kKeyUpdate = 24,
-};
-
 } // namespace
 
 
