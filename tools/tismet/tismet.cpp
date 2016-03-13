@@ -150,7 +150,7 @@ void Application::onTask () {
     socketListen(&s_listen, end);
 
     //HttpConn context;
-    //std::list<std::unique_ptr<HttpMsg>> msgs;
+    //std::vector<std::unique_ptr<HttpMsg>> msgs;
     //CharBuf reply;
     //context.recv(&msgs, &reply, NULL, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24);
 

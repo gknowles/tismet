@@ -403,7 +403,7 @@ static void UpdatePriority () {
 
 //===========================================================================
 bool HttpConn::recv (
-    std::list<std::unique_ptr<HttpMsg>> * msg, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const void * src, 
     size_t srcLen
@@ -441,14 +441,14 @@ bool HttpConn::recv (
             m_inputFrameLen = GetFrameLen(data(m_input));
             if (avail < m_inputFrameLen) {
                 if (m_inputFrameLen > m_maxInputFrame)
-                    return onFrame(msg, out, data(m_input));
+                    return onFrame(msgs, out, data(m_input));
                 m_input.insert(m_input.end(), ptr, eptr);
                 m_byteMode = ByteMode::kPayload;
                 return true;
             }
             m_input.insert(m_input.end(), ptr, ptr + m_inputFrameLen);
             ptr += m_inputFrameLen;
-            if (!onFrame(msg, out, data(m_input)))
+            if (!onFrame(msgs, out, data(m_input)))
                 return false;
             m_input.clear();
             goto next_frame;
@@ -464,7 +464,7 @@ bool HttpConn::recv (
             m_input.assign(ptr, eptr);
             return true;
         }
-        if (!onFrame(msg, out, ptr))
+        if (!onFrame(msgs, out, ptr))
             return false;
         ptr += kFrameHeaderLen + m_inputFrameLen;
         goto next_frame;
@@ -483,7 +483,7 @@ bool HttpConn::recv (
         }
         m_input.insert(m_input.end(), ptr, ptr + need);
         ptr += need;
-        if (!onFrame(msg, out, data(m_input)))
+        if (!onFrame(msgs, out, data(m_input)))
             return false;
         m_input.clear();
         m_byteMode = ByteMode::kHeader;
@@ -512,7 +512,7 @@ HttpStream * HttpConn::findAlways (CharBuf * out, int stream) {
 
 //===========================================================================
 bool HttpConn::onFrame (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[]
 ) {
@@ -565,7 +565,7 @@ bool HttpConn::onFrame (
 
 //===========================================================================
 bool HttpConn::onData (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -617,7 +617,7 @@ bool HttpConn::onData (
 
 //===========================================================================
 bool HttpConn::onHeaders (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -720,7 +720,7 @@ bool HttpConn::onHeaders (
 
 //===========================================================================
 bool HttpConn::onPriority (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -755,7 +755,7 @@ bool HttpConn::onPriority (
 
 //===========================================================================
 bool HttpConn::onRstStream (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -784,7 +784,7 @@ bool HttpConn::onRstStream (
 
 //===========================================================================
 bool HttpConn::onSettings (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -832,7 +832,7 @@ bool HttpConn::onSettings (
 
 //===========================================================================
 bool HttpConn::onPushPromise (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -851,7 +851,7 @@ bool HttpConn::onPushPromise (
 
 //===========================================================================
 bool HttpConn::onPing (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -865,7 +865,7 @@ bool HttpConn::onPing (
 
 //===========================================================================
 bool HttpConn::onGoAway (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -905,7 +905,7 @@ bool HttpConn::onGoAway (
 
 //===========================================================================
 bool HttpConn::onWindowUpdate (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -931,7 +931,7 @@ bool HttpConn::onWindowUpdate (
 
 //===========================================================================
 bool HttpConn::onContinuation (
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const char src[],
     int stream,
@@ -1097,7 +1097,7 @@ void httpClose (HttpConnHandle hc) {
 //===========================================================================
 bool httpRecv (
     HttpConnHandle hc,
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const void * src, 
     size_t srcLen

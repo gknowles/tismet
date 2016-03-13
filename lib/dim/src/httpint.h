@@ -44,7 +44,7 @@ public:
     //  - msg: zero or more requests, push promises, and/or replies are appended
     //  - reply: data to send to the remote endpoint is appended
     bool recv (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * reply,
         const void * src, 
         size_t srcLen
@@ -80,75 +80,75 @@ private:
     HttpStream * findAlways (CharBuf * out, int stream);
 
     bool onFrame (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[]
     );
     bool onContinuation (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onData (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onGoAway (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onHeaders (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onPing (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onPriority (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onPushPromise (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onRstStream (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onSettings (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,
         int flags
     );
     bool onWindowUpdate (
-        std::list<std::unique_ptr<HttpMsg>> * msgs, 
+        std::vector<std::unique_ptr<HttpMsg>> * msgs, 
         CharBuf * out,
         const char src[],
         int stream,

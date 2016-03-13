@@ -10,6 +10,7 @@
 #include "dim/config.h"
 
 #include <cassert>
+#include <vector>
 
 namespace Dim {
 
@@ -219,7 +220,7 @@ void httpClose (HttpConnHandle conn);
 //  - out: data to send to the remote endpoint is appended
 bool httpRecv (
     HttpConnHandle conn,
-    std::list<std::unique_ptr<HttpMsg>> * msgs, 
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
     const void * src, 
     size_t srcLen

@@ -129,7 +129,7 @@ void Application::onTask () {
     CharBuf output;
     HttpConnHandle conn{};
     bool result;
-    list<unique_ptr<HttpMsg>> msgs;
+    vector<unique_ptr<HttpMsg>> msgs;
     for (auto&& test : s_tests) {
         cout << "Test - " << test.name << endl;
         if (test.reset && conn)
