@@ -81,11 +81,12 @@ public:
 
 private:
     struct Buffer;
-    Buffer * allocBuffer ();
-    std::pair<std::list<Buffer>::iterator, int> find (size_t pos);
-    CharBuf & erase (std::list<Buffer>::iterator it, int pos, int count);
+    static Buffer * allocBuffer ();
+    static Buffer * allocBuffer (size_t reserve);
+    std::pair<std::vector<Buffer*>::iterator, int> find (size_t pos);
+    CharBuf & erase (std::vector<Buffer*>::iterator it, int pos, int count);
 
-    std::list<Buffer> m_buffers;
+    std::vector<Buffer*> m_buffers;
     int m_lastUsed{0};
     int m_size{0};
 };
