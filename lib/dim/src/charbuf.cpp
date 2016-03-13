@@ -111,6 +111,52 @@ int CharBuf::size () const {
 }
 
 //===========================================================================
+const char * CharBuf::data () const {
+    return data(0, m_size);
+}
+
+//===========================================================================
+const char * CharBuf::data (size_t pos, size_t count) const {
+    assert(pos <= m_size);
+    if (pos == m_size)
+        return nullptr;
+
+    count = min(count, m_size - pos);
+
+    // we need mutable access to rearrange the buffer so that the requested
+    // section is contiguous, but the data itself will stay unchanged
+    auto ic = const_cast<CharBuf *>(this)->find(pos);
+
+    size_t need = ic.second + count;
+    Buffer * pbuf = *ic.first;
+
+    if (need > pbuf->m_used) {
+        if (need > pbuf->m_reserved) {
+            size_t bufsize = count + kDefaultBlockSize - 1;
+            bufsize -= bufsize % kDefaultBlockSize;
+            Buffer * out = allocBuffer(bufsize);
+            memcpy(out->base(), pbuf->base(), pbuf->m_used);
+            out->m_used = pbuf->m_used;
+            delete pbuf;
+            *ic.first = out;
+        }
+
+        auto et = ic.first;
+        do {
+            ++et;
+            Buffer * ebuf = *et;
+            memcpy(pbuf->unused(), ebuf->base(), ebuf->m_used);
+            pbuf->m_used += ebuf->m_used;
+            delete ebuf;
+        } while (pbuf->m_used < need);
+
+        const_cast<CharBuf *>(this)->m_buffers.erase(ic.first + 1, et);
+    }
+
+    return pbuf->base() + ic.second;
+}
+
+//===========================================================================
 void CharBuf::clear () {
     if (m_size)
         erase(m_buffers.begin(), 0, m_size);
