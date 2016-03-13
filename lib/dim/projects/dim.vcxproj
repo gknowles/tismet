@@ -147,6 +147,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>obj\$(Configuration)-$(Platform)\</OutDir>
     <IntDir>obj\$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IntDir>obj\$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>

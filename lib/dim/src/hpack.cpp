@@ -527,7 +527,7 @@ HuffDecoder::HuffDecoder (const EncodeItem items[], size_t count) {
     }
     assert(shortest > 0 && longest < 32);
     m_prefixBits = shortest - 1;
-    m_decodeTable.resize(1 << m_prefixBits);
+    m_decodeTable.resize(1ull << m_prefixBits);
 
     ptr = items;
     int16_t val = 0;
@@ -825,7 +825,7 @@ bool HpackDecode::read (
     }
     int m = 0;
     for (; srcLen && m < 32; m += 7) {
-        unsigned b = *src++;
+        size_t b = *src++;
         srcLen -= 1;
         val += (b & 0x7f) << m;
         if (~b & 0x80) {

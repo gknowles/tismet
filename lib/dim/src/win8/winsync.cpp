@@ -60,6 +60,7 @@ static void __stdcall eventWaitCallback (void * param, uint8_t timeout) {
 //===========================================================================
 IWinEventWaitNotify::IWinEventWaitNotify () {
     m_overlapped.hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+    assert(m_overlapped.hEvent);
 
     if (!RegisterWaitForSingleObject(
         &m_registeredWait,

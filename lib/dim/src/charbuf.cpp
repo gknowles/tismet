@@ -139,6 +139,7 @@ const char * CharBuf::data (size_t pos, size_t count) const {
             out->m_used = pbuf->m_used;
             delete pbuf;
             *ic.first = out;
+            pbuf = out;
         }
 
         auto et = ic.first;
@@ -580,10 +581,12 @@ CharBuf::Buffer * CharBuf::allocBuffer () {
 //===========================================================================
 // static
 CharBuf::Buffer * CharBuf::allocBuffer (size_t reserve) {
-    void * vptr = malloc(
-        offsetof(Buffer, m_data) 
-        + reserve * sizeof(*Buffer::m_data)
+    size_t bytes = max(
+        sizeof(Buffer),
+        offsetof(Buffer, m_data) + reserve * sizeof(*Buffer::m_data)
     );
+    assert(bytes >= sizeof(Buffer));
+    void * vptr = malloc(bytes);
     auto ptr = new(vptr) Buffer;
     ptr->m_reserved = (int) reserve;
     return ptr;

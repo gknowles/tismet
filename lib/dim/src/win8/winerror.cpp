@@ -102,7 +102,7 @@ std::ostream & operator<< (std::ostream & os, const WinError & val) {
 
     // trim trailing whitespace (i.e. \r\n)
     char * ptr = buf + strlen(buf) - 1;
-    for (; ptr > buf && isspace(*ptr); --ptr) 
+    for (; ptr > buf && isspace((unsigned char) *ptr); --ptr) 
         *ptr = 0;
 
     os << buf;

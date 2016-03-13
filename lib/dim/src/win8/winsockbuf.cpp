@@ -129,6 +129,7 @@ static void createEmptyBuffer () {
             | (bytes > s_minLargeAlloc ? MEM_LARGE_PAGES : 0),
         PAGE_READWRITE
     );
+    assert(buf.base);
 
     buf.id = s_rio.RIORegisterBuffer(buf.base, (DWORD) bytes);
     if (buf.id == RIO_INVALID_BUFFERID) {

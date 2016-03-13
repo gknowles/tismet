@@ -67,11 +67,13 @@ char * TempHeap::alloc (size_t bytes, size_t align) {
         }
         if (bytes > kBufferSize / 3) {
             Buffer * tmp = (Buffer *) malloc(sizeof(Buffer) + bytes + align);
+            assert(tmp != nullptr);
             tmp->m_next = buf;
             tmp->m_avail = bytes + align;
             m_buffer = tmp;
         } else {
             Buffer * tmp = (Buffer *) malloc(kBufferSize);
+            assert(tmp != nullptr);
             tmp->m_next = buf;
             tmp->m_avail = kBufferSize - sizeof(Buffer);
             m_buffer = tmp;
