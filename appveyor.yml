@@ -1,0 +1,17 @@
+version: 0.1.{build}
+
+platform:
+  - x64
+configuration:
+  - Debug
+
+build:
+  parallel: true
+  project: tismet.sln
+
+test_script:
+  - lib\dim\bin\cmdline
+  - lib\dim\bin\hpack
+  - lib\dim\bin\http
+
+
