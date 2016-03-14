@@ -15,4 +15,15 @@ test_script:
   - lib\dim\bin\hpack
   - lib\dim\bin\http
 
+artifacts:
+  - path: bin\*.exe
+  - path: bin\*.pdb
 
+deploy:
+  release: tismet-trunk
+  description: tismet $(appveyor_build_version)
+  provider: GitHub
+  auth_token:
+    secure: yheCA/FJ+f7CL84HoPf9MapOlDZQmrGyiqlwFeeIhxvdOudQisUdOyZuWfwq3lUU
+  prerelease: true
+  draft: true
