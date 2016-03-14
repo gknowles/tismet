@@ -15,9 +15,13 @@ test_script:
   - lib\dim\bin\hpack
   - lib\dim\bin\http
 
+after_build:
+  - 7z a tismet-v$(appveyor_build_version).zip bin\*.exe bin\*.pdb
+
 artifacts:
-  - path: bin\*.exe
-  - path: bin\*.pdb
+  - path: tismet-v$(appveyor_build_version).zip
+    name: tismet
+    type: zip
 
 deploy:
   release: tismet-trunk
