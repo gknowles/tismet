@@ -8,6 +8,7 @@ configuration:
 build:
   parallel: true
   project: tismet.sln
+  verbosity: minimal
 
 test_script:
   - lib\dim\bin\cmdline
