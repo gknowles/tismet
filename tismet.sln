@@ -21,6 +21,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{CE742391
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "http", "lib\dim\projects\http.vcxproj", "{23D0E741-7544-4239-9487-59BD5C130434}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D9C1ECD6-D5D2-4589-ADA2-CBC7AD46EB0B}"
+	ProjectSection(SolutionItems) = preProject
+		appveyor.yml = appveyor.yml
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tls", "lib\dim\projects\tls.vcxproj", "{4255F216-74FC-405A-912F-41F7D82AB5CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -81,6 +90,14 @@ Global
 		{23D0E741-7544-4239-9487-59BD5C130434}.Release|x64.Build.0 = Release|x64
 		{23D0E741-7544-4239-9487-59BD5C130434}.Release|x86.ActiveCfg = Release|Win32
 		{23D0E741-7544-4239-9487-59BD5C130434}.Release|x86.Build.0 = Release|Win32
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Debug|x64.ActiveCfg = Debug|x64
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Debug|x64.Build.0 = Debug|x64
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Debug|x86.ActiveCfg = Debug|Win32
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Debug|x86.Build.0 = Debug|Win32
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Release|x64.ActiveCfg = Release|x64
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Release|x64.Build.0 = Release|x64
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Release|x86.ActiveCfg = Release|Win32
+		{4255F216-74FC-405A-912F-41F7D82AB5CE}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -91,5 +108,6 @@ Global
 		{8F78DA84-DF3F-4D7B-9A42-081D72023513} = {CE742391-1BBB-400C-83F0-387B3258C89C}
 		{E3B7C050-FF67-45B7-A4B9-57388B61C23B} = {6D1930A8-CAEB-4355-8309-68457DED5635}
 		{23D0E741-7544-4239-9487-59BD5C130434} = {6D1930A8-CAEB-4355-8309-68457DED5635}
+		{4255F216-74FC-405A-912F-41F7D82AB5CE} = {6D1930A8-CAEB-4355-8309-68457DED5635}
 	EndGlobalSection
 EndGlobal
