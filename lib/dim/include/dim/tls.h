@@ -77,6 +77,14 @@ enum TlsCipherSuite : uint16_t {
 enum TlsExtensionType : uint16_t {
     kSupportedGroups = 10,
     kSignatureAlgorithms = 13,
+    kEarlyData = 0x880,    // TBD
+    kPresharedKey = 0x8801, // TBD
+    kKeyShare = 0x8802,     // TBD
+};
+
+enum TlsNamedGroup : uint16_t {
+    kEcdhX25519 = 29,
+    kEddsaEd25519 = 31,
 };
 
 
@@ -88,21 +96,21 @@ enum TlsExtensionType : uint16_t {
 
 struct TlsConnHandle : HandleBase {};
 
-TlsConnHandle tlsCreate ();
-void tlsAddCipherSuite (
-    TlsConnHandle h,
+TlsConnHandle tlsConnect (
+    CharBuf * out,
+    const TlsCipherSuite suites[], 
+    size_t count
+);
+TlsConnHandle tlsAccept (
     const TlsCipherSuite suites[], 
     size_t count
 );
 void tlsClose (TlsConnHandle h);
 
-void tlsConnect (TlsConnHandle h, CharBuf * out);
-void tlsListen (TlsConnHandle h);
-
 bool tlsRecv (
     TlsConnHandle conn,
     CharBuf * out,
-    CharBuf * in,
+    CharBuf * plain,
     const void * src,
     size_t srcLen
 );
