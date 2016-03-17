@@ -44,8 +44,9 @@ struct TlsCipher {
 class TlsRecordEncrypt {
 public:
     void setCipher (CharBuf * out, TlsCipher * cipher);
+
     void add (
-        CharBuf * out, 
+        CharBuf * out,
         TlsContentType ct, 
         const void * ptr, 
         size_t count
@@ -56,8 +57,8 @@ private:
     void addPlaintext (CharBuf * out);
     void addCiphertext (CharBuf * out);
 
-    unsigned m_curType{256};    // content type being encrypted
     TlsCipher * m_cipher{nullptr};  // cipher if encrypting
+    unsigned m_plainType{256};    // content type being encrypted
     std::vector<uint8_t> m_plaintext;   // pending plaintext if encrypting
 };
 

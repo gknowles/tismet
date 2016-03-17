@@ -46,7 +46,7 @@ void TlsRecordEncrypt::addPlaintext (CharBuf * out) {
     size_t plainLen = m_plaintext.size();
     assert(plainLen <= kMaxPlaintext);
     char hdr[] = { 
-        char(m_curType), 
+        char(m_plainType), 
         3, 
         1, 
         char(plainLen / 256), 
@@ -63,7 +63,7 @@ void TlsRecordEncrypt::addCiphertext (CharBuf * out) {
     size_t pos = out->size();
     out->append(hdr, size(hdr));
 
-    m_plaintext.push_back((TlsContentType) m_curType);
+    m_plaintext.push_back((TlsContentType) m_plainType);
     m_cipher->add(out, m_plaintext.data(), m_plaintext.size());
     m_plaintext.clear();
     size_t cipherLen = size(*out) - pos - size(hdr);
@@ -86,8 +86,8 @@ void TlsRecordEncrypt::add (
 
     auto ptr = static_cast<const char *>(vptr);
 
-    if (m_curType != ct || ct == kContentAlert) {
-        m_curType = ct;
+    if (m_plainType != ct || ct == kContentAlert) {
+        m_plainType = ct;
         goto start_text;
     }
     for (;;) {
