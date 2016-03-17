@@ -106,7 +106,7 @@ bool CharBuf::empty () const {
 }
 
 //===========================================================================
-int CharBuf::size () const {
+size_t CharBuf::size () const {
     return m_size;
 }
 
@@ -238,13 +238,13 @@ CharBuf & CharBuf::append (size_t count, char ch) {
         return *this;
 
     if (!m_size)
-        m_buffers.emplace_back();
+        m_buffers.emplace_back(allocBuffer());
     m_size += add;
     for (;;) {
         Buffer * buf = m_buffers.back();
         int added = min(add, buf->m_reserved - buf->m_used);
         if (added) {
-            char * ptr = buf->m_data + buf->m_used;
+            char * ptr = buf->unused();
             memset(ptr, ch, added);
             buf->m_used += added;
             add -= added;
@@ -265,8 +265,8 @@ CharBuf & CharBuf::append (const char s[]) {
 
     for (;;) {
         Buffer * buf = m_buffers.back();
-        char * ptr = buf->m_data + buf->m_used;
-        char * eptr = buf->m_data + buf->m_reserved;
+        char * ptr = buf->unused();
+        char * eptr = buf->end();
         for (;;) {
             if (ptr == eptr) {
                 m_size += buf->m_reserved - buf->m_used;
@@ -298,7 +298,7 @@ CharBuf & CharBuf::append (const char src[], size_t srcLen) {
     for (;;) {
         Buffer * buf = m_buffers.back();
         int added = min(add, buf->m_reserved - buf->m_used);
-        memcpy(buf->m_data + buf->m_used, src, added);
+        memcpy(buf->unused(), src, added);
         buf->m_used += added;
         add -= added;
         if (!add)
@@ -448,7 +448,7 @@ CharBuf & CharBuf::replace (size_t pos, size_t count, const char s[]) {
     ++next;
 
     if (remove) {
-        assert(remove == pbuf->m_data + pbuf->m_used - ptr);
+        assert(remove == pbuf->unused() - ptr);
         auto it = m_buffers.emplace(next, allocBuffer());
         char * dst = (*it)->m_data;
         memcpy(dst, ptr, remove);
@@ -456,7 +456,7 @@ CharBuf & CharBuf::replace (size_t pos, size_t count, const char s[]) {
     }
 
     base = ptr;
-    eptr = pbuf->m_data + pbuf->m_reserved;
+    eptr = pbuf->end();
     for (;;) {
         if (!*s) {
             int added = int(ptr - base);
@@ -631,7 +631,7 @@ CharBuf & CharBuf::erase (
 ) {
     Buffer * pbuf = *it;
     assert(pos <= pbuf->m_used && pos >= 0);
-    assert(m_size > remove && remove >= 0);
+    assert(m_size >= remove && remove >= 0);
     m_size -= remove;
     if (pos) {
         int copied = pbuf->m_used - pos - remove;
