@@ -55,7 +55,7 @@ static void addCqUsed_LK (int delta) {
     }
     if (size != s_cqSize) {
         if (!s_rio.RIOResizeCompletionQueue(s_cq, size)) {
-            Log{kError} << "RIOResizeCompletionQueue(" 
+            logMsgError() << "RIOResizeCompletionQueue(" 
                 << size << "): " << WinError{};
         } else {
             s_cqSize = size;
@@ -97,7 +97,7 @@ void RioDispatchThread::onTask () {
             (ULONG) size(results)
         );
         if (count == RIO_CORRUPT_CQ)
-            Log{kCrash} << "RIODequeueCompletion: " << WinError{};
+            logMsgCrash() << "RIODequeueCompletion: " << WinError{};
 
         for (int i = 0; i < count; ++i) {
             auto&& rr = results[i];
@@ -109,7 +109,7 @@ void RioDispatchThread::onTask () {
         }
 
         if (int error = s_rio.RIONotify(s_cq)) 
-            Log{kCrash} << "RIONotify: " << WinError{};
+            logMsgCrash() << "RIONotify: " << WinError{};
 
         lk.unlock();
 
@@ -252,7 +252,7 @@ bool SocketBase::createQueue () {
             this            // socket context
         );
         if (m_rq == RIO_INVALID_RQ) {
-            Log{kError} << "RIOCreateRequestQueue: " << WinError{};
+            logMsgError() << "RIOCreateRequestQueue: " << WinError{};
             return false;
         }
 
@@ -297,7 +297,7 @@ void SocketBase::queueRead_LK () {
         0,      // RIO_MSG_* flags
         &m_read
     )) {
-        Log{kCrash} << "RIOReceive: " << WinError{};
+        logMsgCrash() << "RIOReceive: " << WinError{};
     }
 }
 
@@ -366,7 +366,7 @@ void SocketBase::queueWriteFromUnsent_LK () {
         m_numSending += 1;
         auto & task = m_sending.back();
         if (!s_rio.RIOSend(m_rq, &task.m_rbuf, 1, 0, &task)) {
-            Log{kCrash} << "RIOSend: " << WinError{};
+            logMsgCrash() << "RIOSend: " << WinError{};
             m_sending.pop_back();
             m_numSending -= 1;
         }
@@ -403,7 +403,7 @@ bool ShutdownNotify::onAppQueryConsoleDestroy () {
     // close windows sockets
     s_rio.RIOCloseCompletionQueue(s_cq);
     if (WSACleanup()) 
-        Log{kError} << "WSACleanup: " << WinError{};
+        logMsgError() << "WSACleanup: " << WinError{};
 
     return true;
 }
@@ -422,7 +422,7 @@ void iSocketInitialize () {
     WSADATA data = {};
     WinError err = WSAStartup(WINSOCK_VERSION, &data);
     if (err || data.wVersion != WINSOCK_VERSION) {
-        Log{kCrash} << "WSAStartup(version=" << hex << WINSOCK_VERSION
+        logMsgCrash() << "WSAStartup(version=" << hex << WINSOCK_VERSION
             << "): " << err << ", version " << data.wVersion;
     }
 
@@ -436,7 +436,7 @@ void iSocketInitialize () {
         WSA_FLAG_REGISTERED_IO
     );
     if (s == INVALID_SOCKET) 
-        Log{kCrash} << "socket: " << WinError{};
+        logMsgCrash() << "socket: " << WinError{};
 
     // get RIO functions
     GUID extId = WSAID_MULTIPLE_RIO;
@@ -451,7 +451,7 @@ void iSocketInitialize () {
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        Log{kCrash} << "WSAIoctl(get RIO extension): " << WinError{};
+        logMsgCrash() << "WSAIoctl(get RIO extension): " << WinError{};
     }
     closesocket(s);
 
@@ -470,7 +470,7 @@ void iSocketInitialize () {
     ctype.Event.NotifyReset = false;
     s_cq = s_rio.RIOCreateCompletionQueue(s_cqSize, &ctype);
     if (s_cq == RIO_INVALID_CQ)
-        Log{kCrash} << "RIOCreateCompletionQueue: " << WinError{};
+        logMsgCrash() << "RIOCreateCompletionQueue: " << WinError{};
 
     // start rio dispatch task
     TaskQueueHandle taskq = taskCreateQueue("RIO Dispatch", 1);
@@ -497,7 +497,7 @@ SOCKET winSocketCreate () {
         WSA_FLAG_REGISTERED_IO
     );
     if (handle == INVALID_SOCKET) {
-        Log{kError} << "WSASocket: " << WinError{};
+        logMsgError() << "WSASocket: " << WinError{};
         return INVALID_SOCKET;
     }
 
@@ -513,7 +513,7 @@ SOCKET winSocketCreate () {
     //    nullptr,    // overlapped
     //    nullptr     // completion routine
     //)) {
-    //    Log{kError} << "WSAIoctl(SIO_LOOPBACK_FAST_PATH): " << WinError{};
+    //    logMsgError() << "WSAIoctl(SIO_LOOPBACK_FAST_PATH): " << WinError{};
     //}
 
     if (SOCKET_ERROR == setsockopt(
@@ -523,7 +523,7 @@ SOCKET winSocketCreate () {
         (char *) &yes,
         sizeof(yes)
     )) {
-        Log{kError} << "WSAIoctl(FIONBIO): " << WinError{};
+        logMsgError() << "WSAIoctl(FIONBIO): " << WinError{};
     }
 
 #ifdef SO_REUSE_UNICASTPORT
@@ -542,7 +542,7 @@ SOCKET winSocketCreate () {
             (char *) &yes, 
             sizeof(yes)
         )) {
-            Log{kError} << "setsockopt(SO_PORT_SCALABILITY): " 
+            logMsgError() << "setsockopt(SO_PORT_SCALABILITY): " 
                 << WinError{};
         }
 #ifdef SO_REUSE_UNICASTPORT
@@ -565,7 +565,7 @@ SOCKET winSocketCreate (const Endpoint & end) {
         (sockaddr *) &sas, 
         sizeof(sas)
     )) {
-        Log{kError} << "bind(" << end << "): " << WinError{};
+        logMsgError() << "bind(" << end << "): " << WinError{};
         closesocket(handle);
         return INVALID_SOCKET;
     }

@@ -62,7 +62,7 @@ static void initializeConsole () {
     HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO info;
     if (!GetConsoleScreenBufferInfo(hOutput, &info)) {
-        Log{kCrash} << "GetConsoleScreenBufferInfo: " << GetLastError();
+        logMsgCrash() << "GetConsoleScreenBufferInfo: " << GetLastError();
     }
     s_consoleAttrs = info.wAttributes;
 }

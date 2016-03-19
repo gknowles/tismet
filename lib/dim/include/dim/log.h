@@ -9,27 +9,43 @@
 
 namespace Dim {
 
-enum LogSeverity {
-    kDebug,
-    kInfo,
-    kError,
-    kCrash,
+enum LogType {
+    kLogDebug,
+    kLogInfo,
+    kLogError,
+    kLogCrash,
 };
 
+namespace Detail {
+
+class LogInternal;
+
 class Log : public std::ostringstream {
-    LogSeverity m_severity;
 public:
-    Log (LogSeverity severity) : m_severity(severity) {}
+    Log (const LogInternal & from);
     ~Log ();
+
+protected:
+    LogType m_type;
 };
+
+class LogCrash : public Log {
+public:
+    using Log::Log;
+    /* [[noreturn]] */ ~LogCrash ();
+};
+
+} // namespace
+
+Detail::Log logMsgDebug ();
+Detail::Log logMsgInfo ();
+Detail::Log logMsgError ();
+Detail::LogCrash logMsgCrash ();
 
 
 class ILogNotify {
 public:
-    virtual void onLog (
-        LogSeverity severity,
-        const std::string & msg
-    ) = 0;
+    virtual void onLog (LogType type, const std::string & msg) = 0;
 };
 
 void logAddNotify (ILogNotify * notify);

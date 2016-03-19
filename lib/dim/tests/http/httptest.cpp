@@ -105,18 +105,15 @@ class Application
     void onTask () override;
 
     // ILogNotify
-    void onLog (LogSeverity severity, const string & msg) override;
+    void onLog (LogType type, const string & msg) override;
 
     int m_errors;
 };
 } // namespace
 
 //===========================================================================
-void Application::onLog (
-    LogSeverity severity,
-    const string & msg
-) {
-    if (severity >= kError) {
+void Application::onLog (LogType type, const string & msg) {
+    if (type >= kLogError) {
         m_errors += 1;
         cout << "ERROR: " << msg << endl;
     } else {
@@ -144,31 +141,31 @@ void Application::onTask () {
             size(test.input)
         );
         if (result != test.result) {
-            Log{kError} << "result: " << result << " != " << test.result 
+            logMsgError() << "result: " << result << " != " << test.result 
                  << " (FAILED)";
         }
         if (output.compare(test.output) != 0) 
-            Log{kError} << "headers mismatch (FAILED)";
+            logMsgError() << "headers mismatch (FAILED)";
         auto tmi = test.msgs.begin();
         for (auto&& msg : msgs) {
             if (tmi == test.msgs.end()) {
-                Log{kError} << "too many messages (FAILED)";
+                logMsgError() << "too many messages (FAILED)";
                 break;
             }
             if (msg->body().compare(tmi->body) != 0)
-                Log{kError} << "body mismatch (FAILED)";
+                logMsgError() << "body mismatch (FAILED)";
             auto thi = tmi->headers.begin(),
                 ethi = tmi->headers.end();
             for (auto&& hdr : *msg) {
                 for (auto&& hv : hdr) {
                     if (thi == ethi) {
-                        Log{kError} << "expected fewer headers";
+                        logMsgError() << "expected fewer headers";
                         goto finished_headers;
                     }
                     if (strcmp(thi->name, hdr.m_name) != 0
                         || strcmp(thi->value, hv.m_value) != 0
                     ) {
-                        Log{kError} << "header mismatch, '"
+                        logMsgError() << "header mismatch, '"
                             << hdr.m_name << ": " << hv.m_value 
                             << "', expected '"
                             << thi->name << ": " << thi->value
@@ -179,7 +176,7 @@ void Application::onTask () {
             }
         finished_headers:
             if (thi != ethi)
-                Log{kError} << "expected more headers (FAILED)";
+                logMsgError() << "expected more headers (FAILED)";
         }
         msgs.clear();
     }

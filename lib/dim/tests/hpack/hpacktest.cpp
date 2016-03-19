@@ -424,18 +424,15 @@ class Application
     void onTask () override;
 
     // ILogNotify
-    void onLog (LogSeverity severity, const string & msg) override;
+    void onLog (LogType type, const string & msg) override;
 
     int m_errors;
 };
 } // namespace
 
 //===========================================================================
-void Application::onLog (
-    LogSeverity severity,
-    const string & msg
-) {
-    if (severity >= kError) {
+void Application::onLog (LogType type, const string & msg) {
+    if (type >= kLogError) {
         m_errors += 1;
         cout << "ERROR: " << msg << endl;
     } else {
@@ -457,11 +454,11 @@ void Application::onTask () {
         size_t srcLen = strlen(test.input);
         result = decode.parse(&out, &heap, test.input, srcLen);
         if (result != test.result) {
-            Log{kError} << "result: " << result << " != " << test.result 
+            logMsgError() << "result: " << result << " != " << test.result 
                  << " (FAILED)";
         }
         if (test.headers != out.headers)
-            Log{kError} << "headers mismatch (FAILED)";
+            logMsgError() << "headers mismatch (FAILED)";
         //if (test.dynTable != decode.DynamicTable())
         //    cout << "dynamic table mismatch (FAILED)" << endl;
     }

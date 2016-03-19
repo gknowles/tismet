@@ -100,6 +100,7 @@ const Test s_tests[] = {
 ***/
 
 namespace {
+
 class Application 
     : public ITaskNotify 
     , public ILogNotify
@@ -108,18 +109,16 @@ class Application
     void onTask () override;
 
     // ILogNotify
-    void onLog (LogSeverity severity, const string & msg) override;
+    void onLog (LogType type, const string & msg) override;
 
     int m_errors;
 };
+
 } // namespace
 
 //===========================================================================
-void Application::onLog (
-    LogSeverity severity,
-    const string & msg
-) {
-    if (severity >= kError) {
+void Application::onLog (LogType type, const string & msg) {
+    if (type >= kLogError) {
         m_errors += 1;
         cout << "ERROR: " << msg << endl;
     } else {
@@ -158,11 +157,11 @@ void Application::onTask () {
             size(test.input)
         );
         if (result != test.result) {
-            Log{kError} << "result: " << result << " != " << test.result 
+            logMsgError() << "result: " << result << " != " << test.result 
                  << " (FAILED)";
         }
         if (output.compare(test.output) != 0) 
-            Log{kError} << "headers mismatch (FAILED)";
+            logMsgError() << "headers mismatch (FAILED)";
     }
     tlsClose(client);
     tlsClose(server);

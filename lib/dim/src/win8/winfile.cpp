@@ -132,7 +132,7 @@ void FileReader::read (int64_t off, int64_t len) {
     )) {
         WinError err;
         if (err != ERROR_IO_PENDING) {
-            Log{kError} << "ReadFile (" << m_file->m_path << "): " << err;
+            logMsgError() << "ReadFile (" << m_file->m_path << "): " << err;
             m_notify->onFileEnd(m_offset, m_file);
             delete this;
         }
@@ -145,7 +145,7 @@ void FileReader::onTask () {
     if (!GetOverlappedResult(NULL, &m_iocpEvt.overlapped, &bytes, false)) {
         WinError err;
         if (err != ERROR_OPERATION_ABORTED)
-            Log{kError} << "ReadFile result, " << err;
+            logMsgError() << "ReadFile result, " << err;
         m_notify->onFileEnd(m_offset, m_file);
         delete this;
         return;

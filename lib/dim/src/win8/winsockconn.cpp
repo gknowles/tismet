@@ -192,7 +192,7 @@ void ConnSocket::connect (
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        Log{kError} << "WSAIoctl(get ConnectEx): " << WinError{};
+        logMsgError() << "WSAIoctl(get ConnectEx): " << WinError{};
         return pushConnectFailed(notify);
     }
 
@@ -229,7 +229,7 @@ void ConnSocket::connect (
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        Log{kError} << "ConnectEx(" << remoteEnd << "): " << err;
+        logMsgError() << "ConnectEx(" << remoteEnd << "): " << err;
         lock_guard<mutex> lk{s_mut};
         s_connecting.pop_back();
         return pushConnectFailed(notify);
@@ -260,7 +260,7 @@ void ConnSocket::onConnect (
         nullptr,
         0
     )) {
-        Log{kError} 
+        logMsgError() 
             << "setsockopt(SO_UPDATE_CONNECT_CONTEXT): " 
             << WinError{};
         return m_notify->onSocketConnectFailed();
@@ -279,7 +279,7 @@ void ConnSocket::onConnect (
         (sockaddr *) &sas, 
         &sasLen
     )) {
-        Log{kError} << "getpeername: " << WinError{};
+        logMsgError() << "getpeername: " << WinError{};
         return m_notify->onSocketConnectFailed();
     }
     copy(&m_connInfo.remoteEnd, sas);
@@ -290,7 +290,7 @@ void ConnSocket::onConnect (
         (sockaddr *) &sas, 
         &sasLen
     )) {
-        Log{kError} << "getsockname: " << WinError{};
+        logMsgError() << "getsockname: " << WinError{};
         return m_notify->onSocketConnectFailed();
     }
     copy(&m_connInfo.localEnd, sas);

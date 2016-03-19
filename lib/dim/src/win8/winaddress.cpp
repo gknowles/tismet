@@ -167,7 +167,7 @@ static void CALLBACK addressQueryCallback (
 //===========================================================================
 void QueryTask::onTask () {
     if (err && err != WSA_E_CANCELLED) {
-        Log{kError} << "GetAddrInfoEx: " << err;
+        logMsgError() << "GetAddrInfoEx: " << err;
     }
     notify->onEndpointFound(ends.data(), (int) ends.size());
     s_tasks.erase(id);
@@ -258,7 +258,7 @@ void addressGetLocal (std::vector<Address> * out) {
         &result
     );
     if (err)
-        Log{kCrash} << "getaddrinfo(..localmachine): " << err;
+        logMsgCrash() << "getaddrinfo(..localmachine): " << err;
 
     Endpoint end;
     sockaddr_storage sas;

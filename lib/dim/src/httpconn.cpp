@@ -996,7 +996,7 @@ void HttpConn::reply (
             strm->m_state = HttpStream::kClosed;
             break;
         default:
-            Log{kCrash} << "httpReply invalid state, {" 
+            logMsgCrash() << "httpReply invalid state, {" 
                 << strm->m_state << "}";
             return;
     }

@@ -23,7 +23,7 @@ namespace Dim {
 //===========================================================================
 void iHashInitialize () {
     if (sodium_init() == -1)
-        Log{kCrash} << "sodium_init: failed";
+        logMsgCrash() << "sodium_init: failed";
 }
 
 } // namespace

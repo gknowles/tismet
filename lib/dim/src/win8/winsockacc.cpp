@@ -134,7 +134,7 @@ static void pushListenStop (ListenSocket * listen) {
         lock_guard<mutex> lk{s_mut};
         if (listen->m_handle != INVALID_SOCKET) {
             if (SOCKET_ERROR == closesocket(listen->m_handle))
-                Log{kCrash} << "closesocket(listen): " << WinError{};
+                logMsgCrash() << "closesocket(listen): " << WinError{};
             listen->m_handle = INVALID_SOCKET;
         }
         auto it = s_listeners.begin();
@@ -173,7 +173,7 @@ void AcceptSocket::accept (ListenSocket * listen) {
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        Log{kError} << "WSAIoctl(get AcceptEx): " << WinError{};
+        logMsgError() << "WSAIoctl(get AcceptEx): " << WinError{};
         return pushListenStop(listen);
     }
 
@@ -192,7 +192,7 @@ void AcceptSocket::accept (ListenSocket * listen) {
     );
     WinError err;
     if (!error || err != ERROR_IO_PENDING) {
-        Log{kError} << "AcceptEx(" << listen->m_localEnd << "): " << err;
+        logMsgError() << "AcceptEx(" << listen->m_localEnd << "): " << err;
         return pushListenStop(listen);
     }
 }
@@ -215,7 +215,7 @@ static bool getAcceptInfo (
         nullptr,    // overlapped
         nullptr     // completion routine
     )) {
-        Log{kError} << "WSAIoctl(get GetAcceptExSockAddrs): " 
+        logMsgError() << "WSAIoctl(get GetAcceptExSockAddrs): " 
             << WinError{};
         return false;
     }
@@ -258,7 +258,7 @@ void AcceptSocket::onAccept (
     accept(listen);
 
     if (xferError) {
-        Log{kError} << "onAccept: " << WinError(xferError);
+        logMsgError() << "onAccept: " << WinError(xferError);
         return;
     }
     if (!ok)
@@ -271,7 +271,7 @@ void AcceptSocket::onAccept (
         (char *) &listen->m_handle,
         sizeof listen->m_handle
     )) {
-        Log{kError} 
+        logMsgError() 
             << "setsockopt(SO_UPDATE_ACCEPT_CONTEXT): " 
             << WinError{};
         return;
@@ -341,9 +341,9 @@ void socketListen (
         return pushListenStop(notify); 
 
     if (SOCKET_ERROR == listen(sock->m_handle, SOMAXCONN)) {
-        Log{kError} << "listen(SOMAXCONN): " << WinError{};
+        logMsgError() << "listen(SOMAXCONN): " << WinError{};
         if (SOCKET_ERROR == closesocket(sock->m_handle)) 
-            Log{kError} << "closesocket(listen): " << WinError{};
+            logMsgError() << "closesocket(listen): " << WinError{};
         return pushListenStop(notify);
     }
 
@@ -367,7 +367,7 @@ void socketStop (
             && ptr->m_handle != INVALID_SOCKET
         ) {
             if (SOCKET_ERROR == closesocket(ptr->m_handle)) {
-                Log{kError} << "closesocket(listen): " << WinError{};
+                logMsgError() << "closesocket(listen): " << WinError{};
             }
             ptr->m_handle = INVALID_SOCKET;
             return;

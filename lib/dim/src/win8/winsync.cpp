@@ -70,17 +70,17 @@ IWinEventWaitNotify::IWinEventWaitNotify () {
         INFINITE,   // timeout
         WT_EXECUTEINWAITTHREAD
     )) {
-        Log{kCrash} << "RegisterWaitForSingleObject: " << WinError{};
+        logMsgCrash() << "RegisterWaitForSingleObject: " << WinError{};
     }
 }
 
 //===========================================================================
 IWinEventWaitNotify::~IWinEventWaitNotify () {
     if (m_registeredWait && !UnregisterWaitEx(m_registeredWait, nullptr)) {
-        Log{kError} << "UnregisterWaitEx: " << WinError{};
+        logMsgError() << "UnregisterWaitEx: " << WinError{};
     }
     if (m_overlapped.hEvent && !CloseHandle(m_overlapped.hEvent)) {
-        Log{kError} << "CloseHandle(overlapped.hEvent): " << WinError{};
+        logMsgError() << "CloseHandle(overlapped.hEvent): " << WinError{};
     }
 }
 

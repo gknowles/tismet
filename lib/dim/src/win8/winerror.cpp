@@ -36,14 +36,14 @@ static once_flag s_loadOnce;
 static void loadProc () {
     HMODULE mod = LoadLibrary("ntdll.dll");
     if (!mod)
-        Log{kCrash} << "LoadLibrary(ntdll): " << WinError{};
+        logMsgCrash() << "LoadLibrary(ntdll): " << WinError{};
 
     s_RtlNtStatusToDosError = (RtlNtStatusToDosErrorFn) GetProcAddress(
         mod,
         "RtlNtStatusToDosError"
     );
     if (!s_RtlNtStatusToDosError) {
-        Log{kCrash} << "GetProcAddress(RtlNtStatusToDosError): " 
+        logMsgCrash() << "GetProcAddress(RtlNtStatusToDosError): " 
             << WinError{};
     }
 }

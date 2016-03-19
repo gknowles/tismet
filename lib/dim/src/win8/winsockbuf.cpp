@@ -133,7 +133,7 @@ static void createEmptyBuffer () {
 
     buf.id = s_rio.RIORegisterBuffer(buf.base, (DWORD) bytes);
     if (buf.id == RIO_INVALID_BUFFERID) {
-        Log{kCrash} << "RIORegisterBuffer failed, " 
+        logMsgCrash() << "RIORegisterBuffer failed, " 
             << WinError();
     }
 }

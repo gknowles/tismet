@@ -63,7 +63,7 @@ static void iocpDispatchThread () {
             } else if (err == ERROR_OPERATION_ABORTED) {
                 // probably file handle was closed
             } else {
-                Log{kCrash} << "GetQueuedCompletionStatus: "
+                logMsgCrash() << "GetQueuedCompletionStatus: "
                     << err;
             }
         }
@@ -95,7 +95,7 @@ bool WinIocpShutdown::onAppQueryConsoleDestroy () {
     if (s_mode != kRunStopping) {
         s_mode = kRunStopping;
         if (!CloseHandle(s_iocp))
-            Log{kError} << "CloseHandle(iocp): " << WinError{};
+            logMsgError() << "CloseHandle(iocp): " << WinError{};
 
         Sleep(0);
     }
@@ -131,7 +131,7 @@ void winIocpInitialize () {
         0       // num threads, 0 for default
     );
     if (!s_iocp) 
-        Log{kCrash} << "CreateIoCompletionPort(null): " << WinError{};
+        logMsgCrash() << "CreateIoCompletionPort(null): " << WinError{};
 
     thread thr{iocpDispatchThread};
     thr.detach();
@@ -149,7 +149,7 @@ bool winIocpBindHandle (HANDLE handle) {
         NULL,
         0
     )) {
-        Log{kError} << "CreateIoCompletionPort(handle): " << WinError{};
+        logMsgError() << "CreateIoCompletionPort(handle): " << WinError{};
         return false;
     }
 
