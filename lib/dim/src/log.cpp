@@ -39,26 +39,13 @@ static void LogMsg (LogType type, const string & msg) {
 
 /****************************************************************************
 *
-*   LogInternal
-*
-***/
-
-class Detail::LogInternal {
-public:
-    LogInternal (LogType type) : m_type(type) {}
-    LogType m_type;
-};
-
-
-/****************************************************************************
-*
 *   Log
 *
 ***/
 
 //===========================================================================
-Detail::Log::Log (const LogInternal & from) 
-    : m_type(from.m_type)
+Detail::Log::Log (LogType type) 
+    : m_type(type)
 {}
 
 //===========================================================================
@@ -91,22 +78,22 @@ void logAddNotify (ILogNotify * notify) {
 
 //===========================================================================
 Detail::Log logMsgDebug () { 
-    return Detail::LogInternal{kLogDebug};
+    return kLogDebug;
 }
 
 //===========================================================================
 Detail::Log logMsgInfo () {
-    return Detail::LogInternal{kLogInfo}; 
+    return kLogInfo; 
 }
 
 //===========================================================================
 Detail::Log logMsgError () {
-    return Detail::LogInternal{kLogError}; 
+    return kLogError; 
 }
 
 //===========================================================================
 Detail::LogCrash logMsgCrash () {
-    return Detail::LogInternal{kLogCrash}; 
+    return kLogCrash; 
 }
 
 
