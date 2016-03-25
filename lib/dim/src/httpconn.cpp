@@ -403,8 +403,8 @@ static void UpdatePriority () {
 
 //===========================================================================
 bool HttpConn::recv (
-    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     const void * src, 
     size_t srcLen
 ) {
@@ -1097,13 +1097,13 @@ void httpClose (HttpConnHandle hc) {
 //===========================================================================
 bool httpRecv (
     HttpConnHandle hc,
-    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     const void * src, 
     size_t srcLen
 ) {
     if (auto * conn = s_conns.find(hc))
-        return conn->recv(msgs, out, src, srcLen);
+        return conn->recv(out, msgs, src, srcLen);
     return false;
 }
 

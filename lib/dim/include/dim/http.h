@@ -220,8 +220,8 @@ void httpClose (HttpConnHandle conn);
 //  - out: data to send to the remote endpoint is appended
 bool httpRecv (
     HttpConnHandle conn,
-    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     CharBuf * out,
+    std::vector<std::unique_ptr<HttpMsg>> * msgs, 
     const void * src, 
     size_t srcLen
 );

@@ -135,8 +135,8 @@ void Application::onTask () {
             conn = httpListen();
         result = httpRecv(
             conn, 
-            &msgs, 
             &output, 
+            &msgs, 
             data(test.input), 
             size(test.input)
         );
