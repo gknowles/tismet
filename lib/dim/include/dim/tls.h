@@ -75,16 +75,21 @@ enum TlsCipherSuite : uint16_t {
 };
 
 enum TlsExtensionType : uint16_t {
+    kServerName = 0,
     kSupportedGroups = 10,
     kSignatureAlgorithms = 13,
-    kEarlyData = 0x880,    // TBD
-    kPresharedKey = 0x8801, // TBD
-    kKeyShare = 0x8802,     // TBD
+    kEarlyData = 40,
+    kPresharedKey = 41,
+    kKeyShare = 42,
+    kDraftVersion = 0xff02,
 };
 
 enum TlsNamedGroup : uint16_t {
-    kEcdhX25519 = 29,
-    kEddsaEd25519 = 31,
+    kGroupX25519 = 29,
+};
+
+enum TlsSignatureScheme : uint16_t {
+    kSigEd25519 = 0x0703,
 };
 
 
@@ -98,6 +103,7 @@ struct TlsConnHandle : HandleBase {};
 
 TlsConnHandle tlsConnect (
     CharBuf * out,
+    const char hostName[],
     const TlsCipherSuite suites[], 
     size_t count
 );
@@ -110,7 +116,7 @@ void tlsClose (TlsConnHandle h);
 bool tlsRecv (
     TlsConnHandle conn,
     CharBuf * out,
-    CharBuf * plain,
+    CharBuf * data,
     const void * src,
     size_t srcLen
 );

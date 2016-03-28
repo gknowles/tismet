@@ -54,8 +54,8 @@ public:
     void flush (CharBuf * out);
 
 private:
-    void addPlaintext (CharBuf * out);
-    void addCiphertext (CharBuf * out);
+    void writePlaintext (CharBuf * out);
+    void writeCiphertext (CharBuf * out);
 
     TlsCipher * m_cipher{nullptr};  // cipher if encrypting
     unsigned m_plainType{256};    // content type being encrypted
@@ -67,15 +67,14 @@ class ITlsRecordDecryptNotify {
 public:
     virtual ~ITlsRecordDecryptNotify () {}
     virtual void onTlsAlert (
-        TlsAlertLevel level, 
-        TlsAlertDesc desc
+        TlsAlertDesc desc,
+        TlsAlertLevel level
     ) = 0;
     virtual void onTlsHandshake (
         TlsHandshakeType type,
         const uint8_t msg[], 
         size_t msgLen
     ) = 0;
-    virtual void onTlsAppData (const CharBuf & buf) = 0;
 };
 
 class TlsRecordDecrypt {
@@ -85,6 +84,7 @@ public:
     // on error parse(...) returns false and sets alert level and desc 
     // that should be sent to the peer.
     bool parse (
+        CharBuf * data, // decrypted application data 
         ITlsRecordDecryptNotify * notify,
         const void * src, 
         size_t srcLen

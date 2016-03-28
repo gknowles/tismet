@@ -42,7 +42,7 @@ void TlsRecordEncrypt::setCipher (CharBuf * out, TlsCipher * cipher) {
 }
 
 //===========================================================================
-void TlsRecordEncrypt::addPlaintext (CharBuf * out) {
+void TlsRecordEncrypt::writePlaintext (CharBuf * out) {
     size_t plainLen = m_plaintext.size();
     assert(plainLen <= kMaxPlaintext);
     char hdr[] = { 
@@ -58,7 +58,7 @@ void TlsRecordEncrypt::addPlaintext (CharBuf * out) {
 }
 
 //===========================================================================
-void TlsRecordEncrypt::addCiphertext (CharBuf * out) {
+void TlsRecordEncrypt::writeCiphertext (CharBuf * out) {
     char hdr[] = { kContentAppData, 3, 1, 0, 0 };
     size_t pos = out->size();
     out->append(hdr, size(hdr));
@@ -107,9 +107,9 @@ void TlsRecordEncrypt::add (
 void TlsRecordEncrypt::flush (CharBuf * out) {
     if (size(m_plaintext)) {
         if (!m_cipher) {
-            addPlaintext(out);
+            writePlaintext(out);
         } else {
-            addCiphertext(out);
+            writeCiphertext(out);
         }
     }
 }
@@ -129,6 +129,7 @@ void TlsRecordDecrypt::setCipher (TlsCipher * cipher) {
 
 //===========================================================================
 bool TlsRecordDecrypt::parse (
+    CharBuf * data,
     ITlsRecordDecryptNotify * notify,
     const void * vsrc, 
     size_t srcLen
@@ -222,7 +223,7 @@ bool TlsRecordDecrypt::parse (
                 return false;
             break;
         case kContentAppData:
-            notify->onTlsAppData(m_plaintext);
+            data->append(m_plaintext);
             break;
         default:
             return parseError(kUnexpectedMessage);
@@ -243,7 +244,9 @@ bool TlsRecordDecrypt::parseAlerts (ITlsRecordDecryptNotify * notify) {
     const char * ptr = m_plaintext.data();
     const char * eptr = ptr + num / 2 * 2;
     while (ptr != eptr) {
-        notify->onTlsAlert(TlsAlertLevel(*ptr++), TlsAlertDesc(*ptr++));
+        auto level = TlsAlertLevel(*ptr++);
+        auto desc = TlsAlertDesc(*ptr++);
+        notify->onTlsAlert(desc, level);
     }
     if (num % 2 == 1)
         return parseError(kUnexpectedMessage);

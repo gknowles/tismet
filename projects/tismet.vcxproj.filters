@@ -5,10 +5,6 @@
     <ClCompile Include="..\tools\tismet\tismet.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\LICENSE" />
-    <None Include="..\README.md" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\tools\tismet\pch.h" />
   </ItemGroup>
 </Project>

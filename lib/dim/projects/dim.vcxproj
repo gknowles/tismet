@@ -44,6 +44,7 @@
     <ClInclude Include="..\src\httpint.h" />
     <ClInclude Include="..\src\intern.h" />
     <ClInclude Include="..\src\pch.h" />
+    <ClInclude Include="..\src\tlsint.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\address.cpp">
@@ -87,6 +88,7 @@
       </PrecompiledHeaderFile>
     </ClCompile>
     <ClCompile Include="..\src\tls.cpp" />
+    <ClCompile Include="..\src\tlsmsg.cpp" />
     <ClCompile Include="..\src\tlsrecord.cpp" />
     <ClCompile Include="..\src\tokentable.cpp">
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EnableFastChecks</BasicRuntimeChecks>

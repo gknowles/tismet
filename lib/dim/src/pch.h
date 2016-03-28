@@ -4,6 +4,7 @@
 #include "dim/tlsrecord.h"
 #include "intern.h"
 #include "httpint.h"
+#include "tlsint.h"
 
 #define SODIUM_STATIC
 #include <sodium.h>

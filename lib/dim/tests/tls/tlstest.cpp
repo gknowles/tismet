@@ -128,9 +128,10 @@ void Application::onLog (LogType type, const string & msg) {
 
 //===========================================================================
 void Application::onTask () {
-    const TlsCipherSuite ciphers[] = { 
+    const TlsCipherSuite kCiphers[] = { 
         TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 
     };
+    const char kHost[] = "example.com";
 
     CharBuf output;
     CharBuf plain;
@@ -144,9 +145,9 @@ void Application::onTask () {
             tlsClose(conn);
         if (!conn) {
             if (test.flags & kTestClient) {
-                conn = tlsConnect(&output, ciphers, size(ciphers));
+                conn = tlsConnect(&output, kHost, kCiphers, size(kCiphers));
             } else {
-                conn = tlsAccept(ciphers, size(ciphers));
+                conn = tlsAccept(kCiphers, size(kCiphers));
             }
         }
         result = tlsRecv(
