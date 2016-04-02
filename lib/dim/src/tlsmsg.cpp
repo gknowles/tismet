@@ -22,6 +22,15 @@ namespace Dim {
 *
 ***/
 
+namespace {
+
+enum TlsNameType : uint8_t {
+    kHostName = 0,
+};
+
+}
+
+
 /****************************************************************************
 *
 *   Update message components
@@ -116,9 +125,6 @@ static void writeSni (TlsRecordWriter & out, const vector<uint8_t> & host) {
     out.start16(); // extensions.extension_data
     // server_name_list
     out.start16();
-    enum TlsNameType : uint8_t {
-        kHostName = 0,
-    };
     out.number(kHostName);
     out.var16(host.data(), host.size());
     out.end();
@@ -224,25 +230,65 @@ void tlsWrite (TlsRecordWriter & out, const TlsHelloRetryRequestMsg & msg) {
 static bool parseSni (
     std::vector<uint8_t> * out,
     TlsRecordReader & in,
-    size_t len
+    size_t extLen
 ) {
-    return false;
+    int listLen = in.number16();
+    while (listLen >= 3) {
+        auto type = in.number<TlsNameType>();
+        int len = in.number16();
+        listLen -= len + 3;
+        if (type == kHostName) {
+            out->resize(len);
+            in.fixed(out->data(), len);
+        } else {
+            in.skip(len);
+        }
+    }
+    return true;
 }
 
 //===========================================================================
 static bool parseGroups (
     vector<TlsKeyShare> * out,
     TlsRecordReader & in,
-    size_t len
+    size_t extLen
 ) {
-    return false;
+    int listLen = in.number16();
+    vector<TlsKeyShare> groups(listLen);
+    for (auto&& group : groups) {
+        group.group = in.number<TlsNamedGroup>();
+    }
+    if (out->empty()) {
+        swap(*out, groups);
+        return true;
+    }
+    for (auto&& share : *out) {
+        unsigned found = 0;
+        auto it = groups.begin();
+        auto last = groups.end();
+        for (; it != last; ++it) {
+            if (share.group != it->group)
+                continue;
+            if (found) {
+                groups.erase(it);
+                --it;
+                --last;
+            } else {
+                it->keyExchange = move(share.keyExchange);
+            }
+            found += 1;
+        }
+        if (!found)
+            return false;
+    }
+    return true;
 }
 
 //===========================================================================
 static bool parse (
     vector<TlsSignatureScheme> * out,
     TlsRecordReader & in,
-    size_t len
+    size_t extLen
 ) {
     return false;
 }
@@ -251,7 +297,7 @@ static bool parse (
 static bool parseKeyShares (
     vector<TlsKeyShare> * out,
     TlsRecordReader & in,
-    size_t len
+    size_t extLen
 ) {
     return false;
 }
@@ -260,7 +306,7 @@ static bool parseKeyShares (
 static bool parseDraftVersion (
     uint16_t * out,
     TlsRecordReader & in,
-    size_t len
+    size_t extLen
 ) {
     return false;
 }
@@ -270,21 +316,21 @@ static bool parseExt (
     TlsClientHelloMsg * msg,
     TlsRecordReader & in,
     TlsExtensionType type,
-    size_t len
+    size_t extLen
 ) {
     switch (type) {
     case kServerName:
-        return parseSni(&msg->hostName, in, len);
+        return parseSni(&msg->hostName, in, extLen);
     case kSupportedGroups:
-        return parseGroups(&msg->groups, in, len);
+        return parseGroups(&msg->groups, in, extLen);
     case kSignatureAlgorithms:
-        return parse(&msg->sigSchemes, in, len);
+        return parse(&msg->sigSchemes, in, extLen);
     case kKeyShare:
-        return parseKeyShares(&msg->groups, in, len);
+        return parseKeyShares(&msg->groups, in, extLen);
     case kDraftVersion:
-        return parseDraftVersion(&msg->draftVersion, in, len);
+        return parseDraftVersion(&msg->draftVersion, in, extLen);
     }
-    in.skip(len);
+    in.skip(extLen);
     return true;
 }
 
@@ -293,13 +339,13 @@ static bool parseExt (
     TlsServerHelloMsg * msg,
     TlsRecordReader & in,
     TlsExtensionType type,
-    size_t len
+    size_t extLen
 ) {
     switch (type) {
     case kDraftVersion:
-        return parseDraftVersion(&msg->draftVersion, in, len);
+        return parseDraftVersion(&msg->draftVersion, in, extLen);
     }
-    in.skip(len);
+    in.skip(extLen);
     return true;
 }
 
@@ -310,13 +356,17 @@ static bool parseExts (T * msg, TlsRecordReader & in) {
     if (!in.size())
         return true;
 
-    size_t extLen = in.number16();
-    while (extLen) {
+    size_t extsLen = in.number16();
+    while (extsLen) {
         auto ext = in.number<TlsExtensionType>();
-        auto len = in.number16();
-        extLen -= len;
-        if (!parseExt(msg, in, ext, len))
+        int len = in.number16();
+        int elen = (int) in.size() - len;
+        extsLen -= len;
+        if (!parseExt(msg, in, ext, len)
+            || elen != (int) in.size()
+        ) {
             return false;
+        }
     }
     return true;
 }

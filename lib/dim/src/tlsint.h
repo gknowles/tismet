@@ -17,8 +17,8 @@ class TlsRecordWriter;
 ***/
 
 struct TlsKeyShare {
-    TlsNamedGroup group;
     std::vector<uint8_t> keyExchange;
+    TlsNamedGroup group;
 };
 
 struct TlsPresharedKey {
