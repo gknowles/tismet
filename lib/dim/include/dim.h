@@ -21,5 +21,6 @@
 #include "dim/tls.h"
 #include "dim/tokentable.h"
 #include "dim/types.h"
+#include "dim/xml.h"
 
 #endif

@@ -41,6 +41,7 @@
     <ClInclude Include="..\include\dim\tlsrecord.h" />
     <ClInclude Include="..\include\dim\tokentable.h" />
     <ClInclude Include="..\include\dim\types.h" />
+    <ClInclude Include="..\include\dim\xml.h" />
     <ClInclude Include="..\src\httpint.h" />
     <ClInclude Include="..\src\intern.h" />
     <ClInclude Include="..\src\pch.h" />
@@ -94,6 +95,7 @@
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EnableFastChecks</BasicRuntimeChecks>
     </ClCompile>
     <ClCompile Include="..\src\types.cpp" />
+    <ClCompile Include="..\src\xmlbuilder.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{73784937-0004-4A1B-9352-EADDB9499541}</ProjectGuid>

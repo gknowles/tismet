@@ -90,6 +90,9 @@
     <ClInclude Include="..\src\tlsint.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\dim\xml.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.cpp">
@@ -150,6 +153,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\tlsmsg.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\xmlbuilder.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
