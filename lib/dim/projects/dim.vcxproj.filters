@@ -72,9 +72,6 @@
     <ClInclude Include="..\include\dim\log.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\dim\str.h">
-      <Filter>include</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\dim\tokentable.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -91,6 +88,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\include\dim\xml.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dim\util.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
@@ -137,9 +137,6 @@
     <ClCompile Include="..\src\log.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\str.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\hash.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -156,6 +153,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\xmlbuilder.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\util.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>

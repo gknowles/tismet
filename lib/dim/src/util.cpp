@@ -1,4 +1,4 @@
-// str.cpp - dim services
+// util.cpp - dim services
 #include "pch.h"
 #pragma hdrstop
 

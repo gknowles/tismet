@@ -13,6 +13,9 @@
 
 namespace Dim {
 
+template <typename T> class ForwardListIterator;
+
+
 /****************************************************************************
 *
 *   Constants
@@ -89,7 +92,6 @@ class HttpMsg {
 public:
     struct HdrName;
     struct HdrValue;
-    template <typename T> class Iterator;
 
 public:
     virtual ~HttpMsg () {}
@@ -103,10 +105,10 @@ public:
     void addHeaderRef (HttpHdr id, const char value[]);
     void addHeaderRef (const char name[], const char value[]);
 
-    Iterator<HdrName> begin ();
-    Iterator<HdrName> end ();
-    Iterator<const HdrName> begin () const;
-    Iterator<const HdrName> end () const;
+    ForwardListIterator<HdrName> begin ();
+    ForwardListIterator<HdrName> end ();
+    ForwardListIterator<const HdrName> begin () const;
+    ForwardListIterator<const HdrName> end () const;
 
     HdrName headers (HttpHdr header);
     HdrName headers (const char name[]);
@@ -142,34 +144,16 @@ struct HttpMsg::HdrName {
     const char * m_name{nullptr};
     HdrName * m_next{nullptr};
 
-    Iterator<HdrValue> begin ();
-    Iterator<HdrValue> end ();
-    Iterator<const HdrValue> begin () const;
-    Iterator<const HdrValue> end () const;
+    ForwardListIterator<HdrValue> begin ();
+    ForwardListIterator<HdrValue> end ();
+    ForwardListIterator<const HdrValue> begin () const;
+    ForwardListIterator<const HdrValue> end () const;
 };
 
 struct HttpMsg::HdrValue {
     const char * m_value;
     HdrValue * m_next{nullptr};
     HdrValue * m_prev{nullptr};
-};
-
-template <typename T>
-class HttpMsg::Iterator {
-    T * m_current{nullptr};
-public:
-    Iterator (T * hdr) : m_current(hdr) {}
-    bool operator!= (const Iterator & right) {
-        return m_current != right.m_current;
-    }
-    auto operator++ () {
-        m_current = m_current->m_next;
-        return *this;
-    }
-    T & operator* () {
-        assert(m_current);
-        return *m_current;
-    }
 };
 
 

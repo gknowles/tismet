@@ -110,25 +110,29 @@ struct HdrNameInfo : HttpMsg::HdrName {
 ***/
 
 //===========================================================================
-auto HttpMsg::HdrName::begin () -> Iterator<HdrValue> {
+auto HttpMsg::HdrName::begin () -> ForwardListIterator<HdrValue> {
     auto * hdr = static_cast<HdrNameInfo *>(this);
-    return Iterator<HdrValue>(&hdr->m_value);
+    return ForwardListIterator<HdrValue>(&hdr->m_value);
 }
 
 //===========================================================================
-auto HttpMsg::HdrName::end () -> Iterator<HdrValue> {
-    return Iterator<HdrValue>(nullptr);
+auto HttpMsg::HdrName::end () -> ForwardListIterator<HdrValue> {
+    return ForwardListIterator<HdrValue>(nullptr);
 }
 
 //===========================================================================
-auto HttpMsg::HdrName::begin () const -> Iterator<const HdrValue> {
+auto HttpMsg::HdrName::begin () const 
+    -> ForwardListIterator<const HdrValue> 
+{
     auto * hdr = static_cast<const HdrNameInfo *>(this);
-    return Iterator<const HdrValue>(&hdr->m_value);
+    return ForwardListIterator<const HdrValue>(&hdr->m_value);
 }
 
 //===========================================================================
-auto HttpMsg::HdrName::end () const -> Iterator<const HdrValue> {
-    return Iterator<const HdrValue>(nullptr);
+auto HttpMsg::HdrName::end () const 
+    -> ForwardListIterator<const HdrValue> 
+{
+    return ForwardListIterator<const HdrValue>(nullptr);
 }
 
 
@@ -215,23 +219,23 @@ void HttpMsg::addHeaderRef (const char name[], const char value[]) {
 }
 
 //===========================================================================
-auto HttpMsg::begin () -> Iterator<HdrName> {
-    return Iterator<HdrName>{m_firstHeader};
+auto HttpMsg::begin () -> ForwardListIterator<HdrName> {
+    return ForwardListIterator<HdrName>{m_firstHeader};
 }
 
 //===========================================================================
-auto HttpMsg::end () -> Iterator<HdrName> {
-    return Iterator<HdrName>{nullptr};
+auto HttpMsg::end () -> ForwardListIterator<HdrName> {
+    return ForwardListIterator<HdrName>{nullptr};
 }
 
 //===========================================================================
-auto HttpMsg::begin () const -> Iterator<const HdrName> {
-    return Iterator<const HdrName>{m_firstHeader};
+auto HttpMsg::begin () const -> ForwardListIterator<const HdrName> {
+    return ForwardListIterator<const HdrName>{m_firstHeader};
 }
 
 //===========================================================================
-auto HttpMsg::end () const -> Iterator<const HdrName> {
-    return Iterator<const HdrName>{nullptr};
+auto HttpMsg::end () const -> ForwardListIterator<const HdrName> {
+    return ForwardListIterator<const HdrName>{nullptr};
 }
 
 //===========================================================================

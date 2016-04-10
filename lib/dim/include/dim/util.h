@@ -1,4 +1,4 @@
-// str.h - dim core
+// util.h - dim core
 #pragma once
 
 #include "dim/config.h"
@@ -82,5 +82,31 @@ template <typename T>
 IntegralStr<T>::operator const char * () const { 
     return data; 
 }
+
+
+/****************************************************************************
+*
+*   Containers
+*
+***/
+
+template <typename T>
+class ForwardListIterator {
+    T * m_current{nullptr};
+public:
+    ForwardListIterator (T * node) : m_current(node) {}
+    bool operator!= (const ForwardListIterator & right) {
+        return m_current != right.m_current;
+    }
+    auto operator++ () {
+        m_current = m_current->m_next;
+        return *this;
+    }
+    T & operator* () {
+        assert(m_current);
+        return *m_current;
+    }
+};
+
 
 } // namespace
