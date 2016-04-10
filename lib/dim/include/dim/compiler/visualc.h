@@ -1,6 +1,5 @@
 // visualc.h - dim compiler config
-#ifndef DIM_VISUALC_INCLUDED
-#define DIM_VISUALC_INCLUDED
+#pragma once
 
 #pragma warning(disable: 4100) // unreferenced formal parameter
 #pragma warning(disable: 4324) // structure was padded due to alignment specifier
@@ -11,5 +10,3 @@
 
 #define _NO_LOCALES 0
 #define _ITERATOR_DEBUG_LEVEL 0
-
-#endif

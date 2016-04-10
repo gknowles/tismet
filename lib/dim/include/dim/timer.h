@@ -1,6 +1,5 @@
 // timer.h - dim core
-#ifndef DIM_TIMER_INCLUDED
-#define DIM_TIMER_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 #include "dim/types.h"
@@ -49,5 +48,3 @@ void timerUpdate (
 void timerStopSync (ITimerNotify * notify);
 
 } // namespace
-
-#endif

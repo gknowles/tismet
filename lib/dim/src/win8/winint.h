@@ -1,6 +1,5 @@
 // winint.h - dim core - windows platform
-#ifndef DIM_WININT_INCLUDED
-#define DIM_WININT_INCLUDED
+#pragma once
 
 #include <iosfwd>
 
@@ -108,5 +107,3 @@ SOCKET winSocketCreate ();
 SOCKET winSocketCreate (const Endpoint & localEnd);
 
 } // namespace
-
-#endif

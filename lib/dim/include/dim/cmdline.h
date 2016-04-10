@@ -1,6 +1,5 @@
 // cmdline.h - dim services
-#ifndef DIM_CMDLINE_INCLUDED
-#define DIM_CMDLINE_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -170,5 +169,3 @@ void PrintHelp (std::ostream & os);
 
 } // namespace
 } // namespace
-
-#endif

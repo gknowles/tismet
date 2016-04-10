@@ -1,13 +1,12 @@
 // charbuf.h - dim services
-#ifndef DIM_CHARBUF_INCLUDED
-#define DIM_CHARBUF_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 #include "dim/tempheap.h"
 
 #include <list>
 #include <string>
-#include <utility>
+#include <utility>  // std::pair
 
 namespace Dim {
 
@@ -98,5 +97,3 @@ bool operator== (const CharBuf & left, const CharBuf & right);
 std::string to_string (const CharBuf & buf);
 
 } // namespace
-
-#endif

@@ -1,6 +1,5 @@
 // tokentable.h - dim core
-#ifndef DIM_TOKENTABLE_INCLUDED
-#define DIM_TOKENTABLE_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -67,5 +66,3 @@ const char * tokenTableGetName (
 }
 
 } // namespace
-
-#endif

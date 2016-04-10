@@ -1,6 +1,5 @@
 // types.h - dim core
-#ifndef DIM_TYPES_INCLUDED
-#define DIM_TYPES_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -81,5 +80,3 @@ enum RunMode {
 };
 
 } // namespace
-
-#endif

@@ -2,9 +2,7 @@
 //
 // implements tls/1.3 record protocol, as defined by:
 //  rfc5246bis - Transport Layer Security (TLS) Protocol Version 1.3
-
-#ifndef DIM_TLSRECORD_INCLUDED
-#define DIM_TLSRECORD_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -110,5 +108,3 @@ private:
 };
 
 } // namespace
-
-#endif

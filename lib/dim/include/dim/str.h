@@ -1,6 +1,5 @@
 // str.h - dim core
-#ifndef DIM_STR_INCLUDED
-#define DIM_STR_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -85,5 +84,3 @@ IntegralStr<T>::operator const char * () const {
 }
 
 } // namespace
-
-#endif

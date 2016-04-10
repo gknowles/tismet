@@ -2,9 +2,7 @@
 //
 // implements hpack, as defined by:
 //  rfc7541 - HPACK: Header Compression for HTTP/2
-
-#ifndef DIM_HPACK_INCLUDED
-#define DIM_HPACK_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -138,5 +136,3 @@ private:
 };
 
 } // namespace
-
-#endif

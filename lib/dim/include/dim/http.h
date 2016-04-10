@@ -4,8 +4,7 @@
 //  rfc7540 - Hypertext Transfer Protocol Version 2 (HTTP/2)
 //  rfc7541 - HPACK: Header Compression for HTTP/2
 
-#ifndef DIM_HTTP_INCLUDED
-#define DIM_HTTP_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -251,5 +250,3 @@ void httpReply (
 void httpResetStream (HttpConnHandle conn, CharBuf * out, int stream);
 
 } // namespace
-
-#endif

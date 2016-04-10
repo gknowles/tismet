@@ -1,6 +1,5 @@
 // tlsint.h - dim core
-#ifndef DIM_TLSINT_INCLUDED
-#define DIM_TLSINT_INCLUDED
+#pragma once
 
 #include <vector>
 
@@ -189,5 +188,3 @@ inline T TlsRecordReader::number () {
 
 
 } // namespace
-
-#endif

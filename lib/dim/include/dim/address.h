@@ -1,6 +1,5 @@
 // address.h - dim services
-#ifndef DIM_ADDRESS_INCLUDED
-#define DIM_ADDRESS_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 #include "dim/types.h"
@@ -58,5 +57,3 @@ void endpointQuery (
 void endpointCancelQuery (int cancelId);
 
 } // namespace dim
-
-#endif

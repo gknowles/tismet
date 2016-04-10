@@ -1,6 +1,5 @@
 // socket.h - dim core
-#ifndef DIM_SOCKET_INCLUDED
-#define DIM_SOCKET_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 #include "dim/types.h"
@@ -101,5 +100,3 @@ void socketWrite (
 );
 
 } // namespace
-
-#endif

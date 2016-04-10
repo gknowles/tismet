@@ -1,6 +1,5 @@
 // log.h - dim core
-#ifndef DIM_LOG_INCLUDED
-#define DIM_LOG_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -50,5 +49,3 @@ Detail::LogCrash logMsgCrash ();
 
 
 } // namespace
-
-#endif

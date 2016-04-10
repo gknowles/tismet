@@ -1,6 +1,5 @@
 // handle.h - dim services
-#ifndef DIM_HANDLE_INCLUDED
-#define DIM_HANDLE_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -145,5 +144,3 @@ public:
 };
 
 } // namespace
-
-#endif

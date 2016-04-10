@@ -1,6 +1,5 @@
 // winsockint.h - dim core - windows platform
-#ifndef DIM_WINSOCKINT_INCLUDED
-#define DIM_WINSOCKINT_INCLUDED
+#pragma once
 
 #include <list>
 #include <memory>
@@ -117,5 +116,3 @@ void iSocketGetRioBuffer (
 );
 
 } // namespace
-
-#endif

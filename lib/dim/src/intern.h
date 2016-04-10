@@ -1,6 +1,5 @@
 // intern.h - dim core
-#ifndef DIM_INTERN_INCLUDED
-#define DIM_INTERN_INCLUDED
+#pragma once
 
 namespace Dim {
 
@@ -61,5 +60,3 @@ void iTimerDestroy ();
 int64_t iClockGetTicks ();
 
 } // namespace
-
-#endif

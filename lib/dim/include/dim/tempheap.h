@@ -1,6 +1,5 @@
 // tempheap.h - dim services
-#ifndef DIM_TEMPHEAP_INCLUDED
-#define DIM_TEMPHEAP_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -85,5 +84,3 @@ private:
 };
 
 } // namespace
-
-#endif

@@ -1,6 +1,5 @@
 // app.h - dim core
-#ifndef DIM_APP_INCLUDED
-#define DIM_APP_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -34,5 +33,3 @@ bool appQueryDestroyFailed ();
 RunMode appMode ();
 
 } // namespace
-
-#endif

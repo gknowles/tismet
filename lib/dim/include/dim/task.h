@@ -1,6 +1,5 @@
 // task.h - dim core
-#ifndef DIM_TASK_INCLUDED
-#define DIM_TASK_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 #include "dim/handle.h"
@@ -39,5 +38,3 @@ void taskPush (TaskQueueHandle q, ITaskNotify & task);
 void taskPush (TaskQueueHandle q, ITaskNotify * tasks[], size_t numTasks);
 
 } // namespace
-
-#endif

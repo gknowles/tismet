@@ -2,9 +2,7 @@
 //
 // implements tls/1.3, as defined by:
 //  rfc5246bis - Transport Layer Security (TLS) Protocol Version 1.3
-
-#ifndef DIM_TLS_INCLUDED
-#define DIM_TLS_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -129,5 +127,3 @@ void tlsSend (
 );
 
 } // namespace
-
-#endif

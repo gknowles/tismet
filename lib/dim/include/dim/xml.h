@@ -1,6 +1,5 @@
 // xml.h - dim services
-#ifndef DIM_XML_INCLUDED
-#define DIM_XML_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -87,6 +86,4 @@ private:
 class CXParser {
 };
 
-} // namespace dim
-
-#endif
+} // namespace

@@ -1,6 +1,5 @@
 // list.h - dim services
-#ifndef DIM_LIST_INCLUDED
-#define DIM_LIST_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -62,5 +61,3 @@ private:
 };
 
 } // namespace
-
-#endif

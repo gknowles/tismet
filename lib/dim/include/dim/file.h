@@ -1,6 +1,5 @@
 // file.h - dim core
-#ifndef DIM_FILE_INCLUDED
-#define DIM_FILE_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -62,5 +61,3 @@ void fileRead (
 );
 
 } // namespace
-
-#endif

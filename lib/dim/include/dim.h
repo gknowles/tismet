@@ -1,6 +1,5 @@
 // dim.h - dim primary client header
-#ifndef DIM_DIM_INCLUDED
-#define DIM_DIM_INCLUDED
+#pragma once
 
 #include "dim/config.h"
 
@@ -22,5 +21,3 @@
 #include "dim/tokentable.h"
 #include "dim/types.h"
 #include "dim/xml.h"
-
-#endif
