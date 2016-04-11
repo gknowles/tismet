@@ -46,6 +46,11 @@ struct Buffer {
 
 //===========================================================================
 TempHeap::~TempHeap () {
+    clear();
+}
+
+//===========================================================================
+void TempHeap::clear () {
     Buffer * ptr = (Buffer *) m_buffer;
     while (ptr) {
         Buffer * next = ptr->m_next;

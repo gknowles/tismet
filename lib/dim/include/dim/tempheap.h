@@ -75,6 +75,7 @@ inline char * ITempHeap::alloc (size_t bytes) {
 class TempHeap : public ITempHeap {
 public:
     ~TempHeap ();
+    void clear ();
 
     // ITempHeap
     char * alloc (size_t bytes, size_t align) override;
