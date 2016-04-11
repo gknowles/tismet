@@ -2,8 +2,6 @@
 #include "pch.h"
 #pragma hdrstop
 
-#include <iomanip>
-
 using namespace std;
 
 namespace Dim {

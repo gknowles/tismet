@@ -14,6 +14,8 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <functional>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
