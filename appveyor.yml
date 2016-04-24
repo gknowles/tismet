@@ -26,7 +26,7 @@ artifacts:
 #  - path: bin\*.pdb
 
 deploy:
-  tag: tismet-v%appveyor_build_version%
+  tag: tismet-v$(appveyor_build_version)
   description: continuous trunk build
   provider: GitHub
   auth_token:
