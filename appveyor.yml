@@ -19,14 +19,14 @@ after_build:
   - 7z a tismet-v%appveyor_build_version%.zip bin\*.exe bin\*.pdb
 
 artifacts:
-#  - path: tismet-v$(appveyor_build_version).zip
-#    name: tismet
-#    type: zip
-  - path: bin\*.exe
-  - path: bin\*.pdb
+  - path: tismet-v$(appveyor_build_version).zip
+    name: tismet
+    type: zip
+#  - path: bin\*.exe
+#  - path: bin\*.pdb
 
 deploy:
-  release: tismet-trunk
+  tag: tismet-v%appveyor_build_version%
   description: continuous trunk build
   provider: GitHub
   auth_token:
