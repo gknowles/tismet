@@ -158,5 +158,8 @@
     <ClCompile Include="..\src\util.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\xmlparser.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
