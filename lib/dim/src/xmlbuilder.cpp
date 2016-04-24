@@ -22,6 +22,7 @@ enum TextType : char {
     kTextTypeQuote = 3,
     kTextTypeAmp = 4,
     kTextTypeLess = 5,
+    kTextTypeGreater = 6,
     kTextTypes,
 };
 
@@ -32,26 +33,28 @@ const char * kTextEntityTable[] = {
     "&quote;",
     "&amp;",
     "&lt;",
+    "&gt;",
 };
 static_assert(size(kTextEntityTable) == kTextTypes, "");
 
 const char kTextTypeTable[256] = {
-    2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    1, 3, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+//  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+    2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, // 0
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 1
+    1, 3, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 6, 1, // 3
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 8
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 9
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // a
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // b
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // c
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // d
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // e
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // f
 };
 
 } // namespace
@@ -91,14 +94,14 @@ IXBuilder & IXBuilder::text (const char val[]) {
         append(val);
         return *this;
     case kStateAttrText:
-        addText<true>(val);
+        addText<false>(val);
         return *this;
     case kStateAttrEnd:
         append(">");
         m_state = kStateText;
     }
     assert(m_state == kStateText);
-    addText<false>(val);
+    addText<true>(val);
     return *this;
 }
 
@@ -180,12 +183,23 @@ IXBuilder & IXBuilder::end () {
 }
 
 //===========================================================================
-template <bool escapeQuote>
+template <bool isContent>
 void IXBuilder::addText (const char val[]) {
     const char * base = val;
     for (;;) {
         TextType type = (TextType) kTextTypeTable[*val];
         switch (type) {
+        case kTextTypeGreater:
+            // ">" must be escaped when following "]]"
+            if (isContent) {
+                if (val - base >= 2 
+                    && val[-1] == ']' 
+                    && val[-2] == ']'
+                ) {
+                    break;
+                }
+            }
+            [[fallthrough]];
         case kTextTypeNormal:
             val += 1;
             continue;
@@ -193,42 +207,43 @@ void IXBuilder::addText (const char val[]) {
             append(base, val - base);
             return;
         case kTextTypeQuote:
-            if (!escapeQuote) {
+            if (isContent) {
                 val += 1;
                 continue;
             }
         case kTextTypeAmp:
         case kTextTypeLess:
-            append(base, val - base);
-            append(kTextEntityTable[type]);
-            base = ++val;
-            continue;
+            break;
         case kTextTypeInvalid:
             m_state = kStateFail;
             return;
         }
+
+        append(base, val - base);
+        append(kTextEntityTable[type]);
+        base = ++val;
     }
 }
 
 
 /****************************************************************************
 *
-*   CXBuilder
+*   XBuilder
 *
 ***/
 
 //===========================================================================
-void CXBuilder::append (const char text[], size_t count) {
+void XBuilder::append (const char text[], size_t count) {
     m_buf.append(text, count);
 }
 
 //===========================================================================
-void CXBuilder::appendCopy (size_t pos, size_t count) {
+void XBuilder::appendCopy (size_t pos, size_t count) {
     m_buf.append(m_buf, pos, count);
 }
 
 //===========================================================================
-size_t CXBuilder::size () {
+size_t XBuilder::size () {
     return m_buf.size();
 }
 
@@ -253,13 +268,13 @@ IXBuilder & operator<< (IXBuilder & out, uint64_t val) {
 
 //===========================================================================
 IXBuilder & operator<< (IXBuilder & out, int val) {
-    IntegralStr<int64_t> tmp(val);
+    IntegralStr<int> tmp(val);
     return out.text(tmp);
 }
 
 //===========================================================================
 IXBuilder & operator<< (IXBuilder & out, unsigned val) {
-    IntegralStr<int64_t> tmp(val);
+    IntegralStr<unsigned> tmp(val);
     return out.text(tmp);
 }
 
