@@ -1,5 +1,6 @@
 // pch.h - tismet
-#include "dim.h"
+#define DIM_LIB_KEEP_MACROS
+#include "dim/dim.h"
 
 #include <crtdbg.h>
 #include <cstdio>
