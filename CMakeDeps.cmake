@@ -3,6 +3,9 @@
 # README.md
 # appveyor.yml
 # configure.bat
+# tools/load/load.cpp
+# tools/load/pch.cpp
+# tools/load/pch.h
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
 # tools/tismet/tismet.cpp
