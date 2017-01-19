@@ -1,0 +1,3 @@
+[submodule "vendor/dimapp"]
+	path = vendor/dimapp
+	url = https://github.com/gknowles/dimapp
