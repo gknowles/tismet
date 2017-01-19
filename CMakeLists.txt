@@ -104,13 +104,12 @@ function(add_exec_project tgt srcdir)
     source_group("" FILES ${sources})
     write_user_file(${tgt})
 
-    target_link_libraries(${tgt} dimapp.lib dimapp-cli.lib dimapp-win8.lib 
-        dimapp-xml.lib)
+    target_link_libraries(${tgt} dimapp dimapp-cli dimapp-win8
+        dimapp-xml)
 endfunction()
 
 set(VcpkgRoot "c:/jects/vcpkg/installed/x64-windows-static")
-include_directories(include "${VcpkgRoot}/include")
-link_directories("${VcpkgRoot}/debug/lib")
+include_directories(include vendor/dimapp/include)
 
 if(MSVC)
     # "/utf-8" - sets source code character set to utf-8
@@ -221,6 +220,16 @@ foreach(var ${allnames})
 
         set_target_properties(${prjname} PROPERTIES FOLDER tests)
         add_test(NAME ${prjname} COMMAND ${prjname})
+    endif()
+endforeach()
+
+# vendor dependencies
+file(GLOB allnames vendor/*)
+foreach(var ${allnames})
+    if(IS_DIRECTORY "${var}")
+        list(APPEND deps "${var}")
+        get_filename_component(prjname "${var}" NAME)
+        add_subdirectory("${var}")
     endif()
 endforeach()
 

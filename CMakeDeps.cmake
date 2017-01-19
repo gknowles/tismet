@@ -9,3 +9,4 @@
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
 # tools/tismet/tismet.cpp
+# vendor/dimapp
