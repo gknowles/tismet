@@ -8,6 +8,15 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Declarations
+*
+***/
+
+const char kVersion[] = "1.0";
+
+
+/****************************************************************************
+*
 *   MainShutdown
 *
 ***/
@@ -36,13 +45,32 @@ bool MainShutdown::onAppQueryClientDestroy () {
 
 namespace {
 class Application : public ITaskNotify {
-    void onTask () override;
+    int m_argc;
+    char ** m_argv;
+
+public:
+    Application(int argc, char * argv[]);
+    void onTask() override;
 };
 } // namespace
 
 //===========================================================================
+Application::Application(int argc, char * argv[])
+    : m_argc(argc)
+    , m_argv(argv) {}
+
+//===========================================================================
 void Application::onTask () {
     appMonitorShutdown(&s_cleanup);
+    Cli cli;
+    cli.header("load v"s + kVersion + " (" __DATE__ ")");
+    cli.versionOpt(kVersion);
+    auto & dat = cli.opt<string>("[dat file]", "metrics.dat");
+    if (!cli.parse(m_argc, m_argv))
+        return appSignalUsageError();
+
+    auto h = tsdOpen(*dat);
+    tsdClose(h);
 
     appSignalShutdown(EX_OK);
 }
@@ -59,7 +87,7 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    Application app;
+    Application app(argc, argv);
     int code = appRun(app);
     return code;
 }

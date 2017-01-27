@@ -3,10 +3,14 @@
 # README.md
 # appveyor.yml
 # configure.bat
+# include/tsdata.h
+# src/pch.cpp
+# src/pch.h
+# src/tsdata.cpp
 # tools/load/load.cpp
 # tools/load/pch.cpp
 # tools/load/pch.h
-# tools/tismet/pch.cpp
-# tools/tismet/pch.h
-# tools/tismet/tismet.cpp
+# tools/tismetd/pch.cpp
+# tools/tismetd/pch.h
+# tools/tismetd/tismet.cpp
 # vendor/dimapp
