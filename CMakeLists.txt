@@ -1,10 +1,25 @@
-# CMakeLists.txt - tismet
+# CMakeLists.txt - general project generator
+#
+# Required project layout:
+#   /<project_name>
+#   /<project_name>/CMakeLists.txt - this file
+#   /<project_name>/CMakeDeps.cmake - made by this file (source controlled)
+#   /<project_name>/include
+#   /<project_name>/src/{*.h,*.cpp}
+#   /<project_name>/src/<sublibrary>/**/{*.h,*.cpp}
+#   /<project_name>/tests/<test_project_name>/
+#   /<project_name>/tools/<tool_project_name>/
+#   /<project_name>/vendor/<vendor_project_name>/
+#   /<project_name>/vendor/<vendor_project_name>/CMakeLists.txt
 
 cmake_minimum_required (VERSION 3.6)
-project(tismet)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 option(LINK_STATIC_RUNTIME "Link with static c++ runtime" ON)
 option(BUILD_SHARED_LIBS "Build DLLs instead of static libs" OFF)
+
+# get name of project from containing directory
+get_filename_component(prjname "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
+project(${prjname})
 
 # Reference to suppress "not used" warning when manually specified
 # by vcpkg
@@ -112,31 +127,39 @@ function(add_exec_project tgt srcdir)
 endfunction()
 
 function(add_lib_project_with_sources tgt srcdir)
-    set(sources ${ARGV})
-    list(REMOVE_AT sources 0 1)
     if(MSVC)
         set_property(SOURCE "${srcdir}/pch.cpp" 
             APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
     endif()
+    set(sources ${ARGV})
+    list(REMOVE_AT sources 0 1)
     list(APPEND deps ${sources})
     set(deps ${deps} PARENT_SCOPE)
-    add_library(${tgt} ${sources})
+    set(cpps ${sources})
+    list(FILTER cpps INCLUDE REGEX ".*\.cpp$")
+    list(LENGTH cpps cpps)
+    if(cpps)
+        add_library(${tgt} ${sources})
+        list(APPEND libnames ${tgt})
+        set(libnames ${libnames} PARENT_SCOPE)
+
+        install(TARGETS ${tgt}
+            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION bin)
+        install_archive_pdb(${tgt} lib)
+    else()
+        add_custom_target(${tgt} SOURCES ${sources})
+    endif()
     set_target_properties(${tgt} PROPERTIES FOLDER libs)
     source_group("" FILES ${sources})
     write_user_file(${tgt})
-
-    # set linker language in case there are no source files
-    set_target_properties(${tgt} PROPERTIES LINKER_LANGUAGE CXX)
-
-    install(TARGETS ${tgt}
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin)
-    install_archive_pdb(${tgt} lib)
 endfunction()
 
 function(add_lib_project tgt srcdir)
     file(GLOB_RECURSE sources LIST_DIRECTORIES false ${srcdir}/*.h ${srcdir}/*.cpp)
     add_lib_project_with_sources(${tgt} ${srcdir} ${sources})
+    set(deps ${deps} PARENT_SCOPE)
+    set(libnames ${libnames} PARENT_SCOPE)
 endfunction()
 
 
@@ -217,7 +240,9 @@ if(NOT VENDOR_ONLY)
         if(IS_DIRECTORY "${var}")
             list(APPEND deps "${var}")
             get_filename_component(prjname "${var}" NAME)
-            add_subdirectory("${var}")
+            if(EXISTS "${var}/CMakeLists.txt")
+                add_subdirectory("${var}")
+            endif()
         endif()
     endforeach()
 
@@ -264,20 +289,16 @@ foreach(var ${allnames})
 endforeach()
 foreach(var ${local_libs})
     get_filename_component(prjname "${var}" NAME)
-    set(libname ${PROJECT_NAME}-${prjname})
-    add_lib_project(${libname} "${var}")
-    list(APPEND libnames "${libname}")
+    add_lib_project(${PROJECT_NAME}-${prjname} "${var}")
 endforeach()
 
 file(GLOB_RECURSE global_srcs LIST_DIRECTORIES false include/*)
 file(GLOB local_srcs LIST_DIRECTORIES false src/*.h src/*.cpp)
 set(sources ${global_srcs} ${local_srcs})
 add_lib_project_with_sources(${PROJECT_NAME} src ${sources})
-list(APPEND libnames ${PROJECT_NAME})
-
-set(libnames ${libnames} PARENT_SCOPE)
 
 if(VENDOR_ONLY)
+    set(libnames ${libnames} PARENT_SCOPE)
     return()
 endif()
 
