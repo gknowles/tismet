@@ -59,10 +59,16 @@ function(write_user_file prjname)
         xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 ]=])
     foreach(cfgname ${CMAKE_CONFIGURATION_TYPES})
+        if(${cfgname} STREQUAL Release)
+            set(libpath "lib")
+        else()
+            set(libpath "${cfgname}/lib")
+        endif()
         file(APPEND ${user_file} [=[
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'==']=] "${cfgname}" [=[|x64'">
         <LocalDebuggerWorkingDirectory>$(TargetDir)</LocalDebuggerWorkingDirectory>
         <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+        <VcpkgLibPath>]=] "${libpath}" [=[</VcpkgLibPath>
     </PropertyGroup>
 ]=])
     endforeach()
@@ -99,17 +105,51 @@ function(add_exec_project tgt srcdir)
     set_target_properties(${tgt} PROPERTIES LINK_FLAGS /Debug)
     foreach(var ${libnames})
         get_filename_component(libname "${var}" NAME)
-        target_link_libraries(${tgt} ${PROJECT_NAME}-${libname})
+        target_link_libraries(${tgt} ${libname})
     endforeach()
     source_group("" FILES ${sources})
     write_user_file(${tgt})
-
-    target_link_libraries(${tgt} dimapp dimapp-cli dimapp-win8
-        dimapp-xml)
 endfunction()
 
-set(VcpkgRoot "c:/jects/vcpkg/installed/x64-windows-static")
-include_directories(include vendor/dimapp/include)
+function(add_lib_project_with_sources tgt srcdir)
+    set(sources ${ARGV})
+    list(REMOVE_AT sources 0 1)
+    if(MSVC)
+        set_property(SOURCE "${srcdir}/pch.cpp" 
+            APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
+    endif()
+    list(APPEND deps ${sources})
+    set(deps ${deps} PARENT_SCOPE)
+    add_library(${tgt} ${sources})
+    set_target_properties(${tgt} PROPERTIES FOLDER libs)
+    source_group("" FILES ${sources})
+    write_user_file(${tgt})
+
+    # set linker language in case there are no source files
+    set_target_properties(${tgt} PROPERTIES LINKER_LANGUAGE CXX)
+
+    install(TARGETS ${tgt}
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin)
+    install_archive_pdb(${tgt} lib)
+endfunction()
+
+function(add_lib_project tgt srcdir)
+    file(GLOB_RECURSE sources LIST_DIRECTORIES false ${srcdir}/*.h ${srcdir}/*.cpp)
+    add_lib_project_with_sources(${tgt} ${srcdir} ${sources})
+endfunction()
+
+
+get_property(parent DIRECTORY PROPERTY PARENT_DIRECTORY)
+if(NOT "${parent}" STREQUAL "")
+    set(VENDOR_ONLY true)
+endif()
+
+if(VENDOR_ONLY)
+    set_property(DIRECTORY "${parent}" APPEND PROPERTY INCLUDE_DIRECTORIES 
+        "${CMAKE_CURRENT_SOURCE_DIR}/include")
+endif()
+include_directories(include)
 
 if(MSVC)
     # "/utf-8" - sets source code character set to utf-8
@@ -157,46 +197,89 @@ if(MSVC)
     set_property(SOURCE "pch.cpp" APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
 endif()
 
-# meta target
-file(GLOB sources LIST_DIRECTORIES false 
-    LICENSE
-    .clang-format
-    .travis.yml
-    appveyor.yml
-    *.md
-    configure.bat
-    docs/*)
-list(APPEND deps ${sources})
-add_custom_target("_meta" SOURCES ${sources})
-set_target_properties(_meta PROPERTIES FOLDER _meta)
-source_group("docs" REGULAR_EXPRESSION "docs/.*")
-source_group("" FILES configure.bat)
+# set list of defines that need to go in config.h
+if(BUILD_SHARED_LIBS)
+    list(APPEND config_defines DIM_LIB_DYN_LINK)
+endif()
+if(WINDOWS_STORE)
+    list(APPEND config_defines DIM_LIB_WINAPI_FAMILY_APP)
+endif()
+foreach(var ${config_defines})
+    add_definitions(/D${var})
+endforeach()
+
+set(deps, "")
+
+if(NOT VENDOR_ONLY)
+    # vendor dependencies
+    file(GLOB allnames vendor/*)
+    foreach(var ${allnames})
+        if(IS_DIRECTORY "${var}")
+            list(APPEND deps "${var}")
+            get_filename_component(prjname "${var}" NAME)
+            add_subdirectory("${var}")
+        endif()
+    endforeach()
+
+    # meta target
+    file(GLOB sources LIST_DIRECTORIES false 
+        LICENSE
+        .clang-format
+        .travis.yml
+        appveyor.yml
+        *.md
+        configure.bat
+        docs/*)
+    list(APPEND deps ${sources})
+    add_custom_target("_meta" SOURCES ${sources})
+    set_target_properties(_meta PROPERTIES FOLDER _meta)
+    source_group("docs" REGULAR_EXPRESSION "docs/.*")
+    source_group("" FILES configure.bat)
+endif()
+
+# includes
+# Create modifed config.h to reflect build defines
+set(cfgname "include/dim/config.h")
+if(EXISTS "${cfgname}")
+    file(READ "${cfgname}" content)
+    foreach(val ${config_defines})
+        string(REGEX REPLACE 
+            "\n//#define ${val}" "\n#define ${val}" 
+            content "${content}")
+    endforeach()
+    update_file("${CMAKE_CURRENT_BINARY_DIR}/${cfgname}" "${content}")
+
+    install(DIRECTORY include DESTINATION .)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${cfgname}" 
+        DESTINATION include/dim)
+endif()
 
 # lib targets
 file(GLOB allnames src/*)
+set(local_libs "")
 foreach(var ${allnames})
     if(IS_DIRECTORY "${var}")
-        list(APPEND libnames "${var}")
+        list(APPEND local_libs "${var}")
     endif()
 endforeach()
-foreach(var ${libnames})
+foreach(var ${local_libs})
     get_filename_component(prjname "${var}" NAME)
     set(libname ${PROJECT_NAME}-${prjname})
-    if(MSVC)
-        set_property(SOURCE "${var}/pch.cpp" 
-            APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
-    endif()
-    file(GLOB_RECURSE sources LIST_DIRECTORIES false ${var}/*.h ${var}/*.cpp)
-    list(APPEND deps ${sources})
-    add_library(${libname} ${sources})
-    source_group("" FILES ${sources})
-    write_user_file(${libname})
-
-    install(TARGETS ${libname}
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin)
-    install_archive_pdb(${libname} lib)
+    add_lib_project(${libname} "${var}")
+    list(APPEND libnames "${libname}")
 endforeach()
+
+file(GLOB_RECURSE global_srcs LIST_DIRECTORIES false include/*)
+file(GLOB local_srcs LIST_DIRECTORIES false src/*.h src/*.cpp)
+set(sources ${global_srcs} ${local_srcs})
+add_lib_project_with_sources(${PROJECT_NAME} src ${sources})
+list(APPEND libnames ${PROJECT_NAME})
+
+set(libnames ${libnames} PARENT_SCOPE)
+
+if(VENDOR_ONLY)
+    return()
+endif()
 
 # tool targets
 file(GLOB allnames tools/*)
@@ -204,7 +287,6 @@ foreach(var ${allnames})
     if(IS_DIRECTORY "${var}")
         get_filename_component(prjname "${var}" NAME)
         add_exec_project(${prjname} "${var}")
-
         set_target_properties(${prjname} PROPERTIES FOLDER tools)
         # install(TARGETS ${prjname} RUNTIME DESTINATION bin)
     endif()
@@ -217,25 +299,13 @@ foreach(var ${allnames})
     if(IS_DIRECTORY "${var}")
         get_filename_component(prjname "${var}" NAME)
         add_exec_project(${prjname} "${var}")
-
         set_target_properties(${prjname} PROPERTIES FOLDER tests)
         add_test(NAME ${prjname} COMMAND ${prjname})
     endif()
 endforeach()
 
-# vendor dependencies
-file(GLOB allnames vendor/*)
-foreach(var ${allnames})
-    if(IS_DIRECTORY "${var}")
-        list(APPEND deps "${var}")
-        get_filename_component(prjname "${var}" NAME)
-        add_subdirectory("${var}")
-    endif()
-endforeach()
-
 # update deps file
 update_deps_file(${deps})
-
 
 # The solution file isn't generated until after this script finishes, 
 # which means that:
@@ -243,9 +313,9 @@ update_deps_file(${deps})
 #   - you need to run cmake twice to ensure any new solution was copied
 set(sln_binpath ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.sln)
 if(EXISTS ${sln_binpath})
-    # Load solution file from bin-dir and change the relative references to 
-    # project files so that the in memory copy is as if it had been built in 
-    # the source dir.
+    # Load solution file from bin-dir and change the relative references 
+    # to project files so that the in memory copy is as if it had been 
+    # built in the source dir.
     file(RELATIVE_PATH prefix 
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_BINARY_DIR}")
@@ -261,4 +331,5 @@ if(EXISTS ${sln_binpath})
     set(sln_srcpath ${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.sln)
     update_file("${sln_srcpath}" "${sln_content}")
 endif()
+
 
