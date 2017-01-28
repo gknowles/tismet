@@ -5,31 +5,30 @@ platform:
 configuration:
   - Debug
 
-build:
-  parallel: true
-  project: tismet.sln
-  verbosity: minimal
+before_build:
+  # hack to stop sea of Xamarin (which isn't being used at all) warnings
+  # during the cmake install
+  - del "C:\Program Files (x86)\MSBuild\14.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
 
-test_script:
-  - lib\dim\bin\cmdline
-  - lib\dim\bin\hpack
-  - lib\dim\bin\http
+  - md build\Win64 
+  - cd build\Win64
+  - cmake -G "Visual Studio 14 2015 Win64" ..\.. 
+  - cmake -DCMAKE_BUILD_TYPE=%configuration% -DCMAKE_INSTALL_PREFIX=publish .
+  - cd ..\..
+
+build_script:
+  - cd build\Win64
+  - cmake --build . --target install --config %configuration%
+  - cd ..\..
 
 after_build:
-  - 7z a tismet-v%appveyor_build_version%.zip bin\*.exe bin\*.pdb
+  - cd build\Win64\publish
+  - 7z a tismet-latest.zip bin\*.exe bin\*.pdb
+  - cd ..\..\..
+
+test_script:
 
 artifacts:
-  - path: tismet-v$(appveyor_build_version).zip
+  - path: build\Win64\publish\tismet-latest.zip
     name: tismet
     type: zip
-#  - path: bin\*.exe
-#  - path: bin\*.pdb
-
-deploy:
-  tag: tismet-v$(appveyor_build_version)
-  description: continuous trunk build
-  provider: GitHub
-  auth_token:
-    secure: yheCA/FJ+f7CL84HoPf9MapOlDZQmrGyiqlwFeeIhxvdOudQisUdOyZuWfwq3lUU
-  prerelease: true
-  draft: true
