@@ -5,7 +5,9 @@ platform:
 configuration:
   - Debug
 
-before_build:
+build_script:
+  -	git submodule update --init --recursive
+
   # hack to stop sea of Xamarin (which isn't being used at all) warnings
   # during the cmake install
   - del "C:\Program Files (x86)\MSBuild\14.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
@@ -14,15 +16,8 @@ before_build:
   - cd build\Win64
   - cmake -G "Visual Studio 14 2015 Win64" ..\.. 
   - cmake -DCMAKE_BUILD_TYPE=%configuration% -DCMAKE_INSTALL_PREFIX=publish .
-  - cd ..\..
-
-build_script:
-  - cd build\Win64
   - cmake --build . --target install --config %configuration%
-  - cd ..\..
-
-after_build:
-  - cd build\Win64\publish
+  - cd publish
   - 7z a tismet-latest.zip bin\*.exe bin\*.pdb
   - cd ..\..\..
 
