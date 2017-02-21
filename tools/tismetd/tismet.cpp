@@ -84,18 +84,22 @@ void ListenSocket::onSocketRead (const SocketData & data) {
 ***/
 
 struct ListenNotify : ISocketListenNotify {
-    void onListenStop () override;
-    unique_ptr<ISocketNotify> onListenCreateSocket () override;
+    void onListenStop (const Endpoint & local) override;
+    unique_ptr<ISocketNotify> onListenCreateSocket (
+        const Endpoint & local
+    ) override;
 };
 static ListenNotify s_listen;
 
 //===========================================================================
-void ListenNotify::onListenStop () {
+void ListenNotify::onListenStop (const Endpoint & local) {
     cout << "*** STOPPED LISTENING" << endl;
 }
 
 //===========================================================================
-unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket () {
+unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket (
+    const Endpoint & local
+) {
     return make_unique<ListenSocket>();
 }
 
