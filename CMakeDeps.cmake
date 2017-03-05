@@ -3,10 +3,15 @@
 # README.md
 # appveyor.yml
 # configure.bat
+# include/radix.h
 # include/tsdata.h
 # src/pch.cpp
 # src/pch.h
+# src/radix.cpp
 # src/tsdata.cpp
+# tests/radix/pch.cpp
+# tests/radix/pch.h
+# tests/radix/radixtest.cpp
 # tools/load/load.cpp
 # tools/load/pch.cpp
 # tools/load/pch.h
