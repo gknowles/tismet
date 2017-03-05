@@ -44,23 +44,13 @@ bool MainShutdown::onAppQueryClientDestroy () {
 ***/
 
 namespace {
-class Application : public ITaskNotify {
-    int m_argc;
-    char ** m_argv;
-
-public:
-    Application(int argc, char * argv[]);
-    void onTask() override;
+class Application : public IAppNotify {
+    void onAppRun() override;
 };
 } // namespace
 
 //===========================================================================
-Application::Application(int argc, char * argv[])
-    : m_argc(argc)
-    , m_argv(argv) {}
-
-//===========================================================================
-void Application::onTask () {
+void Application::onAppRun () {
     appMonitorShutdown(&s_cleanup);
     Cli cli;
     cli.header("load v"s + kVersion + " (" __DATE__ ")");
@@ -87,7 +77,7 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    Application app(argc, argv);
-    int code = appRun(app);
+    Application app;
+    int code = appRun(app, argc, argv);
     return code;
 }

@@ -133,13 +133,13 @@ bool MainShutdown::onAppQueryClientDestroy () {
 ***/
 
 namespace {
-class Application : public ITaskNotify {
-    void onTask () override;
+class Application : public IAppNotify {
+    void onAppRun () override;
 };
 } // namespace
 
 //===========================================================================
-void Application::onTask () {
+void Application::onAppRun () {
     appMonitorShutdown(&s_cleanup);
 
     vector<Address> addrs;
@@ -181,6 +181,6 @@ int main(int argc, char *argv[]) {
     _set_error_mode(_OUT_TO_MSGBOX);
 
     Application app;
-    int code = appRun(app);
+    int code = appRun(app, argc, argv);
     return code;
 }
