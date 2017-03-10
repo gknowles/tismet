@@ -40,8 +40,9 @@ static void tests() {
     int digits[10];
 
     RadixDigits rd{100, 4095};
-    rd.convert(digits, size(digits), 4032);
-    EXPECT(vector<int>(digits, digits + 4) == vector<int>({6, 11, 7, -1}));
+    auto count = rd.convert(digits, size(digits), 4032);
+    EXPECT(count == 3);
+    EXPECT(vector<int>(digits, digits + 3) == vector<int>({6, 11, 7}));
 
     if (s_errors) {
         ConsoleScopedAttr attr(kConsoleError);

@@ -41,14 +41,15 @@ RadixDigits::RadixDigits(size_t blkSize, size_t maxPage)
 }
 
 //===========================================================================
-void RadixDigits::convert(int * digits, size_t maxDigits, uint32_t value) {
+size_t RadixDigits::convert(int * out, size_t maxDigits, uint32_t value) {
     assert(maxDigits > m_divs.size());
+    int * base = out;
     size_t i = 0;
     for (; i < m_divs.size(); ++i) {
         if (value >= m_divs[i]) {
             for (;;) {
                 auto v = value / m_divs[i];
-                *digits++ = v;
+                *out++ = v;
                 value %= m_divs[i];
                 if (++i == m_divs.size())
                     break;
@@ -56,8 +57,8 @@ void RadixDigits::convert(int * digits, size_t maxDigits, uint32_t value) {
             break;
         }
     }
-    *digits++ = value;
-    *digits = -1;
+    *out++ = value;
+    return out - base;
 }
 
 

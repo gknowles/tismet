@@ -13,7 +13,7 @@ public:
     RadixDigits(
         size_t blkSize, 
         size_t maxPage = std::numeric_limits<uint32_t>::max());
-    void convert(int * digits, size_t maxDigits, uint32_t value);
+    size_t convert(int * digits, size_t maxDigits, uint32_t value);
 
 private:
     friend std::ostream & operator<< (
