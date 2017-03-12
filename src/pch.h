@@ -6,4 +6,5 @@
 #include "radix.h"
 #include "tsdata.h"
 
+#include <cstddef>
 #include <queue>

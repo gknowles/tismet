@@ -1,4 +1,5 @@
 version: 0.1.{build}
+image: Visual Studio 2017
 
 platform:
   - x64
@@ -12,18 +13,18 @@ build_script:
   # during the cmake install
   - del "C:\Program Files (x86)\MSBuild\14.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
 
-  - md build\Win64 
-  - cd build\Win64
-  - cmake -G "Visual Studio 14 2015 Win64" ..\.. 
+  - md build
+  - cd build
+  - cmake -G "Visual Studio 15 2017 Win64" ..
   - cmake -DCMAKE_BUILD_TYPE=%configuration% -DCMAKE_INSTALL_PREFIX=publish .
   - cmake --build . --target install --config %configuration%
   - cd publish
   - 7z a tismet-latest.zip bin\*.exe bin\*.pdb
-  - cd ..\..\..
+  - cd ..\..
 
 test_script:
 
 artifacts:
-  - path: build\Win64\publish\tismet-latest.zip
+  - path: build\publish\tismet-latest.zip
     name: tismet
     type: zip
