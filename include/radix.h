@@ -10,10 +10,16 @@
 
 class RadixDigits {
 public:
+    RadixDigits() {}
     RadixDigits(
         size_t blkSize, 
         size_t maxPage = std::numeric_limits<uint32_t>::max());
-    size_t convert(int * digits, size_t maxDigits, uint32_t value);
+
+    void init(
+        size_t blkSize, 
+        size_t maxPage = std::numeric_limits<uint32_t>::max());
+    size_t convert(int * digits, size_t maxDigits, uint32_t value) const;
+    size_t pageEntries() const;
 
 private:
     friend std::ostream & operator<< (

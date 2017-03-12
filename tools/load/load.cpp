@@ -60,6 +60,10 @@ void Application::onAppRun () {
         return appSignalUsageError();
 
     auto h = tsdOpen(*dat);
+    uint32_t id;
+    unsigned count = 0;
+    count += tsdInsertMetric(id, h, "this.is.metric.1");
+    cout << "metrics inserted: " << count << endl;
     tsdClose(h);
 
     appSignalShutdown(EX_OK);

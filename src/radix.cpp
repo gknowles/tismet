@@ -27,12 +27,16 @@ using namespace Dim;
 ***/
 
 //===========================================================================
-RadixDigits::RadixDigits(size_t blkSize, size_t maxPage) 
-    : m_blkSize{blkSize}
-    , m_maxPage{maxPage}
-{
+RadixDigits::RadixDigits(size_t blkSize, size_t maxPage) {
+    init(blkSize, maxPage);
+}
+
+//===========================================================================
+void RadixDigits::init(size_t blkSize, size_t maxPage) {
+    m_blkSize = blkSize;
+    m_maxPage = maxPage;
     assert(maxPage <= numeric_limits<uint32_t>::max());
-    auto ents = (uint32_t) (blkSize / sizeof(uint32_t));
+    auto ents = (uint32_t) pageEntries();
     size_t m = ents;
     while (m < m_maxPage) {
         m_divs.insert(m_divs.begin(), (uint32_t) m);
@@ -41,7 +45,11 @@ RadixDigits::RadixDigits(size_t blkSize, size_t maxPage)
 }
 
 //===========================================================================
-size_t RadixDigits::convert(int * out, size_t maxDigits, uint32_t value) {
+size_t RadixDigits::convert(
+    int * out, 
+    size_t maxDigits, 
+    uint32_t value
+) const {
     assert(maxDigits > m_divs.size());
     int * base = out;
     size_t i = 0;
@@ -59,6 +67,11 @@ size_t RadixDigits::convert(int * out, size_t maxDigits, uint32_t value) {
     }
     *out++ = value;
     return out - base;
+}
+
+//===========================================================================
+size_t RadixDigits::pageEntries() const {
+    return m_blkSize / sizeof(uint32_t);
 }
 
 
