@@ -83,6 +83,15 @@ struct MetricPage {
     uint32_t firstPage;
 };
 
+struct DataPage {
+    static const PageType type = kPageTypeData;
+    PageHeader hdr;
+    uint32_t id;
+    TimePoint firstTime;
+    uint16_t firstEntry;
+    float values[1];
+};
+
 struct MetricInfo {
     Duration interval;
     uint32_t infoPage;
@@ -95,7 +104,7 @@ class TsdFile {
 public:
     bool open(string_view name);
     bool insertMetric(uint32_t & out, const string & name);
-    void insertData(uint32_t id, TimePoint time, float data);
+    void insertData(uint32_t id, TimePoint time, float value);
 
     bool findMetric(uint32_t & out, const string & name) const;
 
@@ -324,6 +333,30 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
 }
 
 //===========================================================================
+void TsdFile::insertData(uint32_t id, TimePoint time, float value) {
+    auto & mi = m_metricInfo[id];
+    assert(mi.infoPage);
+    auto count = (m_hdr->pageSize - offsetof(DataPage, values)) / sizeof(value);
+    if (!mi.firstPage) {
+        auto dp = allocPage<DataPage>();
+        dp->id = id;
+        dp->firstTime = time;
+        dp->firstEntry = (uint16_t) (id % count);
+        writePage(*dp);
+
+        auto mp = dupPage<MetricPage>(mi.infoPage);
+        mp->firstPage = dp->hdr.pgno;
+        mi.firstPage = mp->firstPage;
+        mi.firstTime = dp->firstTime;
+        mi.firstEntry = dp->firstEntry;
+        writePage(*mp);
+    }
+
+    auto dp = dupPage<DataPage>(mi.firstPage);
+
+}
+
+//===========================================================================
 bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
     int digits[10];
     auto count = m_rd.convert(digits, size(digits), index);
@@ -516,4 +549,11 @@ bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, string_view name) {
     auto * tsd = s_files.find(h);
     assert(tsd);
     return tsd->insertMetric(out, string(name));
+}
+
+//===========================================================================
+void tsdInsertData(TsdFileHandle h, uint32_t id, TimePoint time, float value) {
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    return tsd->insertData(id, time, value);
 }
