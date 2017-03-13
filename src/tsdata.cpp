@@ -93,7 +93,7 @@ struct MetricInfo {
 
 class TsdFile {
 public:
-    bool open(const string & name);
+    bool open(string_view name);
     bool insertMetric(uint32_t & out, const string & name);
     void insertData(uint32_t id, TimePoint time, float data);
 
@@ -122,11 +122,7 @@ private:
     template<typename T> void writePage(T & data) const;
     void writePage(uint32_t pgno, const void * ptr, size_t count) const;
 
-    bool btreeInsert(
-        uint32_t rpn,
-        const std::string & name,
-        const std::string & data
-    );
+    bool btreeInsert(uint32_t rpn, string_view name, string_view data);
     bool radixInsert(uint32_t root, uint32_t index, uint32_t value);
 
     unordered_map<string, uint32_t> m_metricIds;
@@ -157,7 +153,7 @@ static HandleMap<TsdFileHandle, TsdFile> s_files;
 ***/
 
 //===========================================================================
-bool TsdFile::open(const string & name) {
+bool TsdFile::open(string_view name) {
     m_data = fileOpen(name, IFile::kCreat | IFile::kReadWrite);
     auto file = m_data.get();
     if (!file)
@@ -247,11 +243,7 @@ bool TsdFile::loadFreePages () {
 }
 
 //===========================================================================
-bool TsdFile::btreeInsert(
-    uint32_t rpn,
-    const std::string & name,
-    const std::string & data
-) {
+bool TsdFile::btreeInsert(uint32_t rpn, string_view name, string_view data) {
     auto ph = pageAddr<LeafPage>(rpn);
     if (!ph->entries[0]) {
         auto lp = (LeafPage *) alloca(
@@ -283,7 +275,7 @@ bool TsdFile::findMetric(uint32_t & out, const string & name) const {
 }
 
 //===========================================================================
-bool TsdFile::insertMetric(uint32_t & out, const std::string & name) {
+bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     assert(!name.empty());
     assert(name.size() < kMaxMetricNameLen);
     auto i = m_metricIds.find(name);
@@ -498,7 +490,7 @@ void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
 ***/
 
 //===========================================================================
-TsdFileHandle tsdOpen(const string & name) {
+TsdFileHandle tsdOpen(string_view name) {
     auto tsd = make_unique<TsdFile>();
     if (!tsd->open(name))
         return TsdFileHandle{};
@@ -513,15 +505,15 @@ void tsdClose(TsdFileHandle h) {
 }
 
 //===========================================================================
-bool tsdFindMetric(uint32_t & out, TsdFileHandle h, const std::string & name) {
+bool tsdFindMetric(uint32_t & out, TsdFileHandle h, string_view name) {
     auto * tsd = s_files.find(h);
     assert(tsd);
-    return tsd->findMetric(out, name);
+    return tsd->findMetric(out, string(name));
 }
 
 //===========================================================================
-bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, const std::string & name) {
+bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, string_view name) {
     auto * tsd = s_files.find(h);
     assert(tsd);
-    return tsd->insertMetric(out, name);
+    return tsd->insertMetric(out, string(name));
 }

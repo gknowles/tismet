@@ -12,9 +12,9 @@
 
 struct TsdFileHandle : Dim::HandleBase {};
 
-TsdFileHandle tsdOpen(const std::string & name);
+TsdFileHandle tsdOpen(std::string_view name);
 
 void tsdClose(TsdFileHandle file);
 
-bool tsdFindMetric(uint32_t & out, TsdFileHandle h, const std::string & name);
-bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, const std::string & name);
+bool tsdFindMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
+bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
