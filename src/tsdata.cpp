@@ -13,10 +13,10 @@ using namespace Dim;
 ***/
 
 const unsigned kMaxMetricNameLen = 128;
-static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max(), "");
+static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 const unsigned kDefaultPageSize = 256;
-static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize), "");
+static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
 const unsigned kDataFileSig[] = { 
     0x39515728, 

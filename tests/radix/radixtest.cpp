@@ -68,13 +68,13 @@ class Application : public IAppNotify, public ILogNotify {
     void onAppRun() override;
 
     // ILogNotify
-    void onLog(LogType type, const string & msg) override;
+    void onLog(LogType type, string_view msg) override;
 };
 
 } // namespace
 
 //===========================================================================
-void Application::onLog(LogType type, const string & msg) {
+void Application::onLog(LogType type, string_view msg) {
     if (type >= kLogError) {
         ConsoleScopedAttr attr(kConsoleError);
         s_errors += 1;
@@ -97,8 +97,8 @@ void Application::onAppRun() {
         .desc("values to translate");
     auto & test = cli.opt<bool>("test")
         .desc("run internal unit tests");
-    if (!cli.parse(cerr, m_argc, m_argv))
-        return appSignalShutdown(cli.exitCode());
+    if (!cli.parse(m_argc, m_argv))
+        return appSignalUsageError();
 
     if (*test)
         return tests();
