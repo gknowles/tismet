@@ -19,10 +19,11 @@ build_script:
   - cmake -DCMAKE_BUILD_TYPE=%configuration% -DCMAKE_INSTALL_PREFIX=publish .
   - cmake --build . --target install --config %configuration%
   - cd publish
-  - 7z a tismet-latest.zip bin\*.exe bin\*.pdb
+  - 7z a tismet-latest.zip include lib
   - cd ..\..
 
 test_script:
+    - build\bin\radix --test
 
 artifacts:
   - path: build\publish\tismet-latest.zip
