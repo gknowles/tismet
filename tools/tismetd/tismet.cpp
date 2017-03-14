@@ -34,7 +34,7 @@ void EndpointFind::onEndpointFound (Endpoint * ptr, int count) {
 ***/
 
 class ListenSocket : public ISocketNotify {
-    void onSocketAccept (const SocketAcceptInfo & info) override;
+    void onSocketAccept (const SocketInfo & info) override;
     void onSocketDisconnect () override;
     void onSocketRead (const SocketData & data) override;
 
@@ -42,9 +42,9 @@ class ListenSocket : public ISocketNotify {
 };
 
 //===========================================================================
-void ListenSocket::onSocketAccept (const SocketAcceptInfo & info) {
-    cout << "\n*** ACCEPTED " << info.remoteEnd << " to " 
-        << info.localEnd << endl;
+void ListenSocket::onSocketAccept (const SocketInfo & info) {
+    cout << "\n*** ACCEPTED " << info.remote << " to " 
+        << info.local << endl;
 
     m_conn = httpListen();
 }
@@ -111,17 +111,12 @@ unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket (
 ***/
 
 class MainShutdown : public IAppShutdownNotify {
-    void onAppStartClientCleanup () override;
-    bool onAppQueryClientDestroy () override;
+    bool onAppStopClient (bool retry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-void MainShutdown::onAppStartClientCleanup () {
-}
-
-//===========================================================================
-bool MainShutdown::onAppQueryClientDestroy () {
+bool MainShutdown::onAppStopClient (bool retry) {
     return true;
 }
 

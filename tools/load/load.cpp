@@ -22,17 +22,12 @@ const char kVersion[] = "1.0";
 ***/
 
 class MainShutdown : public IAppShutdownNotify {
-    void onAppStartClientCleanup () override;
-    bool onAppQueryClientDestroy () override;
+    bool onAppStopClient (bool retry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-void MainShutdown::onAppStartClientCleanup () {
-}
-
-//===========================================================================
-bool MainShutdown::onAppQueryClientDestroy () {
+bool MainShutdown::onAppStopClient (bool retry) {
     return true;
 }
 
