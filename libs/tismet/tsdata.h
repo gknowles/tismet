@@ -1,7 +1,7 @@
 // tsdata.h - tismet
 #pragma once
 
-#include "dim/handle.h"
+#include "core/handle.h"
 
 
 /****************************************************************************

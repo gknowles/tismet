@@ -1,9 +1,11 @@
 // pch.h - tismet
 
 #define DIM_LIB_KEEP_MACROS
-#include "dim/dim.h"
+#include "app/app.h"
+#include "cli/cli.h"
+#include "core/core.h"
 
-#include "tsdata.h"
+#include "tismet/tsdata.h"
 
 #include <crtdbg.h>
 #include <cstdio>

@@ -111,12 +111,12 @@ unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket (
 ***/
 
 class MainShutdown : public IAppShutdownNotify {
-    bool onAppStopClient (bool retry) override;
+    bool onAppClientShutdown (bool retry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-bool MainShutdown::onAppStopClient (bool retry) {
+bool MainShutdown::onAppClientShutdown (bool retry) {
     return true;
 }
 
