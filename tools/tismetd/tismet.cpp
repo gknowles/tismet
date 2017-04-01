@@ -34,7 +34,7 @@ void EndpointFind::onEndpointFound (Endpoint * ptr, int count) {
 ***/
 
 class ListenSocket : public ISocketNotify {
-    void onSocketAccept (const SocketInfo & info) override;
+    bool onSocketAccept (const SocketInfo & info) override;
     void onSocketDisconnect () override;
     void onSocketRead (const SocketData & data) override;
 
@@ -42,11 +42,12 @@ class ListenSocket : public ISocketNotify {
 };
 
 //===========================================================================
-void ListenSocket::onSocketAccept (const SocketInfo & info) {
+bool ListenSocket::onSocketAccept (const SocketInfo & info) {
     cout << "\n*** ACCEPTED " << info.remote << " to " 
         << info.local << endl;
 
     m_conn = httpListen();
+    return true;
 }
 
 //===========================================================================
@@ -110,14 +111,13 @@ unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket (
 *
 ***/
 
-class MainShutdown : public IAppShutdownNotify {
-    bool onAppClientShutdown (bool retry) override;
+class MainShutdown : public IShutdownNotify {
+    void onShutdownClient (bool retry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-bool MainShutdown::onAppClientShutdown (bool retry) {
-    return true;
+void MainShutdown::onShutdownClient (bool retry) {
 }
 
 
@@ -135,7 +135,7 @@ class Application : public IAppNotify {
 
 //===========================================================================
 void Application::onAppRun () {
-    appMonitorShutdown(&s_cleanup);
+    shutdownMonitor(&s_cleanup);
 
     vector<Address> addrs;
     addressGetLocal(&addrs);

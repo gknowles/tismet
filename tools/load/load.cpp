@@ -21,14 +21,13 @@ const char kVersion[] = "1.0";
 *
 ***/
 
-class MainShutdown : public IAppShutdownNotify {
-    bool onAppClientShutdown (bool retry) override;
+class MainShutdown : public IShutdownNotify {
+    void onShutdownClient (bool retry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-bool MainShutdown::onAppClientShutdown (bool retry) {
-    return true;
+void MainShutdown::onShutdownClient (bool retry) {
 }
 
 
@@ -46,7 +45,7 @@ class Application : public IAppNotify {
 
 //===========================================================================
 void Application::onAppRun () {
-    appMonitorShutdown(&s_cleanup);
+    shutdownMonitor(&s_cleanup);
     Cli cli;
     cli.header("load v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);

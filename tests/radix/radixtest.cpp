@@ -25,15 +25,6 @@ using namespace Dim;
 *
 ***/
 
-static int s_errors;
-
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
-
 //===========================================================================
 static void tests() {
     int line = 0;
@@ -44,9 +35,9 @@ static void tests() {
     EXPECT(count == 3);
     EXPECT(vector<int>(digits, digits + 3) == vector<int>({6, 11, 7}));
 
-    if (s_errors) {
+    if (int errors = logGetMsgCount(kLogTypeError)) {
         ConsoleScopedAttr attr(kConsoleError);
-        cerr << "*** " << s_errors << " FAILURES" << endl;
+        cerr << "*** " << errors << " FAILURES" << endl;
         appSignalShutdown(EX_SOFTWARE);
     } else {
         cout << "All tests passed" << endl;
@@ -63,26 +54,12 @@ static void tests() {
 
 namespace {
 
-class Application : public IAppNotify, public ILogNotify {
+class Application : public IAppNotify {
     // IAppNotify
     void onAppRun() override;
-
-    // ILogNotify
-    void onLog(LogType type, string_view msg) override;
 };
 
 } // namespace
-
-//===========================================================================
-void Application::onLog(LogType type, string_view msg) {
-    if (type >= kLogError) {
-        ConsoleScopedAttr attr(kConsoleError);
-        s_errors += 1;
-        cout << "ERROR: " << msg << endl;
-    } else {
-        cout << msg << endl;
-    }
-}
 
 //===========================================================================
 void Application::onAppRun() {
@@ -132,6 +109,5 @@ int main(int argc, char * argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
     Application app;
-    logAddNotify(&app);
     return appRun(app, argc, argv);
 }
