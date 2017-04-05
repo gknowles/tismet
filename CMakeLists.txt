@@ -19,6 +19,7 @@ cmake_minimum_required (VERSION 3.6)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 option(LINK_STATIC_RUNTIME "Link with static c++ runtime" ON)
 option(BUILD_SHARED_LIBS "Build DLLs instead of static libs" OFF)
+option(BUILD_UNICODE "Build with unicode charset" OFF)
 
 # For internal use by this script
 option(RECURSIVE_GENERATE "Recursive call to cmake" OFF)
@@ -200,18 +201,21 @@ else()
 endif()
 
 # In order to make a copy of the solution at the source root (where it's 
-# required to be for the git integration) we need to copy - and tweak -
-# the it post generation. But cmake doesn't allow for post generation hooks,
-# so we launch another instance of cmake and do transform and copy after it
-# returns. After that we do the generation (again), potentially followed by
-# build and/or install.
+# required to be for the github integration) we need to copy - and tweak - it
+# post generation. But cmake doesn't allow for post generation hooks, so we 
+# launch another instance of cmake and then transform and copy the solution 
+# file after that instance returns.
 if(ROOT_PROJECT AND NOT RECURSIVE_GENERATE)
     message(STATUS "Recursive generate started")
     execute_process(
         COMMAND ${CMAKE_COMMAND} 
+            -G "${CMAKE_GENERATOR}"
+            -T "${CMAKE_GENERATOR_TOOLSET}"
+            -A "${CMAKE_GENERATOR_PLATFORM}"
             -DRECURSIVE_GENERATE:BOOL=ON 
             -DLINK_STATIC_RUNTIME:BOOL=${LINK_STATIC_RUNTIME}
             -DBUILD_SHARED_LIBS:BOOL=${BUILD_SHARED_LIBS}
+            -DBUILD_UNICODE:BOOL=${BUILD_UNICODE}
             ${CMAKE_SOURCE_DIR}
     )
     message(STATUS "Recursive generate done")
@@ -236,6 +240,9 @@ if(ROOT_PROJECT AND NOT RECURSIVE_GENERATE)
         set(sln_srcpath ${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.sln)
         update_file("${sln_srcpath}" "${sln_content}")
     endif()
+
+    # Fallthrough so that (in addition to a duplicate generate :P) any 
+    # --build or --install gets to run with all the facts.
 endif()
 
 set(CMAKE_CONFIGURATION_TYPES Debug Release)
@@ -294,6 +301,10 @@ if(MSVC)
     set_property(SOURCE "pch.cpp" APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
+endif()
+
+if(BUILD_UNICODE)
+    add_definitions(/D_UNICODE)
 endif()
 
 # set list of defines that need to go in config.h
