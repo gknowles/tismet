@@ -74,7 +74,8 @@ option(RECURSIVE_GENERATE "Recursive call to cmake" OFF)
 
 # Reference to suppress "not used" warning when manually specified
 # by vcpkg
-set(tmp "${CMAKE_BUILD_TYPE}")
+set(tmp "${CMAKE_BUILD_TYPE}")      # not used
+set(tmp "${LINK_STATIC_RUNTIME}")   # not used by gcc or clang builds
 
 
 #############################################################################

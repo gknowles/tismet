@@ -173,7 +173,7 @@ bool TsdFile::open(string_view name) {
         memcpy(tmp.signature, kDataFileSig, sizeof(tmp.signature));
         tmp.pageSize = kDefaultPageSize;
         tmp.numPages = 1;
-        fileWriteSync(m_data.get(), 0, &tmp, sizeof(tmp));
+        fileWriteWait(m_data.get(), 0, &tmp, sizeof(tmp));
     }
     const char * base;
     if (!fileOpenView(base, file)) 
@@ -512,7 +512,7 @@ void TsdFile::writePage(T & data) const {
 void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
     assert(pgno < m_hdr->numPages);
     assert(count <= m_hdr->pageSize);
-    fileWriteSync(m_data.get(), pgno * m_hdr->pageSize, ptr, count);
+    fileWriteWait(m_data.get(), pgno * m_hdr->pageSize, ptr, count);
 }
 
 
