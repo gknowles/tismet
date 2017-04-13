@@ -23,58 +23,6 @@ void EndpointFind::onEndpointFound (const Endpoint * ptr, int count) {
     for (int i = 0; i < count; ++i) {
         cout << ptr[i] << endl;
     }
-    // DimAppSignalShutdown(9);
-}
-
-
-/****************************************************************************
-*
-*   ListenSocket
-*
-***/
-
-class ListenSocket : public ISocketNotify {
-    bool onSocketAccept (const SocketInfo & info) override;
-    void onSocketDisconnect () override;
-    void onSocketRead (const SocketData & data) override;
-
-    HttpConnHandle m_conn;
-};
-
-//===========================================================================
-bool ListenSocket::onSocketAccept (const SocketInfo & info) {
-    cout << "\n*** ACCEPTED " << info.remote << " to " 
-        << info.local << endl;
-
-    m_conn = httpListen();
-    return true;
-}
-
-//===========================================================================
-void ListenSocket::onSocketDisconnect () {
-    cout << "\n*** DISCONNECTED" << endl;
-
-    httpClose(m_conn);
-}
-
-//===========================================================================
-void ListenSocket::onSocketRead (const SocketData & data) {
-    //list<unique_ptr<HttpMsg>> msgs;
-    //CharBuf out;
-    //bool disconnect = !httpRecv(
-    //    m_conn,
-    //    &msgs, 
-    //    &out,
-    //    data.data,
-    //    data.bytes
-    //);
-    //unique_ptr<SocketBuffer> sbuf = socketGetBuffer();
-    //socketWrite(this, move(sbuf), 0);
-    //if (disconnect)
-    //    socketDisconnect(this);
-
-    cout.write(data.data, data.bytes);
-    cout.flush();
 }
 
 
@@ -116,24 +64,6 @@ void Application::onAppRun () {
     for (auto&& addr : addrs) {
         cout << addr << endl;
     }
-
-    Endpoint end;
-    parse(&end, "127.0.0.1", 8888);
-    socketListen<ListenSocket>(end);
-
-    //HttpConn context;
-    //std::vector<std::unique_ptr<HttpMsg>> msgs;
-    //CharBuf reply;
-    //context.recv(&msgs, &reply, NULL, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24);
-
-    //socketStop(nullptr, Endpoint{});
-
-    //if (argc > 1) {
-    //    int cancelId;
-    //    endpointQuery(&cancelId, &s_endFind, argv[1], 0);
-    //} else {
-    //    appSignalShutdown(8);
-    //}
 }
 
 
