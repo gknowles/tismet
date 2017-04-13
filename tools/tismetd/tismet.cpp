@@ -13,12 +13,12 @@ using namespace Dim;
 ***/
 
 class EndpointFind : public IEndpointNotify {
-    void onEndpointFound (Endpoint * ptr, int count) override;
+    void onEndpointFound (const Endpoint * ptr, int count) override;
 };
 static EndpointFind s_endFind;
 
 //===========================================================================
-void EndpointFind::onEndpointFound (Endpoint * ptr, int count) {
+void EndpointFind::onEndpointFound (const Endpoint * ptr, int count) {
     cout << "\nDNS Addresses:" << endl;
     for (int i = 0; i < count; ++i) {
         cout << ptr[i] << endl;
@@ -80,33 +80,6 @@ void ListenSocket::onSocketRead (const SocketData & data) {
 
 /****************************************************************************
 *
-*   ListenNotify
-*
-***/
-
-struct ListenNotify : ISocketListenNotify {
-    void onListenStop (const Endpoint & local) override;
-    unique_ptr<ISocketNotify> onListenCreateSocket (
-        const Endpoint & local
-    ) override;
-};
-static ListenNotify s_listen;
-
-//===========================================================================
-void ListenNotify::onListenStop (const Endpoint & local) {
-    cout << "*** STOPPED LISTENING" << endl;
-}
-
-//===========================================================================
-unique_ptr<ISocketNotify> ListenNotify::onListenCreateSocket (
-    const Endpoint & local
-) {
-    return make_unique<ListenSocket>();
-}
-
-
-/****************************************************************************
-*
 *   MainShutdown
 *
 ***/
@@ -146,7 +119,7 @@ void Application::onAppRun () {
 
     Endpoint end;
     parse(&end, "127.0.0.1", 8888);
-    socketListen(&s_listen, end);
+    socketListen<ListenSocket>(end);
 
     //HttpConn context;
     //std::vector<std::unique_ptr<HttpMsg>> msgs;

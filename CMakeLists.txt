@@ -372,7 +372,8 @@ foreach(var ${config_defines})
     add_definitions(/D${var})
 endforeach()
 
-set(deps, "")
+source_group(" " REGULAR_EXPRESSION ".*")
+source_group("docs" REGULAR_EXPRESSION "docs/.*")
 
 if(ROOT_PROJECT)
     # vendor dependencies
@@ -401,6 +402,7 @@ foreach(var ${allnames})
 endforeach()
 
 if(NOT ROOT_PROJECT)
+    set(deps ${deps} PARENT_SCOPE)
     set(libnames ${libnames} PARENT_SCOPE)
     return()
 endif()
@@ -446,9 +448,6 @@ foreach(var ${allnames})
         endif()
     endif()
 endforeach()
-
-source_group(" " REGULAR_EXPRESSION ".*")
-source_group("docs" REGULAR_EXPRESSION "docs/.*")
 
 # update deps file
 update_deps_file(${deps})

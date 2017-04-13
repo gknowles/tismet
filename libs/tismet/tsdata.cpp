@@ -102,6 +102,8 @@ struct MetricInfo {
 
 class TsdFile {
 public:
+    ~TsdFile();
+
     bool open(string_view name);
     bool insertMetric(uint32_t & out, const string & name);
     void insertData(uint32_t id, TimePoint time, float value);
@@ -140,8 +142,8 @@ private:
     RadixDigits m_rd;
 
     const MasterPage * m_hdr{nullptr};
-    unique_ptr<IFile> m_data;
-    unique_ptr<IFile> m_log;
+    FileHandle m_data;
+    FileHandle m_log;
 };
 } // namespace
 
@@ -162,21 +164,26 @@ static HandleMap<TsdFileHandle, TsdFile> s_files;
 ***/
 
 //===========================================================================
+TsdFile::~TsdFile () {
+    fileClose(m_data);
+    fileClose(m_log);
+}
+
+//===========================================================================
 bool TsdFile::open(string_view name) {
-    m_data = fileOpen(name, IFile::kCreat | IFile::kReadWrite);
-    auto file = m_data.get();
-    if (!file)
+    m_data = fileOpen(name, File::fCreat | File::fReadWrite);
+    if (!m_data)
         return false;
-    if (!fileSize(file)) {
+    if (!fileSize(m_data)) {
         MasterPage tmp = {};
         tmp.hdr.type = kPageTypeMaster;
         memcpy(tmp.signature, kDataFileSig, sizeof(tmp.signature));
         tmp.pageSize = kDefaultPageSize;
         tmp.numPages = 1;
-        fileWriteWait(m_data.get(), 0, &tmp, sizeof(tmp));
+        fileWriteWait(m_data, 0, &tmp, sizeof(tmp));
     }
     const char * base;
-    if (!fileOpenView(base, file)) 
+    if (!fileOpenView(base, m_data)) 
         return false;
     m_hdr = (const MasterPage *)base;
     if (memcmp(
@@ -401,14 +408,13 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
 
 //===========================================================================
 uint32_t TsdFile::allocPgno () {
-    auto file = m_data.get();
     auto pgno = m_hdr->freePageRoot;
     auto pageSize = m_hdr->pageSize;
     auto mp = *m_hdr;
     if (!pgno) {
         pgno = m_hdr->numPages;
         mp.numPages += 1;
-        fileExtendView(file, (pgno + 1) * pageSize);
+        fileExtendView(m_data, (pgno + 1) * pageSize);
     } else {
         auto fp = pageAddr<FreePage>(pgno);
         assert(fp->hdr.type == kPageTypeFree);
@@ -512,7 +518,7 @@ void TsdFile::writePage(T & data) const {
 void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
     assert(pgno < m_hdr->numPages);
     assert(count <= m_hdr->pageSize);
-    fileWriteWait(m_data.get(), pgno * m_hdr->pageSize, ptr, count);
+    fileWriteWait(m_data, pgno * m_hdr->pageSize, ptr, count);
 }
 
 
