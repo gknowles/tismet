@@ -22,12 +22,12 @@ const char kVersion[] = "1.0";
 ***/
 
 class MainShutdown : public IShutdownNotify {
-    void onShutdownClient (bool retry) override;
+    void onShutdownClient (bool firstTry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-void MainShutdown::onShutdownClient (bool retry) {
+void MainShutdown::onShutdownClient (bool firstTry) {
 }
 
 

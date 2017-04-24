@@ -33,12 +33,12 @@ void EndpointFind::onEndpointFound (const Endpoint * ptr, int count) {
 ***/
 
 class MainShutdown : public IShutdownNotify {
-    void onShutdownClient (bool retry) override;
+    void onShutdownClient (bool firstTry) override;
 };
 static MainShutdown s_cleanup;
 
 //===========================================================================
-void MainShutdown::onShutdownClient (bool retry) {
+void MainShutdown::onShutdownClient (bool firstTry) {
 }
 
 
