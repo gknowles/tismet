@@ -1,3 +1,5 @@
+# Copyright Glen Knowles 2016 - 2017.
+# Distributed under the Boost Software License, Version 1.0.
 version: 0.1.{build}
 image: Visual Studio 2017
 
@@ -24,10 +26,10 @@ build_script:
   - 7z a tismet-latest.zip bin
   - cd ..\..
 
-test_script:
-    - build\bin\radix --test
-
 artifacts:
   - path: build\publish\tismet-latest.zip
     name: tismet
     type: zip
+
+test_script:
+    - bin\radix --test
