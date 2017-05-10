@@ -33,6 +33,7 @@
 # vendor/dimapp/libs/app/logfile.h
 # vendor/dimapp/libs/app/pch.cpp
 # vendor/dimapp/libs/app/pch.h
+# vendor/dimapp/libs/app/webadmin.cpp
 # vendor/dimapp/libs/cli/cli.cpp
 # vendor/dimapp/libs/cli/cli.h
 # vendor/dimapp/libs/core/appint.h
@@ -43,6 +44,7 @@
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
 # vendor/dimapp/libs/core/list.h
+# vendor/dimapp/libs/core/listmbr.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
 # vendor/dimapp/libs/core/pch.cpp
@@ -62,6 +64,7 @@
 # vendor/dimapp/libs/core/timeint.h
 # vendor/dimapp/libs/core/timer.cpp
 # vendor/dimapp/libs/core/timer.h
+# vendor/dimapp/libs/core/timerlist.h
 # vendor/dimapp/libs/core/tokentable.cpp
 # vendor/dimapp/libs/core/tokentable.h
 # vendor/dimapp/libs/core/types.h
@@ -71,6 +74,11 @@
 # vendor/dimapp/libs/cppconf/cppconf.h
 # vendor/dimapp/libs/cppconf/cppconf_suffix.h
 # vendor/dimapp/libs/json/json.abnf
+# vendor/dimapp/libs/json/json.h
+# vendor/dimapp/libs/json/jsonbaseparse.cpp
+# vendor/dimapp/libs/json/jsonbaseparse.h
+# vendor/dimapp/libs/json/pch.cpp
+# vendor/dimapp/libs/json/pch.h
 # vendor/dimapp/libs/net/address.cpp
 # vendor/dimapp/libs/net/address.h
 # vendor/dimapp/libs/net/appint.h
@@ -90,8 +98,9 @@
 # vendor/dimapp/libs/net/net.h
 # vendor/dimapp/libs/net/pch.cpp
 # vendor/dimapp/libs/net/pch.h
-# vendor/dimapp/libs/net/rawsockmgr.h
 # vendor/dimapp/libs/net/socket.h
+# vendor/dimapp/libs/net/sockmgr.cpp
+# vendor/dimapp/libs/net/sockmgr.h
 # vendor/dimapp/libs/tls/pch.cpp
 # vendor/dimapp/libs/tls/pch.h
 # vendor/dimapp/libs/tls/tls.cpp
@@ -109,6 +118,7 @@
 # vendor/dimapp/libs/win/pch.cpp
 # vendor/dimapp/libs/win/pch.h
 # vendor/dimapp/libs/win/winaddress.cpp
+# vendor/dimapp/libs/win/winapp.cpp
 # vendor/dimapp/libs/win/winconsole.cpp
 # vendor/dimapp/libs/win/winenv.cpp
 # vendor/dimapp/libs/win/winerror.cpp

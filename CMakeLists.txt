@@ -182,7 +182,7 @@ endfunction()
 
 function(add_exec_project tgt srcdir)
     file(GLOB_RECURSE sources 
-        LIST_DIRECTORIES false ${srcdir}/*.h ${srcdir}/*.cpp)
+        LIST_DIRECTORIES false ${srcdir}/*)
     list(APPEND deps ${sources})
     set(deps ${deps} PARENT_SCOPE)
     add_executable(${tgt} ${sources})
@@ -243,7 +243,8 @@ endfunction()
 
 function(add_file_project tgt)
     file(GLOB sources LIST_DIRECTORIES false ${ARGN})
-    if(NOT sources STREQUAL '')
+    list(LENGTH sources num)
+    if(num)
         list(APPEND deps ${sources})
         set(deps ${deps} PARENT_SCOPE)
         add_custom_target(${tgt} SOURCES ${sources})
@@ -343,12 +344,12 @@ if(MSVC)
     # "/GR-" (UNUSED) - disable RTTI
     # "/EHsc" - exceptions from c++ only (not from structure or "C")
     # "/GF" - string pooling
-    # "/guard:cf" - control flow guard
+    # "/guard:cf" (UNUSED) - control flow guard
     set(CMAKE_CXX_FLAGS "\
         /utf-8 /W4 /WX /Zi \
         /std:c++latest /Zc:inline /Zc:rvalueCast /Zc:strictStrings \
-        /nologo /EHsc /GF /guard:cf")
-    if(NOT MSVC_VERSION LESS 2000)
+        /nologo /EHsc /GF")
+    if(NOT MSVC_VERSION LESS 1910)
         # /permissive-  // reject non-conforming backward compatibilitisms
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /permissive-")
     endif()
