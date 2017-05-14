@@ -16,22 +16,6 @@ const char kVersion[] = "1.0";
 
 
 /****************************************************************************
-*
-*   MainShutdown
-*
-***/
-
-class MainShutdown : public IShutdownNotify {
-    void onShutdownClient (bool firstTry) override;
-};
-static MainShutdown s_cleanup;
-
-//===========================================================================
-void MainShutdown::onShutdownClient (bool firstTry) {
-}
-
-
-/****************************************************************************
 *     
 *   Application
 *     
@@ -45,7 +29,6 @@ class Application : public IAppNotify {
 
 //===========================================================================
 void Application::onAppRun () {
-    shutdownMonitor(&s_cleanup);
     Cli cli;
     cli.header("load v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
@@ -72,7 +55,10 @@ void Application::onAppRun () {
 
 //===========================================================================
 int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
+        | _CRTDBG_LEAK_CHECK_DF
+        | _CRTDBG_DELAY_FREE_MEM_DF
+    );
     _set_error_mode(_OUT_TO_MSGBOX);
 
     Application app;
