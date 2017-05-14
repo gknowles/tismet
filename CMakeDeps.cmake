@@ -73,6 +73,7 @@
 # vendor/dimapp/libs/cppconf/compiler/visualc.h
 # vendor/dimapp/libs/cppconf/cppconf.h
 # vendor/dimapp/libs/cppconf/cppconf_suffix.h
+# vendor/dimapp/libs/json/jbuilder.cpp
 # vendor/dimapp/libs/json/json.abnf
 # vendor/dimapp/libs/json/json.h
 # vendor/dimapp/libs/json/jsonbaseparse.cpp
@@ -127,6 +128,7 @@
 # vendor/dimapp/libs/win/winint.h
 # vendor/dimapp/libs/win/winiocp.cpp
 # vendor/dimapp/libs/win/winplatform.cpp
+# vendor/dimapp/libs/win/winservice.cpp
 # vendor/dimapp/libs/win/winsock.cpp
 # vendor/dimapp/libs/win/winsockacc.cpp
 # vendor/dimapp/libs/win/winsockbuf.cpp
