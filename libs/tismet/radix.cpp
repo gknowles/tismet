@@ -91,4 +91,3 @@ ostream & operator<< (ostream & os, const RadixDigits & rd) {
     os << ' ' << rd.m_maxPage;
     return os;
 }
-
