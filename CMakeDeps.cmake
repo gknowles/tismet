@@ -138,8 +138,10 @@
 # vendor/dimapp/libs/win/wintime.cpp
 # vendor/dimapp/libs/wintls/pch.cpp
 # vendor/dimapp/libs/wintls/pch.h
-# vendor/dimapp/libs/wintls/wintls.cpp
 # vendor/dimapp/libs/wintls/wintls.h
+# vendor/dimapp/libs/wintls/wintlscert.cpp
+# vendor/dimapp/libs/wintls/wintlsconn.cpp
+# vendor/dimapp/libs/wintls/wintlsint.h
 # vendor/dimapp/libs/xml/pch.cpp
 # vendor/dimapp/libs/xml/pch.h
 # vendor/dimapp/libs/xml/raw-text-from-tr.ebnf
