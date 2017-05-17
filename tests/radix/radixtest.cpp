@@ -33,7 +33,7 @@ static void tests() {
     int line = 0;
     int digits[10];
 
-    RadixDigits rd{100, 4095};
+    RadixDigits rd{100, 0, 0, 4095};
     auto count = rd.convert(digits, size(digits), 4032);
     EXPECT(count == 3);
     EXPECT(vector<int>(digits, digits + 3) == vector<int>({6, 11, 7}));
@@ -67,12 +67,19 @@ class Application : public IAppNotify {
 //===========================================================================
 void Application::onAppRun() {
     Cli cli;
-    auto & blkSize = cli.opt<size_t>("b", 4032)
-        .desc("size of blocks used by radix index");
+    auto & pageSize = cli.opt<size_t>("b", 4096)
+        .desc("size of pages used by radix index");
     auto & maxPages = cli.opt<size_t>(
         "m", 
         (size_t) numeric_limits<uint32_t>::max() + 1)
         .desc("maximum number of pages allowed in index");
+    auto & poff = cli.opt<size_t>("p").desc("offset to list in normal pages");
+    auto & roff = cli.opt<size_t>("r").desc("offset to list in root pages")
+        .after([&](auto & cli, auto & opt, auto & val) { 
+            if (!opt)
+                *opt = *pageSize / 2;
+            return true;
+        });
     auto & vals = cli.optVec<uint32_t>("[value]")
         .desc("values to translate");
     auto & test = cli.opt<bool>("test")
@@ -83,17 +90,15 @@ void Application::onAppRun() {
     if (*test)
         return tests();
 
-    RadixDigits rd{*blkSize, *maxPages - 1};
+    RadixDigits rd{*pageSize, *roff, *poff, *maxPages - 1};
     cout << rd << endl;
 
     int digits[10];
     for (auto && val : *vals) {
-        rd.convert(digits, size(digits), val);
+        auto num = rd.convert(digits, size(digits), val);
         cout << val << ":";
-        for (auto && d : digits) {
-            if (d == -1)
-                break;
-            cout << ' ' << d;
+        for (auto i = 0; i < num; ++i) {
+            cout << ' ' << digits[i];
         }
         cout << endl;
     }

@@ -15,13 +15,20 @@ class RadixDigits {
 public:
     RadixDigits() {}
     RadixDigits(
-        size_t blkSize, 
-        size_t maxPage = std::numeric_limits<uint32_t>::max());
-
+        size_t pageSize, 
+        size_t rootOffset,
+        size_t pageOffset = 64,
+        size_t maxPage = std::numeric_limits<uint32_t>::max()
+    );
     void init(
-        size_t blkSize, 
-        size_t maxPage = std::numeric_limits<uint32_t>::max());
+        size_t pageSize, 
+        size_t rootOffset,
+        size_t pageOffset = 64,
+        size_t maxPage = std::numeric_limits<uint32_t>::max()
+    );
     size_t convert(int * digits, size_t maxDigits, uint32_t value) const;
+    size_t maxDigits() const;
+    size_t rootEntries() const;
     size_t pageEntries() const;
 
 private:
@@ -32,8 +39,9 @@ private:
 
     std::vector<uint32_t> m_divs;
 
-    size_t m_blkSize{0};    // bytes available for holding page numbers
-    size_t m_offset{0};     // offset, in sizeof(pgno), to radix page list
+    size_t m_pageSize{0};   // page size - offset = space for radix list 
+    size_t m_rootOffset{0}; // offset, in sizeof(pgno), to radix list on root
+    size_t m_pageOffset{0}; // offset to radix list on all non-root pages
     size_t m_maxPage{0};    // maximum page number that is convertable
 };
 
