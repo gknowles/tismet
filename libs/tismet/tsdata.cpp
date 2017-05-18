@@ -30,13 +30,13 @@ const unsigned kDataFileSig[] = {
 
 namespace {
 enum PageType {
-    kPageTypeFree,
-    kPageTypeMaster,
-    kPageTypeBranch,
-    kPageTypeLeaf,
-    kPageTypeMetric,
-    kPageTypeData,
-    kPageTypeRadix,
+    kPageTypeFree = 'F',
+    kPageTypeMaster = 'M',
+    kPageTypeMetric = 'm',
+    kPageTypeRadix = 'r',
+    kPageTypeData = 'd',
+    kPageTypeBranch = 'b',
+    kPageTypeLeaf = 'l',
 };
 
 struct PageHeader {
@@ -137,7 +137,8 @@ private:
     template<typename T> unique_ptr<T> dupPage(uint32_t pgno);
     template<typename T> unique_ptr<T> dupPage(const T & data);
 
-    template<typename T> void writePage(T & data) const;
+    template<typename T> 
+    void writePage(T & data, size_t count = sizeof(T)) const;
     void writePage(uint32_t pgno, const void * ptr, size_t count) const;
 
     bool btreeInsert(uint32_t rpn, string_view name, string_view data);
@@ -332,6 +333,7 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
         id = m_freeIds.top();
         m_freeIds.pop();
     }
+    out = id;
     m_metricIds[name] = id;
 
     // set info page 
@@ -345,7 +347,7 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
 
     auto & mi = m_metricInfo[id];
     mi = {};
-    mi.infoPage = id;
+    mi.infoPage = sp->hdr.pgno;
     mi.interval = sp->interval;
 
     // update index
@@ -373,7 +375,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
 
     auto count = valuesPerPage();
     if (!mi.lastPage) {
-        auto mp = dupPage<MetricPage>(mi.infoPage);
+        auto mp = editPage<MetricPage>(mi.infoPage);
 
         auto dp = allocPage<DataPage>();
         dp->id = id;
@@ -389,12 +391,16 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         mi.lastEntry = dp->lastEntry;
         writePage(*mp);
     }
+    if (mi.firstTime == TimePoint{}) {
+        auto dp = pageAddr<DataPage>(mi.lastPage);
+        mi.firstTime = dp->firstTime;
+        mi.lastEntry = dp->lastEntry;
+    }
 
     // updating the last page?
-    if (time >= mi.firstTime 
-        && time < mi.firstTime + valuesPerPage() * mi.interval
-    ) {
-        auto dp = dupPage<DataPage>(mi.lastPage);
+    auto lastTime = mi.firstTime + valuesPerPage() * mi.interval;
+    if (time >= mi.firstTime && time < lastTime) {
+        auto dp = editPage<DataPage>(mi.lastPage);
         auto ent = (time - mi.firstTime) / mi.interval;
         dp->values[ent] = value;
         if (ent > mi.lastEntry) {
@@ -402,7 +408,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
                 dp->values[i] = NAN;
             mi.lastEntry = dp->lastEntry = (uint16_t) ent;
         }
-        writePage(*dp);
+        writePage(*dp, m_hdr->pageSize);
         return;
     }        
 
@@ -437,7 +443,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
             writePage(*next);
             auto nrp = dupPage(*rp);
             nrp->pages[pos] = next->hdr.pgno;
-            writePage(*nrp);
+            writePage(*nrp, m_hdr->pageSize);
             assert(rp->pages[pos]);
         }
         rp = pageAddr<RadixPage>(rp->pages[pos]);
@@ -451,7 +457,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
 
     auto nrp = editPage(*rp);
     nrp->pages[*d] = value;
-    writePage(*nrp);
+    writePage(*nrp, m_hdr->pageSize);
     return true;
 }
 
@@ -565,8 +571,8 @@ const PageHeader * TsdFile::pageAddr<PageHeader>(uint32_t pgno) const {
 
 //===========================================================================
 template<typename T>
-void TsdFile::writePage(T & data) const {
-    writePage(data.hdr.pgno, &data, sizeof(data));
+void TsdFile::writePage(T & data, size_t count) const {
+    writePage(data.hdr.pgno, &data, count);
 }
 
 //===========================================================================
