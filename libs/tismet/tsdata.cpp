@@ -121,8 +121,8 @@ private:
     bool loadMetricInfo (uint32_t pgno, bool root);
     bool loadFreePages ();
 
-    template<typename T> const T * pageAddr(uint32_t pgno) const;
-    template<> const PageHeader * pageAddr<PageHeader>(uint32_t pgno) const;
+    template<typename T> const T * addr(uint32_t pgno) const;
+    template<> const PageHeader * addr<PageHeader>(uint32_t pgno) const;
 
     uint32_t allocPgno();
     template<typename T> unique_ptr<T> allocPage();
@@ -234,7 +234,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno, bool root) {
     if (!pgno)
         return true;
 
-    auto p = pageAddr<PageHeader>(pgno);
+    auto p = addr<PageHeader>(pgno);
     if (!p)
         return false;
     auto count = root ? m_rd.rootEntries() : m_rd.pageEntries();
@@ -267,7 +267,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno, bool root) {
 bool TsdFile::loadFreePages () {
     auto pgno = m_hdr->freePageRoot;
     while (pgno) {
-        auto p = pageAddr<PageHeader>(pgno);
+        auto p = addr<PageHeader>(pgno);
         if (!p || p->type != kPageTypeFree)
             return false;
         if (m_metricInfo.size() <= pgno)
@@ -284,7 +284,7 @@ bool TsdFile::loadFreePages () {
 
 //===========================================================================
 bool TsdFile::btreeInsert(uint32_t rpn, string_view name, string_view data) {
-    auto ph = pageAddr<LeafPage>(rpn);
+    auto ph = addr<LeafPage>(rpn);
     if (!ph->entries[0]) {
         auto lp = (LeafPage *) alloca(
             sizeof(LeafPage) + name.size() + data.size() + 1);  
@@ -383,7 +383,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         dp->firstTime = time - dp->lastEntry * mi.interval;
         for (auto i = 0; i < count; ++i) 
             dp->values[i] = NAN;
-        writePage(*dp);
+        writePage(*dp, m_hdr->pageSize);
 
         mp->lastPage = dp->hdr.pgno;
         mi.lastPage = mp->lastPage;
@@ -392,14 +392,15 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         writePage(*mp);
     }
     if (mi.firstTime == TimePoint{}) {
-        auto dp = pageAddr<DataPage>(mi.lastPage);
+        auto dp = addr<DataPage>(mi.lastPage);
         mi.firstTime = dp->firstTime;
         mi.lastEntry = dp->lastEntry;
     }
 
     // updating the last page?
-    auto lastTime = mi.firstTime + valuesPerPage() * mi.interval;
-    if (time >= mi.firstTime && time < lastTime) {
+    auto lastTime = mi.firstTime + mi.lastEntry * mi.interval;
+    auto lastPageTime = mi.firstTime + valuesPerPage() * mi.interval;
+    if (time >= mi.firstTime && time < lastPageTime) {
         auto dp = editPage<DataPage>(mi.lastPage);
         auto ent = (time - mi.firstTime) / mi.interval;
         dp->values[ent] = value;
@@ -423,7 +424,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
     int digits[10];
     auto count = m_rd.convert(digits, size(digits), index);
     count -= 1;
-    auto rp = pageAddr<RadixPage>(root);
+    auto rp = addr<RadixPage>(root);
     while (rp->height < count) {
         auto dup = dupPage(*rp);
         writePage(*dup);
@@ -446,7 +447,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
             writePage(*nrp, m_hdr->pageSize);
             assert(rp->pages[pos]);
         }
-        rp = pageAddr<RadixPage>(rp->pages[pos]);
+        rp = addr<RadixPage>(rp->pages[pos]);
         if (rp->height == count) {
             d += 1;
             count -= 1;
@@ -477,7 +478,7 @@ uint32_t TsdFile::allocPgno () {
         mp.numPages += 1;
         fileExtendView(m_data, (pgno + 1) * pageSize);
     } else {
-        auto fp = pageAddr<FreePage>(pgno);
+        auto fp = addr<FreePage>(pgno);
         assert(fp->hdr.type == kPageTypeFree);
         mp.freePageRoot = fp->nextPage;
     }
@@ -509,7 +510,7 @@ unique_ptr<T> TsdFile::allocPage(uint32_t pgno) const {
 //===========================================================================
 void TsdFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
-    auto fp = *pageAddr<FreePage>(pgno);
+    auto fp = *addr<FreePage>(pgno);
     assert(fp.hdr.type != kPageTypeFree);
     fp.hdr.type = kPageTypeFree;
     fp.nextPage = m_hdr->freePageRoot;
@@ -522,7 +523,7 @@ void TsdFile::freePage(uint32_t pgno) {
 //===========================================================================
 template<typename T>
 unique_ptr<T> TsdFile::editPage(uint32_t pgno) const {
-    return editPage(*pageAddr<T>(pgno));
+    return editPage(*addr<T>(pgno));
 }
 
 //===========================================================================
@@ -538,7 +539,7 @@ unique_ptr<T> TsdFile::editPage(const T & data) const {
 //===========================================================================
 template<typename T>
 unique_ptr<T> TsdFile::dupPage(uint32_t pgno) {
-    return dupPage(*pageAddr<T>(pgno));
+    return dupPage(*addr<T>(pgno));
 }
 
 //===========================================================================
@@ -551,7 +552,7 @@ unique_ptr<T> TsdFile::dupPage(const T & data) {
 
 //===========================================================================
 template<typename T>
-const T * TsdFile::pageAddr(uint32_t pgno) const {
+const T * TsdFile::addr(uint32_t pgno) const {
     assert(pgno < m_hdr->numPages);
     const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
     auto ptr = static_cast<const T*>(vptr);
@@ -561,7 +562,7 @@ const T * TsdFile::pageAddr(uint32_t pgno) const {
 
 //===========================================================================
 template<>
-const PageHeader * TsdFile::pageAddr<PageHeader>(uint32_t pgno) const {
+const PageHeader * TsdFile::addr<PageHeader>(uint32_t pgno) const {
     if (pgno > m_hdr->numPages)
         return nullptr;
     const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
