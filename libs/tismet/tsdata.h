@@ -4,7 +4,7 @@
 // tsdata.h - tismet
 #pragma once
 
-#include "core/handle.h"
+#include "core/core.h"
 
 
 /****************************************************************************
@@ -21,3 +21,9 @@ void tsdClose(TsdFileHandle file);
 
 bool tsdFindMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
 bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
+void tsdWriteData(
+    TsdFileHandle h, 
+    uint32_t id, 
+    Dim::TimePoint time, 
+    float value
+);

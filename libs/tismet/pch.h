@@ -11,5 +11,6 @@
 #include "radix.h"
 #include "tsdata.h"
 
+#include <cmath>
 #include <cstddef>
 #include <queue>

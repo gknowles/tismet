@@ -44,6 +44,7 @@ void Application::onAppRun () {
     unsigned count = 0;
     count += tsdInsertMetric(id, h, "this.is.metric.1");
     cout << "metrics inserted: " << count << endl;
+    tsdWriteData(h, id, Clock::now(), 1.0);
     tsdClose(h);
 
     appSignalShutdown(EX_OK);
