@@ -84,6 +84,7 @@ struct MetricPage {
     Duration interval;
     Duration retention;
     uint32_t lastPage;
+    unsigned lastPagePos;
 
     // internal radix "subpage"
     unsigned height;
@@ -337,29 +338,29 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     m_metricIds[name] = id;
 
     // set info page 
-    auto sp = allocPage<MetricPage>();
-    auto count = name.copy(sp->name, size(sp->name) - 1);
-    sp->name[count] = 0;
-    sp->id = id;
-    sp->interval = 1min;
-    sp->retention = 30min;
-    writePage(*sp);
+    auto mp = allocPage<MetricPage>();
+    auto count = name.copy(mp->name, size(mp->name) - 1);
+    mp->name[count] = 0;
+    mp->id = id;
+    mp->interval = 1min;
+    mp->retention = 30min;
+    writePage(*mp);
 
     auto & mi = m_metricInfo[id];
     mi = {};
-    mi.infoPage = sp->hdr.pgno;
-    mi.interval = sp->interval;
+    mi.infoPage = mp->hdr.pgno;
+    mi.interval = mp->interval;
 
     // update index
     if (!m_hdr->metricInfoRoot) {
         auto rp = allocPage<RadixPage>();
         rp->height = 0;
         writePage(*rp);
-        auto mp = *m_hdr;
-        mp.metricInfoRoot = rp->hdr.pgno;
-        writePage(mp);
+        auto masp = *m_hdr;
+        masp.metricInfoRoot = rp->hdr.pgno;
+        writePage(masp);
     }
-    bool inserted = radixInsert(m_hdr->metricInfoRoot, id, sp->hdr.pgno);
+    bool inserted = radixInsert(m_hdr->metricInfoRoot, id, mp->hdr.pgno);
     assert(inserted);
     s_perfCount += 1;
     return true;
@@ -386,10 +387,12 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         writePage(*dp, m_hdr->pageSize);
 
         mp->lastPage = dp->hdr.pgno;
+        mp->pages[0] = dp->hdr.pgno;
+        writePage(*mp);
+
         mi.lastPage = mp->lastPage;
         mi.firstTime = dp->firstTime;
         mi.lastEntry = dp->lastEntry;
-        writePage(*mp);
     }
     if (mi.firstTime == TimePoint{}) {
         auto dp = addr<DataPage>(mi.lastPage);
@@ -400,17 +403,25 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     // updating the last page?
     auto lastTime = mi.firstTime + mi.lastEntry * mi.interval;
     auto lastPageTime = mi.firstTime + valuesPerPage() * mi.interval;
-    if (time >= mi.firstTime && time < lastPageTime) {
+    if (time >= mi.firstTime) {
         auto dp = editPage<DataPage>(mi.lastPage);
-        auto ent = (time - mi.firstTime) / mi.interval;
-        dp->values[ent] = value;
-        if (ent > mi.lastEntry) {
-            for (auto i = mi.lastEntry + 1; i < ent; ++i) 
-                dp->values[i] = NAN;
-            mi.lastEntry = dp->lastEntry = (uint16_t) ent;
+        auto i = mi.lastEntry;
+        if (lastTime == time) {
+            dp->values[i] = value;
+            writePage(*dp, m_hdr->pageSize);
+            return;
         }
-        writePage(*dp, m_hdr->pageSize);
-        return;
+        i += 1;
+        lastTime += mi.interval;
+        for (; lastTime < lastPageTime; ++i, lastTime += mi.interval) {
+            if (lastTime == time) {
+                dp->values[i] = value;
+                mi.lastEntry = dp->lastEntry = i;
+                writePage(*dp, m_hdr->pageSize);
+                return;
+            }
+            dp->values[i] = NAN;
+        }
     }        
 
     auto t = (time - mi.firstTime) / mi.interval;
