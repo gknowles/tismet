@@ -69,11 +69,18 @@ struct LeafPage {
     char entries[1];
 };
 
+struct RadixData {
+    uint16_t height;
+    uint16_t numPages;
+    uint32_t pages[1];
+};
+
 struct RadixPage {
     static const PageType type = kPageTypeRadix;
     PageHeader hdr;
-    unsigned height;
-    uint32_t pages[1];
+
+    // MUST BE LAST DATA MEMBER
+    RadixData rd; 
 };
 
 struct MetricPage {
@@ -86,26 +93,32 @@ struct MetricPage {
     uint32_t lastPage;
     unsigned lastPagePos;
 
-    // internal radix "subpage"
-    unsigned height;
-    uint32_t pages[1];
+    // MUST BE LAST DATA MEMBER
+    RadixData rd; 
 };
 
 struct DataPage {
     static const PageType type = kPageTypeData;
     PageHeader hdr;
     uint32_t id;
-    TimePoint firstTime;
-    uint16_t lastEntry;
+
+    // time of first value on page
+    TimePoint firstPageTime; 
+    
+    // Position of last value, values that come after this on the page are 
+    // either in the not yet populated future or (because it's a giant 
+    // discontinuous ring buffer) in the distant past.
+    uint16_t lastPageValue; 
+    
     float values[1];
 };
 
 struct MetricInfo {
     Duration interval;
     uint32_t infoPage;
-    uint32_t lastPage;
-    TimePoint firstTime;
-    uint16_t lastEntry;
+    uint32_t lastPage; // page with most recent data values
+    TimePoint firstPageTime; // time of first value on last page
+    uint16_t lastPageValue; // position of last value on last page
 };
 
 class TsdFile {
@@ -119,7 +132,7 @@ public:
     bool findMetric(uint32_t & out, const string & name) const;
 
 private:
-    bool loadMetricInfo (uint32_t pgno, bool root);
+    bool loadMetricInfo (uint32_t pgno);
     bool loadFreePages ();
 
     template<typename T> const T * addr(uint32_t pgno) const;
@@ -140,17 +153,23 @@ private:
 
     template<typename T> 
     void writePage(T & data, size_t count = sizeof(T)) const;
+    template<> 
+    void writePage<PageHeader>(PageHeader & hdr, size_t count) const;
     void writePage(uint32_t pgno, const void * ptr, size_t count) const;
 
-    bool btreeInsert(uint32_t rpn, string_view name, string_view data);
+    void radixClear(PageHeader & hdr);
+    void radixFreePage(uint32_t pgno);
+    bool radixFind(uint32_t * out, uint32_t root, uint32_t index);
     bool radixInsert(uint32_t root, uint32_t index, uint32_t value);
 
+    unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
     size_t valuesPerPage() const;
 
     unordered_map<string, uint32_t> m_metricIds;
     vector<MetricInfo> m_metricInfo;
     priority_queue<uint32_t, vector<uint32_t>, greater<uint32_t>> m_freeIds;
-    RadixDigits m_rd;
+    RadixDigits m_rdIndex;
+    RadixDigits m_rdMetric;
 
     const MasterPage * m_hdr{nullptr};
     FileHandle m_data;
@@ -215,13 +234,12 @@ bool TsdFile::open(string_view name) {
         return false;
     }
 
-    m_rd.init(
-        m_hdr->pageSize, 
-        offsetof(MetricPage, pages),
-        offsetof(RadixPage, pages)
-    );
+    auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
+    m_rdIndex.init(m_hdr->pageSize, ipOff, ipOff);
+    auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
+    m_rdMetric.init(m_hdr->pageSize, mpOff, ipOff);
 
-    if (!loadMetricInfo(m_hdr->metricInfoRoot, true))
+    if (!loadMetricInfo(m_hdr->metricInfoRoot))
         return false;
     if (!loadFreePages())
         return false;
@@ -231,19 +249,18 @@ bool TsdFile::open(string_view name) {
 }
 
 //===========================================================================
-bool TsdFile::loadMetricInfo (uint32_t pgno, bool root) {
+bool TsdFile::loadMetricInfo (uint32_t pgno) {
     if (!pgno)
         return true;
 
     auto p = addr<PageHeader>(pgno);
     if (!p)
         return false;
-    auto count = root ? m_rd.rootEntries() : m_rd.pageEntries();
 
     if (p->type == kPageTypeRadix) {
         auto rp = reinterpret_cast<const RadixPage*>(p);
-        for (int i = 0; i < count; ++i) {
-            if (!loadMetricInfo(rp->pages[i], false))
+        for (int i = 0; i < rp->rd.numPages; ++i) {
+            if (!loadMetricInfo(rp->rd.pages[i]))
                 return false;
         }
         return true;
@@ -281,29 +298,6 @@ bool TsdFile::loadFreePages () {
         pgno = fp->nextPage;
     }
     return true;
-}
-
-//===========================================================================
-bool TsdFile::btreeInsert(uint32_t rpn, string_view name, string_view data) {
-    auto ph = addr<LeafPage>(rpn);
-    if (!ph->entries[0]) {
-        auto lp = (LeafPage *) alloca(
-            sizeof(LeafPage) + name.size() + data.size() + 1);  
-        lp->hdr.type = kPageTypeLeaf;
-        char * lpe = lp->entries;
-        *lpe++ = (char) name.size();
-        memcpy(lpe, name.data(), name.size());
-        lpe += name.size();
-        *lpe++ = (char) data.size();
-        memcpy(lpe, data.data(), data.size());
-        lpe += data.size();
-        *lpe++ = 0;
-        writePage(rpn, lp, lpe - (char *) lp);
-        return true;
-    }
-    while (ph->hdr.type == kPageTypeBranch) {
-    }
-    return false;
 }
 
 //===========================================================================
@@ -354,7 +348,8 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     // update index
     if (!m_hdr->metricInfoRoot) {
         auto rp = allocPage<RadixPage>();
-        rp->height = 0;
+        rp->rd.height = 0;
+        rp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
         writePage(*rp);
         auto masp = *m_hdr;
         masp.metricInfoRoot = rp->hdr.pgno;
@@ -366,6 +361,31 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     return true;
 }
 
+
+/****************************************************************************
+*
+*   Metric data values
+*
+***/
+
+//===========================================================================
+size_t TsdFile::valuesPerPage() const {
+    return (m_hdr->pageSize - offsetof(DataPage, values)) 
+        / sizeof(float);
+}
+
+//===========================================================================
+unique_ptr<DataPage> TsdFile::allocDataPage(uint32_t id, TimePoint time) {
+    auto count = valuesPerPage();
+    auto dp = allocPage<DataPage>();
+    dp->id = id;
+    dp->lastPageValue = 0;
+    dp->firstPageTime = time;
+    for (auto i = 0; i < count; ++i) 
+        dp->values[i] = NAN;
+    return dp;
+}
+
 //===========================================================================
 void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     auto & mi = m_metricInfo[id];
@@ -375,109 +395,241 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     time -= time.time_since_epoch() % mi.interval;
 
     auto count = valuesPerPage();
+
     if (!mi.lastPage) {
         auto mp = editPage<MetricPage>(mi.infoPage);
 
-        auto dp = allocPage<DataPage>();
-        dp->id = id;
-        dp->lastEntry = (uint16_t) (id % count);
-        dp->firstTime = time - dp->lastEntry * mi.interval;
-        for (auto i = 0; i < count; ++i) 
-            dp->values[i] = NAN;
+        auto dp = allocDataPage(id, time);
+        dp->lastPageValue = (uint16_t) (id % count);
+        dp->firstPageTime = time - dp->lastPageValue * mi.interval;
         writePage(*dp, m_hdr->pageSize);
 
         mp->lastPage = dp->hdr.pgno;
-        mp->pages[0] = dp->hdr.pgno;
+        mp->rd.pages[0] = dp->hdr.pgno;
         writePage(*mp);
 
         mi.lastPage = mp->lastPage;
-        mi.firstTime = dp->firstTime;
-        mi.lastEntry = dp->lastEntry;
+        mi.firstPageTime = dp->firstPageTime;
+        mi.lastPageValue = dp->lastPageValue;
     }
-    if (mi.firstTime == TimePoint{}) {
+    if (mi.firstPageTime == TimePoint{}) {
         auto dp = addr<DataPage>(mi.lastPage);
-        mi.firstTime = dp->firstTime;
-        mi.lastEntry = dp->lastEntry;
+        mi.firstPageTime = dp->firstPageTime;
+        mi.lastPageValue = dp->lastPageValue;
     }
 
-    // updating the last page?
-    auto lastTime = mi.firstTime + mi.lastEntry * mi.interval;
-    auto lastPageTime = mi.firstTime + valuesPerPage() * mi.interval;
-    if (time >= mi.firstTime) {
-        auto dp = editPage<DataPage>(mi.lastPage);
-        auto i = mi.lastEntry;
-        if (lastTime == time) {
+    auto pageInterval = valuesPerPage() * mi.interval;
+    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+
+    // one interval past last time on page (aka first time on next page)
+    auto endPageTime = mi.firstPageTime + pageInterval; 
+
+    // updating historical value?
+    if (time <= lastValueTime) {
+        auto dpno = mi.lastPage;
+        if (time < mi.firstPageTime) {
+            auto mp = addr<MetricPage>(mi.infoPage);
+            auto firstValueTime = lastValueTime - mp->retention;
+            if (time < firstValueTime) {
+                s_perfOld += 1;
+                return;
+            }
+            auto off = (mi.firstPageTime - time) / pageInterval;
+            auto dpages = (mp->retention + pageInterval - mi.interval) / pageInterval;
+            uint32_t pagePos = (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
+            if (!radixFind(&dpno, mi.infoPage, pagePos)) {
+                auto dp = allocDataPage(id, mi.firstPageTime - off * pageInterval);
+                writePage(*dp, m_hdr->pageSize);
+                dpno = dp->hdr.pgno;
+                bool inserted = radixInsert(mi.infoPage, pagePos, dpno);
+                assert(inserted);
+            }
+        }
+        auto dp = editPage<DataPage>(dpno);
+        assert(time >= dp->firstPageTime);
+        auto ent = (time - dp->firstPageTime) / mi.interval;
+        assert(ent < (unsigned) valuesPerPage());
+        dp->values[ent] = value;
+        writePage(*dp, m_hdr->pageSize);
+        return;
+    } 
+    
+    //-----------------------------------------------------------------------
+    // after last known value
+
+    // If past the end of the page, check if it's past the end of all pages
+    if (time >= endPageTime) {
+        auto mp = addr<MetricPage>(mi.infoPage);
+        // further in the future than the retention period? remove all values
+        // and add as new initial value.
+        if (time >= lastValueTime + mp->retention) {
+            auto nmp = editPage<MetricPage>(mi.infoPage);
+            radixClear(nmp->hdr);
+            nmp->lastPage = 0;
+            nmp->lastPagePos = 0;
+            writePage(*nmp, m_hdr->pageSize);
+            mi.lastPage = 0;
+            mi.firstPageTime = {};
+            mi.lastPageValue = 0;
+            writeData(id, time, value);
+            return;
+        }
+    }
+
+    auto dp = editPage<DataPage>(mi.lastPage);
+    assert(mi.firstPageTime == dp->firstPageTime);
+    assert(mi.lastPageValue == dp->lastPageValue);
+    auto i = mi.lastPageValue;
+    for (;;) {
+        i += 1;
+        lastValueTime += mi.interval;
+        if (lastValueTime == endPageTime)
+            break;
+        if (lastValueTime == time) {
             dp->values[i] = value;
+            mi.lastPageValue = dp->lastPageValue = i;
             writePage(*dp, m_hdr->pageSize);
             return;
         }
-        i += 1;
-        lastTime += mi.interval;
-        for (; lastTime < lastPageTime; ++i, lastTime += mi.interval) {
-            if (lastTime == time) {
-                dp->values[i] = value;
-                mi.lastEntry = dp->lastEntry = i;
-                writePage(*dp, m_hdr->pageSize);
-                return;
-            }
-            dp->values[i] = NAN;
-        }
-    }        
+        dp->values[i] = NAN;
+    }
+    mi.lastPageValue = dp->lastPageValue = i;
+    writePage(*dp, m_hdr->pageSize);
+}
 
-    auto t = (time - mi.firstTime) / mi.interval;
-    (void) t;
 
-    //dp->values[dp->firstEntry]
+/****************************************************************************
+*
+*   Radix index
+*
+***/
+
+//===========================================================================
+static RadixData * radixData(PageHeader * hdr) {
+    if (hdr->type == kPageTypeMetric) {
+        return &reinterpret_cast<MetricPage *>(hdr)->rd;
+    } else {
+        assert(hdr->type == kPageTypeRadix);
+        return &reinterpret_cast<RadixPage *>(hdr)->rd;
+    }
 }
 
 //===========================================================================
-bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
-    int digits[10];
-    auto count = m_rd.convert(digits, size(digits), index);
-    count -= 1;
-    auto rp = addr<RadixPage>(root);
-    while (rp->height < count) {
-        auto dup = dupPage(*rp);
-        writePage(*dup);
+static const RadixData * radixData(const PageHeader * hdr) {
+    return radixData(const_cast<PageHeader *>(hdr));
+}
 
-        auto nrp = editPage(*rp);
-        nrp->height += 1;
-        memset(nrp->pages, 0, m_hdr->pageSize - offsetof(RadixPage, pages));
-        nrp->pages[0] = dup->hdr.pgno;
-        writePage(*nrp);
+//===========================================================================
+void TsdFile::radixFreePage(uint32_t pgno) {
+    auto rp = addr<RadixPage>(pgno);
+    for (int i = 0; i < rp->rd.numPages; ++i) {
+        if (uint32_t p = rp->rd.pages[i]) 
+            freePage(p);
     }
+}
+
+//===========================================================================
+void TsdFile::radixClear(PageHeader & hdr) {
+    auto rd = radixData(&hdr);
+    for (int i = 0; i < rd->numPages; ++i) {
+        if (uint32_t p = rd->pages[i]) {
+            freePage(p);
+            rd->pages[i] = 0;
+        }
+    }
+}
+
+//===========================================================================
+bool TsdFile::radixFind(uint32_t * out, uint32_t root, uint32_t index) {
+    auto hdr = addr<PageHeader>(root);
+    auto rd = radixData(hdr);
+    RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
+        ? m_rdMetric 
+        : m_rdIndex;
+
+    int digits[10];
+    size_t count = cvt.convert(digits, size(digits), index);
+    count -= 1;
+    if (rd->height < count)
+        return false;
     int * d = digits;
     while (count) {
-        int pos = (rp->height > count) ? 0 : *d;
-        if (!rp->pages[pos]) {
-            auto next = allocPage<RadixPage>();
-            next->height = rp->height - 1;
-            writePage(*next);
-            auto nrp = dupPage(*rp);
-            nrp->pages[pos] = next->hdr.pgno;
-            writePage(*nrp, m_hdr->pageSize);
-            assert(rp->pages[pos]);
-        }
-        rp = addr<RadixPage>(rp->pages[pos]);
-        if (rp->height == count) {
+        int pos = (rd->height > count) ? 0 : *d;
+        if (!rd->pages[pos])
+            return false;
+        hdr = addr<PageHeader>(rd->pages[pos]);
+        rd = radixData(hdr);
+        if (rd->height == count) {
             d += 1;
             count -= 1;
         }
     }
-    if (rp->pages[*d]) 
-        return false;
 
-    auto nrp = editPage(*rp);
-    nrp->pages[*d] = value;
-    writePage(*nrp, m_hdr->pageSize);
-    return true;
+    *out = rd->pages[*d];
+    return *out;
 }
 
 //===========================================================================
-size_t TsdFile::valuesPerPage() const {
-    return (m_hdr->pageSize - offsetof(DataPage, values)) 
-        / sizeof(float);
+bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
+    auto hdr = addr<PageHeader>(root);
+    auto rd = radixData(hdr);
+    RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
+        ? m_rdMetric 
+        : m_rdIndex;
+
+    int digits[10];
+    size_t count = cvt.convert(digits, size(digits), index);
+    count -= 1;
+    while (rd->height < count) {
+        auto mid = allocPage<RadixPage>();
+        mid->rd.height = rd->height;
+        mid->rd.numPages = (uint16_t) cvt.pageEntries();
+        memcpy(mid->rd.pages, rd->pages, rd->numPages * sizeof(rd->pages[0]));
+        writePage(*mid);
+
+        auto nhdr = editPage(*hdr);
+        auto nrd = radixData(nhdr.get());
+        nrd->height += 1;
+        memset(nrd->pages, 0, nrd->numPages * sizeof(nrd->pages[0]));
+        nrd->pages[0] = mid->hdr.pgno;
+        writePage(*nhdr);
+    }
+    int * d = digits;
+    while (count) {
+        int pos = (rd->height > count) ? 0 : *d;
+        if (!rd->pages[pos]) {
+            auto next = allocPage<RadixPage>();
+            next->rd.height = rd->height - 1;
+            writePage(*next);
+            auto nhdr = editPage(*hdr);
+            auto nrd = radixData(nhdr.get());
+            nrd->pages[pos] = next->hdr.pgno;
+            writePage(*nhdr, m_hdr->pageSize);
+            assert(rd->pages[pos]);
+        }
+        hdr = addr<PageHeader>(rd->pages[pos]);
+        rd = radixData(hdr);
+        if (rd->height == count) {
+            d += 1;
+            count -= 1;
+        }
+    }
+    if (rd->pages[*d]) 
+        return false;
+
+    auto nhdr = editPage(*hdr);
+    auto nrd = radixData(nhdr.get());
+    nrd->pages[*d] = value;
+    writePage(*nhdr, m_hdr->pageSize);
+    return true;
 }
+
+
+/****************************************************************************
+*
+*   Page management
+*
+***/
 
 //===========================================================================
 uint32_t TsdFile::allocPgno () {
@@ -523,6 +675,20 @@ void TsdFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
     auto fp = *addr<FreePage>(pgno);
     assert(fp.hdr.type != kPageTypeFree);
+    switch (fp.hdr.type) {
+    case kPageTypeRadix:
+        radixFreePage(pgno);
+        break;
+    case kPageTypeData:
+    case kPageTypeLeaf:
+        break;
+    case kPageTypeFree:
+        logMsgCrash() << "freePage: page already free";
+    default:
+    case kPageTypeMetric:
+    case kPageTypeBranch:
+        logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
+    }
     fp.hdr.type = kPageTypeFree;
     fp.nextPage = m_hdr->freePageRoot;
     writePage(fp);
@@ -585,6 +751,12 @@ const PageHeader * TsdFile::addr<PageHeader>(uint32_t pgno) const {
 template<typename T>
 void TsdFile::writePage(T & data, size_t count) const {
     writePage(data.hdr.pgno, &data, count);
+}
+
+//===========================================================================
+template<>
+void TsdFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
+    writePage(hdr.pgno, &hdr, count);
 }
 
 //===========================================================================

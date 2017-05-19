@@ -7,6 +7,7 @@
 
 using namespace std;
 using namespace Dim;
+namespace fs = std::experimental::filesystem;
 
 
 /****************************************************************************
@@ -16,6 +17,34 @@ using namespace Dim;
 ***/
 
 const char kVersion[] = "1.0";
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+static int internalTest() {
+    const char dat[] = "test.dat";
+    fs::remove(dat);
+    auto h = tsdOpen(dat);
+    uint32_t id;
+    unsigned count = 0;
+    count += tsdInsertMetric(id, h, "this.is.metric.1");
+    cout << "metrics inserted: " << count << endl;
+    tsdWriteData(h, id, Clock::now(), 1.0);
+    tsdClose(h);
+
+    h = tsdOpen(dat);
+    count = tsdInsertMetric(id, h, "this.is.metric.1");
+    cout << "metrics inserted: " << count << endl;
+    tsdWriteData(h, id, Clock::now(), 2.0);
+    tsdClose(h);
+
+    return EX_OK;
+}
 
 
 /****************************************************************************
@@ -36,15 +65,13 @@ void Application::onAppRun () {
     cli.header("load v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
     auto & dat = cli.opt<string>("[dat file]", "metrics.dat");
+    auto & test = cli.opt<bool>("test", true).desc("Run internal unit tests");
     if (!cli.parse(m_argc, m_argv))
         return appSignalUsageError();
+    if (*test)
+        return appSignalShutdown(internalTest());
 
     auto h = tsdOpen(*dat);
-    uint32_t id;
-    unsigned count = 0;
-    count += tsdInsertMetric(id, h, "this.is.metric.1");
-    cout << "metrics inserted: " << count << endl;
-    tsdWriteData(h, id, Clock::now(), 1.0);
     tsdClose(h);
 
     appSignalShutdown(EX_OK);
