@@ -69,22 +69,36 @@ size_t RadixDigits::convert(
     size_t value
 ) const {
     assert(maxDigits > m_divs.size());
+
     int * base = out;
-    size_t i = 0;
-    for (; i < m_divs.size(); ++i) {
-        if (value >= m_divs[i]) {
-            for (;;) {
-                auto v = value / m_divs[i];
-                *out++ = (int) v;
-                value %= m_divs[i];
-                if (++i == m_divs.size())
-                    break;
-            }
+    auto rents = rootEntries();
+    auto pents = pageEntries();
+
+    for (;;) {
+        *out++ = (int) (value % pents);
+        if (value < rents)
             break;
-        }
+        value /= pents;
     }
-    *out++ = (int) value;
+    reverse(base, out);
     return out - base;
+
+    //int * base = out;
+    //size_t i = 0;
+    //for (; i < m_divs.size(); ++i) {
+    //    if (value >= m_divs[i]) {
+    //        for (;;) {
+    //            auto v = value / m_divs[i];
+    //            *out++ = (int) v;
+    //            value %= m_divs[i];
+    //            if (++i == m_divs.size())
+    //                break;
+    //        }
+    //        break;
+    //    }
+    //}
+    //*out++ = (int) value;
+    //return out - base;
 }
 
 //===========================================================================

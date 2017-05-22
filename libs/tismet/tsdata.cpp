@@ -230,7 +230,7 @@ bool TsdFile::open(string_view name) {
         fileWriteWait(m_data, 0, &tmp, sizeof(tmp));
     }
     const char * base;
-    if (!fileOpenView(base, m_data)) 
+    if (!fileOpenView(base, m_data, 1024 * filePageSize())) 
         return false;
     m_hdr = (const MasterPage *)base;
     if (memcmp(
@@ -611,7 +611,10 @@ void TsdFile::radixErase(
             nhdr = editPage(*hdr);
             nrd = radixData(nhdr.get());
         }
-        auto lastPagePos = rpos + min(nrd->numPages - rpos, lastPos - firstPos);
+        auto lastPagePos = min(
+            (size_t) nrd->numPages, 
+            rpos + lastPos - firstPos
+        );
         for (auto i = rpos; i < lastPagePos; ++i, ++firstPos) {
             if (auto p = nrd->pages[i]) {
                 freePage(p);
@@ -686,14 +689,14 @@ bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
         mid->rd.height = rd->height;
         mid->rd.numPages = (uint16_t) cvt.pageEntries();
         memcpy(mid->rd.pages, rd->pages, rd->numPages * sizeof(rd->pages[0]));
-        writePage(*mid);
+        writePage(*mid, m_hdr->pageSize);
 
         auto nhdr = editPage(*hdr);
         auto nrd = radixData(nhdr.get());
         nrd->height += 1;
         memset(nrd->pages, 0, nrd->numPages * sizeof(nrd->pages[0]));
         nrd->pages[0] = mid->hdr.pgno;
-        writePage(*nhdr);
+        writePage(*nhdr, m_hdr->pageSize);
     }
     int * d = digits;
     while (count) {
@@ -711,10 +714,8 @@ bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
         }
         hdr = addr<PageHeader>(rd->pages[pos]);
         rd = radixData(hdr);
-        if (rd->height == count) {
-            d += 1;
-            count -= 1;
-        }
+        d += 1;
+        count -= 1;
     }
     if (rd->pages[*d]) 
         return false;
