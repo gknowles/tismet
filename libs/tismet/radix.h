@@ -26,7 +26,7 @@ public:
         size_t pageOffset = 64,
         size_t maxPage = std::numeric_limits<uint32_t>::max()
     );
-    size_t convert(int * digits, size_t maxDigits, uint32_t value) const;
+    size_t convert(int * digits, size_t maxDigits, size_t value) const;
     size_t maxDigits() const;
     size_t rootEntries() const;
     size_t pageEntries() const;

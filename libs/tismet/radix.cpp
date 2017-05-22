@@ -66,7 +66,7 @@ void RadixDigits::init(
 size_t RadixDigits::convert(
     int * out, 
     size_t maxDigits, 
-    uint32_t value
+    size_t value
 ) const {
     assert(maxDigits > m_divs.size());
     int * base = out;
@@ -75,7 +75,7 @@ size_t RadixDigits::convert(
         if (value >= m_divs[i]) {
             for (;;) {
                 auto v = value / m_divs[i];
-                *out++ = v;
+                *out++ = (int) v;
                 value %= m_divs[i];
                 if (++i == m_divs.size())
                     break;
@@ -83,7 +83,7 @@ size_t RadixDigits::convert(
             break;
         }
     }
-    *out++ = value;
+    *out++ = (int) value;
     return out - base;
 }
 

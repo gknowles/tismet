@@ -27,6 +27,8 @@ const char kVersion[] = "1.0";
 
 //===========================================================================
 static int internalTest() {
+    auto start = Clock::now();
+
     const char dat[] = "test.dat";
     fs::remove(dat);
     auto h = tsdOpen(dat);
@@ -34,13 +36,15 @@ static int internalTest() {
     unsigned count = 0;
     count += tsdInsertMetric(id, h, "this.is.metric.1");
     cout << "metrics inserted: " << count << endl;
-    tsdWriteData(h, id, Clock::now(), 1.0);
+    tsdWriteData(h, id, start, 1.0);
     tsdClose(h);
 
     h = tsdOpen(dat);
     count = tsdInsertMetric(id, h, "this.is.metric.1");
     cout << "metrics inserted: " << count << endl;
-    tsdWriteData(h, id, Clock::now(), 2.0);
+    tsdWriteData(h, id, start, 2.0);
+    tsdWriteData(h, id, start + 1min, 3.0);
+    tsdWriteData(h, id, start - 1min, 4.0);
     tsdClose(h);
 
     return EX_OK;

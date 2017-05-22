@@ -15,10 +15,10 @@ using namespace Dim;
 *
 ***/
 
-const unsigned kMaxMetricNameLen = 128;
+const unsigned kMaxMetricNameLen = 64;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
-const unsigned kDefaultPageSize = 256;
+const unsigned kDefaultPageSize = 128;
 static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
 const unsigned kDataFileSig[] = { 
@@ -158,9 +158,17 @@ private:
     void writePage(uint32_t pgno, const void * ptr, size_t count) const;
 
     void radixClear(PageHeader & hdr);
+    void radixErase(PageHeader & hdr, size_t firstPos, size_t lastPos);
     void radixFreePage(uint32_t pgno);
-    bool radixFind(uint32_t * out, uint32_t root, uint32_t index);
-    bool radixInsert(uint32_t root, uint32_t index, uint32_t value);
+    bool radixFind(uint32_t * out, uint32_t root, size_t pos);
+    bool radixInsert(uint32_t root, size_t pos, uint32_t value);
+    bool radixFind(
+        PageHeader const ** hdr, 
+        RadixData const ** rd, 
+        size_t * rpos,
+        uint32_t root, 
+        size_t pos
+    );
 
     unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
     size_t valuesPerPage() const;
@@ -338,6 +346,8 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     mp->id = id;
     mp->interval = 1min;
     mp->retention = 30min;
+    mp->rd.height = 0;
+    mp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
     writePage(*mp);
 
     auto & mi = m_metricInfo[id];
@@ -349,7 +359,7 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     if (!m_hdr->metricInfoRoot) {
         auto rp = allocPage<RadixPage>();
         rp->rd.height = 0;
-        rp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
+        rp->rd.numPages = (uint16_t) m_rdIndex.rootEntries();
         writePage(*rp);
         auto masp = *m_hdr;
         masp.metricInfoRoot = rp->hdr.pgno;
@@ -396,6 +406,8 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
 
     auto count = valuesPerPage();
 
+    // ensure all info about the last page is loaded, the hope is that almost
+    // all updates are to the last page.
     if (!mi.lastPage) {
         auto mp = editPage<MetricPage>(mi.infoPage);
 
@@ -434,11 +446,14 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
                 s_perfOld += 1;
                 return;
             }
-            auto off = (mi.firstPageTime - time) / pageInterval;
-            auto dpages = (mp->retention + pageInterval - mi.interval) / pageInterval;
-            uint32_t pagePos = (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
+            auto off = (mi.firstPageTime - time) / pageInterval + 1;
+            auto dpages = (mp->retention + pageInterval - mi.interval) 
+                / pageInterval;
+            auto pagePos = 
+                (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
             if (!radixFind(&dpno, mi.infoPage, pagePos)) {
-                auto dp = allocDataPage(id, mi.firstPageTime - off * pageInterval);
+                auto pageTime = mi.firstPageTime - off * pageInterval;
+                auto dp = allocDataPage(id, pageTime);
                 writePage(*dp, m_hdr->pageSize);
                 dpno = dp->hdr.pgno;
                 bool inserted = radixInsert(mi.infoPage, pagePos, dpno);
@@ -476,6 +491,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         }
     }
 
+    // update last page
     auto dp = editPage<DataPage>(mi.lastPage);
     assert(mi.firstPageTime == dp->firstPageTime);
     assert(mi.lastPageValue == dp->lastPageValue);
@@ -495,6 +511,40 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     }
     mi.lastPageValue = dp->lastPageValue = i;
     writePage(*dp, m_hdr->pageSize);
+
+    //-----------------------------------------------------------------------
+    // value is after last page
+
+    // delete pages between last page and the one the value is on
+    auto num = (time - endPageTime) / pageInterval;
+    auto mp = editPage<MetricPage>(mi.infoPage);
+    auto numPages = mp->retention / pageInterval;
+    auto first = (mp->lastPagePos + 1) % numPages;
+    auto last = first + num;
+    if (num) {
+        if (last <= numPages) {
+            radixErase(mp->hdr, first, last);
+        } else {
+            radixErase(mp->hdr, first, numPages);
+            radixErase(mp->hdr, 0, last % numPages);
+        }
+    }
+
+    // update last page references
+    mp->lastPagePos = (unsigned) last;
+    radixFind(&mp->lastPage, mi.infoPage, last);
+    writePage(*mp, m_hdr->pageSize);
+
+    dp = editPage<DataPage>(mp->lastPage);
+    dp->lastPageValue = 0;
+    writePage(*dp);
+
+    mi.lastPage = mp->lastPage;
+    mi.firstPageTime = {};
+    mi.lastPageValue = 0;
+
+    // write value to new last page
+    writeData(id, time, value);
 }
 
 
@@ -540,37 +590,88 @@ void TsdFile::radixClear(PageHeader & hdr) {
 }
 
 //===========================================================================
-bool TsdFile::radixFind(uint32_t * out, uint32_t root, uint32_t index) {
-    auto hdr = addr<PageHeader>(root);
-    auto rd = radixData(hdr);
-    RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
+void TsdFile::radixErase(
+    PageHeader & rhdr, 
+    size_t firstPos, 
+    size_t lastPos
+) {
+    assert(firstPos <= lastPos);
+    while (firstPos < lastPos) {
+        const PageHeader * hdr;
+        const RadixData * rd;
+        size_t rpos;
+        if (!radixFind(&hdr, &rd, &rpos, rhdr.pgno, firstPos))
+            return;
+
+        unique_ptr<PageHeader> nhdr;
+        RadixData * nrd;
+        if (hdr == &rhdr) {
+            nrd = radixData(&rhdr);
+        } else {
+            nhdr = editPage(*hdr);
+            nrd = radixData(nhdr.get());
+        }
+        auto lastPagePos = rpos + min(nrd->numPages - rpos, lastPos - firstPos);
+        for (auto i = rpos; i < lastPagePos; ++i, ++firstPos) {
+            if (auto p = nrd->pages[i]) {
+                freePage(p);
+                nrd->pages[i] = 0;
+            }
+        }
+        if (nhdr)
+            writePage(*nhdr, m_hdr->pageSize);
+    }
+}
+
+//===========================================================================
+bool TsdFile::radixFind(
+    PageHeader const ** hdr, 
+    RadixData const ** rd, 
+    size_t * rpos,
+    uint32_t root, 
+    size_t pos
+) {
+    *hdr = addr<PageHeader>(root);
+    *rd = radixData(*hdr);
+    RadixDigits & cvt = ((*hdr)->type == kPageTypeMetric) 
         ? m_rdMetric 
         : m_rdIndex;
 
     int digits[10];
-    size_t count = cvt.convert(digits, size(digits), index);
+    size_t count = cvt.convert(digits, size(digits), pos);
     count -= 1;
-    if (rd->height < count)
+    if ((*rd)->height < count)
         return false;
     int * d = digits;
     while (count) {
-        int pos = (rd->height > count) ? 0 : *d;
-        if (!rd->pages[pos])
+        int pos = ((*rd)->height > count) ? 0 : *d;
+        if (!(*rd)->pages[pos])
             return false;
-        hdr = addr<PageHeader>(rd->pages[pos]);
-        rd = radixData(hdr);
-        if (rd->height == count) {
+        *hdr = addr<PageHeader>((*rd)->pages[pos]);
+        *rd = radixData(*hdr);
+        if ((*rd)->height == count) {
             d += 1;
             count -= 1;
         }
     }
 
-    *out = rd->pages[*d];
+    *rpos = *d;
+    return true;
+}
+
+//===========================================================================
+bool TsdFile::radixFind(uint32_t * out, uint32_t root, size_t pos) {
+    const PageHeader * hdr;
+    const RadixData * rd;
+    size_t rpos;
+    if (!radixFind(&hdr, &rd, &rpos, root, pos))
+        return false;
+    *out = rd->pages[rpos];
     return *out;
 }
 
 //===========================================================================
-bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
+bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
     auto hdr = addr<PageHeader>(root);
     auto rd = radixData(hdr);
     RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
@@ -578,7 +679,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
         : m_rdIndex;
 
     int digits[10];
-    size_t count = cvt.convert(digits, size(digits), index);
+    size_t count = cvt.convert(digits, size(digits), pos);
     count -= 1;
     while (rd->height < count) {
         auto mid = allocPage<RadixPage>();
@@ -600,6 +701,7 @@ bool TsdFile::radixInsert(uint32_t root, uint32_t index, uint32_t value) {
         if (!rd->pages[pos]) {
             auto next = allocPage<RadixPage>();
             next->rd.height = rd->height - 1;
+            next->rd.numPages = (uint16_t) cvt.pageEntries();
             writePage(*next);
             auto nhdr = editPage(*hdr);
             auto nrd = radixData(nhdr.get());
