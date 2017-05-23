@@ -12,6 +12,9 @@
 # tests/radix/pch.cpp
 # tests/radix/pch.h
 # tests/radix/radixtest.cpp
+# tools/dump/dump.cpp
+# tools/dump/pch.cpp
+# tools/dump/pch.h
 # tools/load/load.cpp
 # tools/load/pch.cpp
 # tools/load/pch.h

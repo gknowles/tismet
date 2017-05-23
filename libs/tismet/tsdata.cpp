@@ -130,6 +130,7 @@ public:
     void writeData(uint32_t id, TimePoint time, float value);
 
     bool findMetric(uint32_t & out, const string & name) const;
+    void dump(ostream & os) const;
 
 private:
     bool loadMetricInfo (uint32_t pgno);
@@ -254,6 +255,14 @@ bool TsdFile::open(string_view name) {
 
     s_perfCount += (unsigned) m_metricInfo.size();
     return true;
+}
+
+//===========================================================================
+void TsdFile::dump(ostream & os) const {
+    for (auto && mi : m_metricInfo) {
+        auto mp = addr<MetricPage>(mi.infoPage);
+        os << mp->name << endl;
+    }
 }
 
 //===========================================================================
@@ -910,4 +919,11 @@ void tsdWriteData(TsdFileHandle h, uint32_t id, TimePoint time, float value) {
     auto * tsd = s_files.find(h);
     assert(tsd);
     return tsd->writeData(id, time, value);
+}
+
+//===========================================================================
+void tsdDump(std::ostream & os, TsdFileHandle h) {
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    tsd->dump(os);
 }

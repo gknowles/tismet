@@ -27,3 +27,5 @@ void tsdWriteData(
     Dim::TimePoint time, 
     float value
 );
+
+void tsdDump(std::ostream & os, TsdFileHandle file);
