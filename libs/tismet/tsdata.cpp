@@ -133,6 +133,8 @@ public:
     void dump(ostream & os) const;
 
 private:
+    void dump(ostream & os, const MetricPage & mp, uint32_t pgno) const;
+
     bool loadMetricInfo (uint32_t pgno);
     bool loadFreePages ();
 
@@ -258,10 +260,54 @@ bool TsdFile::open(string_view name) {
 }
 
 //===========================================================================
+void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
+    if (!pgno)
+        return;
+
+    auto p = addr<PageHeader>(pgno);
+    if (p->type == kPageTypeRadix) {
+        auto rp = reinterpret_cast<const RadixPage*>(p);
+        for (int i = 0; i < rp->rd.numPages; ++i)
+            dump(os, mp, rp->rd.pages[i]);
+        return;
+    }
+
+    assert(p->type == kPageTypeData);
+    auto dp = reinterpret_cast<const DataPage*>(p);
+    auto time = dp->firstPageTime;
+    auto pageInterval = valuesPerPage() * mp.interval;
+    auto lastValueTime = time + dp->lastPageValue * mp.interval;
+    auto endPageTime = time + pageInterval; 
+    int i = 0;
+    for (; time < lastValueTime; ++i, time += mp.interval) {
+        if (!isnan(dp->values[i])) {
+            os << mp.name << ' ' 
+                << dp->values[i] << ' ' 
+                << Clock::to_time_t(time) << '\n';
+        }
+    }
+    if (time == endPageTime)
+        return;
+    time = lastValueTime - mp.retention;
+    auto numValues = mp.retention / mp.interval;
+    auto numPages = (numValues - 1) / valuesPerPage() + 1;
+    auto gap = numPages * valuesPerPage() - numValues;
+    i += (int) gap;
+    for (; i < valuesPerPage(); ++i, time += mp.interval) {
+        if (!isnan(dp->values[i])) {
+            os << mp.name << ' ' 
+                << dp->values[i] << ' ' 
+                << Clock::to_time_t(time) << '\n';
+        }
+    }
+}
+
+//===========================================================================
 void TsdFile::dump(ostream & os) const {
     for (auto && mi : m_metricInfo) {
         auto mp = addr<MetricPage>(mi.infoPage);
-        os << mp->name << endl;
+        for (int i = 0; i < mp->rd.numPages; ++i)
+            dump(os, *mp, mp->rd.pages[i]);
     }
 }
 
