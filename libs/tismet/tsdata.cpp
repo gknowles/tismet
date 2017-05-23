@@ -279,7 +279,7 @@ void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
     auto lastValueTime = time + dp->lastPageValue * mp.interval;
     auto endPageTime = time + pageInterval; 
     int i = 0;
-    for (; time < lastValueTime; ++i, time += mp.interval) {
+    for (; time <= lastValueTime; ++i, time += mp.interval) {
         if (!isnan(dp->values[i])) {
             os << mp.name << ' ' 
                 << dp->values[i] << ' ' 
@@ -509,6 +509,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
             if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.firstPageTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
+                dp->lastPageValue = (uint16_t) valuesPerPage() - 1;
                 writePage(*dp, m_hdr->pageSize);
                 dpno = dp->hdr.pgno;
                 bool inserted = radixInsert(mi.infoPage, pagePos, dpno);

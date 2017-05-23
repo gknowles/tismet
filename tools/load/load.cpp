@@ -45,6 +45,8 @@ static int internalTest() {
     tsdWriteData(h, id, start, 2.0);
     tsdWriteData(h, id, start + 1min, 3.0);
     tsdWriteData(h, id, start - 1min, 4.0);
+    tsdWriteData(h, id, start + 20min, 5.0);
+    tsdWriteData(h, id, start + 21min, 6.0);
     tsdClose(h);
 
     return EX_OK;
