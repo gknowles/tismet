@@ -574,7 +574,8 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     // delete pages between last page and the one the value is on
     auto num = (time - endPageTime) / pageInterval;
     auto mp = editPage<MetricPage>(mi.infoPage);
-    auto numPages = mp->retention / pageInterval;
+    auto numValues = mp->retention / mp->interval;
+    auto numPages = (numValues - 1) / valuesPerPage() + 1;
     auto first = (mp->lastPagePos + 1) % numPages;
     auto last = first + num;
     if (num) {
@@ -702,13 +703,14 @@ bool TsdFile::radixFind(
     if ((*rd)->height < count)
         return false;
     int * d = digits;
-    while (count) {
-        int pos = ((*rd)->height > count) ? 0 : *d;
+    while (auto height = (*rd)->height) {
+        int pos = (height > count) ? 0 : *d;
         if (!(*rd)->pages[pos])
             return false;
         *hdr = addr<PageHeader>((*rd)->pages[pos]);
         *rd = radixData(*hdr);
-        if ((*rd)->height == count) {
+        assert((*rd)->height == height - 1);
+        if (height == count) {
             d += 1;
             count -= 1;
         }
@@ -832,8 +834,10 @@ unique_ptr<T> TsdFile::allocPage(uint32_t pgno) const {
 //===========================================================================
 void TsdFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
-    auto fp = *addr<FreePage>(pgno);
-    assert(fp.hdr.type != kPageTypeFree);
+    auto p = addr<PageHeader>(pgno);
+    assert(p->type != kPageTypeFree);
+    FreePage fp;
+    fp.hdr = *p;
     switch (fp.hdr.type) {
     case kPageTypeRadix:
         radixFreePage(pgno);
