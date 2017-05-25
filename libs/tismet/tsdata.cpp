@@ -18,7 +18,7 @@ using namespace Dim;
 const unsigned kMaxMetricNameLen = 64;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
-const unsigned kDefaultPageSize = 128;
+const unsigned kDefaultPageSize = 4096;
 static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
 const unsigned kDataFileSig[] = { 
@@ -125,7 +125,7 @@ class TsdFile {
 public:
     ~TsdFile();
 
-    bool open(string_view name);
+    bool open(string_view name, size_t pageSize);
     bool insertMetric(uint32_t & out, const string & name);
     void writeData(uint32_t id, TimePoint time, float value);
 
@@ -220,7 +220,11 @@ TsdFile::~TsdFile () {
 }
 
 //===========================================================================
-bool TsdFile::open(string_view name) {
+bool TsdFile::open(string_view name, size_t pageSize) {
+    assert(pageSize == pow2Ceil(pageSize));
+    if (!pageSize)
+        pageSize = kDefaultPageSize;
+
     m_data = fileOpen(name, File::fCreat | File::fReadWrite);
     if (!m_data)
         return false;
@@ -228,7 +232,7 @@ bool TsdFile::open(string_view name) {
         MasterPage tmp = {};
         tmp.hdr.type = kPageTypeMaster;
         memcpy(tmp.signature, kDataFileSig, sizeof(tmp.signature));
-        tmp.pageSize = kDefaultPageSize;
+        tmp.pageSize = (unsigned) pageSize;
         tmp.numPages = 1;
         fileWriteWait(m_data, 0, &tmp, sizeof(tmp));
     }
@@ -273,11 +277,14 @@ void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
     }
 
     assert(p->type == kPageTypeData);
+    auto pageValues = valuesPerPage();
     auto dp = reinterpret_cast<const DataPage*>(p);
     auto time = dp->firstPageTime;
-    auto pageInterval = valuesPerPage() * mp.interval;
+    auto pageInterval = pageValues * mp.interval;
     auto lastValueTime = time + dp->lastPageValue * mp.interval;
-    auto endPageTime = time + pageInterval; 
+    auto endPageTime = time + pageInterval;
+    if (lastValueTime == endPageTime)
+        lastValueTime -= mp.interval;
     int i = 0;
     for (; time <= lastValueTime; ++i, time += mp.interval) {
         if (!isnan(dp->values[i])) {
@@ -288,12 +295,12 @@ void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
     }
     if (time == endPageTime)
         return;
-    time = lastValueTime - mp.retention;
+    time = lastValueTime - mp.retention + mp.interval;
     auto numValues = mp.retention / mp.interval;
-    auto numPages = (numValues - 1) / valuesPerPage() + 1;
-    auto gap = numPages * valuesPerPage() - numValues;
+    auto numPages = (numValues - 1) / pageValues + 1;
+    auto gap = numPages * pageValues - numValues;
     i += (int) gap;
-    for (; i < valuesPerPage(); ++i, time += mp.interval) {
+    for (; i < pageValues; ++i, time += mp.interval) {
         if (!isnan(dp->values[i])) {
             os << mp.name << ' ' 
                 << dp->values[i] << ' ' 
@@ -593,12 +600,13 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     writePage(*mp, m_hdr->pageSize);
 
     dp = editPage<DataPage>(mp->lastPage);
+    dp->firstPageTime = endPageTime;
     dp->lastPageValue = 0;
     writePage(*dp);
 
     mi.lastPage = mp->lastPage;
-    mi.firstPageTime = {};
-    mi.lastPageValue = 0;
+    mi.firstPageTime = dp->firstPageTime;
+    mi.lastPageValue = dp->lastPageValue;
 
     // write value to new last page
     writeData(id, time, value);
@@ -937,9 +945,9 @@ void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
 ***/
 
 //===========================================================================
-TsdFileHandle tsdOpen(string_view name) {
+TsdFileHandle tsdOpen(string_view name, size_t pageSize) {
     auto tsd = make_unique<TsdFile>();
-    if (!tsd->open(name))
+    if (!tsd->open(name, pageSize))
         return TsdFileHandle{};
 
     auto h = s_files.insert(tsd.release());

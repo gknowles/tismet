@@ -15,7 +15,7 @@
 
 struct TsdFileHandle : Dim::HandleBase {};
 
-TsdFileHandle tsdOpen(std::string_view name);
+TsdFileHandle tsdOpen(std::string_view name, size_t pageSize = 0);
 
 void tsdClose(TsdFileHandle file);
 
@@ -27,5 +27,15 @@ void tsdWriteData(
     Dim::TimePoint time, 
     float value
 );
+
+// Removes all existing data when retention or interval are changed.
+void tsdUpdateMetric(
+    TsdFileHandle h,
+    uint32_t id,
+    Dim::Duration retention,
+    Dim::Duration interval
+);
+
+void tsdEraseMetric(TsdFileHandle h, uint32_t id);
 
 void tsdDump(std::ostream & os, TsdFileHandle file);
