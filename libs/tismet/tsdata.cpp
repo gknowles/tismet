@@ -127,6 +127,9 @@ public:
 
     bool open(string_view name, size_t pageSize);
     bool insertMetric(uint32_t & out, const string & name);
+    void eraseMetric(uint32_t id);
+    void updateMetric(uint32_t id, Duration retention, Duration interval);
+    
     void writeData(uint32_t id, TimePoint time, float value);
 
     bool findMetric(uint32_t & out, const string & name) const;
@@ -319,6 +322,25 @@ void TsdFile::dump(ostream & os) const {
     }
 }
 
+
+/****************************************************************************
+*
+*   Metric index
+*
+***/
+
+//===========================================================================
+void TsdFile::metricFreePage (uint32_t pgno) {
+    auto mp = addr<MetricPage>(pgno);
+    for (int i = 0; i < mp->rd.numPages; ++i) {
+        if (auto pn = mp->rd.pages[i])
+            freePage(pn);
+    }
+    auto num = m_metricIds.erase(mp->name);
+    assert(num == 1);
+    m_metricInfo[mp->id] = {};
+}
+
 //===========================================================================
 bool TsdFile::loadMetricInfo (uint32_t pgno) {
     if (!pgno)
@@ -350,37 +372,6 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
     }
 
     return false;
-}
-
-//===========================================================================
-void TsdFile::metricFreePage (uint32_t pgno) {
-    auto mp = addr<MetricPage>(pgno);
-    for (int i = 0; i < mp->rd.numPages; ++i) {
-        if (auto pn = mp->rd.pages[i])
-            freePage(pn);
-    }
-    auto num = m_metricIds.erase(mp->name);
-    assert(num == 1);
-    m_metricInfo[mp->id] = {};
-}
-
-//===========================================================================
-bool TsdFile::loadFreePages () {
-    auto pgno = m_hdr->freePageRoot;
-    while (pgno) {
-        auto p = addr<PageHeader>(pgno);
-        if (!p || p->type != kPageTypeFree)
-            return false;
-        if (m_metricInfo.size() <= pgno)
-            m_metricInfo.resize(pgno + 1);
-        if (m_metricInfo[pgno].lastPage)
-            return false;
-        m_metricInfo[pgno].lastPage = pgno;
-        m_freeIds.push(pgno);
-        auto fp = reinterpret_cast<const FreePage*>(p);
-        pgno = fp->nextPage;
-    }
-    return true;
 }
 
 //===========================================================================
@@ -444,6 +435,33 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     assert(inserted);
     s_perfCount += 1;
     return true;
+}
+
+//===========================================================================
+void TsdFile::eraseMetric(uint32_t id) {
+    if (uint32_t pgno = m_metricInfo[id].infoPage) 
+        metricFreePage(pgno);
+}
+
+//===========================================================================
+void TsdFile::updateMetric(
+    uint32_t id, 
+    Duration retention, 
+    Duration interval
+) {
+    auto & mi = m_metricInfo[id];
+    auto mp = addr<MetricPage>(mi.infoPage);
+    if (mp->retention == retention && mp->interval == interval)
+        return;
+
+    auto nmp = editPage(*mp);
+    radixClear(nmp->hdr);
+    nmp->lastPage = 0;
+    nmp->lastPagePos = 0;
+    writePage(*nmp, m_hdr->pageSize);
+    mi.lastPage = 0;
+    mi.firstPageTime = {};
+    mi.lastPageValue = 0;
 }
 
 
@@ -853,6 +871,25 @@ unique_ptr<T> TsdFile::allocPage(uint32_t pgno) const {
 }
 
 //===========================================================================
+bool TsdFile::loadFreePages () {
+    auto pgno = m_hdr->freePageRoot;
+    while (pgno) {
+        auto p = addr<PageHeader>(pgno);
+        if (!p || p->type != kPageTypeFree)
+            return false;
+        if (m_metricInfo.size() <= pgno)
+            m_metricInfo.resize(pgno + 1);
+        if (m_metricInfo[pgno].lastPage)
+            return false;
+        m_metricInfo[pgno].lastPage = pgno;
+        m_freeIds.push(pgno);
+        auto fp = reinterpret_cast<const FreePage*>(p);
+        pgno = fp->nextPage;
+    }
+    return true;
+}
+
+//===========================================================================
 void TsdFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
     auto p = addr<PageHeader>(pgno);
@@ -986,6 +1023,25 @@ bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, string_view name) {
     auto * tsd = s_files.find(h);
     assert(tsd);
     return tsd->insertMetric(out, string(name));
+}
+
+//===========================================================================
+void tsdEraseMetric(TsdFileHandle h, uint32_t id) {
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    return tsd->eraseMetric(id);
+}
+
+//===========================================================================
+void tsdUpdateMetric(
+    TsdFileHandle h,
+    uint32_t id,
+    Duration retention,
+    Duration interval
+) {
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    return tsd->updateMetric(id, retention, interval);
 }
 
 //===========================================================================

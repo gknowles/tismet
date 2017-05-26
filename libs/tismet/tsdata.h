@@ -21,12 +21,7 @@ void tsdClose(TsdFileHandle file);
 
 bool tsdFindMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
 bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
-void tsdWriteData(
-    TsdFileHandle h, 
-    uint32_t id, 
-    Dim::TimePoint time, 
-    float value
-);
+void tsdEraseMetric(TsdFileHandle h, uint32_t id);
 
 // Removes all existing data when retention or interval are changed.
 void tsdUpdateMetric(
@@ -36,6 +31,11 @@ void tsdUpdateMetric(
     Dim::Duration interval
 );
 
-void tsdEraseMetric(TsdFileHandle h, uint32_t id);
+void tsdWriteData(
+    TsdFileHandle h, 
+    uint32_t id, 
+    Dim::TimePoint time, 
+    float value
+);
 
 void tsdDump(std::ostream & os, TsdFileHandle file);
