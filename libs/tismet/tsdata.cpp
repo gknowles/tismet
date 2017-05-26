@@ -136,15 +136,16 @@ private:
     void dump(ostream & os, const MetricPage & mp, uint32_t pgno) const;
 
     bool loadMetricInfo (uint32_t pgno);
+    void metricFreePage(uint32_t pgno);
+
     bool loadFreePages ();
-
-    template<typename T> const T * addr(uint32_t pgno) const;
-    template<> const PageHeader * addr<PageHeader>(uint32_t pgno) const;
-
     uint32_t allocPgno();
     template<typename T> unique_ptr<T> allocPage();
     void freePage(uint32_t pgno);
     template<typename T> unique_ptr<T> allocPage(uint32_t pgno) const;
+
+    template<typename T> const T * addr(uint32_t pgno) const;
+    template<> const PageHeader * addr<PageHeader>(uint32_t pgno) const;
 
     // get copy of page to update and then write
     template<typename T> unique_ptr<T> editPage(uint32_t pgno) const;
@@ -349,6 +350,18 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
     }
 
     return false;
+}
+
+//===========================================================================
+void TsdFile::metricFreePage (uint32_t pgno) {
+    auto mp = addr<MetricPage>(pgno);
+    for (int i = 0; i < mp->rd.numPages; ++i) {
+        if (auto pn = mp->rd.pages[i])
+            freePage(pn);
+    }
+    auto num = m_metricIds.erase(mp->name);
+    assert(num == 1);
+    m_metricInfo[mp->id] = {};
 }
 
 //===========================================================================
@@ -847,6 +860,9 @@ void TsdFile::freePage(uint32_t pgno) {
     FreePage fp;
     fp.hdr = *p;
     switch (fp.hdr.type) {
+    case kPageTypeMetric:
+        metricFreePage(pgno);
+        break;
     case kPageTypeRadix:
         radixFreePage(pgno);
         break;
@@ -856,7 +872,6 @@ void TsdFile::freePage(uint32_t pgno) {
     case kPageTypeFree:
         logMsgCrash() << "freePage: page already free";
     default:
-    case kPageTypeMetric:
     case kPageTypeBranch:
         logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
     }
