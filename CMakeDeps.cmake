@@ -47,7 +47,6 @@
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
 # vendor/dimapp/libs/core/list.h
-# vendor/dimapp/libs/core/listmbr.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
 # vendor/dimapp/libs/core/pch.cpp
@@ -62,6 +61,7 @@
 # vendor/dimapp/libs/core/task.h
 # vendor/dimapp/libs/core/tempheap.cpp
 # vendor/dimapp/libs/core/tempheap.h
+# vendor/dimapp/libs/core/threadint.h
 # vendor/dimapp/libs/core/time.cpp
 # vendor/dimapp/libs/core/time.h
 # vendor/dimapp/libs/core/timeint.h
@@ -71,6 +71,8 @@
 # vendor/dimapp/libs/core/tokentable.cpp
 # vendor/dimapp/libs/core/tokentable.h
 # vendor/dimapp/libs/core/types.h
+# vendor/dimapp/libs/core/uset.cpp
+# vendor/dimapp/libs/core/uset.h
 # vendor/dimapp/libs/core/util.cpp
 # vendor/dimapp/libs/core/util.h
 # vendor/dimapp/libs/cppconf/compiler/visualc.h
@@ -138,6 +140,7 @@
 # vendor/dimapp/libs/win/winsockconn.cpp
 # vendor/dimapp/libs/win/winsockint.h
 # vendor/dimapp/libs/win/winsync.cpp
+# vendor/dimapp/libs/win/winthread.cpp
 # vendor/dimapp/libs/win/wintime.cpp
 # vendor/dimapp/libs/wintls/pch.cpp
 # vendor/dimapp/libs/wintls/pch.h
