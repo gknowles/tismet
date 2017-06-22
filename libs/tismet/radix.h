@@ -27,7 +27,6 @@ public:
         size_t maxPage = std::numeric_limits<uint32_t>::max()
     );
     size_t convert(int * digits, size_t maxDigits, size_t value) const;
-    size_t maxDigits() const;
     size_t rootEntries() const;
     size_t pageEntries() const;
 
@@ -36,8 +35,6 @@ private:
         std::ostream & os, 
         const RadixDigits & rd
     );
-
-    std::vector<uint32_t> m_divs;
 
     size_t m_pageSize{0};   // page size - offset = space for radix list 
     size_t m_rootOffset{0}; // offset, in sizeof(pgno), to radix list on root

@@ -66,12 +66,16 @@ struct FreePage {
 struct LeafPage {
     static const PageType type = kPageTypeLeaf;
     PageHeader hdr;
+
+    // EXTENDS BEYOND END OF STRUCT
     char entries[1];
 };
 
 struct RadixData {
     uint16_t height;
     uint16_t numPages;
+
+    // EXTENDS BEYOND END OF STRUCT
     uint32_t pages[1];
 };
 
@@ -79,7 +83,7 @@ struct RadixPage {
     static const PageType type = kPageTypeRadix;
     PageHeader hdr;
 
-    // MUST BE LAST DATA MEMBER
+    // EXTENDS BEYOND END OF STRUCT
     RadixData rd; 
 };
 
@@ -93,7 +97,7 @@ struct MetricPage {
     uint32_t lastPage;
     unsigned lastPagePos;
 
-    // MUST BE LAST DATA MEMBER
+    // EXTENDS BEYOND END OF STRUCT
     RadixData rd; 
 };
 
@@ -109,7 +113,8 @@ struct DataPage {
     // either in the not yet populated future or (because it's a giant 
     // discontinuous ring buffer) in the distant past.
     uint16_t lastPageValue; 
-    
+
+    // EXTENDS BEYOND END OF STRUCT
     float values[1];
 };
 

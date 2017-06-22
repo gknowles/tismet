@@ -11,20 +11,6 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Private
-*
-***/
-
-
-/****************************************************************************
-*
-*   Variables
-*
-***/
-
-
-/****************************************************************************
-*
 *   RadixDigits
 *
 ***/
@@ -53,13 +39,6 @@ void RadixDigits::init(
     m_rootOffset = rootOffset;
     m_pageOffset = pageOffset;
     m_maxPage = maxPage;
-    auto rents = rootEntries();
-    auto pents = pageEntries();
-    size_t m = 1;
-    while (m * rents < maxPage) {
-        m *= pents;
-        m_divs.insert(m_divs.begin(), (uint32_t) m);
-    }
 }
 
 //===========================================================================
@@ -68,13 +47,12 @@ size_t RadixDigits::convert(
     size_t maxDigits, 
     size_t value
 ) const {
-    assert(maxDigits > m_divs.size());
-
     int * base = out;
     auto rents = rootEntries();
     auto pents = pageEntries();
 
-    for (;;) {
+    for (size_t i = 0;; ++i) {
+        assert(i < maxDigits);
         *out++ = (int) (value % pents);
         if (value < rents)
             break;
@@ -82,28 +60,6 @@ size_t RadixDigits::convert(
     }
     reverse(base, out);
     return out - base;
-
-    //int * base = out;
-    //size_t i = 0;
-    //for (; i < m_divs.size(); ++i) {
-    //    if (value >= m_divs[i]) {
-    //        for (;;) {
-    //            auto v = value / m_divs[i];
-    //            *out++ = (int) v;
-    //            value %= m_divs[i];
-    //            if (++i == m_divs.size())
-    //                break;
-    //        }
-    //        break;
-    //    }
-    //}
-    //*out++ = (int) value;
-    //return out - base;
-}
-
-//===========================================================================
-size_t RadixDigits::maxDigits() const {
-    return m_divs.size();
 }
 
 //===========================================================================
@@ -126,11 +82,6 @@ size_t RadixDigits::pageEntries() const {
 //===========================================================================
 ostream & operator<< (ostream & os, const RadixDigits & rd) {
     os << rd.m_pageSize << ' ' << rd.m_rootOffset << ' ' 
-        << rd.m_pageOffset << ' ';
-    for (int i = 0; i < rd.m_divs.size(); ++i) {
-        if (i) os << ':';
-        os << rd.m_divs[i];
-    }
-    os << ' ' << rd.m_maxPage;
+        << rd.m_pageOffset << ' ' << rd.m_maxPage;
     return os;
 }
