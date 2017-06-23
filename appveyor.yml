@@ -33,3 +33,4 @@ artifacts:
 
 test_script:
     - bin\radix --test
+    - bin\tsdata

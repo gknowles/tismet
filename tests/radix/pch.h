@@ -8,7 +8,7 @@
 #include "cli/cli.h"
 #include "core/core.h"
 
-#include "tismet/radix.h"
+#include "data/radix.h"
 
 #include <array>
 #include <iostream>

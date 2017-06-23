@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// load.cpp - tismet load
+// tsdtest.cpp - tismet load
 #include "pch.h"
 #pragma hdrstop
 
@@ -16,7 +16,11 @@ namespace fs = std::experimental::filesystem;
 *
 ***/
 
-const char kVersion[] = "1.0";
+#define EXPECT(...)                                                         \
+    if (!bool(__VA_ARGS__)) {                                               \
+        logMsgError() << "Line " << (line ? line : __LINE__) << ": EXPECT(" \
+                      << #__VA_ARGS__ << ") failed";                        \
+    }
 
 
 /****************************************************************************
@@ -27,6 +31,8 @@ const char kVersion[] = "1.0";
 
 //===========================================================================
 static int internalTest() {
+    int line = 0;
+
     TimePoint start = Clock::from_time_t(900'000'000);
     string name = "this.is.metric.1";
 
@@ -40,10 +46,12 @@ static int internalTest() {
     tsdWriteData(h, id, start, 1.0);
     tsdDump(cout, h);
     tsdClose(h);
+    EXPECT(count == 1);
 
     h = tsdOpen(dat);
     count = tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
+    EXPECT(count == 0);
     tsdWriteData(h, id, start, 3.0);
     tsdWriteData(h, id, start + 1min, 4.0);
     tsdWriteData(h, id, start - 1min, 2.0);
@@ -55,6 +63,7 @@ static int internalTest() {
     h = tsdOpen(dat);
     count = tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
+    EXPECT(count == 0);
     tsdWriteData(h, id, start + 40min, 7.0);
     tsdDump(cout, h);
     tsdWriteData(h, id, start + 100min, 8.0);
@@ -68,6 +77,8 @@ static int internalTest() {
         tsdWriteData(h, i2, start, (float) i);
     }
     cout << "metrics inserted: " << count << endl;
+    EXPECT(count == 28);
+
     cout << "----" << endl; tsdDump(cout, h);
     tsdClose(h);
 
@@ -90,19 +101,20 @@ class Application : public IAppNotify {
 //===========================================================================
 void Application::onAppRun () {
     Cli cli;
-    cli.header("load v"s + kVersion + " (" __DATE__ ")");
-    cli.versionOpt(kVersion);
-    auto & dat = cli.opt<string>("[dat file]", "metrics.dat");
     auto & test = cli.opt<bool>("test", true).desc("Run internal unit tests");
     if (!cli.parse(m_argc, m_argv))
         return appSignalUsageError();
     if (*test)
-        return appSignalShutdown(internalTest());
+        internalTest();
 
-    auto h = tsdOpen(*dat);
-    tsdClose(h);
-
-    appSignalShutdown(EX_OK);
+    if (int errors = logGetMsgCount(kLogTypeError)) {
+        ConsoleScopedAttr attr(kConsoleError);
+        cerr << "*** " << errors << " FAILURES" << endl;
+        appSignalShutdown(EX_SOFTWARE);
+    } else {
+        cout << "All tests passed" << endl;
+        appSignalShutdown(EX_OK);
+    }
 }
 
 
