@@ -16,7 +16,7 @@
 #include <crtdbg.h>
 #include <cstdio>
 #include <cstdlib>
-#include <iostream>
+#include <fstream>
 
 // Platform headers
 // External library internal headers

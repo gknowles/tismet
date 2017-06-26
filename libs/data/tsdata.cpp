@@ -15,6 +15,8 @@ using namespace Dim;
 *
 ***/
 
+const char kDumpVersion[] = "Tismet Dump Version 2017.1";
+
 const unsigned kMaxMetricNameLen = 64;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
@@ -320,6 +322,7 @@ void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
 
 //===========================================================================
 void TsdFile::dump(ostream & os) const {
+    os << kDumpVersion << '\n';
     for (auto && mi : m_metricInfo) {
         auto mp = addr<MetricPage>(mi.infoPage);
         for (int i = 0; i < mp->rd.numPages; ++i)
@@ -997,7 +1000,7 @@ void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
 
 /****************************************************************************
 *
-*   External
+*   Public API
 *
 ***/
 

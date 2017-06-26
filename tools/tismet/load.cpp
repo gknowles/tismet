@@ -15,27 +15,28 @@ using namespace Dim;
 *     
 ***/
 
-static bool run(Cli & cli);
+static bool loadCmd(Cli & cli);
 
 static Cli s_cli = Cli{}.command("load")
     .desc("Load metrics dump file into database")
-    .action(run);
+    .action(loadCmd);
 static auto & s_dat = s_cli.opt<string>("[dat file]");
 
 
 /****************************************************************************
 *     
-*   Load action
+*   Load command
 *     
 ***/
 
 //===========================================================================
-static bool run(Cli & cli) {
+static bool loadCmd(Cli & cli) {
     if (!s_dat)
         return cli.badUsage("No value given for <dat file[.dat]>");
 
     auto h = tsdOpen(*s_dat);
     tsdClose(h);
 
+    appSignalShutdown(EX_OK);
     return true;
 }
