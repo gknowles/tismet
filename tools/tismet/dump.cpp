@@ -19,7 +19,7 @@ namespace fs = std::experimental::filesystem;
 static bool dumpCmd(Cli & cli);
 
 static Cli s_cli = Cli{}.command("dump")
-    .desc("Create database dump that can be loaded into another database.")
+    .desc("Create metrics dump file from database.")
     .action(dumpCmd);
 static auto & s_dat = s_cli.opt<string>("[dat file]");
 static auto & s_out = s_cli.opt<string>("[output file]", "")

@@ -25,10 +25,10 @@ const char kVersion[] = "1.0";
 ***/
 
 //===========================================================================
-static int run(Cli & cli) {
+static bool startCmd(Cli & cli) {
     consoleEnableCtrlC();
     logMsgInfo() << "Server started";
-    return EX_OK;
+    return true;
 }
 
 
@@ -50,10 +50,13 @@ void Application::onAppRun () {
     cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
     cli.command("start").desc("Start server")
-        .action(run);
-    if (!cli.parse(m_argc, m_argv))
-        return appSignalUsageError();
-    if (!cli.exec())
+        .action(startCmd);
+
+    if (m_argc == 1) {
+        auto os = logMsgInfo();
+        return appSignalShutdown(cli.printHelp(os));
+    }
+    if (!cli.parse(m_argc, m_argv) || !cli.exec())
         return appSignalUsageError();
 }
 
