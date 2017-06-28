@@ -55,17 +55,8 @@ static void tests() {
 *
 ***/
 
-namespace {
-
-class Application : public IAppNotify {
-    // IAppNotify
-    void onAppRun() override;
-};
-
-} // namespace
-
 //===========================================================================
-void Application::onAppRun() {
+static void app(int argc, char * argv[]) {
     Cli cli;
     auto & pageSize = cli.opt<size_t>("b", 4096)
         .desc("size of pages used by radix index");
@@ -84,7 +75,7 @@ void Application::onAppRun() {
         .desc("values to translate");
     auto & test = cli.opt<bool>("test")
         .desc("run internal unit tests");
-    if (!cli.parse(m_argc, m_argv))
+    if (!cli.parse(argc, argv))
         return appSignalUsageError();
 
     if (*test)
@@ -116,6 +107,5 @@ void Application::onAppRun() {
 int main(int argc, char * argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
-    Application app;
     return appRun(app, argc, argv);
 }

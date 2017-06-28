@@ -92,17 +92,11 @@ static int internalTest() {
 *     
 ***/
 
-namespace {
-class Application : public IAppNotify {
-    void onAppRun() override;
-};
-} // namespace
-
 //===========================================================================
-void Application::onAppRun () {
+static void app(int argc, char * argv[]) {
     Cli cli;
     auto & test = cli.opt<bool>("test", true).desc("Run internal unit tests");
-    if (!cli.parse(m_argc, m_argv))
+    if (!cli.parse(argc, argv))
         return appSignalUsageError();
     if (*test)
         internalTest();
@@ -132,7 +126,6 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    Application app;
     int code = appRun(app, argc, argv);
     return code;
 }

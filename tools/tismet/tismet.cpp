@@ -38,25 +38,19 @@ static bool startCmd(Cli & cli) {
 *     
 ***/
 
-namespace {
-class Application : public IAppNotify {
-    void onAppRun () override;
-};
-} // namespace
-
 //===========================================================================
-void Application::onAppRun () {
+static void app(int argc, char * argv[]) {
     Cli cli;
     cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
     cli.command("start").desc("Start server")
         .action(startCmd);
 
-    if (m_argc == 1) {
+    if (argc == 1) {
         auto os = logMsgInfo();
         return appSignalShutdown(cli.printHelp(os));
     }
-    if (!cli.parse(m_argc, m_argv) || !cli.exec())
+    if (!cli.parse(argc, argv) || !cli.exec())
         return appSignalUsageError();
 }
 
@@ -72,7 +66,6 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    Application app;
     int code = appRun(app, argc, argv);
     return code;
 }
