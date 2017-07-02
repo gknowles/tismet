@@ -8,9 +8,8 @@
 #include "app/app.h"
 #include "cli/cli.h"
 #include "core/core.h"
-#include "net/net.h"
-
 #include "data/tsdata.h"
+#include "net/net.h"
 
 // Standard headers
 #include <crtdbg.h>

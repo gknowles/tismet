@@ -3,15 +3,20 @@
 //
 // pch.h - tismet load
 
-#define DIM_LIB_KEEP_MACROS
+// Public header
+// External library public headers
 #include "app/app.h"
 #include "cli/cli.h"
 #include "core/core.h"
-
 #include "data/tsdata.h"
 
+// Standard headers
 #include <crtdbg.h>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <type_traits>
+
+// Platform headers
+// External library internal headers
+// Internal headers

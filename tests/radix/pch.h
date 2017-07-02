@@ -3,12 +3,17 @@
 //
 // pch.h - tismet test radix
 
-#define DIM_LIB_KEEP_MACROS
+// Public header
+// External library public headers
 #include "app/app.h"
 #include "cli/cli.h"
 #include "core/core.h"
-
 #include "data/radix.h"
 
+// Standard headers
 #include <array>
 #include <iostream>
+
+// Platform headers
+// External library internal headers
+// Internal headers

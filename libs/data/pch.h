@@ -3,14 +3,20 @@
 //
 // pch.h - tismet
 
-#define DIM_LIB_KEEP_MACROS
+// Public header
+#include "data/tsdata.h"
+#include "data/radix.h"
+
+// External library public headers
 #include "app/app.h"
 #include "cli/cli.h"
 #include "core/core.h"
 
-#include "radix.h"
-#include "tsdata.h"
-
+// Standard headers
 #include <cmath>
 #include <cstddef>
 #include <queue>
+
+// Platform headers
+// External library internal headers
+// Internal headers
