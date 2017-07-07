@@ -189,7 +189,7 @@ private:
 
     unordered_map<string, uint32_t> m_metricIds;
     vector<MetricInfo> m_metricInfo;
-    priority_queue<uint32_t, vector<uint32_t>, greater<uint32_t>> m_freeIds;
+    UnsignedSet m_ids;
     RadixDigits m_rdIndex;
     RadixDigits m_rdMetric;
 
@@ -324,9 +324,11 @@ void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
 void TsdFile::dump(ostream & os) const {
     os << kDumpVersion << '\n';
     for (auto && mi : m_metricInfo) {
-        auto mp = addr<MetricPage>(mi.infoPage);
-        for (int i = 0; i < mp->rd.numPages; ++i)
-            dump(os, *mp, mp->rd.pages[i]);
+        if (mi.infoPage) {
+            auto mp = addr<MetricPage>(mi.infoPage);
+            for (int i = 0; i < mp->rd.numPages; ++i)
+                dump(os, *mp, mp->rd.pages[i]);
+        }
     }
 }
 
@@ -347,6 +349,7 @@ void TsdFile::metricFreePage (uint32_t pgno) {
     auto num = m_metricIds.erase(mp->name);
     assert(num == 1);
     m_metricInfo[mp->id] = {};
+    m_ids.erase(mp->id);
 }
 
 //===========================================================================
@@ -369,6 +372,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
 
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
+        m_ids.insert(mp->id);
         m_metricIds[mp->name] = mp->id;
         if (m_metricInfo.size() <= mp->id)
             m_metricInfo.resize(mp->id + 1);
@@ -403,15 +407,17 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
 
     // get metric id
     uint32_t id;
-    if (m_freeIds.empty()) {
-        id = (uint32_t) m_metricInfo.size();
-        m_metricInfo.push_back({});
+    if (m_ids.empty()) {
+        id = 1;
     } else {
-        id = m_freeIds.top();
-        m_freeIds.pop();
+        auto ids = *m_ids.ranges().begin();
+        id = ids.first > 1 ? 1 : ids.second + 1;
     }
     out = id;
     m_metricIds[name] = id;
+    m_ids.insert(id);
+    if (id >= m_metricInfo.size())
+        m_metricInfo.resize(id + 1);
 
     // set info page 
     auto mp = allocPage<MetricPage>();
@@ -881,20 +887,18 @@ unique_ptr<T> TsdFile::allocPage(uint32_t pgno) const {
 //===========================================================================
 bool TsdFile::loadFreePages () {
     auto pgno = m_hdr->freePageRoot;
+    size_t num = 0;
+    UnsignedSet found;
     while (pgno) {
         auto p = addr<PageHeader>(pgno);
         if (!p || p->type != kPageTypeFree)
             return false;
-        if (m_metricInfo.size() <= pgno)
-            m_metricInfo.resize(pgno + 1);
-        if (m_metricInfo[pgno].lastPage)
-            return false;
-        m_metricInfo[pgno].lastPage = pgno;
-        m_freeIds.push(pgno);
+        num += 1;
+        found.insert(pgno);
         auto fp = reinterpret_cast<const FreePage*>(p);
         pgno = fp->nextPage;
     }
-    return true;
+    return num == found.size();
 }
 
 //===========================================================================
@@ -1064,4 +1068,14 @@ void tsdDump(std::ostream & os, TsdFileHandle h) {
     auto * tsd = s_files.find(h);
     assert(tsd);
     tsd->dump(os);
+}
+
+//===========================================================================
+void tsdFindMetrics(
+    Dim::UnsignedSet & out,
+    TsdFileHandle h,
+    std::string_view name
+) {
+    out.clear();
+
 }
