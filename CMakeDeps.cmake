@@ -3,6 +3,7 @@
 # README.md
 # appveyor.yml
 # configure.bat
+# libs/data/dump.cpp
 # libs/data/pch.cpp
 # libs/data/pch.h
 # libs/data/radix.cpp
@@ -19,6 +20,7 @@
 # tools/tismet/load.cpp
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
+# tools/tismet/record.cpp
 # tools/tismet/tismet.cpp
 # vendor/dimapp
 # vendor/dimapp/libs/app/app.cpp
@@ -29,8 +31,6 @@
 # vendor/dimapp/libs/app/config.h
 # vendor/dimapp/libs/app/console.h
 # vendor/dimapp/libs/app/env.h
-# vendor/dimapp/libs/app/file.cpp
-# vendor/dimapp/libs/app/file.h
 # vendor/dimapp/libs/app/logfile.cpp
 # vendor/dimapp/libs/app/logfile.h
 # vendor/dimapp/libs/app/pch.cpp
@@ -48,6 +48,7 @@
 # vendor/dimapp/libs/core/list.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
+# vendor/dimapp/libs/core/math.h
 # vendor/dimapp/libs/core/pch.cpp
 # vendor/dimapp/libs/core/pch.h
 # vendor/dimapp/libs/core/perf.cpp
@@ -77,6 +78,14 @@
 # vendor/dimapp/libs/cppconf/compiler/visualc.h
 # vendor/dimapp/libs/cppconf/cppconf.h
 # vendor/dimapp/libs/cppconf/cppconf_suffix.h
+# vendor/dimapp/libs/file/file.cpp
+# vendor/dimapp/libs/file/file.h
+# vendor/dimapp/libs/file/fileio.h
+# vendor/dimapp/libs/file/filemon.h
+# vendor/dimapp/libs/file/path.cpp
+# vendor/dimapp/libs/file/path.h
+# vendor/dimapp/libs/file/pch.cpp
+# vendor/dimapp/libs/file/pch.h
 # vendor/dimapp/libs/json/jbuilder.cpp
 # vendor/dimapp/libs/json/json.abnf
 # vendor/dimapp/libs/json/json.h
