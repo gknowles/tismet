@@ -17,7 +17,7 @@ struct TsdFileHandle : Dim::HandleBase {};
 
 TsdFileHandle tsdOpen(std::string_view name, size_t pageSize = 0);
 
-void tsdClose(TsdFileHandle file);
+void tsdClose(TsdFileHandle h);
 
 bool tsdFindMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
 bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
@@ -31,11 +31,40 @@ void tsdUpdateMetric(
     Dim::Duration interval
 );
 
-void tsdWriteData(
+void tsdUpdateValue(
     TsdFileHandle h, 
     uint32_t id, 
     Dim::TimePoint time, 
     float value
 );
 
-void tsdDump(std::ostream & os, TsdFileHandle file);
+void tsdFindMetrics(
+    Dim::UnsignedSet & out,
+    TsdFileHandle h,
+    std::string_view wildcardName = {}  // empty name for all
+);
+
+struct ITsdEnumNotify {
+    virtual ~ITsdEnumNotify() {}
+    virtual bool OnTsdValue(
+        uint32_t id,
+        std::string_view name,
+        Dim::TimePoint time,
+        float value
+    ) { 
+        return false; 
+    }
+};
+size_t tsdEnumValues(
+    ITsdEnumNotify * notify,
+    TsdFileHandle h,
+    uint32_t id,
+    Dim::TimePoint first = {},
+    Dim::TimePoint last = Dim::TimePoint::max()
+);
+
+void tsdWriteDump(
+    std::ostream & os, 
+    TsdFileHandle h, 
+    std::string_view wildname = {}
+);

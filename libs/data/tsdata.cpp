@@ -137,14 +137,19 @@ public:
     void eraseMetric(uint32_t id);
     void updateMetric(uint32_t id, Duration retention, Duration interval);
     
-    void writeData(uint32_t id, TimePoint time, float value);
+    void updateValue(uint32_t id, TimePoint time, float value);
 
     bool findMetric(uint32_t & out, const string & name) const;
-    void dump(ostream & os) const;
+    void findMetrics(UnsignedSet & out, string_view name) const;
+
+    size_t enumValues(
+        ITsdEnumNotify * notify, 
+        uint32_t id, 
+        TimePoint first, 
+        TimePoint last
+    );
 
 private:
-    void dump(ostream & os, const MetricPage & mp, uint32_t pgno) const;
-
     bool loadMetricInfo (uint32_t pgno);
     void metricFreePage(uint32_t pgno);
 
@@ -154,8 +159,8 @@ private:
     void freePage(uint32_t pgno);
     template<typename T> unique_ptr<T> allocPage(uint32_t pgno) const;
 
-    template<typename T> const T * addr(uint32_t pgno) const;
-    template<> const PageHeader * addr<PageHeader>(uint32_t pgno) const;
+    template<typename T> const T * viewPage(uint32_t pgno) const;
+    template<> const PageHeader * viewPage<PageHeader>(uint32_t pgno) const;
 
     // get copy of page to update and then write
     template<typename T> unique_ptr<T> editPage(uint32_t pgno) const;
@@ -186,6 +191,12 @@ private:
 
     unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
     size_t valuesPerPage() const;
+    bool findDataPage(
+        uint32_t * dataPgno, 
+        unsigned * pagePos, 
+        uint32_t id,
+        TimePoint time
+    );
 
     unordered_map<string, uint32_t> m_metricIds;
     vector<MetricInfo> m_metricInfo;
@@ -274,64 +285,6 @@ bool TsdFile::open(string_view name, size_t pageSize) {
     return true;
 }
 
-//===========================================================================
-void TsdFile::dump(ostream & os, const MetricPage & mp, uint32_t pgno) const {
-    if (!pgno)
-        return;
-
-    auto p = addr<PageHeader>(pgno);
-    if (p->type == kPageTypeRadix) {
-        auto rp = reinterpret_cast<const RadixPage*>(p);
-        for (int i = 0; i < rp->rd.numPages; ++i)
-            dump(os, mp, rp->rd.pages[i]);
-        return;
-    }
-
-    assert(p->type == kPageTypeData);
-    auto pageValues = valuesPerPage();
-    auto dp = reinterpret_cast<const DataPage*>(p);
-    auto time = dp->firstPageTime;
-    auto pageInterval = pageValues * mp.interval;
-    auto lastValueTime = time + dp->lastPageValue * mp.interval;
-    auto endPageTime = time + pageInterval;
-    if (lastValueTime == endPageTime)
-        lastValueTime -= mp.interval;
-    int i = 0;
-    for (; time <= lastValueTime; ++i, time += mp.interval) {
-        if (!isnan(dp->values[i])) {
-            os << mp.name << ' ' 
-                << dp->values[i] << ' ' 
-                << Clock::to_time_t(time) << '\n';
-        }
-    }
-    if (time == endPageTime)
-        return;
-    time = lastValueTime - mp.retention + mp.interval;
-    auto numValues = mp.retention / mp.interval;
-    auto numPages = (numValues - 1) / pageValues + 1;
-    auto gap = numPages * pageValues - numValues;
-    i += (int) gap;
-    for (; i < pageValues; ++i, time += mp.interval) {
-        if (!isnan(dp->values[i])) {
-            os << mp.name << ' ' 
-                << dp->values[i] << ' ' 
-                << Clock::to_time_t(time) << '\n';
-        }
-    }
-}
-
-//===========================================================================
-void TsdFile::dump(ostream & os) const {
-    os << kDumpVersion << '\n';
-    for (auto && mi : m_metricInfo) {
-        if (mi.infoPage) {
-            auto mp = addr<MetricPage>(mi.infoPage);
-            for (int i = 0; i < mp->rd.numPages; ++i)
-                dump(os, *mp, mp->rd.pages[i]);
-        }
-    }
-}
-
 
 /****************************************************************************
 *
@@ -341,7 +294,7 @@ void TsdFile::dump(ostream & os) const {
 
 //===========================================================================
 void TsdFile::metricFreePage (uint32_t pgno) {
-    auto mp = addr<MetricPage>(pgno);
+    auto mp = viewPage<MetricPage>(pgno);
     for (int i = 0; i < mp->rd.numPages; ++i) {
         if (auto pn = mp->rd.pages[i])
             freePage(pn);
@@ -357,7 +310,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
     if (!pgno)
         return true;
 
-    auto p = addr<PageHeader>(pgno);
+    auto p = viewPage<PageHeader>(pgno);
     if (!p)
         return false;
 
@@ -393,6 +346,12 @@ bool TsdFile::findMetric(uint32_t & out, const string & name) const {
         return false;
     out = i->second;
     return true;
+}
+
+//===========================================================================
+void TsdFile::findMetrics(UnsignedSet & out, string_view name) const {
+    assert(name.empty());
+    out = m_ids;
 }
 
 //===========================================================================
@@ -464,7 +423,7 @@ void TsdFile::updateMetric(
     Duration interval
 ) {
     auto & mi = m_metricInfo[id];
-    auto mp = addr<MetricPage>(mi.infoPage);
+    auto mp = viewPage<MetricPage>(mi.infoPage);
     if (mp->retention == retention && mp->interval == interval)
         return;
 
@@ -493,51 +452,51 @@ size_t TsdFile::valuesPerPage() const {
 
 //===========================================================================
 unique_ptr<DataPage> TsdFile::allocDataPage(uint32_t id, TimePoint time) {
-    auto count = valuesPerPage();
+    auto vpp = valuesPerPage();
     auto dp = allocPage<DataPage>();
     dp->id = id;
     dp->lastPageValue = 0;
     dp->firstPageTime = time;
-    for (auto i = 0; i < count; ++i) 
+    for (auto i = 0; i < vpp; ++i) 
         dp->values[i] = NAN;
     return dp;
 }
 
 //===========================================================================
-void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
+void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
     auto & mi = m_metricInfo[id];
     assert(mi.infoPage);
 
     // round time down to metric's sampling interval
     time -= time.time_since_epoch() % mi.interval;
 
-    auto count = valuesPerPage();
+    auto vpp = valuesPerPage();
 
     // ensure all info about the last page is loaded, the hope is that almost
     // all updates are to the last page.
     if (!mi.lastPage) {
-        auto mp = editPage<MetricPage>(mi.infoPage);
-
         auto dp = allocDataPage(id, time);
-        dp->lastPageValue = (uint16_t) (id % count);
+        dp->lastPageValue = (uint16_t) (id % vpp);
         dp->firstPageTime = time - dp->lastPageValue * mi.interval;
         writePage(*dp, m_hdr->pageSize);
 
+        auto mp = editPage<MetricPage>(mi.infoPage);
         mp->lastPage = dp->hdr.pgno;
-        mp->rd.pages[0] = dp->hdr.pgno;
-        writePage(*mp);
+        assert(mp->lastPagePos == 0);
+        mp->rd.pages[0] = mp->lastPage;
+        writePage(*mp, m_hdr->pageSize);
 
         mi.lastPage = mp->lastPage;
         mi.firstPageTime = dp->firstPageTime;
         mi.lastPageValue = dp->lastPageValue;
     }
     if (mi.firstPageTime == TimePoint{}) {
-        auto dp = addr<DataPage>(mi.lastPage);
+        auto dp = viewPage<DataPage>(mi.lastPage);
         mi.firstPageTime = dp->firstPageTime;
         mi.lastPageValue = dp->lastPageValue;
     }
 
-    auto pageInterval = valuesPerPage() * mi.interval;
+    auto pageInterval = vpp * mi.interval;
     auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
 
     // one interval past last time on page (aka first time on next page)
@@ -547,13 +506,14 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     if (time <= lastValueTime) {
         auto dpno = mi.lastPage;
         if (time < mi.firstPageTime) {
-            auto mp = addr<MetricPage>(mi.infoPage);
-            auto firstValueTime = lastValueTime - mp->retention;
-            if (time < firstValueTime) {
+            auto mp = viewPage<MetricPage>(mi.infoPage);
+            if (time <= lastValueTime - mp->retention) {
+                // before first value
                 s_perfOld += 1;
                 return;
             }
-            auto off = (mi.firstPageTime - time) / pageInterval + 1;
+            auto off = (mi.firstPageTime - time - mi.interval) 
+                / pageInterval + 1;
             auto dpages = (mp->retention + pageInterval - mi.interval) 
                 / pageInterval;
             auto pagePos = 
@@ -561,7 +521,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
             if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.firstPageTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
-                dp->lastPageValue = (uint16_t) valuesPerPage() - 1;
+                dp->lastPageValue = (uint16_t) vpp - 1;
                 writePage(*dp, m_hdr->pageSize);
                 dpno = dp->hdr.pgno;
                 bool inserted = radixInsert(mi.infoPage, pagePos, dpno);
@@ -571,7 +531,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
         auto dp = editPage<DataPage>(dpno);
         assert(time >= dp->firstPageTime);
         auto ent = (time - dp->firstPageTime) / mi.interval;
-        assert(ent < (unsigned) valuesPerPage());
+        assert(ent < (unsigned) vpp);
         dp->values[ent] = value;
         writePage(*dp, m_hdr->pageSize);
         return;
@@ -582,7 +542,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
 
     // If past the end of the page, check if it's past the end of all pages
     if (time >= endPageTime) {
-        auto mp = addr<MetricPage>(mi.infoPage);
+        auto mp = viewPage<MetricPage>(mi.infoPage);
         // further in the future than the retention period? remove all values
         // and add as new initial value.
         if (time >= lastValueTime + mp->retention) {
@@ -594,7 +554,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
             mi.lastPage = 0;
             mi.firstPageTime = {};
             mi.lastPageValue = 0;
-            writeData(id, time, value);
+            updateValue(id, time, value);
             return;
         }
     }
@@ -627,7 +587,7 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     auto num = (time - endPageTime) / pageInterval;
     auto mp = editPage<MetricPage>(mi.infoPage);
     auto numValues = mp->retention / mp->interval;
-    auto numPages = (numValues - 1) / valuesPerPage() + 1;
+    auto numPages = (numValues - 1) / vpp + 1;
     auto first = (mp->lastPagePos + 1) % numPages;
     auto last = first + num;
     if (num) {
@@ -642,19 +602,158 @@ void TsdFile::writeData(uint32_t id, TimePoint time, float value) {
     // update last page references
     mp->lastPagePos = (unsigned) last;
     radixFind(&mp->lastPage, mi.infoPage, last);
-    writePage(*mp, m_hdr->pageSize);
-
-    dp = editPage<DataPage>(mp->lastPage);
-    dp->firstPageTime = endPageTime;
-    dp->lastPageValue = 0;
-    writePage(*dp);
+    if (!mp->lastPage) {
+        dp = allocDataPage(id, endPageTime);
+        mp->lastPage = dp->hdr.pgno;
+        writePage(*mp, m_hdr->pageSize);
+        bool inserted = radixInsert(mi.infoPage, mp->lastPagePos, mp->lastPage);
+        assert(inserted);
+        writePage(*dp, m_hdr->pageSize);
+    } else {
+        writePage(*mp, m_hdr->pageSize);
+        dp = editPage<DataPage>(mp->lastPage);
+        dp->firstPageTime = endPageTime;
+        dp->lastPageValue = 0;
+        writePage(*dp);
+    }
 
     mi.lastPage = mp->lastPage;
     mi.firstPageTime = dp->firstPageTime;
     mi.lastPageValue = dp->lastPageValue;
 
     // write value to new last page
-    writeData(id, time, value);
+    updateValue(id, time, value);
+}
+
+//===========================================================================
+// false if time is outside of retention period
+bool TsdFile::findDataPage(
+    uint32_t * dataPage,
+    unsigned * pagePos,
+    uint32_t id,
+    TimePoint time
+) {
+    auto & mi = m_metricInfo[id];
+    assert(mi.infoPage);
+
+    if (!mi.lastPage)
+        return false;
+    if (mi.firstPageTime == TimePoint{}) {
+        auto dp = viewPage<DataPage>(mi.lastPage);
+        mi.firstPageTime = dp->firstPageTime;
+        mi.lastPageValue = dp->lastPageValue;
+    }
+    
+    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+
+    time -= time.time_since_epoch() % mi.interval;
+    auto mp = viewPage<MetricPage>(mi.infoPage);
+
+    if (time >= mi.firstPageTime) {
+        if (time > lastValueTime)
+            return false;
+        *dataPage = mi.lastPage;
+        *pagePos = mp->lastPagePos;
+        return true;
+    }
+
+    if (time <= lastValueTime - mp->retention) {
+        // before first value
+        return false;
+    }
+    auto pageInterval = valuesPerPage() * mi.interval;
+    auto off = (mi.firstPageTime - time - mi.interval) / pageInterval + 1;
+    auto pages = (mp->retention + pageInterval - mi.interval) / pageInterval;
+    *pagePos = (uint32_t) (mp->lastPagePos + pages - off) % pages;
+    if (!radixFind(dataPage, mi.infoPage, *pagePos))
+        *dataPage = 0;
+    return true;
+}
+
+//===========================================================================
+size_t TsdFile::enumValues(
+    ITsdEnumNotify * notify, 
+    uint32_t id, 
+    TimePoint first, 
+    TimePoint last
+) {
+    auto & mi = m_metricInfo[id];
+    assert(mi.infoPage);
+
+    // round time to metric's sampling interval
+    first -= first.time_since_epoch() % mi.interval;
+    last -= last.time_since_epoch() % mi.interval;
+    if (first > last)
+        return 0;
+    
+    uint32_t dpno;
+    unsigned dppos;
+    bool found = findDataPage(&dpno, &dppos, id, first);
+    if (!found && first >= mi.firstPageTime)
+        return 0;
+
+    auto mp = viewPage<MetricPage>(mi.infoPage);
+    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+    if (last > lastValueTime)
+        last = lastValueTime;
+
+    if (!found) {
+        if (first < last)
+            first = lastValueTime - mp->retention + mi.interval;
+        if (first > last)
+            return 0;
+        found = findDataPage(&dpno, &dppos, id, first);
+        assert(found);
+    }
+
+    auto name = string_view(mp->name);
+    auto vpp = valuesPerPage();
+    auto pageInterval = vpp * mi.interval;
+    auto numValues = mp->retention / mp->interval;
+    auto numPages = (numValues - 1) / vpp + 1;
+
+    unsigned count = 0;
+    for (;;) {
+        if (!dpno) {
+            // round up to first time on next page
+            first -= pageInterval - mi.interval;
+            auto pageOff = (mi.firstPageTime - first) / pageInterval - 1;
+            first = mi.firstPageTime - pageOff * pageInterval;
+        } else {
+            auto dp = viewPage<DataPage>(dpno);
+            auto fpt = dp->firstPageTime;
+            auto vpos = (first - fpt) / mi.interval;
+            auto lastPageValue = dp->lastPageValue == vpp
+                ? vpp - 1
+                : dp->lastPageValue;
+            auto lastPageTime = fpt + lastPageValue * mi.interval;
+            if (vpos < 0) {
+                // in the old section of the tip page in the ring buffer
+                vpos += numPages * vpp;
+                vpos = vpos % vpp;
+                assert(vpos);
+                lastPageTime = fpt - (numPages - 1) * pageInterval 
+                    - mi.interval;
+            }
+            if (last < lastPageTime) 
+                lastPageTime = last;
+            for (; first <= lastPageTime; first += mi.interval, ++vpos) {
+                auto value = dp->values[vpos];
+                if (!isnan(value)) {
+                    count += 1;
+                    if (!notify->OnTsdValue(id, name, first, value))
+                        return count;
+                }
+            }
+        }
+        if (first >= last)
+            break;
+
+        // advance to next page
+        dppos = (dppos + 1) % numPages;
+        radixFind(&dpno, mi.infoPage, dppos);
+    }
+    return count;
 }
 
 
@@ -681,7 +780,7 @@ static const RadixData * radixData(const PageHeader * hdr) {
 
 //===========================================================================
 void TsdFile::radixFreePage(uint32_t pgno) {
-    auto rp = addr<RadixPage>(pgno);
+    auto rp = viewPage<RadixPage>(pgno);
     for (int i = 0; i < rp->rd.numPages; ++i) {
         if (uint32_t p = rp->rd.pages[i]) 
             freePage(p);
@@ -697,6 +796,7 @@ void TsdFile::radixClear(PageHeader & hdr) {
             rd->pages[i] = 0;
         }
     }
+    rd->height = 0;
 }
 
 //===========================================================================
@@ -744,7 +844,7 @@ bool TsdFile::radixFind(
     uint32_t root, 
     size_t pos
 ) {
-    *hdr = addr<PageHeader>(root);
+    *hdr = viewPage<PageHeader>(root);
     *rd = radixData(*hdr);
     RadixDigits & cvt = ((*hdr)->type == kPageTypeMetric) 
         ? m_rdMetric 
@@ -760,7 +860,7 @@ bool TsdFile::radixFind(
         int pos = (height > count) ? 0 : *d;
         if (!(*rd)->pages[pos])
             return false;
-        *hdr = addr<PageHeader>((*rd)->pages[pos]);
+        *hdr = viewPage<PageHeader>((*rd)->pages[pos]);
         *rd = radixData(*hdr);
         assert((*rd)->height == height - 1);
         if (height == count) {
@@ -778,15 +878,17 @@ bool TsdFile::radixFind(uint32_t * out, uint32_t root, size_t pos) {
     const PageHeader * hdr;
     const RadixData * rd;
     size_t rpos;
-    if (!radixFind(&hdr, &rd, &rpos, root, pos))
-        return false;
-    *out = rd->pages[rpos];
+    if (radixFind(&hdr, &rd, &rpos, root, pos)) {
+        *out = rd->pages[rpos];
+    } else {
+        *out = 0;
+    }
     return *out;
 }
 
 //===========================================================================
 bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
-    auto hdr = addr<PageHeader>(root);
+    auto hdr = viewPage<PageHeader>(root);
     auto rd = radixData(hdr);
     RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
         ? m_rdMetric 
@@ -823,7 +925,7 @@ bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
             writePage(*nhdr, m_hdr->pageSize);
             assert(rd->pages[pos]);
         }
-        hdr = addr<PageHeader>(rd->pages[pos]);
+        hdr = viewPage<PageHeader>(rd->pages[pos]);
         rd = radixData(hdr);
         d += 1;
         count -= 1;
@@ -855,7 +957,7 @@ uint32_t TsdFile::allocPgno () {
         mp.numPages += 1;
         fileExtendView(m_data, (pgno + 1) * pageSize);
     } else {
-        auto fp = addr<FreePage>(pgno);
+        auto fp = viewPage<FreePage>(pgno);
         assert(fp->hdr.type == kPageTypeFree);
         mp.freePageRoot = fp->nextPage;
     }
@@ -890,7 +992,7 @@ bool TsdFile::loadFreePages () {
     size_t num = 0;
     UnsignedSet found;
     while (pgno) {
-        auto p = addr<PageHeader>(pgno);
+        auto p = viewPage<PageHeader>(pgno);
         if (!p || p->type != kPageTypeFree)
             return false;
         num += 1;
@@ -904,7 +1006,7 @@ bool TsdFile::loadFreePages () {
 //===========================================================================
 void TsdFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
-    auto p = addr<PageHeader>(pgno);
+    auto p = viewPage<PageHeader>(pgno);
     assert(p->type != kPageTypeFree);
     FreePage fp;
     fp.hdr = *p;
@@ -935,7 +1037,7 @@ void TsdFile::freePage(uint32_t pgno) {
 //===========================================================================
 template<typename T>
 unique_ptr<T> TsdFile::editPage(uint32_t pgno) const {
-    return editPage(*addr<T>(pgno));
+    return editPage(*viewPage<T>(pgno));
 }
 
 //===========================================================================
@@ -951,7 +1053,7 @@ unique_ptr<T> TsdFile::editPage(const T & data) const {
 //===========================================================================
 template<typename T>
 unique_ptr<T> TsdFile::dupPage(uint32_t pgno) {
-    return dupPage(*addr<T>(pgno));
+    return dupPage(*viewPage<T>(pgno));
 }
 
 //===========================================================================
@@ -964,7 +1066,7 @@ unique_ptr<T> TsdFile::dupPage(const T & data) {
 
 //===========================================================================
 template<typename T>
-const T * TsdFile::addr(uint32_t pgno) const {
+const T * TsdFile::viewPage(uint32_t pgno) const {
     assert(pgno < m_hdr->numPages);
     const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
     auto ptr = static_cast<const T*>(vptr);
@@ -974,7 +1076,7 @@ const T * TsdFile::addr(uint32_t pgno) const {
 
 //===========================================================================
 template<>
-const PageHeader * TsdFile::addr<PageHeader>(uint32_t pgno) const {
+const PageHeader * TsdFile::viewPage<PageHeader>(uint32_t pgno) const {
     if (pgno > m_hdr->numPages)
         return nullptr;
     const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
@@ -1057,17 +1159,15 @@ void tsdUpdateMetric(
 }
 
 //===========================================================================
-void tsdWriteData(TsdFileHandle h, uint32_t id, TimePoint time, float value) {
+void tsdUpdateValue(
+    TsdFileHandle h, 
+    uint32_t id, 
+    TimePoint time, 
+    float value
+) {
     auto * tsd = s_files.find(h);
     assert(tsd);
-    return tsd->writeData(id, time, value);
-}
-
-//===========================================================================
-void tsdDump(std::ostream & os, TsdFileHandle h) {
-    auto * tsd = s_files.find(h);
-    assert(tsd);
-    tsd->dump(os);
+    return tsd->updateValue(id, time, value);
 }
 
 //===========================================================================
@@ -1076,6 +1176,20 @@ void tsdFindMetrics(
     TsdFileHandle h,
     std::string_view name
 ) {
-    out.clear();
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    tsd->findMetrics(out, name);
+}
 
+//===========================================================================
+size_t tsdEnumValues(
+    ITsdEnumNotify * notify,
+    TsdFileHandle h,
+    uint32_t id,
+    TimePoint first,
+    TimePoint last
+) {
+    auto * tsd = s_files.find(h);
+    assert(tsd);
+    return tsd->enumValues(notify, id, first, last);
 }

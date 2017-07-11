@@ -43,8 +43,8 @@ static int internalTest() {
     unsigned count = 0;
     count += tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
-    tsdWriteData(h, id, start, 1.0);
-    tsdDump(cout, h);
+    tsdUpdateValue(h, id, start, 1.0);
+    tsdWriteDump(cout, h);
     tsdClose(h);
     EXPECT(count == 1);
 
@@ -52,34 +52,37 @@ static int internalTest() {
     count = tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
-    tsdWriteData(h, id, start, 3.0);
-    tsdWriteData(h, id, start + 1min, 4.0);
-    tsdWriteData(h, id, start - 1min, 2.0);
-    tsdWriteData(h, id, start + 20min, 5.0);
-    tsdWriteData(h, id, start + 21min, 6.0);
-    tsdDump(cout, h);
+    tsdUpdateValue(h, id, start, 3.0);
+    tsdUpdateValue(h, id, start + 1min, 4.0);
+    tsdUpdateValue(h, id, start - 1min, 2.0);
+    tsdUpdateValue(h, id, start + 20min, 5.0);
+    tsdUpdateValue(h, id, start + 21min, 6.0);
+    tsdWriteDump(cout, h);
     tsdClose(h);
 
     h = tsdOpen(dat);
     count = tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
-    tsdWriteData(h, id, start + 40min, 7.0);
-    tsdDump(cout, h);
-    tsdWriteData(h, id, start + 100min, 8.0);
-    cout << "----" << endl; tsdDump(cout, h);
+    tsdUpdateValue(h, id, start + 40min, 7.0);
+    tsdWriteDump(cout, h);
+    tsdUpdateValue(h, id, start + 100min, 8.0);
+    
+    cout << "----" << endl; 
+    tsdWriteDump(cout, h);
     count = 0;
     for (int i = 2; i < 30; ++i) {
         name = "this.is.metric.";
         name += to_string(i);
         uint32_t i2;
         count += tsdInsertMetric(i2, h, name);
-        tsdWriteData(h, i2, start, (float) i);
+        tsdUpdateValue(h, i2, start, (float) i);
     }
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 28);
 
-    cout << "----" << endl; tsdDump(cout, h);
+    cout << "----" << endl; 
+    tsdWriteDump(cout, h);
     tsdClose(h);
 
     return EX_OK;

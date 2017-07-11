@@ -21,9 +21,10 @@ static bool dumpCmd(Cli & cli);
 static Cli s_cli = Cli{}.command("dump")
     .desc("Create metrics dump file from database.")
     .action(dumpCmd);
-static auto & s_dat = s_cli.opt<string>("[dat file]");
+static auto & s_dat = s_cli.opt<string>("[dat file]")
+    .desc("Database to dump");
 static auto & s_out = s_cli.opt<string>("[output file]", "")
-    .desc("Output file, defaults to '<dat file>.txt', '-' for stdout");
+    .desc("Output defaults to '<dat file>.txt', '-' for stdout");
 
 
 /****************************************************************************
@@ -56,7 +57,7 @@ static bool dumpCmd(Cli & cli) {
         }
         os = &ofile;
     }
-    tsdDump(*os, h);
+    tsdWriteDump(*os, h);
     tsdClose(h);
     
     appSignalShutdown(EX_OK);
