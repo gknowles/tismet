@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// tsdata.h - tismet
+// tsdata.h - tismet data
 #pragma once
 
 #include "core/core.h"

@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// radix.h - tismet
+// radix.h - tismet data
 #pragma once
 
 
