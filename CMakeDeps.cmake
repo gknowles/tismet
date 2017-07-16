@@ -174,4 +174,6 @@
 # vendor/dimapp/libs/xml/xml.h
 # vendor/dimapp/libs/xml/xmlbaseparse.cpp
 # vendor/dimapp/libs/xml/xmlbaseparse.h
+# vendor/dimapp/libs/xml/xmlbaseparsebase.h
+# vendor/dimapp/libs/xml/xmlbaseparseimpl.h
 # vendor/dimapp/libs/xml/xstreamparser.cpp
