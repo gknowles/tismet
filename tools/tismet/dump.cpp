@@ -21,9 +21,9 @@ static bool dumpCmd(Cli & cli);
 static Cli s_cli = Cli{}.command("dump")
     .desc("Create metrics dump file from database.")
     .action(dumpCmd);
-static auto & s_dat = s_cli.opt<string>("[dat file]")
+static auto & s_dat = s_cli.opt<Path>("[dat file]")
     .desc("Database to dump");
-static auto & s_out = s_cli.opt<string>("[output file]", "")
+static auto & s_out = s_cli.opt<Path>("[output file]", "")
     .desc("Output defaults to '<dat file>.txt', '-' for stdout");
 
 
@@ -40,19 +40,19 @@ static bool dumpCmd(Cli & cli) {
     // TODO: add default .dat extension
     logMsgDebug() << "Dumping " << *s_dat;
 
-    auto h = tsdOpen(*s_dat);
+    auto h = tsdOpen(s_dat->defaultExt("dat").view());
     ostream * os{nullptr};
     ofstream ofile;
     if (!s_out)
-        *s_out = fs::u8path(*s_dat).replace_extension("txt").u8string();
-    if (*s_out == "-") {
+        s_out->assign(*s_dat).setExt("txt");
+    if (*s_out == string_view("-")) {
         os = &cout;
     } else {
         ofile.open(*s_out, ios::trunc);
         if (!ofile) {
             return cli.fail(
                 EX_DATAERR, 
-                *s_out + ": invalid <outputFile[.txt]>"
+                string(*s_out) + ": invalid <outputFile[.txt]>"
             );
         }
         os = &ofile;

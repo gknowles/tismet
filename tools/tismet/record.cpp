@@ -20,9 +20,9 @@ static bool recordCmd(Cli & cli);
 static Cli s_cli = Cli{}.command("record")
     .desc("Create recording of metrics received via carbon protocol.")
     .action(recordCmd);
-static auto & s_out = s_cli.opt<string>("<output file>", "")
+static auto & s_out = s_cli.opt<Path>("<output file>", "")
     .desc("Extension defaults to '.txt', '-' for stdout");
-static auto & s_endpt = s_cli.opt<string>("<endpoint>");
+static auto & s_endpt = s_cli.opt<Path>("<endpoint>");
 
 
 /****************************************************************************
@@ -42,18 +42,19 @@ static bool recordCmd(Cli & cli) {
 
     ostream * os{nullptr};
     ofstream ofile;
-    if (*s_out == "-") {
+    if (*s_out == string_view("-")) {
         os = &cout;
     } else {
-        ofile.open(*s_out, ios::trunc);
+        ofile.open(s_out->defaultExt("txt"), ios::trunc);
         if (!ofile) {
             return cli.fail(
                 EX_DATAERR, 
-                *s_out + ": invalid <outputFile[.txt]>"
+                string(*s_out) + ": invalid <outputFile[.txt]>"
             );
         }
         os = &ofile;
     }
     
+    carbonInitialize();
     return true;
 }
