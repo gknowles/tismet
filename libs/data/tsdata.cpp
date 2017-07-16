@@ -128,7 +128,7 @@ struct MetricInfo {
     uint16_t lastPageValue; // position of last value on last page
 };
 
-class TsdFile {
+class TsdFile : public HandleContent {
 public:
     ~TsdFile();
 
