@@ -3,6 +3,15 @@
 # README.md
 # appveyor.yml
 # configure.bat
+# libs/carbon/carbon.abnf
+# libs/carbon/carbon.cpp
+# libs/carbon/carbon.h
+# libs/carbon/carbonparse.cpp
+# libs/carbon/carbonparsebaseint.h
+# libs/carbon/carbonparseimplint.h
+# libs/carbon/carbonparseint.h
+# libs/carbon/pch.cpp
+# libs/carbon/pch.h
 # libs/data/dump.cpp
 # libs/data/pch.cpp
 # libs/data/pch.h

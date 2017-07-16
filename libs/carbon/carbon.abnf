@@ -1,0 +1,42 @@
+; Copyright Glen Knowles 2017.
+; Distributed under the Boost Software License, Version 1.0.
+;
+; carbon.abnf - tismet carbon
+;
+; rules to parse carbon
+%root = metric
+%api.prefix = Carbon
+%api.parser.file.h = carbonparseint.h
+%api.base.file.h = carbonparsebaseint.h
+
+metriclist = 1*metric
+metric = path SP value SP timestamp [CR] LF { End }
+
+BSLASH = %x5c ; \
+
+; Path
+path = 1*path-chars { Start, End }
+path-chars = ALPHA / DIGIT 
+    / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
+    / "+" / "-" / "." 
+    / ":" / ";" / "<" / "=" / ">" / "?" 
+    / "@" / "\" / "^" / "_" 
+    / "`" / "|" / "~"
+
+; Timestamp
+timestamp = 1*DIGIT { Char }
+
+; Value
+value = [minus] int [frac] [exp]
+decimal-point = "."
+digit1-9 = %x31-39 ; 1-9
+e = "e" ; e E
+exp = e [exp-minus / exp-plus] exp-num
+exp-minus = "-" { End }
+exp-plus = "+"
+exp-num = 1*DIGIT { Char }
+frac = decimal-point frac-num
+frac-num = 1*DIGIT { Char }
+int = zero / (digit1-9 *DIGIT) { Char }
+minus = "-" { End }
+zero = "0"
