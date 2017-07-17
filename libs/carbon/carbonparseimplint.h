@@ -18,16 +18,6 @@
 ***/
 
 //===========================================================================
-inline bool CarbonParser::onStart() { 
-    return true; 
-}
-
-//===========================================================================
-inline bool CarbonParser::onEnd() { 
-    return true; 
-}
-
-//===========================================================================
 inline bool CarbonParser::onExpMinusEnd (const char * eptr) {
     m_expMinus = true;
     return true; 
@@ -77,7 +67,7 @@ inline bool CarbonParser::onMetricEnd (const char * eptr) {
     }
     m_int = 0;
 
-    return true; 
+    return false; 
 }
 
 //===========================================================================
@@ -94,7 +84,7 @@ inline bool CarbonParser::onPathStart (const char * ptr) {
 
 //===========================================================================
 inline bool CarbonParser::onPathEnd (const char * eptr) {
-    m_nameEnd = eptr;
+    m_nameEnd = eptr - 1;
     return true; 
 }
 

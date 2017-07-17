@@ -2,6 +2,8 @@
 // Distributed under the Boost Software License, Version 1.0.
 //
 // carbon.h - tismet carbon
+//
+// Implemetation of graphite's carbon protocol for receiving metric data
 #pragma once
 
 #include "net/net.h"
@@ -11,9 +13,7 @@
 
 /****************************************************************************
 *
-*   Carbon
-*
-*   Implemetation of graphite's carbon protocol for receiving metric data
+*   Declarations
 *
 ***/
 
@@ -22,6 +22,13 @@ namespace TismetSocket {
         kCarbon = Dim::AppSocket::Family::kNumFamilies,
     };
 }
+
+
+/****************************************************************************
+*
+*   Implemented by clients
+*
+***/
 
 class ICarbonNotify : public Dim::IAppSocketNotify {
 public:

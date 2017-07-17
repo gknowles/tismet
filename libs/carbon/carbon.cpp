@@ -15,6 +15,8 @@ using namespace Dim;
 *
 ***/
 
+const unsigned kCarbonMaxRecordSize = 1024;
+
 
 /****************************************************************************
 *
@@ -112,10 +114,18 @@ AppSocket::MatchType CarbonMatch::OnMatch(
     string_view view
 ) {
     assert(fam == TismetSocket::kCarbon);
-    return AppSocket::kUnsupported;
-//    return AppSocket::kPreferred;
+    CarbonUpdate upd;
+    if (!carbonParse(upd, view))
+        return AppSocket::kUnsupported;
+    if (upd.name.empty()) {
+        if (view.size() < kCarbonMaxRecordSize) {
+            return AppSocket::kUnknown;
+        } else {
+            return AppSocket::kUnsupported;
+        }
+    }
 
-  //  return AppSocket::kUnknown;
+    return AppSocket::kPreferred;
 }
 
 
@@ -134,8 +144,6 @@ static ShutdownNotify s_cleanup;
 
 //===========================================================================
 void ShutdownNotify::onShutdownClient(bool firstTry) {
-    //if (firstTry && !s_paths.empty())
-    //    socketCloseWait<HttpSocket>(s_endpoint, AppSocket::kHttp2);
 }
 
 
@@ -166,12 +174,14 @@ void carbonInitialize() {
 bool carbonParse(CarbonUpdate & upd, string_view & src) {
     assert(*src.end() == 0);
     upd.name = {};
+    if (src.empty())
+        return true;
     const char * ptr = src.data();
     CarbonParser parser(&upd);
     parser.parse(ptr);
     auto pos = parser.errpos();
     if (!upd.name.empty()) {
-        src.remove_prefix(pos);
+        src.remove_prefix(pos + 1);
         return true;
     }
     return ptr[pos];
