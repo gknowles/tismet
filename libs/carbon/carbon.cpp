@@ -189,10 +189,7 @@ bool carbonParse(CarbonUpdate & upd, string_view & src) {
 
 //===========================================================================
 void carbonWrite(string & out, string_view name, float value, TimePoint time) {
-    out += name;
-    out += ' ';
-    out += to_string(value);
-    out += ' ';
-    out += to_string(Clock::to_time_t(time));
-    out += '\n';
+    ostringstream os;
+    os << name << ' ' << value << ' ' << Clock::to_time_t(time) << '\n';
+    out += os.str();
 }

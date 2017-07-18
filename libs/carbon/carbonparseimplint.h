@@ -53,7 +53,7 @@ inline bool CarbonParser::onMetricEnd (const char * eptr) {
         m_minus = false;
         m_int = -m_int;
     }
-    if (m_exp) {
+    if (m_exp || m_frac) {
         if (m_expMinus) {
             m_expMinus = false;
             m_exp = -m_exp;

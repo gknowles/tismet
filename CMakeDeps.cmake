@@ -19,6 +19,9 @@
 # libs/data/radix.h
 # libs/data/tsdata.cpp
 # libs/data/tsdata.h
+# tests/carbon/carbontest.cpp
+# tests/carbon/pch.cpp
+# tests/carbon/pch.h
 # tests/radix/pch.cpp
 # tests/radix/pch.h
 # tests/radix/radixtest.cpp
