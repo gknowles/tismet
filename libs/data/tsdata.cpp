@@ -745,9 +745,9 @@ size_t TsdFile::enumValues(
                         return count;
                 }
             }
+            if (first >= last)
+                break;
         }
-        if (first >= last)
-            break;
 
         // advance to next page
         dppos = (dppos + 1) % numPages;
