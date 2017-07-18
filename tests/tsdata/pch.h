@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// pch.h - tismet load
+// pch.h - tismet test tsdata
 
 // Public header
 // External library public headers
