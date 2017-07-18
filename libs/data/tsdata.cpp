@@ -746,7 +746,7 @@ size_t TsdFile::enumValues(
                 }
             }
         }
-        if (first >= last)
+        if (first > last)
             break;
 
         // advance to next page
