@@ -1,0 +1,74 @@
+; Copyright Glen Knowles 2017.
+; Distributed under the Boost Software License, Version 1.0.
+;
+; query.abnf - tismet query
+;
+; rules to parse graphite queries
+%root = query
+%api.prefix = Query
+%api.parser.file.h = queryparseint.h
+%api.base.file.h = queryparsebaseint.h
+
+
+query = path / func { Function }
+
+;----------------------------------------------------------------------------
+; Path
+;----------------------------------------------------------------------------
+path = path-seg *("." path-seg) { Start+, End+ }
+path-seg = 1*(seg-literal / seg-blot / seg-char-list / seg-str-list)
+
+; * 
+seg-literal = 1*scl-char { Start+, End+ }
+seg-blot = "*" { End }
+
+; [] - allows '-' ranges, but not negation (leading '^')
+seg-char-list = "[" [scl-dash] *(scl-range / 2scl-single-nd) [scl-single] "]" 
+    { End }
+scl-single = scl-char { Char+ }
+scl-single-nd = scl-char-nd { Char+, As scl-single }
+scl-dash = "-" { Char+, As scl-single }
+scl-range = scl-start "-" scl-end
+scl-start = scl-char-nd { Char+ }
+scl-end = scl-char-nd { Char+ }
+
+; {,,,}
+seg-str-list = "{" [seg-str-val] 1*("," seg-str-val) "}" { End }
+seg-str-val = *WSP 1*scl-char *WSP { Start+, End+ }
+
+scl-char-nd = ALPHA / DIGIT 
+    / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
+    / "+" 
+    / ":" / ";" / "<" / "=" / ">" / "?" 
+    / "@" / "\" / "^" / "_" 
+    / "`" / "|" / "~"
+scl-char = scl-char-nd / "-"
+
+;----------------------------------------------------------------------------
+; Functions
+;----------------------------------------------------------------------------
+func = maximumAbove / sum { End }
+sum = %s"sum(" param-query ")" { End }
+maximumAbove  = %s"maximumAbove(" param-query "," param-num ")"
+param-query = *WSP query *WSP { Start }
+param-num = *WSP number *WSP { End }
+
+BSLASH = %x5c ; \
+
+; Timestamp
+timestamp = 1*DIGIT { Char+ }
+
+; Number
+number = [minus] int [frac] [exp] { Function }
+decimal-point = "."
+digit1-9 = %x31-39 ; 1-9
+e = "e" ; e E
+exp = e [exp-minus / exp-plus] exp-num
+exp-minus = "-" { End }
+exp-plus = "+"
+exp-num = 1*DIGIT { Char+ }
+frac = decimal-point frac-num
+frac-num = 1*DIGIT { Char+ }
+int = zero / (digit1-9 *DIGIT) { Char+ }
+minus = "-" { End }
+zero = "0"

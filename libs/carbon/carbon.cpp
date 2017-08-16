@@ -163,6 +163,7 @@ void carbonInitialize() {
 // characters allowed in metric names:
 //  graphite: 
 //      normal: alnum + !#$%&"'+-.:;<=>?@^_`|~\
+//      strict: a-z A-Z _ - . =
 //      wildcards: *[]{}
 //  OpenTSDB:
 //      alnum + -_./

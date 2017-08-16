@@ -64,7 +64,7 @@ struct CarbonUpdate {
     Dim::TimePoint time;
 };
 
-// Returns false on malformed input, and true otherwise (update successful
+// Returns false on malformed input, and true otherwise (update successfully
 // parsed or more data needed). On return if upd.name is empty more data is 
 // needed and src is unchanged, otherwise upd is fully populated and src is
 // adjusted to reference the leftover suffix of src that was not parsed.

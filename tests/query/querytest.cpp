@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// carbontest.cpp - tismet test carbon
+// querytest.cpp - tismet test query
 #include "pch.h"
 #pragma hdrstop
 
@@ -38,12 +38,10 @@ static void parseTest(
     TimePoint time, 
     string_view name = "metric"
 ) {
-    CarbonUpdate upd;
-    bool result = carbonParse(upd, text);
+    QueryInfo qry;
+    bool result = queryParse(qry, text);
     EXPECT(result);
-    EXPECT(upd.name == name);
-    EXPECT(upd.value == value);
-    EXPECT(upd.time == time);
+    //EXPECT(upd.name == name);
 }
 
 //===========================================================================
