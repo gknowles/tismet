@@ -40,7 +40,7 @@ static bool dumpCmd(Cli & cli) {
     // TODO: add default .dat extension
     logMsgDebug() << "Dumping " << *s_dat;
 
-    auto h = tsdOpen(s_dat->defaultExt("dat").view());
+    auto h = tsdOpen(s_dat->defaultExt("dat"));
     ostream * os{nullptr};
     ofstream ofile;
     if (!s_out)
@@ -48,11 +48,11 @@ static bool dumpCmd(Cli & cli) {
     if (*s_out == string_view("-")) {
         os = &cout;
     } else {
-        ofile.open(*s_out, ios::trunc);
+        ofile.open(s_out->str(), ios::trunc);
         if (!ofile) {
             return cli.fail(
                 EX_DATAERR, 
-                string(*s_out) + ": invalid <outputFile[.txt]>"
+                string(s_out->c_str()) + ": invalid <outputFile[.txt]>"
             );
         }
         os = &ofile;

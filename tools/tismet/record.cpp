@@ -125,9 +125,9 @@ static bool recordCmd(Cli & cli) {
 
     if (!s_out)
         return cli.badUsage("No value given for <output file[.txt]>");
-    if (s_out->view() != "-") {
+    if (s_out->str() != "-") {
         s_file = fileOpen(
-            s_out->defaultExt("txt").view(), 
+            s_out->defaultExt("txt"), 
             File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
         );
         if (!s_file) {

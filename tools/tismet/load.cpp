@@ -34,7 +34,7 @@ static bool loadCmd(Cli & cli) {
     if (!s_dat)
         return cli.badUsage("No value given for <dat file[.dat]>");
 
-    auto h = tsdOpen(s_dat->defaultExt("dat").view());
+    auto h = tsdOpen(s_dat->defaultExt("dat"));
     tsdClose(h);
 
     appSignalShutdown(EX_OK);
