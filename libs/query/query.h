@@ -33,3 +33,5 @@ struct QueryInfo {
 // Returns false on malformed input, and true otherwise (query successfully
 // parsed).
 bool queryParse(QueryInfo & qry, std::string_view src);
+
+void queryNormalize(QueryInfo & qry);

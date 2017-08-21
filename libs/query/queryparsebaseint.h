@@ -4,7 +4,10 @@
 // queryparsebaseint.h - tismet query
 #pragma once
 
+#include <bitset>
 #include <cstdint>
+#include <string_view>
+#include <vector>
 
 
 /****************************************************************************
@@ -15,15 +18,24 @@
 
 struct QueryParserBase {
     QueryInfo * m_query;
+    std::vector<QueryInfo::Node *> m_nodes;
 
-    const char * m_nameStart{nullptr};
-    const char * m_nameEnd{nullptr};
+    const char * m_start{nullptr};
+    const char * m_end{nullptr};
+
     bool m_minus{false};
     int64_t m_int{0};
     int m_frac{0};
     bool m_expMinus{false};
     int m_exp{0};
-    uint64_t m_seconds{0};
 
+    unsigned char m_charStart{0};
+    std::bitset<256> m_chars;
+
+    std::vector<std::string_view> m_strs;
+
+    // Functions
     QueryParserBase(QueryInfo * qry) : m_query{qry} {}
+
+    bool startFunc(QueryInfo::NodeType type);
 };

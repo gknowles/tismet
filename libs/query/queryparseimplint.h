@@ -18,6 +18,36 @@
 ***/
 
 //===========================================================================
+inline bool QueryParser::onArgNumEnd () {
+    double value;
+    if (m_minus) {
+        m_minus = false;
+        m_int = -m_int;
+    }
+    if (m_exp || m_frac) {
+        if (m_expMinus) {
+            m_expMinus = false;
+            m_exp = -m_exp;
+        }
+        m_exp -= m_frac;
+        value = m_int * pow(10.0, m_exp);
+        m_exp = 0;
+        m_frac = 0;
+    } else {
+        value = (double) m_int;
+    }
+    m_int = 0;
+
+    addNumArg(m_nodes.back(), value);
+    return true;
+}
+
+//===========================================================================
+inline bool QueryParser::onArgQueryStart () {
+    return true;
+}
+
+//===========================================================================
 inline bool QueryParser::onExpMinusEnd () {
     m_expMinus = true;
     return true; 
@@ -38,6 +68,9 @@ inline bool QueryParser::onFracNumChar (char ch) {
 
 //===========================================================================
 inline bool QueryParser::onFuncEnd () {
+    assert(m_nodes.back()->type > QueryInfo::kBeforeFirstFunc);
+    assert(m_nodes.back()->type < QueryInfo::kAfterLastFunc);
+    m_nodes.pop_back();
     return true;
 }
 
@@ -54,99 +87,109 @@ inline bool QueryParser::onMinusEnd () {
 }
 
 //===========================================================================
-inline bool QueryParser::onParamNumEnd () {
-    if (m_minus) {
-        m_minus = false;
-        m_int = -m_int;
-    }
-    if (m_exp || m_frac) {
-        if (m_expMinus) {
-            m_expMinus = false;
-            m_exp = -m_exp;
-        }
-        m_exp -= m_frac;
-        //m_upd->value = m_int * pow(10.0f, m_exp);
-        m_exp = 0;
-        m_frac = 0;
-    } else {
-        //m_upd->value = (float) m_int;
-    }
-    m_int = 0;
-    return true;
-}
-
-//===========================================================================
-inline bool QueryParser::onParamQueryStart () {
-    return true;
-}
-
-//===========================================================================
 inline bool QueryParser::onPathStart (const char * ptr) {
-    m_nameStart = ptr;
-    return true; 
+    auto path = m_nodes.empty()
+        ? addPath(m_query)
+        : addPathArg(m_nodes.back());
+    m_nodes.push_back(path);
+    return true;
 }
-
-//    m_upd->name = std::string_view(m_nameStart, m_nameEnd - m_nameStart);
 
 //===========================================================================
 inline bool QueryParser::onPathEnd (const char * eptr) {
-    m_nameEnd = eptr - 1;
+    assert(m_nodes.back()->type == QueryInfo::kPath);
+    m_nodes.pop_back();
     return true; 
 }
 
 //===========================================================================
-inline bool QueryParser::onSclEndChar (char ch) {
+inline bool QueryParser::onPathSegStart (const char * ptr) {
+    auto seg = addSeg(m_nodes.back());
+    m_nodes.push_back(seg);
+    return true;
+}
+
+//===========================================================================
+inline bool QueryParser::onPathSegEnd (const char * eptr) {
+    assert(m_nodes.back()->type == QueryInfo::kPathSeg);
+    m_nodes.pop_back();
+    return true; 
+}
+
+//===========================================================================
+inline bool QueryParser::onSclEndChar (char last) {
+    for (unsigned ch = m_charStart; ch <= (unsigned) last; ++ch) 
+        m_chars.set(ch);
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclSingleChar (char ch) {
+    m_chars.set((unsigned) ch);
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclStartChar (char ch) {
+    m_charStart = ch;
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegBlotEnd () {
+    addSegBlot(m_nodes.back());
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegCharListEnd () {
+    addSegChoice(m_nodes.back(), move(m_chars));
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegLiteralStart (const char * ptr) {
-    m_nameStart = ptr;
+    m_start = ptr;
     return true; 
 }
 
 //===========================================================================
 inline bool QueryParser::onSegLiteralEnd (const char * eptr) {
-    m_nameEnd = eptr - 1;
+    addSegLiteral(m_nodes.back(), std::string_view(m_start, eptr - m_start));
     return true; 
 }
 
 //===========================================================================
 inline bool QueryParser::onSegStrListEnd () {
+    addSegChoice(m_nodes.back(), move(m_strs));
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegStrValStart (const char * ptr) {
+    m_start = ptr;
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegStrValEnd (const char * eptr) {
+    m_strs.push_back(std::string_view(m_start, eptr - m_start));
     return true;
 }
 
+
+/****************************************************************************
+*
+*   Query functions
+*
+***/
+
 //===========================================================================
-inline bool QueryParser::onSumEnd () {
-    return true;
+inline bool QueryParser::onFnMaximumAboveStart () {
+    return startFunc(QueryInfo::kFnMaximumAbove);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnSumStart () {
+    return startFunc(QueryInfo::kFnSum);
 }

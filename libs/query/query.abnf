@@ -17,6 +17,7 @@ query = path / func { Function }
 ;----------------------------------------------------------------------------
 path = path-seg *("." path-seg) { Start+, End+ }
 path-seg = 1*(seg-literal / seg-blot / seg-char-list / seg-str-list)
+    { Start+, End+ }
 
 ; * 
 seg-literal = 1*scl-char { Start+, End+ }
@@ -33,8 +34,9 @@ scl-start = scl-char-nd { Char+ }
 scl-end = scl-char-nd { Char+ }
 
 ; {,,,}
-seg-str-list = "{" [seg-str-val] 1*("," seg-str-val) "}" { End }
-seg-str-val = *WSP 1*scl-char *WSP { Start+, End+ }
+seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { End }
+seg-str-wsval = *WSP seg-str-val *WSP
+seg-str-val = 1*scl-char { Start+, End+ }
 
 scl-char-nd = ALPHA / DIGIT 
     / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
@@ -47,11 +49,11 @@ scl-char = scl-char-nd / "-"
 ;----------------------------------------------------------------------------
 ; Functions
 ;----------------------------------------------------------------------------
-func = maximumAbove / sum { End }
-sum = %s"sum(" param-query ")" { End }
-maximumAbove  = %s"maximumAbove(" param-query "," param-num ")"
-param-query = *WSP query *WSP { Start }
-param-num = *WSP number *WSP { End }
+func = fn-maximumAbove / fn-sum { End }
+fn-sum = %s"sum(" arg-query ")" { Start }
+fn-maximumAbove  = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
+arg-query = *WSP query *WSP { Start }
+arg-num = *WSP number *WSP { End }
 
 BSLASH = %x5c ; \
 

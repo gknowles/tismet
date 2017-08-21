@@ -20,8 +20,8 @@ using namespace Dim;
         logMsgError() << "Line " << (line ? line : __LINE__) << ": EXPECT(" \
             << #__VA_ARGS__ << ") failed"; \
     }
-#define EXPECT_PARSE(text, value, time) \
-    parseTest(__LINE__, text, value, time)
+#define EXPECT_PARSE(text, normal) \
+    parseTest(__LINE__, text, normal)
 
 
 /****************************************************************************
@@ -33,26 +33,23 @@ using namespace Dim;
 //===========================================================================
 static void parseTest(
     int line,
-    string_view text,
-    float value, 
-    TimePoint time, 
-    string_view name = "metric"
+    const string & src,
+    string_view normal
 ) {
     QueryInfo qry;
-    bool result = queryParse(qry, text);
+    bool result = queryParse(qry, src);
     EXPECT(result);
-    //EXPECT(upd.name == name);
+    if (result) {
+        queryNormalize(qry);
+        EXPECT(qry.text == normal);
+    }
 }
 
 //===========================================================================
 static void internalTest() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
-    EXPECT_PARSE("metric 0.8 900000000\n", 0.8f, start);
-    EXPECT_PARSE("metric -0.8e-2 900000000\n", -0.008f, start);
-    EXPECT_PARSE("metric 0.8e+2 900000000\n", 80, start);
-    EXPECT_PARSE("metric -8 900000000\n", -8, start);
-    EXPECT_PARSE("metric 8e+2 900000000\n", 800, start);
+    EXPECT_PARSE("a.b.c", "a.b.c");
 }
 
 

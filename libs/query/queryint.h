@@ -19,7 +19,6 @@
 ***/
 
 enum QueryInfo::NodeType : int8_t {
-    kFunc,
     kPath,
     kPathSeg,
     kSegLiteral,
@@ -27,30 +26,26 @@ enum QueryInfo::NodeType : int8_t {
     kSegCharChoice,
     kSegStrChoice,
     kNum,
+
+    kBeforeFirstFunc,
+    kFnMaximumAbove,
+    kFnSum,
+    kAfterLastFunc,
 };
 
-struct FuncNode : QueryInfo::Node {
-    std::vector<Node> args;
-};
-
-struct PathNode : QueryInfo::Node {
-    std::vector<std::unique_ptr<Node>> pathSegs;
-};
-struct PathSeg : QueryInfo::Node {
-    std::vector<std::unique_ptr<Node>> segNodes;
-};
-struct SegLiteral : QueryInfo::Node {
-    std::string_view val;
-};
-struct SegBlot : QueryInfo::Node {
-};
-struct SegCharChoice : QueryInfo::Node {
-    std::bitset<256> vals;
-};
-struct SegStrChoice : QueryInfo::Node {
-    std::vector<std::string_view> vals;
-};
-
-struct NumNode : QueryInfo::Node {
-    double val;
-};
+QueryInfo::Node * addPath(QueryInfo * qi);
+QueryInfo::Node * addSeg(QueryInfo::Node * path);
+QueryInfo::Node * addSegLiteral(QueryInfo::Node * seg, std::string_view val);
+QueryInfo::Node * addSegBlot(QueryInfo::Node * seg);
+QueryInfo::Node * addSegChoice(
+    QueryInfo::Node * seg, 
+    std::bitset<256> && vals
+);
+QueryInfo::Node * addSegChoice(
+    QueryInfo::Node * seg,
+    std::vector<std::string_view> && vals
+);
+QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type);
+QueryInfo::Node * addFuncArg(QueryInfo::Node * func, QueryInfo::NodeType type);
+QueryInfo::Node * addPathArg(QueryInfo::Node * func);
+QueryInfo::Node * addNumArg(QueryInfo::Node * func, double val);
