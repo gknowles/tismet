@@ -24,14 +24,12 @@ seg-literal = 1*scl-char { Start+, End+ }
 seg-blot = "*" { End }
 
 ; [] - allows '-' ranges, but not negation (leading '^')
-seg-char-list = "[" [scl-dash] *(scl-range / 2scl-single-nd) [scl-single] "]" 
-    { End }
+seg-char-list = "[" [scl-dash] *(scl-single-nd ["-" scl-range-end]) 
+    [scl-single] "]" { End }
 scl-single = scl-char { Char+ }
 scl-single-nd = scl-char-nd { Char+, As scl-single }
 scl-dash = "-" { Char+, As scl-single }
-scl-range = scl-start "-" scl-end
-scl-start = scl-char-nd { Char+ }
-scl-end = scl-char-nd { Char+ }
+scl-range-end = scl-char-nd { Char+ }
 
 ; {,,,}
 seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { End }

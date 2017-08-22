@@ -72,12 +72,15 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 
 //===========================================================================
 static void appendNode (string & out, const QueryInfo::Node & node) {
-    auto base = out.size();
+    size_t first = true;
     switch (node.type) {
-    case QueryInfo::kPath: 
+    case QueryInfo::kPath:
         for (auto && seg : static_cast<const PathNode &>(node).segs) {
-            if (base < out.size())
+            if (first) {
+                first = false;
+            } else {
                 out += '.';
+            }
             appendNode(out, *seg);
         }
         break;
@@ -105,14 +108,21 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
     case QueryInfo::kSegStrChoice:
         out += '{';
         for (auto && val : static_cast<const SegStrChoice &>(node).vals) {
-            if (base < out.size())
+            if (first) {
+                first = false;
+            } else {
                 out += ',';
+            }
             out += val;
         }
         out += '}';
         break;
     case QueryInfo::kNum:
-        out += to_string(static_cast<const NumNode &>(node).val);
+        {
+            ostringstream os;
+            os << static_cast<const NumNode &>(node).val;
+            out += os.str();
+        }
         break;
     default:
         assert(node.type > QueryInfo::kBeforeFirstFunc);
@@ -120,8 +130,11 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
         out += tokenTableGetName(s_funcNameTbl, node.type);
         out += '(';
         for (auto && arg : static_cast<const FuncNode &>(node).args) {
-            if (base < out.size())
+            if (first) {
+                first = false;
+            } else {
                 out += ", ";
+            }
             appendNode(out, *arg);
         }
         out += ')';

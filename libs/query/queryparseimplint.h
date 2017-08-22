@@ -117,21 +117,16 @@ inline bool QueryParser::onPathSegEnd (const char * eptr) {
 }
 
 //===========================================================================
-inline bool QueryParser::onSclEndChar (char last) {
-    for (unsigned ch = m_charStart; ch <= (unsigned) last; ++ch) 
+inline bool QueryParser::onSclRangeEndChar (char last) {
+    for (unsigned ch = m_charStart + 1; ch <= (unsigned) last; ++ch) 
         m_chars.set(ch);
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclSingleChar (char ch) {
-    m_chars.set((unsigned) ch);
-    return true;
-}
-
-//===========================================================================
-inline bool QueryParser::onSclStartChar (char ch) {
     m_charStart = ch;
+    m_chars.set((unsigned) ch);
     return true;
 }
 
