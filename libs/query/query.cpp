@@ -27,14 +27,14 @@ const unsigned kQueryMaxSize = 8192;
 namespace {
 
 struct FuncNode : QueryInfo::Node {
-    vector<unique_ptr<Node>> args;
+    List<Node> args;
 };
 
 struct PathNode : QueryInfo::Node {
-    vector<unique_ptr<Node>> segs;
+    List<Node> segs;
 };
 struct PathSeg : QueryInfo::Node {
-    vector<unique_ptr<Node>> nodes;
+    List<Node> nodes;
 };
 struct SegLiteral : QueryInfo::Node {
     string_view val;
@@ -46,7 +46,7 @@ struct SegCharChoice : QueryInfo::Node {
     bitset<256> vals;
 };
 struct SegStrChoice : QueryInfo::Node {
-    vector<string_view> vals;
+    List<Node> literals;
 };
 
 struct NumNode : QueryInfo::Node {
@@ -71,6 +71,34 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 ***/
 
 //===========================================================================
+static void appendNode (string & out, const SegStrChoice & node) {
+    vector<string_view> literals;
+    for (auto && sv : node.literals) {
+        auto & lit = static_cast<const SegLiteral &>(sv);
+        literals.push_back(lit.val);
+    }
+    sort(literals.begin(), literals.end());
+    auto it = unique(literals.begin(), literals.end());
+    literals.erase(it, literals.end());
+
+    if (literals.size() < 2) {
+        if (!literals.empty())
+            out += literals.front();
+        return;
+    }
+
+    out += '{';
+    auto ptr = literals.data();
+    auto eptr = ptr + literals.size();
+    out += *ptr++;
+    while (ptr != eptr) {
+        out += ',';
+        out += *ptr++;
+    }
+    out += '}';
+}
+
+//===========================================================================
 static void appendNode (string & out, const QueryInfo::Node & node) {
     size_t first = true;
     switch (node.type) {
@@ -81,12 +109,12 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
             } else {
                 out += '.';
             }
-            appendNode(out, *seg);
+            appendNode(out, seg);
         }
         break;
     case QueryInfo::kPathSeg:
         for (auto && sn : static_cast<const PathSeg &>(node).nodes) 
-            appendNode(out, *sn);
+            appendNode(out, sn);
         break;
     case QueryInfo::kSegLiteral:
         out += static_cast<const SegLiteral &>(node).val;
@@ -106,16 +134,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
         }
         break;
     case QueryInfo::kSegStrChoice:
-        out += '{';
-        for (auto && val : static_cast<const SegStrChoice &>(node).vals) {
-            if (first) {
-                first = false;
-            } else {
-                out += ',';
-            }
-            out += val;
-        }
-        out += '}';
+        appendNode(out, static_cast<const SegStrChoice &>(node));
         break;
     case QueryInfo::kNum:
         {
@@ -135,7 +154,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
             } else {
                 out += ", ";
             }
-            appendNode(out, *arg);
+            appendNode(out, arg);
         }
         out += ')';
         break;
@@ -153,7 +172,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
 bool QueryParserBase::startFunc (QueryInfo::NodeType type) {
     auto func = m_nodes.empty()
         ? addFunc(m_query, type)
-        : addFuncArg(m_nodes.back(), type);
+        : addFuncArg(m_query, m_nodes.back(), type);
     m_nodes.push_back(func);
     return true;
 }
@@ -168,73 +187,102 @@ bool QueryParserBase::startFunc (QueryInfo::NodeType type) {
 //===========================================================================
 QueryInfo::Node * addPath(QueryInfo * qi) {
     assert(!qi->node);
-    qi->node = make_unique<PathNode>();
+    qi->node = qi->heap.emplace<PathNode>();
     qi->node->type = QueryInfo::kPath;
-    return qi->node.get();
+    return qi->node;
 }
 
 //===========================================================================
-QueryInfo::Node * addSeg(QueryInfo::Node * node) {
+QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type == QueryInfo::kPath);
     auto path = static_cast<PathNode *>(node);
-    path->segs.push_back(make_unique<PathSeg>());
-    auto seg = path->segs.back().get();
+    path->segs.link(qi->heap.emplace<PathSeg>());
+    auto seg = path->segs.back();
     seg->type = QueryInfo::kPathSeg;
     return seg;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegLiteral(QueryInfo::Node * node, string_view val) {
+QueryInfo::Node * addSegLiteral(
+    QueryInfo * qi, 
+    QueryInfo::Node * node, 
+    string_view val
+) {
     assert(node->type == QueryInfo::kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    seg->nodes.push_back(make_unique<SegLiteral>());
-    auto sn = static_cast<SegLiteral *>(seg->nodes.back().get());
+    seg->nodes.link(qi->heap.emplace<SegLiteral>());
+    auto sn = static_cast<SegLiteral *>(seg->nodes.back());
     sn->type = QueryInfo::kSegLiteral;
     sn->val = val;
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegBlot(QueryInfo::Node * node) {
+QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type == QueryInfo::kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    seg->nodes.push_back(make_unique<SegBlot>());
-    auto sn = static_cast<SegBlot *>(seg->nodes.back().get());
+    if (!seg->nodes.empty() && seg->nodes.back()->type == QueryInfo::kSegBlot)
+        return nullptr;
+    qi->flags |= QueryInfo::fWild;
+    seg->nodes.link(qi->heap.emplace<SegBlot>());
+    auto sn = static_cast<SegBlot *>(seg->nodes.back());
     sn->type = QueryInfo::kSegBlot;
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegChoice(
+QueryInfo::Node * addSegChoices(
+    QueryInfo * qi,
     QueryInfo::Node * node, 
-    bitset<256> && vals
+    bitset<256> & vals
 ) {
     assert(node->type == QueryInfo::kPathSeg);
-    if (vals.none())
-        return nullptr;
+    if (auto cnt = vals.count(); cnt < 2) {
+        if (!cnt)
+            return nullptr;
+        for (unsigned i = 0; i < vals.size(); ++i) {
+            if (vals.test(i)) {
+                vals.reset(i);
+                char * lit = qi->heap.alloc(1, 1);
+                *lit = (unsigned char) i;
+                return addSegLiteral(qi, node, string_view{lit, 1});
+            }
+        }
+    }
     auto seg = static_cast<PathSeg *>(node);
-    seg->nodes.push_back(make_unique<SegCharChoice>());
-    auto sn = static_cast<SegCharChoice *>(seg->nodes.back().get());
+    qi->flags |= QueryInfo::fWild;
+    seg->nodes.link(qi->heap.emplace<SegCharChoice>());
+    auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
     sn->type = QueryInfo::kSegCharChoice;
     swap(sn->vals, vals);
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegChoice(
-    QueryInfo::Node * node,
-    vector<string_view> && vals
-) {
+QueryInfo::Node * addSegStrChoices(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type == QueryInfo::kPathSeg);
-    if (vals.empty())
-        return nullptr;
-    sort(vals.begin(), vals.end());
     auto seg = static_cast<PathSeg *>(node);
-    seg->nodes.push_back(make_unique<SegStrChoice>());
-    auto sn = static_cast<SegStrChoice *>(seg->nodes.back().get());
+    seg->nodes.link(qi->heap.emplace<SegStrChoice>());
+    auto sn = seg->nodes.back();
     sn->type = QueryInfo::kSegStrChoice;
-    swap(sn->vals, vals);
     return sn;
+}
+
+//===========================================================================
+QueryInfo::Node * addSegChoice(
+    QueryInfo * qi,
+    QueryInfo::Node * node,
+    std::string_view val
+) {
+    assert(node->type == QueryInfo::kSegStrChoice);
+    auto sn = static_cast<SegStrChoice *>(node);
+    if (!sn->literals.empty())
+        qi->flags |= QueryInfo::fWild;
+    sn->literals.link(qi->heap.emplace<SegLiteral>());
+    auto sv = static_cast<SegLiteral *>(sn->literals.back());
+    sv->type = QueryInfo::kSegLiteral;
+    sv->val = val;
+    return sv;
 }
 
 //===========================================================================
@@ -242,43 +290,48 @@ QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type) {
     assert(!qi->node);
     assert(type > QueryInfo::kBeforeFirstFunc);
     assert(type < QueryInfo::kAfterLastFunc);
-    qi->node = make_unique<FuncNode>();
+    qi->node = qi->heap.emplace<FuncNode>();
     qi->node->type = type;
-    return qi->node.get();
+    return qi->node;
 }
 
 //===========================================================================
 QueryInfo::Node * addFuncArg(
+    QueryInfo * qi, 
     QueryInfo::Node * node, 
     QueryInfo::NodeType type
 ) {
     assert(node->type > QueryInfo::kBeforeFirstFunc);
     assert(node->type < QueryInfo::kAfterLastFunc);
     auto func = static_cast<FuncNode *>(node);
-    func->args.push_back(make_unique<FuncNode>());
-    auto arg = static_cast<FuncNode *>(func->args.back().get());
+    func->args.link(qi->heap.emplace<FuncNode>());
+    auto arg = static_cast<FuncNode *>(func->args.back());
     arg->type = type;
     return arg;
 }
 
 //===========================================================================
-QueryInfo::Node * addPathArg(QueryInfo::Node * node) {
+QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type > QueryInfo::kBeforeFirstFunc);
     assert(node->type < QueryInfo::kAfterLastFunc);
     auto func = static_cast<FuncNode *>(node);
-    func->args.push_back(make_unique<PathNode>());
-    auto arg = static_cast<PathNode *>(func->args.back().get());
+    func->args.link(qi->heap.emplace<PathNode>());
+    auto arg = static_cast<PathNode *>(func->args.back());
     arg->type = QueryInfo::kPath;
     return arg;
 }
 
 //===========================================================================
-QueryInfo::Node * addNumArg(QueryInfo::Node * node, double val) {
+QueryInfo::Node * addNumArg(
+    QueryInfo * qi, 
+    QueryInfo::Node * node, 
+    double val
+) {
     assert(node->type > QueryInfo::kBeforeFirstFunc);
     assert(node->type < QueryInfo::kAfterLastFunc);
     auto func = static_cast<FuncNode *>(node);
-    func->args.push_back(make_unique<NumNode>());
-    auto arg = static_cast<NumNode *>(func->args.back().get());
+    func->args.link(qi->heap.emplace<NumNode>());
+    auto arg = static_cast<NumNode *>(func->args.back());
     arg->type = QueryInfo::kNum;
     arg->val = val;
     return arg;
@@ -310,5 +363,5 @@ void queryNormalize(QueryInfo & qry) {
         appendNode(text, *qry.node);
     [[maybe_unused]] bool success = queryParse(qry, text);
     assert(success);
-    qry.text = move(text);
+    qry.text = qry.heap.strdup(text.c_str());
 }

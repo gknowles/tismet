@@ -7,6 +7,7 @@
 #pragma once
 
 #include "cppconf/cppconf.h"
+#include "core/core.h"
 
 #include <bitset>
 #include <memory>
@@ -21,13 +22,20 @@
 ***/
 
 struct QueryInfo {
+    enum QueryFlags : uint8_t {
+        fWild = 1,
+    };
+
     enum NodeType : int8_t;
-    struct Node {
+
+    struct Node : Dim::ListBaseLink<Node> {
         NodeType type;
     };
 
-    std::string text;
-    std::unique_ptr<Node> node;
+    char * text{nullptr};
+    Node * node{nullptr};
+    QueryFlags flags{};
+    Dim::TempHeap heap;
 };
 
 // Returns false on malformed input, and true otherwise (query successfully

@@ -32,7 +32,7 @@ scl-dash = "-" { Char+, As scl-single }
 scl-range-end = scl-char-nd { Char+ }
 
 ; {,,,}
-seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { End }
+seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { Start, End }
 seg-str-wsval = *WSP seg-str-val *WSP
 seg-str-val = 1*scl-char { Start+, End+ }
 

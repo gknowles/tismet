@@ -38,7 +38,7 @@ inline bool QueryParser::onArgNumEnd () {
     }
     m_int = 0;
 
-    addNumArg(m_nodes.back(), value);
+    addNumArg(m_query, m_nodes.back(), value);
     return true;
 }
 
@@ -90,7 +90,7 @@ inline bool QueryParser::onMinusEnd () {
 inline bool QueryParser::onPathStart (const char * ptr) {
     auto path = m_nodes.empty()
         ? addPath(m_query)
-        : addPathArg(m_nodes.back());
+        : addPathArg(m_query, m_nodes.back());
     m_nodes.push_back(path);
     return true;
 }
@@ -104,7 +104,7 @@ inline bool QueryParser::onPathEnd (const char * eptr) {
 
 //===========================================================================
 inline bool QueryParser::onPathSegStart (const char * ptr) {
-    auto seg = addSeg(m_nodes.back());
+    auto seg = addSeg(m_query, m_nodes.back());
     m_nodes.push_back(seg);
     return true;
 }
@@ -132,13 +132,13 @@ inline bool QueryParser::onSclSingleChar (char ch) {
 
 //===========================================================================
 inline bool QueryParser::onSegBlotEnd () {
-    addSegBlot(m_nodes.back());
+    addSegBlot(m_query, m_nodes.back());
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSegCharListEnd () {
-    addSegChoice(m_nodes.back(), move(m_chars));
+    addSegChoices(m_query, m_nodes.back(), m_chars);
     return true;
 }
 
@@ -150,13 +150,25 @@ inline bool QueryParser::onSegLiteralStart (const char * ptr) {
 
 //===========================================================================
 inline bool QueryParser::onSegLiteralEnd (const char * eptr) {
-    addSegLiteral(m_nodes.back(), std::string_view(m_start, eptr - m_start));
+    addSegLiteral(
+        m_query, 
+        m_nodes.back(), 
+        std::string_view(m_start, eptr - m_start)
+    );
     return true; 
 }
 
 //===========================================================================
+inline bool QueryParser::onSegStrListStart () {
+    auto sl = addSegStrChoices(m_query, m_nodes.back());
+    m_nodes.push_back(sl);
+    return true;
+}
+
+//===========================================================================
 inline bool QueryParser::onSegStrListEnd () {
-    addSegChoice(m_nodes.back(), move(m_strs));
+    assert(m_nodes.back()->type == QueryInfo::kSegStrChoice);
+    m_nodes.pop_back();
     return true;
 }
 
@@ -168,7 +180,11 @@ inline bool QueryParser::onSegStrValStart (const char * ptr) {
 
 //===========================================================================
 inline bool QueryParser::onSegStrValEnd (const char * eptr) {
-    m_strs.push_back(std::string_view(m_start, eptr - m_start));
+    addSegChoice(
+        m_query, 
+        m_nodes.back(), 
+        std::string_view(m_start, eptr - m_start)
+    );
     return true;
 }
 

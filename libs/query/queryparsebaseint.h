@@ -32,8 +32,6 @@ struct QueryParserBase {
     unsigned char m_charStart{0};
     std::bitset<256> m_chars;
 
-    std::vector<std::string_view> m_strs;
-
     // Functions
     QueryParserBase(QueryInfo * qry) : m_query{qry} {}
 

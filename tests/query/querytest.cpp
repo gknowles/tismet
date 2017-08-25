@@ -49,7 +49,9 @@ static void parseTest(
 static void internalTest() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
-    EXPECT_PARSE("a[12-46]", "a[12346]");
+    EXPECT_PARSE("a[b]c[de]f", "abc[de]f");
+    EXPECT_PARSE("a.{ xxx ,zzz, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
+    EXPECT_PARSE("a[62-41]", "a[12346]");
     EXPECT_PARSE("a.b.c", "a.b.c");
     EXPECT_PARSE("sum(a)", "sum(a)");
     EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))", 
