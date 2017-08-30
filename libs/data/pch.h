@@ -5,6 +5,7 @@
 
 // Public header
 #include "data/tsdata.h"
+#include "query/query.h"
 #include "data/radix.h"
 
 // External library public headers

@@ -74,8 +74,7 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 static void appendNode (string & out, const SegStrChoice & node) {
     vector<string_view> literals;
     for (auto && sv : node.literals) {
-        auto & lit = static_cast<const SegLiteral &>(sv);
-        literals.push_back(lit.val);
+        literals.push_back(static_cast<const SegLiteral &>(sv).val);
     }
     sort(literals.begin(), literals.end());
     auto it = unique(literals.begin(), literals.end());
@@ -349,19 +348,103 @@ bool queryParse(QueryInfo & qry, string_view src) {
     assert(*src.end() == 0);
     qry = {};
     auto ptr = src.data();
-    QueryParser parser(&qry);
-    if (parser.parse(ptr)) 
-        return true;
-    logParseError("Invalid query", "", parser.errpos(), src);
-    return false;
+    auto parser = QueryParser{&qry};
+    if (!parser.parse(ptr)) {
+        logParseError("Invalid query", "", parser.errpos(), src);
+        return false;
+    }
+
+    // normalize
+    string text;
+    assert(qry.node);
+    appendNode(text, *qry.node);
+    qry = {};
+    qry.text = qry.heap.strdup(text.c_str());
+    parser = QueryParser{&qry};
+    [[maybe_unused]] bool success = parser.parse(qry.text);
+    assert(success);
+    return true;
 }
 
 //===========================================================================
-void queryNormalize(QueryInfo & qry) {
-    string text;
-    if (qry.node)
-        appendNode(text, *qry.node);
-    [[maybe_unused]] bool success = queryParse(qry, text);
-    assert(success);
-    qry.text = qry.heap.strdup(text.c_str());
+void queryPathSegments(
+    vector<QueryInfo::PathSegment> & out, 
+    const QueryInfo & qry
+) {
+    out.clear();
+    if (qry.node->type != QueryInfo::kPath)
+        return;
+    auto path = static_cast<const PathNode *>(qry.node);
+    for (auto && seg : path->segs) {
+        QueryInfo::PathSegment si;
+        auto & sn = static_cast<const PathSeg &>(seg);
+        if (sn.nodes.size() > 1)
+            si.flags |= QueryInfo::fWild;
+        si.node = &seg;
+        auto lit = static_cast<const SegLiteral *>(sn.nodes.front());
+        if (lit->type == QueryInfo::kSegLiteral) 
+            si.prefix = lit->val;
+        out.push_back(si);
+    }
+}
+
+//===========================================================================
+static bool matchSegment(
+    const List<QueryInfo::Node> & nodes,
+    const QueryInfo::Node * node,
+    string_view val
+) {
+    if (!node)
+        return val.empty();
+
+    switch (node->type) {
+    case QueryInfo::kSegBlot:
+        // TODO: early out of val.size() < minimum required length
+        for (; !val.empty(); val.remove_prefix(1)) {
+            if (matchSegment(nodes, nodes.next(node), val))
+                return true;
+        }
+        return matchSegment(nodes, nodes.next(node), val);
+
+    case QueryInfo::kSegCharChoice:
+        if (val.empty()
+            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
+        ) {
+            return false;
+        }
+        return matchSegment(nodes, nodes.next(node), val.substr(1));
+
+    case QueryInfo::kSegLiteral:
+    {
+        auto & lit = static_cast<const SegLiteral *>(node)->val;
+        auto len = lit.size();
+        return lit == val.substr(0, len)
+            && matchSegment(nodes, nodes.next(node), val.substr(len));
+    }
+
+    case QueryInfo::kSegStrChoice:
+        for (auto && sn : static_cast<const SegStrChoice *>(node)->literals) {
+            auto & lit = static_cast<const SegLiteral &>(sn).val;
+            auto len = lit.size();
+            if (lit != val.substr(0, len))
+                continue;
+            if (matchSegment(nodes, nodes.next(node), val.substr(len)))
+                return true;
+        }
+        return false;
+
+    default:
+        assert(0 && "not a path segment node type");
+        return false;
+    }
+}
+
+//===========================================================================
+bool queryMatchSegment(
+    const QueryInfo::Node * node,
+    string_view val
+) {
+    assert(node->type == QueryInfo::kPathSeg);
+    auto & nodes = static_cast<const PathSeg *>(node)->nodes;
+    return matchSegment(nodes, nodes.front(), val);
 }

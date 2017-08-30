@@ -23,23 +23,35 @@
 
 struct QueryInfo {
     enum QueryFlags : uint8_t {
-        fWild = 1,
+        fWild = 1,   // query has paths with wildcards
     };
 
     enum NodeType : int8_t;
-
-    struct Node : Dim::ListBaseLink<Node> {
-        NodeType type;
+    struct Node;
+    struct PathSegment {
+        std::string_view prefix;
+        QueryFlags flags{};
+        const Node * node{nullptr};
     };
 
-    char * text{nullptr};
+    char * text{nullptr};   // normalized query string
     Node * node{nullptr};
     QueryFlags flags{};
     Dim::TempHeap heap;
 };
 
-// Returns false on malformed input, and true otherwise (query successfully
-// parsed).
+// Returns false on malformed input, otherwise true and the query was 
+// successfully parsed.
 bool queryParse(QueryInfo & qry, std::string_view src);
 
-void queryNormalize(QueryInfo & qry);
+// Returns returns an entry for each segment of path. "out" will empty if 
+// query is not a path.
+void queryPathSegments(
+    std::vector<QueryInfo::PathSegment> & out, 
+    const QueryInfo & qry
+);
+// Use the node values returned by queryPathSegments()
+bool queryMatchSegment(
+    const QueryInfo::Node * node,
+    std::string_view val
+);

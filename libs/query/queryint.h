@@ -33,6 +33,10 @@ enum QueryInfo::NodeType : int8_t {
     kAfterLastFunc,
 };
 
+struct QueryInfo::Node : Dim::ListBaseLink<Node> {
+    NodeType type;
+};
+
 QueryInfo::Node * addPath(QueryInfo * qi);
 QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * path);
 QueryInfo::Node * addSegLiteral(

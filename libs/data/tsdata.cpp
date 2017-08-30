@@ -150,7 +150,7 @@ public:
     );
 
 private:
-    bool loadMetricInfo (uint32_t pgno);
+    bool loadMetricInfo(uint32_t pgno);
     void metricFreePage(uint32_t pgno);
 
     bool loadFreePages ();
@@ -198,9 +198,27 @@ private:
         TimePoint time
     );
 
-    unordered_map<string, uint32_t> m_metricIds;
+    void indexInsertMetric(uint32_t id, const string & name);
+    void indexEraseMetric(uint32_t id, const string & name);
+
     vector<MetricInfo> m_metricInfo;
+    unordered_map<string, uint32_t> m_metricIds;
     UnsignedSet m_ids;
+    
+    struct UnsignedSetWithCount {
+        UnsignedSet uset;
+        size_t count{0};
+    };
+
+    // metric ids by name length as measured in segments
+    vector<UnsignedSetWithCount> m_lenIds;
+
+    // Index of metric ids by value of segments of their names. So the 
+    // wildcard *.red.* could be matched by finding all the metrics whose name
+    // has "red" as the second segment (m_segIds[1]["red"]) and three segments
+    // long (m_lenIds[3]).
+    vector<unordered_map<string, UnsignedSetWithCount>> m_segIds;
+
     RadixDigits m_rdIndex;
     RadixDigits m_rdMetric;
 
@@ -299,10 +317,8 @@ void TsdFile::metricFreePage (uint32_t pgno) {
         if (auto pn = mp->rd.pages[i])
             freePage(pn);
     }
-    auto num = m_metricIds.erase(mp->name);
-    assert(num == 1);
     m_metricInfo[mp->id] = {};
-    m_ids.erase(mp->id);
+    indexEraseMetric(mp->id, mp->name);
 }
 
 //===========================================================================
@@ -325,8 +341,9 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
 
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
-        m_ids.insert(mp->id);
-        m_metricIds[mp->name] = mp->id;
+        
+        indexInsertMetric(mp->id, mp->name);
+
         if (m_metricInfo.size() <= mp->id)
             m_metricInfo.resize(mp->id + 1);
         auto & mi = m_metricInfo[mp->id];
@@ -350,8 +367,109 @@ bool TsdFile::findMetric(uint32_t & out, const string & name) const {
 
 //===========================================================================
 void TsdFile::findMetrics(UnsignedSet & out, string_view name) const {
-    assert(name.empty());
-    out = m_ids;
+    if (name.empty()) {
+        out = m_ids;
+        return;
+    }
+
+    QueryInfo qry;
+    [[maybe_unused]] bool result = queryParse(qry, name);
+    assert(result);
+    if (~qry.flags & QueryInfo::fWild) {
+        uint32_t id;
+        out.clear();
+        if (findMetric(id, string(name)))
+            out.insert(id);
+        return;
+    }
+
+    vector<QueryInfo::PathSegment> segs;
+    queryPathSegments(segs, qry);
+    auto numSegs = segs.size();
+    vector<const UnsignedSetWithCount*> usets(numSegs);
+    auto fewest = &m_lenIds[numSegs];
+    int ifewest = -1;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto & seg = segs[i];
+        if (~seg.flags & QueryInfo::fWild) {
+            auto it = m_segIds[i].find(string(seg.prefix));
+            if (it != m_segIds[i].end()) {
+                usets[i] = &it->second;
+                if (it->second.count < fewest->count) {
+                    ifewest = i;
+                    fewest = &it->second;
+                }
+            }
+        }
+    }
+    out = fewest->uset;
+    for (int i = 0; i < numSegs; ++i) {
+        if (i == ifewest)
+            continue;
+        if (auto usetw = usets[i]) {
+            out.intersect(usetw->uset);
+            continue;
+        }
+        auto & seg = segs[i];
+        UnsignedSet found;
+        for (auto && kv : m_segIds[i]) {
+            if (queryMatchSegment(seg.node, kv.first)) {
+                if (found.empty()) {
+                    found = kv.second.uset;
+                } else {
+                    found.insert(kv.second.uset);
+                }
+            }
+        }
+        out.intersect(move(found));
+    }
+}
+
+//===========================================================================
+void TsdFile::indexInsertMetric(uint32_t id, const string & name) {
+    m_metricIds[name] = id;
+    m_ids.insert(id);
+    vector<string_view> segs;
+    strSplit(segs, name, '.');
+    auto numSegs = segs.size();
+    if (m_lenIds.size() < numSegs) {
+        m_lenIds.resize(numSegs + 1);
+        m_segIds.resize(numSegs);
+    }
+    m_lenIds[numSegs].uset.insert(id);
+    m_lenIds[numSegs].count += 1;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto & ids = m_segIds[i][string(segs[i])];
+        ids.uset.insert(id);
+        ids.count += 1;
+    }
+}
+
+//===========================================================================
+void TsdFile::indexEraseMetric(uint32_t id, const string & name) {
+    auto num = m_metricIds.erase(name);
+    assert(num == 1);
+    m_ids.erase(id);
+    vector<string_view> segs;
+    strSplit(segs, name, '.');
+    auto numSegs = segs.size();
+    m_lenIds[numSegs].uset.erase(id);
+    m_lenIds[numSegs].count -= 1;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto key = string(segs[i]);
+        auto & ids = m_segIds[i][key];
+        ids.uset.erase(id);
+        if (--ids.count == 0)
+            m_segIds[i].erase(key);
+    }
+    numSegs = m_segIds.size();
+    for (; numSegs; --numSegs) {
+        if (!m_segIds[numSegs - 1].empty())
+            break;
+        assert(m_lenIds[numSegs].uset.empty());
+        m_lenIds.resize(numSegs);
+        m_segIds.resize(numSegs - 1);
+    }
 }
 
 //===========================================================================
@@ -373,10 +491,9 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
         id = ids.first > 1 ? 1 : ids.second + 1;
     }
     out = id;
-    m_metricIds[name] = id;
-    m_ids.insert(id);
-    if (id >= m_metricInfo.size())
-        m_metricInfo.resize(id + 1);
+
+    // update indexes
+    indexInsertMetric(id, name);
 
     // set info page 
     auto mp = allocPage<MetricPage>();
@@ -389,7 +506,10 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     mp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
     writePage(*mp);
 
+    if (id >= m_metricInfo.size())
+        m_metricInfo.resize(id + 1);
     auto & mi = m_metricInfo[id];
+    assert(!mi.infoPage);
     mi = {};
     mi.infoPage = mp->hdr.pgno;
     mi.interval = mp->interval;

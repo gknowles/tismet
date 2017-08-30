@@ -83,6 +83,15 @@ static int internalTest() {
 
     cout << "----" << endl; 
     tsdWriteDump(cout, h);
+
+    UnsignedSet found;
+    tsdFindMetrics(found, h, "*.is.*.*5");
+    ostringstream os;
+    os << found;
+    EXPECT(os.str() == "5 15 25");
+    cout << "----" << endl; 
+    tsdWriteDump(cout, h, "*.is.*.*5");
+
     tsdClose(h);
 
     return EX_OK;
