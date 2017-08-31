@@ -85,7 +85,7 @@ void ICarbonNotify::onSocketRead(AppSocketData & data) {
         }
         s_perfUpdates += 1;
         auto id = onCarbonMetric(upd.name);
-        onCarbonValue(id, upd.value, upd.time);
+        onCarbonValue(id, upd.time, upd.value);
     }
 
     s_perfErrors += 1;
@@ -189,8 +189,23 @@ bool carbonParse(CarbonUpdate & upd, string_view & src) {
 }
 
 //===========================================================================
-void carbonWrite(string & out, string_view name, float value, TimePoint time) {
-    ostringstream os;
+void carbonWrite(
+    ostream & os, 
+    string_view name, 
+    TimePoint time,
+    float value
+) {
     os << name << ' ' << value << ' ' << Clock::to_time_t(time) << '\n';
+}
+
+//===========================================================================
+void carbonWrite(
+    string & out, 
+    string_view name, 
+    TimePoint time,
+    float value
+) {
+    ostringstream os;
+    carbonWrite(os, name, time, value);
     out += os.str();
 }

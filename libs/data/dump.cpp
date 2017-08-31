@@ -58,7 +58,7 @@ bool Writer::OnTsdValue(
     TimePoint time, 
     float val
 ) {
-    m_os << name << ' ' << val << ' ' << Clock::to_time_t(time) << '\n';
+    carbonWrite(m_os, name, time, val);
     return true;
 }
 

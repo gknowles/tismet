@@ -54,7 +54,7 @@ class RecordConn : public ICarbonNotify {
     string m_buf;
 public:
     uint32_t onCarbonMetric(string_view name) override;
-    void onCarbonValue(uint32_t id, float value, TimePoint time) override;
+    void onCarbonValue(uint32_t id, TimePoint time, float value) override;
 };
 } // namespace
 
@@ -65,10 +65,10 @@ uint32_t RecordConn::onCarbonMetric(string_view name) {
 }
 
 //===========================================================================
-void RecordConn::onCarbonValue(uint32_t id, float value, TimePoint time) {
+void RecordConn::onCarbonValue(uint32_t id, TimePoint time, float value) {
     assert(id == 1);
     m_buf.clear();
-    carbonWrite(m_buf, m_name, value, time);
+    carbonWrite(m_buf, m_name, time, value);
     fileAppendWait(s_file, m_buf.data(), m_buf.size());
     s_bytesWritten += m_buf.size();
     if (s_bytesWritten >= s_maxBytes && !appStopping())

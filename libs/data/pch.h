@@ -4,6 +4,7 @@
 // pch.h - tismet data
 
 // Public header
+#include "carbon/carbon.h"
 #include "data/tsdata.h"
 #include "query/query.h"
 #include "data/radix.h"
