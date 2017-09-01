@@ -49,7 +49,7 @@ Duration RecordTimer::onTimer(TimePoint now) {
 ***/
 
 namespace {
-class RecordConn : public ICarbonNotify {
+class RecordConn : public ICarbonSocketNotify {
     string_view m_name;
     string m_buf;
 public:

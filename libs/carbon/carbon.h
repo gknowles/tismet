@@ -30,8 +30,13 @@ namespace TismetSocket {
 *
 ***/
 
-class ICarbonNotify : public Dim::IAppSocketNotify {
+class ICarbonNotify {
 public:
+    virtual ~ICarbonNotify() {}
+
+    // add more input data, may trigger any number of onCarbon*() callbacks
+    bool append(std::string_view data);
+
     virtual uint32_t onCarbonMetric(std::string_view name) = 0;
     virtual void onCarbonValue(
         uint32_t id,
@@ -40,12 +45,18 @@ public:
     ) = 0;
 
 private:
+    std::string m_buf;
+};
+
+class ICarbonSocketNotify 
+    : public Dim::IAppSocketNotify 
+    , public ICarbonNotify
+{
+private:
     // Inherited via IAppSocketNotify
     bool onSocketAccept(const Dim::AppSocketInfo & info) override;
     void onSocketDisconnect() override;
     void onSocketRead(Dim::AppSocketData & data) override;
-
-    std::string m_buf;
 };
 
 

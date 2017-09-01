@@ -55,21 +55,8 @@ static auto & s_perfErrors = uperf("carbon errors");
 ***/
 
 //===========================================================================
-bool ICarbonNotify::onSocketAccept(const AppSocketInfo & info) {
-    s_perfClients += 1;
-    s_perfCurrent += 1;
-    return true;
-}
-
-//===========================================================================
-void ICarbonNotify::onSocketDisconnect() {
-    s_perfCurrent -= 1;
-}
-
-//===========================================================================
-void ICarbonNotify::onSocketRead(AppSocketData & data) {
+bool ICarbonNotify::append(string_view src) {
     CarbonUpdate upd;
-    auto src = string_view(data.data, data.bytes);
     if (!m_buf.empty()) {
         m_buf.append(src);
         src = m_buf;
@@ -81,7 +68,7 @@ void ICarbonNotify::onSocketRead(AppSocketData & data) {
             } else {
                 m_buf.erase(0, m_buf.size() - src.size());
             }
-            return;
+            return true;
         }
         s_perfUpdates += 1;
         auto id = onCarbonMetric(upd.name);
@@ -89,7 +76,34 @@ void ICarbonNotify::onSocketRead(AppSocketData & data) {
     }
 
     s_perfErrors += 1;
-    return socketDisconnect(this);
+    return false;
+}
+
+
+/****************************************************************************
+*
+*   ICarbonSocketNotify
+*
+***/
+
+//===========================================================================
+bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
+    s_perfClients += 1;
+    s_perfCurrent += 1;
+    return true;
+}
+
+//===========================================================================
+void ICarbonSocketNotify::onSocketDisconnect() {
+    s_perfCurrent -= 1;
+}
+
+//===========================================================================
+void ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
+    if (!append(string_view(data.data, data.bytes))) {
+        s_perfErrors += 1;
+        socketDisconnect(this);
+    }
 }
 
 
