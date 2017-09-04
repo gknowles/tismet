@@ -23,7 +23,7 @@ static Cli s_cli = Cli{}.command("dump")
     .action(dumpCmd);
 static auto & s_dat = s_cli.opt<Path>("[dat file]")
     .desc("Database to dump");
-static auto & s_out = s_cli.opt<Path>("[output file]", "")
+static auto & s_out = s_cli.opt<Path>("[output file]")
     .desc("Output defaults to '<dat file>.txt', '-' for stdout");
 static auto & s_qry = s_cli.opt<string>("f find")
     .desc("Wildcard metric name to match, defaults to matching all metrics.");
