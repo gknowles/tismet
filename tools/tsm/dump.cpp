@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dump.cpp - tismet
+// dump.cpp - tsm
 #include "pch.h"
 #pragma hdrstop
 
@@ -19,7 +19,7 @@ namespace fs = std::experimental::filesystem;
 static bool dumpCmd(Cli & cli);
 
 static Cli s_cli = Cli{}.command("dump")
-    .desc("Create metrics dump file from database.")
+    .desc("Create dump file from metrics database.")
     .action(dumpCmd);
 static auto & s_dat = s_cli.opt<Path>("[dat file]")
     .desc("Database to dump");
