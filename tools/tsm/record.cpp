@@ -37,6 +37,7 @@ static RecordTimer s_timer;
 
 //===========================================================================
 Duration RecordTimer::onTimer(TimePoint now) {
+    logMsgInfo() << "Time expired";
     appSignalShutdown();
     return kTimerInfinite;
 }
@@ -49,6 +50,7 @@ Duration RecordTimer::onTimer(TimePoint now) {
 ***/
 
 namespace {
+
 class RecordConn : public ICarbonSocketNotify {
     string_view m_name;
     string m_buf;
@@ -56,6 +58,7 @@ public:
     uint32_t onCarbonMetric(string_view name) override;
     void onCarbonValue(uint32_t id, TimePoint time, float value) override;
 };
+
 } // namespace
 
 //===========================================================================
@@ -71,8 +74,10 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, float value) {
     carbonWrite(m_buf, m_name, time, value);
     fileAppendWait(s_file, m_buf.data(), m_buf.size());
     s_bytesWritten += m_buf.size();
-    if (s_bytesWritten >= s_maxBytes && !appStopping())
+    if (s_bytesWritten >= s_maxBytes && !appStopping()) {
+        logMsgInfo() << "Maximum bytes received";
         appSignalShutdown();
+    }
 }
 
 
@@ -83,10 +88,13 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, float value) {
 ***/
 
 namespace {
+
 class ShutdownNotify : public IShutdownNotify {
     void onShutdownClient(bool firstTry) override;
 };
+
 } // namespace
+
 static ShutdownNotify s_cleanup;
 
 //===========================================================================
@@ -141,9 +149,9 @@ static bool recordCmd(Cli & cli) {
     if (!parse(&s_endpt, *s_endptOpt, 2003))
         return cli.badUsage("Bad '" + s_endptOpt.from() + "' endpoint");
 
-    logMsgDebug() << "Recording to " << *s_out;
+    logMsgInfo() << "Recording to " << *s_out;
     if (s_maxBytes || s_maxSecs) {
-        auto os = logMsgDebug();
+        auto os = logMsgInfo();
         os << "Record ";
         if (s_maxBytes) {
             os << s_maxBytes << (s_maxBytes == 1 ? " byte" : " bytes");
@@ -156,7 +164,7 @@ static bool recordCmd(Cli & cli) {
                 << (s_maxSecs == 1 ? " second" : " seconds");
         }
     }
-    logMsgDebug() << "Control-C to stop recording";
+    logMsgInfo() << "Control-C to stop recording";
     consoleEnableCtrlC();
     if (s_maxSecs)
         timerUpdate(&s_timer, (chrono::seconds) s_maxSecs);
