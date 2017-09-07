@@ -19,7 +19,8 @@
 [Xx]86/
 [Bb]uild/
 bld/
-[Bb]in/
+[Bb]in/*
+![Bb]in/conf
 [Oo]bj/
 
 # Visual Studio 2015 cache/options directory

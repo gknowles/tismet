@@ -2,6 +2,7 @@
 # LICENSE
 # README.md
 # appveyor.yml
+# bin/conf/app.xml
 # configure.bat
 # libs/carbon/carbon.abnf
 # libs/carbon/carbon.cpp
@@ -43,13 +44,13 @@
 # tests/tsdata/tsdtest.cpp
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
-# tools/tismet/tismet.cpp
-# tools/tsm/dump.cpp
-# tools/tsm/load.cpp
+# tools/tismet/tsmain.cpp
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
-# tools/tsm/record.cpp
-# tools/tsm/tsm.cpp
+# tools/tsm/tcdump.cpp
+# tools/tsm/tcload.cpp
+# tools/tsm/tcmain.cpp
+# tools/tsm/tcrecord.cpp
 # vendor/dimapp
 # vendor/dimapp/libs/app/app.cpp
 # vendor/dimapp/libs/app/app.h

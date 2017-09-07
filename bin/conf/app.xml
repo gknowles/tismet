@@ -1,0 +1,7 @@
+<App>
+  <DisableNoDataTimeout value="0"/>
+  <DisableShutdownTimeout value="0"/>
+  <DisableInactiveTimeout value="0"/>
+  <Port value="41000"/>
+  <EnableAppWindow value="1"/>
+</App>

@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2015 - 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// tsm.cpp - tismet
+// tsmain.cpp - tismet
 #include "pch.h"
 #pragma hdrstop
 
@@ -30,12 +30,13 @@ static void app(int argc, char * argv[]) {
     cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
 
-    if (argc == 1) {
-        auto os = logMsgInfo();
-        return appSignalShutdown(cli.printHelp(os));
-    }
-    if (!cli.parse(argc, argv) || !cli.exec())
+    //if (argc == 1) 
+    //    return appSignalShutdown(cli.printHelp(cout, argv[0]));
+    if (!cli.parse(argc, argv))
         return appSignalUsageError();
+
+    consoleEnableCtrlC();
+    cout << "Server started";
 }
 
 
@@ -50,6 +51,6 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int code = appRun(app, argc, argv);
+    int code = appRun(app, argc, argv, fAppServer);
     return code;
 }
