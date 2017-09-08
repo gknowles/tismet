@@ -145,31 +145,12 @@ AppSocket::MatchType CarbonMatch::OnMatch(
 
 /****************************************************************************
 *
-*   Shutdown monitor
-*
-***/
-
-namespace {
-class ShutdownNotify : public IShutdownNotify {
-    void onShutdownClient(bool firstTry) override;
-};
-} // namespace
-static ShutdownNotify s_cleanup;
-
-//===========================================================================
-void ShutdownNotify::onShutdownClient(bool firstTry) {
-}
-
-
-/****************************************************************************
-*
 *   Public API
 *
 ***/
 
 //===========================================================================
 void carbonInitialize() {
-    shutdownMonitor(&s_cleanup);
     socketAddFamily((AppSocket::Family) TismetSocket::kCarbon, &s_sockMatch);
 }
 

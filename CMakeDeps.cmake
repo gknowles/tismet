@@ -42,8 +42,11 @@
 # tests/tsdata/pch.cpp
 # tests/tsdata/pch.h
 # tests/tsdata/tsdtest.cpp
+# tools/tismet/intern.h
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
+# tools/tismet/tscarbon.cpp
+# tools/tismet/tsdata.cpp
 # tools/tismet/tsmain.cpp
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h

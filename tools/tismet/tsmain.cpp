@@ -36,6 +36,8 @@ static void app(int argc, char * argv[]) {
         return appSignalUsageError();
 
     consoleEnableCtrlC();
+    tsDataInitialize();
+    tsCarbonInitialize();
     cout << "Server started";
 }
 

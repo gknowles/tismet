@@ -22,3 +22,4 @@
 // Platform headers
 // External library internal headers
 // Internal headers
+#include "intern.h"
