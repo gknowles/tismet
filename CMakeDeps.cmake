@@ -51,6 +51,7 @@
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
 # tools/tsm/tcdump.cpp
+# tools/tsm/tcgen.cpp
 # tools/tsm/tcload.cpp
 # tools/tsm/tcmain.cpp
 # tools/tsm/tcrecord.cpp
