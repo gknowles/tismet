@@ -1,3 +1,6 @@
 [submodule "vendor/dimapp"]
 	path = vendor/dimapp
 	url = https://github.com/gknowles/dimapp
+[submodule "vendor/dimcli"]
+	path = vendor/dimcli
+	url = https://github.com/gknowles/dimcli.git

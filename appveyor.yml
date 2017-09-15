@@ -9,7 +9,7 @@ configuration:
   - Debug
 
 build_script:
-  - git submodule update --init --recursive
+  - git submodule update --init
 
   # hack to stop sea of Xamarin (which isn't being used at all) warnings
   # during the cmake install

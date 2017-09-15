@@ -29,6 +29,12 @@ struct CmdOpts {
     CmdOpts();
 };
 
+struct Metric {
+    string name;
+    double value;
+    TimePoint time;
+};
+
 
 /****************************************************************************
 *
@@ -40,6 +46,22 @@ static FileHandle s_file;
 static uint64_t s_bytesWritten;
 
 static CmdOpts s_opts;
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+static void genValuesThread() {
+    // create metrics
+    vector<Metric> metrics(s_opts.metrics);
+
+    fileClose(s_file);
+    appSignalShutdown();
+}
 
 
 /****************************************************************************
@@ -72,12 +94,13 @@ CmdOpts::CmdOpts() {
     cli.group("Metrics").sortKey("3");
     cli.opt(&metrics, "m metrics", 100)
         .desc("Number of metrics");
+    //cli.opt(&startTime, "s start", 
     cli.opt(&intervalSecs, "i interval", 60)
         .desc("Seconds between metric values");
     cli.opt(&minDelta, "dmin", 0.0)
         .desc("Minimum delta between consecutive values")
         .valueDesc("FLOAT");
-    cli.opt(&maxDelta, "dmax", 0.0)
+    cli.opt(&maxDelta, "dmax", 10.0)
         .desc("Max delta between consecutive values")
         .valueDesc("FLOAT");
 }
@@ -115,6 +138,6 @@ static bool genCmd(Cli & cli) {
     }
     consoleEnableCtrlC();
 
-    fileClose(s_file);
+    taskPushOnce("Generate Metrics", genValuesThread);
     return true;
 }

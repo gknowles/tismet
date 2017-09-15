@@ -69,8 +69,6 @@
 # vendor/dimapp/libs/app/pch.cpp
 # vendor/dimapp/libs/app/pch.h
 # vendor/dimapp/libs/app/webadmin.cpp
-# vendor/dimapp/libs/cli/cli.cpp
-# vendor/dimapp/libs/cli/cli.h
 # vendor/dimapp/libs/core/appint.h
 # vendor/dimapp/libs/core/charbuf.cpp
 # vendor/dimapp/libs/core/charbuf.h
@@ -111,6 +109,7 @@
 # vendor/dimapp/libs/cppconf/compiler/visualc.h
 # vendor/dimapp/libs/cppconf/cppconf.h
 # vendor/dimapp/libs/cppconf/cppconf_suffix.h
+# vendor/dimapp/libs/cppconf/dimcli_userconfig.h
 # vendor/dimapp/libs/file/file.cpp
 # vendor/dimapp/libs/file/file.h
 # vendor/dimapp/libs/file/fileio.h
@@ -201,3 +200,6 @@
 # vendor/dimapp/libs/xml/xmlbaseparsebase.h
 # vendor/dimapp/libs/xml/xmlbaseparseimpl.h
 # vendor/dimapp/libs/xml/xstreamparser.cpp
+# vendor/dimcli
+# vendor/dimcli/libs/dimcli/cli.cpp
+# vendor/dimcli/libs/dimcli/cli.h

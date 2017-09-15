@@ -7,8 +7,8 @@
 // External library public headers
 #include "app/app.h"
 #include "carbon/carbon.h"
-#include "cli/cli.h"
 #include "core/core.h"
+#include "dimcli/cli.h"
 
 // Standard headers
 #include <array>
