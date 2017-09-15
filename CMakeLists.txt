@@ -30,9 +30,9 @@
 # Building libraries:
 # If a library has no cpp files a non-building custom target is made for it 
 # instead of a lib target (good for header only libs).
-# For library builds the DIM_LIB_SOURCE macro is defined, used in combination
-# with DIM_LIB_DYN_LINK to help mark up the interface with the correct 
-# dllexport/dllimport attributes.
+# For library builds the ${PROJECT_NAME}_LIB_SOURCE macro is defined, used in 
+# combination with ${PROJECT_NAME}_LIB_DYN_LINK to help mark up the interface 
+# with the correct dllexport/dllimport attributes.
 # 
 # Testing:
 # CTest will run all tests, and pass them the "--test" argument.
@@ -45,8 +45,8 @@
 #             like "*int.h"
 #   include/${PROJECT_NAME}/config.h - if it (and they) exist, the following 
 #           lines are commented/uncommented according to the selected options.
-#       "#define DIM_LIB_DYN_LINK" - BUILD_SHARED_LIBS
-#       "#define DIM_LIB_WINAPI_FAMILY_APP - WINDOWS_STORE
+#       "#define ${PROJECT_NAME}_LIB_DYN_LINK" - BUILD_SHARED_LIBS
+#       "#define ${PROJECT_NAME}_LIB_WINAPI_FAMILY_APP - WINDOWS_STORE
 #   bin - only release build targets
 #       libs with BUILD_SHARED_LIBS: *.dll and *.pdb
 #       libs otherwise: no files
@@ -212,7 +212,7 @@ function(add_lib_project tgt srcdir)
     list(LENGTH cpps cpps)
     if(cpps)
         add_library(${tgt} ${sources})
-        target_compile_definitions(${tgt} PRIVATE DIM_LIB_SOURCE)
+        target_compile_definitions(${tgt} PRIVATE ${DEFINE_PREFIX}_LIB_SOURCE)
         list(APPEND libnames ${tgt})
         set(libnames ${libnames} PARENT_SCOPE)
 
@@ -264,6 +264,7 @@ endfunction()
 # get name of project from containing directory
 get_filename_component(prjname "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
 project(${prjname})
+string(TOUPPER "${prjname}" DEFINE_PREFIX)
 
 get_property(parent DIRECTORY PROPERTY PARENT_DIRECTORY)
 if("${parent}" STREQUAL "")
@@ -325,12 +326,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
 
-if(NOT ROOT_PROJECT)
-    set_property(DIRECTORY "${parent}" APPEND PROPERTY INCLUDE_DIRECTORIES 
-        "${CMAKE_CURRENT_SOURCE_DIR}/libs")
-endif()
-include_directories(libs)
-
 if(MSVC)
     # "/utf-8" - sets source code character set to utf-8
     # "/W4" - warning level 4
@@ -377,7 +372,11 @@ if(MSVC)
 
     set_property(SOURCE "pch.cpp" APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "5")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
+    endif()
 endif()
 
 if(BUILD_UNICODE)
@@ -386,10 +385,10 @@ endif()
 
 # set list of defines that need to go in config.h
 if(BUILD_SHARED_LIBS)
-    list(APPEND config_defines DIM_LIB_DYN_LINK)
+    list(APPEND config_defines ${DEFINE_PREFIX}_LIB_DYN_LINK)
 endif()
 if(WINDOWS_STORE)
-    list(APPEND config_defines DIM_LIB_WINAPI_FAMILY_APP)
+    list(APPEND config_defines ${DEFINE_PREFIX}_LIB_WINAPI_FAMILY_APP)
 endif()
 foreach(var ${config_defines})
     add_definitions(/D${var})
@@ -402,6 +401,8 @@ source_group(" " REGULAR_EXPRESSION ".*")
 source_group("docs" REGULAR_EXPRESSION "docs/.*")
 
 if(ROOT_PROJECT)
+    include_directories(libs)
+
     # vendor dependencies
     file(GLOB allnames vendor/*)
     foreach(var ${allnames})
@@ -409,9 +410,13 @@ if(ROOT_PROJECT)
             list(APPEND deps "${var}")
             get_filename_component(prjname "${var}" NAME)
             if(EXISTS "${var}/CMakeLists.txt")
-                add_subdirectory("${var}")
+                list(APPEND submodules "${var}")
+                include_directories(${var}/libs)
             endif()
         endif()
+    endforeach()
+    foreach(var ${submodules})
+        add_subdirectory("${var}")
     endforeach()
 endif()
 
@@ -464,6 +469,8 @@ foreach(var ${allnames})
     if(IS_DIRECTORY "${var}")
         get_filename_component(prjname "${var}" NAME)
         add_exec_project(${prjname} "${var}")
+        target_compile_definitions(${prjname} 
+            PRIVATE ${DEFINE_PREFIX}_LIB_KEEP_MACROS)
         set_target_properties(${prjname} PROPERTIES FOLDER tests)
         add_test(NAME ${prjname} COMMAND ${prjname} --test)
         if(INSTALL_TESTS)
