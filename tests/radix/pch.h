@@ -5,10 +5,12 @@
 
 // Public header
 // External library public headers
+#include "dimcli/cli.h"
+
 #include "app/app.h"
 #include "core/core.h"
+
 #include "data/radix.h"
-#include "dimcli/cli.h"
 
 // Standard headers
 #include <array>

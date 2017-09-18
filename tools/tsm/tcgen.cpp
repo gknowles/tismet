@@ -26,6 +26,9 @@ struct CmdOpts {
     double minDelta;
     double maxDelta;
 
+    TimePoint startTime;
+    TimePoint endTime;
+
     CmdOpts();
 };
 
@@ -72,6 +75,9 @@ static void genValuesThread() {
 
 static bool genCmd(Cli & cli);
 
+// 1998-07-09 16:00:00 UTC
+constexpr TimePoint kDefaultStartTime{900'000'000s}; 
+
 //===========================================================================
 CmdOpts::CmdOpts() {
     Cli cli;
@@ -81,9 +87,9 @@ CmdOpts::CmdOpts() {
         .group("Target").sortKey("1");
     cli.opt<Path>(&ofile, "F file")
         .desc("Output file, '-' for stdout, extension defaults to '.txt'")
-        .valueDesc("FILE");
+        .require();
 
-    cli.group("Quantity").sortKey("2");
+    cli.group("When to Stop").sortKey("2");
     cli.opt(&maxBytes, "B bytes", 0)
         .desc("Max bytes to generate, 0 for unlimited");
     cli.opt(&maxSecs, "S seconds", 0)
@@ -91,10 +97,15 @@ CmdOpts::CmdOpts() {
     cli.opt(&maxValues, "V values", 0)
         .desc("Max values to generate, 0 for unlimited");
 
-    cli.group("Metrics").sortKey("3");
+    cli.group("Metrics to Generate").sortKey("3");
     cli.opt(&metrics, "m metrics", 100)
         .desc("Number of metrics");
-    //cli.opt(&startTime, "s start", 
+    cli.opt(&startTime, "s start", kDefaultStartTime)
+        .desc("Start time of first metric value")
+        .valueDesc("TIME");
+    cli.opt(&endTime, "e end")
+        .desc("Time of last metric value, rounded up to next interval")
+        .valueDesc("TIME");
     cli.opt(&intervalSecs, "i interval", 60)
         .desc("Seconds between metric values");
     cli.opt(&minDelta, "dmin", 0.0)

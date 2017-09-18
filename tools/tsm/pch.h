@@ -5,13 +5,15 @@
 
 // Public header
 // External library public headers
-#include "app/app.h"
-#include "carbon/carbon.h"
-#include "core/core.h"
-#include "data/tsdata.h"
 #include "dimcli/cli.h"
+
+#include "app/app.h"
+#include "core/core.h"
 #include "file/file.h"
 #include "net/net.h"
+
+#include "carbon/carbon.h"
+#include "data/tsdata.h"
 
 // Standard headers
 #include <crtdbg.h>

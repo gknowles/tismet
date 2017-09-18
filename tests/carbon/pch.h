@@ -5,10 +5,12 @@
 
 // Public header
 // External library public headers
-#include "app/app.h"
-#include "carbon/carbon.h"
-#include "core/core.h"
 #include "dimcli/cli.h"
+
+#include "app/app.h"
+#include "core/core.h"
+
+#include "carbon/carbon.h"
 
 // Standard headers
 #include <array>

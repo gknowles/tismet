@@ -4,6 +4,11 @@
 // radix.h - tismet data
 #pragma once
 
+#include "cppconf/cppconf.h"
+
+#include <ostream>
+#include <limits>
+
 
 /****************************************************************************
 *

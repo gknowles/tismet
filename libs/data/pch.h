@@ -4,16 +4,18 @@
 // pch.h - tismet data
 
 // Public header
-#include "carbon/carbon.h"
-#include "data/tsdata.h"
-#include "query/query.h"
 #include "data/radix.h"
+#include "data/tsdata.h"
 
 // External library public headers
+#include "dimcli/cli.h"
+
 #include "app/app.h"
 #include "core/core.h"
-#include "dimcli/cli.h"
 #include "file/file.h"
+
+#include "carbon/carbon.h"
+#include "query/query.h"
 
 // Standard headers
 #include <cmath>
