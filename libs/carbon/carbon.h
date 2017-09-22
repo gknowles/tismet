@@ -41,7 +41,7 @@ public:
     virtual void onCarbonValue(
         uint32_t id,
         Dim::TimePoint time,
-        float value
+        double value
     ) = 0;
 
 private:
@@ -71,7 +71,7 @@ void carbonInitialize ();
 
 struct CarbonUpdate {
     std::string_view name;
-    float value;
+    double value;
     Dim::TimePoint time;
 };
 
@@ -85,11 +85,11 @@ void carbonWrite(
     std::ostream & os, 
     std::string_view name, 
     Dim::TimePoint time,
-    float value
+    double value
 );
 void carbonWrite(
     std::string & out, 
     std::string_view name, 
     Dim::TimePoint time,
-    float value
+    double value
 );

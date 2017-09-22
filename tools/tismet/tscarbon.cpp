@@ -33,7 +33,7 @@ class RecordConn : public ICarbonSocketNotify {
 public:
     // Inherited via ICarbonSocketNotify
     uint32_t onCarbonMetric(string_view name) override;
-    void onCarbonValue(uint32_t id, TimePoint time, float value) override;
+    void onCarbonValue(uint32_t id, TimePoint time, double value) override;
 };
 
 } // namespace
@@ -46,9 +46,9 @@ uint32_t RecordConn::onCarbonMetric(string_view name) {
 }
 
 //===========================================================================
-void RecordConn::onCarbonValue(uint32_t id, TimePoint time, float value) {
+void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id);
-    tsdUpdateValue(s_tsd, id, time, value);
+    tsdUpdateValue(s_tsd, id, time, (float) value);
 }
 
 

@@ -83,7 +83,7 @@ public:
     void onCarbonValue(
         uint32_t id,
         TimePoint time,
-        float value
+        double value
     ) override;
 
     // Inherited via IFileReadNotify
@@ -120,10 +120,10 @@ uint32_t TsdWriter::onCarbonMetric(string_view name) {
 void TsdWriter::onCarbonValue(
     uint32_t id,
     TimePoint time,
-    float value
+    double value
 ) {
     m_info.values += 1;
-    tsdUpdateValue(m_tsd, id, time, value);
+    tsdUpdateValue(m_tsd, id, time, (float) value);
 }
 
 //===========================================================================

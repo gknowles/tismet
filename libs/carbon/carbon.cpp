@@ -188,7 +188,7 @@ void carbonWrite(
     ostream & os, 
     string_view name, 
     TimePoint time,
-    float value
+    double value
 ) {
     os << name << ' ' << value << ' ' << Clock::to_time_t(time) << '\n';
 }
@@ -198,7 +198,7 @@ void carbonWrite(
     string & out, 
     string_view name, 
     TimePoint time,
-    float value
+    double value
 ) {
     ostringstream os;
     carbonWrite(os, name, time, value);
