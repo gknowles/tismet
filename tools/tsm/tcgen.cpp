@@ -6,6 +6,7 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace std::chrono;
 using namespace Dim;
 
 
@@ -45,10 +46,13 @@ struct Metric {
 *
 ***/
 
+static CmdOpts s_opts;
+
 static FileHandle s_file;
 static uint64_t s_bytesWritten;
+static uint64_t s_valuesWritten;
 
-static CmdOpts s_opts;
+static string s_buffer;
 
 
 /****************************************************************************
@@ -58,10 +62,85 @@ static CmdOpts s_opts;
 ***/
 
 //===========================================================================
-static void genValuesThread() {
-    // create metrics
-    vector<Metric> metrics(s_opts.metrics);
+static void flushValues() {
+    if (s_buffer.empty())
+        return;
+    fileAppendWait(s_file, s_buffer.data(), s_buffer.size());
+    s_buffer.clear();
+}
 
+//===========================================================================
+static bool writeValue(const Metric & met) {
+    auto base = s_buffer.size();
+    carbonWrite(s_buffer, met.name, met.time, (float) met.value);
+    auto len = base - s_buffer.size();
+    if (s_buffer.size() > 4096) {
+        flushValues();
+    }
+    s_bytesWritten += len;
+    s_valuesWritten += 1;
+    if (s_opts.maxBytes && s_bytesWritten >= s_opts.maxBytes
+        || s_opts.maxValues && s_valuesWritten >= s_opts.maxValues
+    ) {
+        return false;
+    }
+    return true;
+}
+
+//===========================================================================
+static bool advanceValue(
+    Metric & met, 
+    default_random_engine & reng,
+    uniform_real_distribution<> & rdist
+) {
+    if (s_opts.endTime.time_since_epoch().count() 
+        && met.time >= s_opts.endTime
+    ) {
+        return false;
+    }
+    met.time += (seconds) s_opts.intervalSecs;
+    met.value += rdist(reng);
+    return true;
+}
+
+//===========================================================================
+static void genValues() {
+    // create metrics
+    static const char * numerals[] = {
+        "zero.", "one.", "two.", "three.", "four.",
+        "five.", "six.", "seven.", "eight.", "nine.",
+    };
+    vector<Metric> metrics(s_opts.metrics);
+    IntegralStr<unsigned> str{0};
+    for (unsigned i = 0; i < s_opts.metrics; ++i) {
+        auto & met = metrics[i];
+        for (auto && ch : str.set(i)) {
+            met.name += numerals[ch - '0'];
+            met.value = 0;
+            met.time = s_opts.startTime;
+        }
+        // remove extra trailing dot
+        met.name.pop_back();
+    }
+
+    random_device rdev;
+    default_random_engine reng(rdev());
+    uniform_real_distribution<> rdist(s_opts.minDelta, s_opts.maxDelta);
+
+    for (;;) {
+        for (auto && met : metrics) {
+            if (!writeValue(met))
+                return;
+            if (!advanceValue(met, reng, rdist))
+                return;
+        }
+    }
+}
+
+//===========================================================================
+static void genValuesThread() {
+    genValues();
+    flushValues();
     fileClose(s_file);
     appSignalShutdown();
 }
@@ -94,7 +173,7 @@ CmdOpts::CmdOpts() {
         .desc("Max bytes to generate, 0 for unlimited");
     cli.opt(&maxSecs, "S seconds", 0)
         .desc("Max seconds to run, 0 for unlimited");
-    cli.opt(&maxValues, "V values", 0)
+    cli.opt(&maxValues, "V values", 10)
         .desc("Max values to generate, 0 for unlimited");
 
     cli.group("Metrics to Generate").sortKey("3");
