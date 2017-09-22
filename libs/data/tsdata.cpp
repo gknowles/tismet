@@ -237,13 +237,13 @@ private:
 
 static HandleMap<TsdFileHandle, TsdFile> s_files;
 
-static auto & s_perfCount = uperf("perfs (total)");
-static auto & s_perfCreated = uperf("perfs created");
-static auto & s_perfDeleted = uperf("perfs deleted");
+static auto & s_perfCount = uperf("metrics (total)");
+static auto & s_perfCreated = uperf("metrics created");
+static auto & s_perfDeleted = uperf("metrics deleted");
 
-static auto & s_perfOld = uperf("perf data ignored (old)");
-static auto & s_perfDup = uperf("perf data duplicate");
-static auto & s_perfUpdate = uperf("perf data added");
+static auto & s_perfOld = uperf("metric values ignored (old)");
+static auto & s_perfDup = uperf("metric values duplicate");
+static auto & s_perfUpdate = uperf("metric values added");
 
 
 /****************************************************************************
