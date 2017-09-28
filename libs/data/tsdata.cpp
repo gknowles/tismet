@@ -243,7 +243,7 @@ static auto & s_perfDeleted = uperf("metrics deleted");
 
 static auto & s_perfOld = uperf("metric values ignored (old)");
 static auto & s_perfDup = uperf("metric values duplicate");
-static auto & s_perfUpdate = uperf("metric values added");
+static auto & s_perfAdd = uperf("metric values added");
 
 
 /****************************************************************************
@@ -277,8 +277,13 @@ bool TsdFile::open(string_view name, size_t pageSize) {
         fileWriteWait(m_data, 0, &tmp, sizeof(tmp));
     }
     const char * base;
-    if (!fileOpenView(base, m_data, 1024 * filePageSize())) 
+    if (!fileOpenView(
+        base, 
+        m_data, 
+        numeric_limits<uint32_t>::max() * filePageSize()
+    )) {
         return false;
+    }
     m_hdr = (const MasterPage *)base;
     if (memcmp(
         m_hdr->signature, 
@@ -432,7 +437,7 @@ void TsdFile::indexInsertMetric(uint32_t id, const string & name) {
     vector<string_view> segs;
     strSplit(segs, name, '.');
     auto numSegs = segs.size();
-    if (m_lenIds.size() < numSegs) {
+    if (m_lenIds.size() <= numSegs) {
         m_lenIds.resize(numSegs + 1);
         m_segIds.resize(numSegs);
     }
@@ -652,10 +657,16 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         assert(time >= dp->firstPageTime);
         auto ent = (time - dp->firstPageTime) / mi.interval;
         assert(ent < (unsigned) vpp);
-        dp->values[ent] = value;
+        auto & ref = dp->values[ent];
+        if (isnan(ref)) {
+            s_perfAdd += 1;
+        } else {
+            s_perfDup += 1;
+        }
+        ref = value;
         writePage(*dp, m_hdr->pageSize);
         return;
-    } 
+    }
     
     //-----------------------------------------------------------------------
     // after last known value
@@ -690,6 +701,7 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         if (lastValueTime == endPageTime)
             break;
         if (lastValueTime == time) {
+            s_perfAdd += 1;
             dp->values[i] = value;
             mi.lastPageValue = dp->lastPageValue = i;
             writePage(*dp, m_hdr->pageSize);
