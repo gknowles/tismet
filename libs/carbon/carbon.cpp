@@ -180,7 +180,7 @@ bool carbonParse(CarbonUpdate & upd, string_view & src) {
         src.remove_prefix(pos + 1);
         return true;
     }
-    return ptr[pos];
+    return !ptr[pos];
 }
 
 //===========================================================================
