@@ -116,11 +116,11 @@ static void genValues() {
         auto & met = metrics[i];
         for (auto && ch : str.set(i)) {
             met.name += numerals[ch - '0'];
-            met.value = 0;
-            met.time = s_opts.startTime;
         }
         // remove extra trailing dot
         met.name.pop_back();
+        met.value = 0;
+        met.time = s_opts.startTime;
     }
 
     random_device rdev;
@@ -155,7 +155,7 @@ static void genValuesThread() {
 static bool genCmd(Cli & cli);
 
 // 1998-07-09 16:00:00 UTC
-constexpr TimePoint kDefaultStartTime{900'000'000s}; 
+constexpr TimePoint kDefaultStartTime{12'544'473'600s}; 
 
 //===========================================================================
 CmdOpts::CmdOpts() {
