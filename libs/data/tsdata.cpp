@@ -109,12 +109,12 @@ struct DataPage {
     uint32_t id;
 
     // time of first value on page
-    TimePoint firstPageTime; 
+    TimePoint pageFirstTime; 
     
     // Position of last value, values that come after this on the page are 
     // either in the not yet populated future or (because it's a giant 
     // discontinuous ring buffer) in the distant past.
-    uint16_t lastPageValue; 
+    uint16_t pageLastValue; 
 
     // EXTENDS BEYOND END OF STRUCT
     float values[1];
@@ -124,8 +124,8 @@ struct MetricInfo {
     Duration interval;
     uint32_t infoPage;
     uint32_t lastPage; // page with most recent data values
-    TimePoint firstPageTime; // time of first value on last page
-    uint16_t lastPageValue; // position of last value on last page
+    TimePoint pageFirstTime; // time of first value on last page
+    uint16_t pageLastValue; // position of last value on last page
 };
 
 class TsdFile : public HandleContent {
@@ -254,7 +254,7 @@ static auto & s_perfAdd = uperf("metric values added");
 
 //===========================================================================
 TsdFile::~TsdFile () {
-    s_perfCount -= (unsigned) m_metricInfo.size();
+    s_perfCount -= (unsigned) m_ids.size();
     fileClose(m_data);
     fileClose(m_log);
 }
@@ -304,7 +304,7 @@ bool TsdFile::open(string_view name, size_t pageSize) {
     if (!loadFreePages())
         return false;
 
-    s_perfCount += (unsigned) m_metricInfo.size();
+    s_perfCount += (unsigned) m_ids.size();
     return true;
 }
 
@@ -558,8 +558,8 @@ void TsdFile::updateMetric(
     nmp->lastPagePos = 0;
     writePage(*nmp, m_hdr->pageSize);
     mi.lastPage = 0;
-    mi.firstPageTime = {};
-    mi.lastPageValue = 0;
+    mi.pageFirstTime = {};
+    mi.pageLastValue = 0;
 }
 
 
@@ -580,8 +580,8 @@ unique_ptr<DataPage> TsdFile::allocDataPage(uint32_t id, TimePoint time) {
     auto vpp = valuesPerPage();
     auto dp = allocPage<DataPage>();
     dp->id = id;
-    dp->lastPageValue = 0;
-    dp->firstPageTime = time;
+    dp->pageLastValue = 0;
+    dp->pageFirstTime = time;
     for (auto i = 0; i < vpp; ++i) 
         dp->values[i] = NAN;
     return dp;
@@ -597,12 +597,12 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
 
     auto vpp = valuesPerPage();
 
-    // ensure all info about the last page is loaded, the hope is that almost
-    // all updates are to the last page.
+    // ensure all info about the last page is loaded, the expectation is that 
+    // almost all updates are to the last page.
     if (!mi.lastPage) {
         auto dp = allocDataPage(id, time);
-        dp->lastPageValue = (uint16_t) (id % vpp);
-        dp->firstPageTime = time - dp->lastPageValue * mi.interval;
+        dp->pageLastValue = (uint16_t) (id % vpp);
+        dp->pageFirstTime = time - dp->pageLastValue * mi.interval;
         writePage(*dp, m_hdr->pageSize);
 
         auto mp = editPage<MetricPage>(mi.infoPage);
@@ -612,41 +612,41 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         writePage(*mp, m_hdr->pageSize);
 
         mi.lastPage = mp->lastPage;
-        mi.firstPageTime = dp->firstPageTime;
-        mi.lastPageValue = dp->lastPageValue;
+        mi.pageFirstTime = dp->pageFirstTime;
+        mi.pageLastValue = dp->pageLastValue;
     }
-    if (mi.firstPageTime == TimePoint{}) {
+    if (mi.pageFirstTime == TimePoint{}) {
         auto dp = viewPage<DataPage>(mi.lastPage);
-        mi.firstPageTime = dp->firstPageTime;
-        mi.lastPageValue = dp->lastPageValue;
+        mi.pageFirstTime = dp->pageFirstTime;
+        mi.pageLastValue = dp->pageLastValue;
     }
 
     auto pageInterval = vpp * mi.interval;
-    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
 
     // one interval past last time on page (aka first time on next page)
-    auto endPageTime = mi.firstPageTime + pageInterval; 
+    auto endPageTime = mi.pageFirstTime + pageInterval; 
 
     // updating historical value?
     if (time <= lastValueTime) {
         auto dpno = mi.lastPage;
-        if (time < mi.firstPageTime) {
+        if (time < mi.pageFirstTime) {
             auto mp = viewPage<MetricPage>(mi.infoPage);
             if (time <= lastValueTime - mp->retention) {
                 // before first value
                 s_perfOld += 1;
                 return;
             }
-            auto off = (mi.firstPageTime - time - mi.interval) 
+            auto off = (mi.pageFirstTime - time - mi.interval) 
                 / pageInterval + 1;
             auto dpages = (mp->retention + pageInterval - mi.interval) 
                 / pageInterval;
             auto pagePos = 
                 (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
             if (!radixFind(&dpno, mi.infoPage, pagePos)) {
-                auto pageTime = mi.firstPageTime - off * pageInterval;
+                auto pageTime = mi.pageFirstTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
-                dp->lastPageValue = (uint16_t) vpp - 1;
+                dp->pageLastValue = (uint16_t) vpp - 1;
                 writePage(*dp, m_hdr->pageSize);
                 dpno = dp->hdr.pgno;
                 bool inserted = radixInsert(mi.infoPage, pagePos, dpno);
@@ -654,8 +654,8 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
             }
         }
         auto dp = editPage<DataPage>(dpno);
-        assert(time >= dp->firstPageTime);
-        auto ent = (time - dp->firstPageTime) / mi.interval;
+        assert(time >= dp->pageFirstTime);
+        auto ent = (time - dp->pageFirstTime) / mi.interval;
         assert(ent < (unsigned) vpp);
         auto & ref = dp->values[ent];
         if (isnan(ref)) {
@@ -683,8 +683,8 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
             nmp->lastPagePos = 0;
             writePage(*nmp, m_hdr->pageSize);
             mi.lastPage = 0;
-            mi.firstPageTime = {};
-            mi.lastPageValue = 0;
+            mi.pageFirstTime = {};
+            mi.pageLastValue = 0;
             updateValue(id, time, value);
             return;
         }
@@ -692,9 +692,9 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
 
     // update last page
     auto dp = editPage<DataPage>(mi.lastPage);
-    assert(mi.firstPageTime == dp->firstPageTime);
-    assert(mi.lastPageValue == dp->lastPageValue);
-    auto i = mi.lastPageValue;
+    assert(mi.pageFirstTime == dp->pageFirstTime);
+    assert(mi.pageLastValue == dp->pageLastValue);
+    auto i = mi.pageLastValue;
     for (;;) {
         i += 1;
         lastValueTime += mi.interval;
@@ -703,13 +703,13 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         if (lastValueTime == time) {
             s_perfAdd += 1;
             dp->values[i] = value;
-            mi.lastPageValue = dp->lastPageValue = i;
+            mi.pageLastValue = dp->pageLastValue = i;
             writePage(*dp, m_hdr->pageSize);
             return;
         }
         dp->values[i] = NAN;
     }
-    mi.lastPageValue = dp->lastPageValue = i;
+    mi.pageLastValue = dp->pageLastValue = i;
     writePage(*dp, m_hdr->pageSize);
 
     //-----------------------------------------------------------------------
@@ -744,14 +744,14 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
     } else {
         writePage(*mp, m_hdr->pageSize);
         dp = editPage<DataPage>(mp->lastPage);
-        dp->firstPageTime = endPageTime;
-        dp->lastPageValue = 0;
+        dp->pageFirstTime = endPageTime;
+        dp->pageLastValue = 0;
         writePage(*dp);
     }
 
     mi.lastPage = mp->lastPage;
-    mi.firstPageTime = dp->firstPageTime;
-    mi.lastPageValue = dp->lastPageValue;
+    mi.pageFirstTime = dp->pageFirstTime;
+    mi.pageLastValue = dp->pageLastValue;
 
     // write value to new last page
     updateValue(id, time, value);
@@ -770,18 +770,18 @@ bool TsdFile::findDataPage(
 
     if (!mi.lastPage)
         return false;
-    if (mi.firstPageTime == TimePoint{}) {
+    if (mi.pageFirstTime == TimePoint{}) {
         auto dp = viewPage<DataPage>(mi.lastPage);
-        mi.firstPageTime = dp->firstPageTime;
-        mi.lastPageValue = dp->lastPageValue;
+        mi.pageFirstTime = dp->pageFirstTime;
+        mi.pageLastValue = dp->pageLastValue;
     }
     
-    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
 
     time -= time.time_since_epoch() % mi.interval;
     auto mp = viewPage<MetricPage>(mi.infoPage);
 
-    if (time >= mi.firstPageTime) {
+    if (time >= mi.pageFirstTime) {
         if (time > lastValueTime)
             return false;
         *dataPage = mi.lastPage;
@@ -794,7 +794,7 @@ bool TsdFile::findDataPage(
         return false;
     }
     auto pageInterval = valuesPerPage() * mi.interval;
-    auto off = (mi.firstPageTime - time - mi.interval) / pageInterval + 1;
+    auto off = (mi.pageFirstTime - time - mi.interval) / pageInterval + 1;
     auto pages = (mp->retention + pageInterval - mi.interval) / pageInterval;
     *pagePos = (uint32_t) (mp->lastPagePos + pages - off) % pages;
     if (!radixFind(dataPage, mi.infoPage, *pagePos))
@@ -821,11 +821,11 @@ size_t TsdFile::enumValues(
     uint32_t dpno;
     unsigned dppos;
     bool found = findDataPage(&dpno, &dppos, id, first);
-    if (!found && first >= mi.firstPageTime)
+    if (!found && first >= mi.pageFirstTime)
         return 0;
 
     auto mp = viewPage<MetricPage>(mi.infoPage);
-    auto lastValueTime = mi.firstPageTime + mi.lastPageValue * mi.interval;
+    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
     if (last > lastValueTime)
         last = lastValueTime;
 
@@ -849,16 +849,16 @@ size_t TsdFile::enumValues(
         if (!dpno) {
             // round up to first time on next page
             first -= pageInterval - mi.interval;
-            auto pageOff = (mi.firstPageTime - first) / pageInterval - 1;
-            first = mi.firstPageTime - pageOff * pageInterval;
+            auto pageOff = (mi.pageFirstTime - first) / pageInterval - 1;
+            first = mi.pageFirstTime - pageOff * pageInterval;
         } else {
             auto dp = viewPage<DataPage>(dpno);
-            auto fpt = dp->firstPageTime;
+            auto fpt = dp->pageFirstTime;
             auto vpos = (first - fpt) / mi.interval;
-            auto lastPageValue = dp->lastPageValue == vpp
+            auto pageLastValue = dp->pageLastValue == vpp
                 ? vpp - 1
-                : dp->lastPageValue;
-            auto lastPageTime = fpt + lastPageValue * mi.interval;
+                : dp->pageLastValue;
+            auto lastPageTime = fpt + pageLastValue * mi.interval;
             if (vpos < 0) {
                 // in the old section of the tip page in the ring buffer
                 vpos += numPages * vpp;
