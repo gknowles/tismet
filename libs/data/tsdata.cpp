@@ -630,9 +630,11 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
     // updating historical value?
     if (time <= lastValueTime) {
         auto dpno = mi.lastPage;
-        if (time < mi.pageFirstTime) {
+		auto ent = numeric_limits<uint64_t>::max();
+		if (time < mi.pageFirstTime) {
             auto mp = viewPage<MetricPage>(mi.infoPage);
-            if (time <= lastValueTime - mp->retention) {
+			auto firstValueTime = lastValueTime - mp->retention + mi.interval;
+            if (time < firstValueTime) {
                 // before first value
                 s_perfOld += 1;
                 return;
@@ -643,7 +645,12 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
                 / pageInterval;
             auto pagePos = 
                 (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
-            if (!radixFind(&dpno, mi.infoPage, pagePos)) {
+			if (pagePos == mp->lastPagePos) {
+				// Still on the tip page of the ring buffer, but in the old 
+				// values section. 
+				ent = (time - (mi.pageFirstTime - pageInterval)) 
+                    / mi.interval;
+			} else if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
                 dp->pageLastValue = (uint16_t) vpp - 1;
@@ -654,8 +661,10 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
             }
         }
         auto dp = editPage<DataPage>(dpno);
-        assert(time >= dp->pageFirstTime);
-        auto ent = (time - dp->pageFirstTime) / mi.interval;
+		if (ent == numeric_limits<uint64_t>::max()) {
+			assert(time >= dp->pageFirstTime);
+			ent = (time - dp->pageFirstTime) / mi.interval;
+		}
         assert(ent < (unsigned) vpp);
         auto & ref = dp->values[ent];
         if (isnan(ref)) {
@@ -663,8 +672,10 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         } else {
             s_perfDup += 1;
         }
-        ref = value;
-        writePage(*dp, m_hdr->pageSize);
+        if (ref != value) {
+            ref = value;
+            writePage(*dp, m_hdr->pageSize);
+        }
         return;
     }
     
