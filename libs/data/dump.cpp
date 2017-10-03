@@ -23,7 +23,7 @@ static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 /****************************************************************************
 *
-*   DumpWriter
+*   Write dump
 *
 ***/
 
@@ -62,10 +62,23 @@ bool DumpWriter::OnTsdValue(
     return true;
 }
 
+//===========================================================================
+// Public API
+//===========================================================================
+void tsdWriteDump(ostream & os, TsdFileHandle h, string_view wildname) {
+    UnsignedSet ids;
+    tsdFindMetrics(ids, h, wildname);
+    os << kDumpVersion << '\n';
+    DumpWriter out(os);
+    for (auto && id : ids) {
+        tsdEnumValues(&out, h, id);
+    }
+}
+
 
 /****************************************************************************
 *
-*   TsdWriter
+*   Load dump
 *
 ***/
 
@@ -162,24 +175,8 @@ void TsdWriter::onFileEnd(int64_t offset, FileHandle f) {
     delete this;
 }
 
-
-/****************************************************************************
-*
-*   Public API
-*
-***/
-
 //===========================================================================
-void tsdWriteDump(std::ostream & os, TsdFileHandle h, string_view wildname) {
-    UnsignedSet ids;
-    tsdFindMetrics(ids, h, wildname);
-    os << kDumpVersion << '\n';
-    DumpWriter out(os);
-    for (auto && id : ids) {
-        tsdEnumValues(&out, h, id);
-    }
-}
-
+// Public API
 //===========================================================================
 void tsdLoadDump(
     ITsdProgressNotify * notify,

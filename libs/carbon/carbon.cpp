@@ -190,7 +190,8 @@ void carbonWrite(
     TimePoint time,
     double value
 ) {
-    os << name << ' ' << value << ' ' << Clock::to_time_t(time) << '\n';
+    StrFrom<double> vstr(value);
+    os << name << ' ' << vstr << ' ' << Clock::to_time_t(time) << '\n';
 }
 
 //===========================================================================

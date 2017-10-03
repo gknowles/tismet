@@ -58,8 +58,7 @@ inline bool CarbonParser::onMetricEnd (const char * eptr) {
             m_expMinus = false;
             m_exp = -m_exp;
         }
-        m_exp -= m_frac;
-        m_upd->value = m_int * pow(10.0f, m_exp);
+        m_upd->value = m_int * pow(10.0f, m_exp - m_frac);
         m_exp = 0;
         m_frac = 0;
     } else {
