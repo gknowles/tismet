@@ -111,7 +111,7 @@ static void genValues() {
         "five.", "six.", "seven.", "eight.", "nine.",
     };
     vector<Metric> metrics(s_opts.metrics);
-    IntegralStr<unsigned> str{0};
+    StrFrom<unsigned> str{0};
     for (unsigned i = 0; i < s_opts.metrics; ++i) {
         auto & met = metrics[i];
         for (auto && ch : str.set(i)) {
