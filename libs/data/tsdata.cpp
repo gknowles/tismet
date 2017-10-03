@@ -452,7 +452,7 @@ void TsdFile::indexInsertMetric(uint32_t id, const string & name) {
 
 //===========================================================================
 void TsdFile::indexEraseMetric(uint32_t id, const string & name) {
-    auto num = m_metricIds.erase(name);
+    [[maybe_unused]] auto num = m_metricIds.erase(name);
     assert(num == 1);
     m_ids.erase(id);
     vector<string_view> segs;
@@ -529,7 +529,11 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
         masp.metricInfoRoot = rp->hdr.pgno;
         writePage(masp);
     }
-    bool inserted = radixInsert(m_hdr->metricInfoRoot, id, mp->hdr.pgno);
+    [[maybe_unused]] bool inserted = radixInsert(
+        m_hdr->metricInfoRoot, 
+        id, 
+        mp->hdr.pgno
+    );
     assert(inserted);
     s_perfCount += 1;
     return true;
@@ -656,7 +660,11 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
                 dp->pageLastValue = (uint16_t) vpp - 1;
                 writePage(*dp, m_hdr->pageSize);
                 dpno = dp->hdr.pgno;
-                bool inserted = radixInsert(mi.infoPage, pagePos, dpno);
+                [[maybe_unused]] bool inserted = radixInsert(
+                    mi.infoPage, 
+                    pagePos, 
+                    dpno
+                );
                 assert(inserted);
             }
         }
@@ -749,7 +757,11 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         dp = allocDataPage(id, endPageTime);
         mp->lastPage = dp->hdr.pgno;
         writePage(*mp, m_hdr->pageSize);
-        bool inserted = radixInsert(mi.infoPage, mp->lastPagePos, mp->lastPage);
+        [[maybe_unused]] bool inserted = radixInsert(
+            mi.infoPage, 
+            mp->lastPagePos, 
+            mp->lastPage
+        );
         assert(inserted);
         writePage(*dp, m_hdr->pageSize);
     } else {
