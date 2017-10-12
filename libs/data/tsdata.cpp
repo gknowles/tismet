@@ -282,6 +282,7 @@ bool TsdFile::open(string_view name, size_t pageSize) {
         m_data, 
         numeric_limits<uint32_t>::max() * filePageSize()
     )) {
+        logMsgError() << "Open view failed on " << name;
         return false;
     }
     m_hdr = (const MasterPage *)base;
