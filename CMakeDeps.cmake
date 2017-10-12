@@ -69,6 +69,7 @@
 # vendor/dimapp/libs/app/pch.cpp
 # vendor/dimapp/libs/app/pch.h
 # vendor/dimapp/libs/app/webadmin.cpp
+# vendor/dimapp/libs/core/algo.h
 # vendor/dimapp/libs/core/appint.h
 # vendor/dimapp/libs/core/charbuf.cpp
 # vendor/dimapp/libs/core/charbuf.h
@@ -76,6 +77,7 @@
 # vendor/dimapp/libs/core/handle.cpp
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
+# vendor/dimapp/libs/core/hash.h
 # vendor/dimapp/libs/core/list.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
@@ -147,6 +149,9 @@
 # vendor/dimapp/libs/net/socket.h
 # vendor/dimapp/libs/net/sockmgr.cpp
 # vendor/dimapp/libs/net/sockmgr.h
+# vendor/dimapp/libs/net/sockmgracc.cpp
+# vendor/dimapp/libs/net/sockmgrconn.cpp
+# vendor/dimapp/libs/net/sockmgrint.h
 # vendor/dimapp/libs/tls/pch.cpp
 # vendor/dimapp/libs/tls/pch.h
 # vendor/dimapp/libs/tls/tls.cpp

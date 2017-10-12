@@ -33,7 +33,7 @@ enum QueryInfo::NodeType : int8_t {
     kAfterLastFunc,
 };
 
-struct QueryInfo::Node : Dim::ListBaseLink<Node> {
+struct QueryInfo::Node : Dim::ListBaseLink<> {
     NodeType type;
 };
 
