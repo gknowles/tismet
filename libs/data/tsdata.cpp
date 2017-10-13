@@ -280,7 +280,7 @@ bool TsdFile::open(string_view name, size_t pageSize) {
     if (!fileOpenView(
         base, 
         m_data, 
-        numeric_limits<uint32_t>::max() * filePageSize()
+        0x1'0000'0000 // numeric_limits<uint32_t>::max() * filePageSize()
     )) {
         logMsgError() << "Open view failed on " << name;
         return false;
