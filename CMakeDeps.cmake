@@ -173,6 +173,7 @@
 # vendor/dimapp/libs/win/winconsole.cpp
 # vendor/dimapp/libs/win/winenv.cpp
 # vendor/dimapp/libs/win/winerror.cpp
+# vendor/dimapp/libs/win/winevent.cpp
 # vendor/dimapp/libs/win/winfile.cpp
 # vendor/dimapp/libs/win/winfilemon.cpp
 # vendor/dimapp/libs/win/winint.h
@@ -184,9 +185,9 @@
 # vendor/dimapp/libs/win/winsockbuf.cpp
 # vendor/dimapp/libs/win/winsockconn.cpp
 # vendor/dimapp/libs/win/winsockint.h
-# vendor/dimapp/libs/win/winsync.cpp
 # vendor/dimapp/libs/win/winthread.cpp
 # vendor/dimapp/libs/win/wintime.cpp
+# vendor/dimapp/libs/win/winutil.cpp
 # vendor/dimapp/libs/wintls/pch.cpp
 # vendor/dimapp/libs/wintls/pch.h
 # vendor/dimapp/libs/wintls/wintls.h
