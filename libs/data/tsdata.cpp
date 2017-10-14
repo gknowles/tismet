@@ -11,17 +11,27 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Private
+*   Tuning parameters
 *
 ***/
 
-const char kDumpVersion[] = "Tismet Dump Version 2017.1";
+const Duration kDefaultRetention = 30h;
+const Duration kDefaultInterval = 1min;
 
 const unsigned kMaxMetricNameLen = 64;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 const unsigned kDefaultPageSize = 4096;
 static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
+
+
+/****************************************************************************
+*
+*   Private
+*
+***/
+
+const char kDumpVersion[] = "Tismet Dump Version 2017.1";
 
 const unsigned kDataFileSig[] = { 
     0x39515728, 
@@ -506,8 +516,8 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
     auto count = name.copy(mp->name, size(mp->name) - 1);
     mp->name[count] = 0;
     mp->id = id;
-    mp->interval = 1min;
-    mp->retention = 30min;
+    mp->interval = kDefaultInterval;
+    mp->retention = kDefaultRetention;
     mp->rd.height = 0;
     mp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
     writePage(*mp);
@@ -653,8 +663,8 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
 			if (pagePos == mp->lastPagePos) {
 				// Still on the tip page of the ring buffer, but in the old 
 				// values section. 
-				ent = (time - (mi.pageFirstTime - pageInterval)) 
-                    / mi.interval;
+                auto pageTime = mi.pageFirstTime - off * pageInterval;
+				ent = (time - pageTime) / mi.interval;
 			} else if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
