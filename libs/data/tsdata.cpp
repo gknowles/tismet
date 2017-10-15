@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const Duration kDefaultRetention = 30h;
+const Duration kDefaultRetention = 7 * 24h;
 const Duration kDefaultInterval = 1min;
 
 const unsigned kMaxMetricNameLen = 64;
@@ -252,7 +252,8 @@ static auto & s_perfCreated = uperf("metrics created");
 static auto & s_perfDeleted = uperf("metrics deleted");
 
 static auto & s_perfOld = uperf("metric values ignored (old)");
-static auto & s_perfDup = uperf("metric values duplicate");
+static auto & s_perfDup = uperf("metric values ignored (same)");
+static auto & s_perfChange = uperf("metric values changed");
 static auto & s_perfAdd = uperf("metric values added");
 
 
@@ -686,12 +687,14 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
 		}
         assert(ent < (unsigned) vpp);
         auto & ref = dp->values[ent];
-        if (isnan(ref)) {
-            s_perfAdd += 1;
-        } else {
+        if (ref == value) {
             s_perfDup += 1;
-        }
-        if (ref != value) {
+        } else {
+            if (isnan(ref)) {
+                s_perfAdd += 1;
+            } else {
+                s_perfChange += 1;
+            }
             ref = value;
             writePage(*dp, m_hdr->pageSize);
         }
@@ -780,6 +783,7 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         dp = editPage<DataPage>(mp->lastPage);
         dp->pageFirstTime = endPageTime;
         dp->pageLastValue = 0;
+        dp->values[0] = NAN;
         writePage(*dp);
     }
 
