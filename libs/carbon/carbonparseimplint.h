@@ -18,7 +18,7 @@
 ***/
 
 //===========================================================================
-inline bool CarbonParser::onExpMinusEnd (const char * eptr) {
+inline bool CarbonParser::onExpMinusEnd () {
     m_expMinus = true;
     return true; 
 }
@@ -37,13 +37,13 @@ inline bool CarbonParser::onFracNumChar (char ch) {
 }
 
 //===========================================================================
-inline bool CarbonParser::onIntChar (char ch) {
+inline bool CarbonParser::onIntNumChar (char ch) {
     m_int = 10 * m_int + (ch - '0');
     return true; 
 }
 
 //===========================================================================
-inline bool CarbonParser::onMetricEnd (const char * eptr) {
+inline bool CarbonParser::onMetricEnd () {
     m_upd->name = std::string_view(m_nameStart, m_nameEnd - m_nameStart);
 
     m_upd->time = Dim::Clock::from_time_t(m_seconds);
@@ -70,7 +70,7 @@ inline bool CarbonParser::onMetricEnd (const char * eptr) {
 }
 
 //===========================================================================
-inline bool CarbonParser::onMinusEnd (const char * eptr) {
+inline bool CarbonParser::onIntMinusEnd () {
     m_minus = true;
     return true; 
 }
@@ -83,7 +83,7 @@ inline bool CarbonParser::onPathStart (const char * ptr) {
 
 //===========================================================================
 inline bool CarbonParser::onPathEnd (const char * eptr) {
-    m_nameEnd = eptr - 1;
+    m_nameEnd = eptr;
     return true; 
 }
 

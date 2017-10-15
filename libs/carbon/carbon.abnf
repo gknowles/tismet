@@ -12,10 +12,13 @@
 metriclist = 1*metric
 metric = path SP value SP timestamp [CR] LF { End }
 
+x = path SP value SP timestamp *(SP option) [CR] LF { End }
+option = opt-name "=" opt-value
+
 BSLASH = %x5c ; \
 
 ; Path
-path = 1*path-chars { Start, End }
+path = 1*path-chars { Start+, End+ }
 path-chars = ALPHA / DIGIT 
     / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
     / "+" / "-" / "." 
@@ -24,19 +27,20 @@ path-chars = ALPHA / DIGIT
     / "`" / "|" / "~"
 
 ; Timestamp
-timestamp = 1*DIGIT { Char }
+timestamp = 1*DIGIT { Char+ }
 
 ; Value
-value = [minus] int [frac] [exp]
+value = int [frac] [exp]
 decimal-point = "."
 digit1-9 = %x31-39 ; 1-9
 e = "e" ; e E
 exp = e [exp-minus / exp-plus] exp-num
 exp-minus = "-" { End }
 exp-plus = "+"
-exp-num = 1*DIGIT { Char }
+exp-num = 1*DIGIT { Char+ }
 frac = decimal-point frac-num
-frac-num = 1*DIGIT { Char }
-int = zero / (digit1-9 *DIGIT) { Char }
-minus = "-" { End }
+frac-num = 1*DIGIT { Char+ }
+int = [int-minus] int-num
+int-minus = "-" { End }
+int-num = zero / digit1-9 *DIGIT { Char+ }
 zero = "0"
