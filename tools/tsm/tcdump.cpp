@@ -61,6 +61,5 @@ static bool dumpCmd(Cli & cli) {
     tsdWriteDump(*os, h, *s_qry);
     tsdClose(h);
     
-    appSignalShutdown(EX_OK);
     return true;
 }

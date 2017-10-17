@@ -175,5 +175,5 @@ static bool recordCmd(Cli & cli) {
         (AppSocket::Family) TismetSocket::kCarbon
     );
 
-    return true;
+    return cli.fail(EX_PENDING, "");
 }

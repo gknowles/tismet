@@ -84,5 +84,5 @@ static bool loadCmd(Cli & cli) {
 
     auto progress = make_unique<LoadProgress>(h);
     tsdLoadDump(progress.release(), h, s_in->defaultExt("txt"));
-    return true;
+    return cli.fail(EX_PENDING, "");
 }

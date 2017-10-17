@@ -17,7 +17,14 @@ using namespace Dim;
 ***/
 
 struct CmdOpts {
+    enum OutputType {
+        kInvalidOutput,
+        kFileOutput,
+        kAddrOutput,
+    };
+    OutputType otype{};
     Path ofile;
+    string oaddr;
     uint64_t maxBytes;
     unsigned maxSecs;
     uint64_t maxValues;
@@ -163,10 +170,19 @@ CmdOpts::CmdOpts() {
     cli.command("gen")
         .desc("Generate test metrics.")
         .action(genCmd)
-        .group("Target").sortKey("1");
-    cli.opt<Path>(&ofile, "F file")
+        .group("Target").sortKey("1")
+        .title("Output Target (exactly one target is required)");
+    cli.opt(&ofile, "F file")
         .desc("Output file, '-' for stdout, extension defaults to '.txt'")
-        .require();
+        .check([&](auto&, auto&, auto&) { return otype = kFileOutput; })
+        .after([&](auto & cli, auto&, auto&) {
+            return otype
+                || cli.badUsage("No output target given.");
+        });
+    cli.opt(&oaddr, "A addr")
+        .desc("Socket endpoint to receive metrics, port defaults to 2013")
+        .valueDesc("ADDRESS")
+        .check([&](auto&, auto&, auto&) { return otype = kAddrOutput; });
 
     cli.group("When to Stop").sortKey("2");
     cli.opt(&maxBytes, "B bytes", 0)
@@ -214,6 +230,7 @@ static bool genCmd(Cli & cli) {
             );
         }
     }
+    consoleEnableCtrlC();
 
     logMsgInfo() << "Writing to " << fname;
     if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
@@ -226,8 +243,7 @@ static bool genCmd(Cli & cli) {
         if (auto num = s_opts.maxSecs)
             os << ", seconds: " << num;
     }
-    consoleEnableCtrlC();
 
     taskPushOnce("Generate Metrics", genValuesThread);
-    return true;
+    return cli.fail(EX_PENDING, "");
 }

@@ -27,8 +27,9 @@ const char kVersion[] = "1.0";
 //===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
-    cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
+    cli.header("tsm v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
+    cli.helpCmd();
 
     if (argc == 1) {
         auto os = logMsgInfo();
@@ -36,6 +37,8 @@ static void app(int argc, char * argv[]) {
     }
     if (!cli.parse(argc, argv) || !cli.exec())
         return appSignalUsageError();
+
+    appSignalShutdown(EX_OK);
 }
 
 
