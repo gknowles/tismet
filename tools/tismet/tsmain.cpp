@@ -31,14 +31,14 @@ static void app(int argc, char * argv[]) {
     cli.versionOpt(kVersion);
 
     //if (argc == 1) 
-    //    return appSignalShutdown(cli.printHelp(cout, argv[0]));
+    //    return appSignalShutdown(cli.printHelp(cli.conout(), argv[0]));
     if (!cli.parse(argc, argv))
         return appSignalUsageError();
 
     consoleEnableCtrlC();
     tsDataInitialize();
     tsCarbonInitialize();
-    cout << "Server started";
+    cout << "Server started" << endl;
 }
 
 

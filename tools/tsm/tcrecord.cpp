@@ -19,7 +19,37 @@ static FileHandle s_file;
 static Endpoint s_endpt;
 static uint64_t s_maxBytes;
 static uint64_t s_maxSecs;
+static uint64_t s_valuesWritten;
 static uint64_t s_bytesWritten;
+
+static TimePoint s_startTime;
+
+
+//===========================================================================
+static void logStart(string_view target, const Endpoint & source) {
+    s_startTime = Clock::now();
+    logMsgInfo() << "Recording " << source << " into " << target;
+    if (s_maxBytes || s_maxSecs) {
+        auto os = logMsgInfo();
+        os.imbue(locale(""));
+        os << "Limits";
+        if (s_maxBytes) 
+            os << "; bytes: " << s_maxBytes;
+        if (s_maxSecs)
+            os << "; seconds: " << s_maxSecs;
+    }
+}
+
+//===========================================================================
+static void logShutdown() {
+    TimePoint finish = Clock::now();
+    std::chrono::duration<double> elapsed = finish - s_startTime;
+    auto os = logMsgInfo();
+    os.imbue(locale(""));
+    os << "Done; values: " << s_valuesWritten
+        << "; bytes: " << s_bytesWritten
+        << "; seconds: " << elapsed.count();
+}
 
 
 /****************************************************************************
@@ -37,7 +67,6 @@ static RecordTimer s_timer;
 
 //===========================================================================
 Duration RecordTimer::onTimer(TimePoint now) {
-    logMsgInfo() << "Time expired";
     appSignalShutdown();
     return kTimerInfinite;
 }
@@ -74,6 +103,7 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     carbonWrite(m_buf, m_name, time, (float) value);
     fileAppendWait(s_file, m_buf.data(), m_buf.size());
     s_bytesWritten += m_buf.size();
+    s_valuesWritten += 1;
     if (s_bytesWritten >= s_maxBytes && !appStopping()) {
         logMsgInfo() << "Maximum bytes received";
         appSignalShutdown();
@@ -104,6 +134,7 @@ void ShutdownNotify::onShutdownClient(bool firstTry) {
         (AppSocket::Family) TismetSocket::kCarbon
     );
     fileClose(s_file);
+    logShutdown();
 }
 
 
@@ -149,23 +180,7 @@ static bool recordCmd(Cli & cli) {
     if (!parse(&s_endpt, *s_endptOpt, 2003))
         return cli.badUsage("Bad '" + s_endptOpt.from() + "' endpoint");
 
-    logMsgInfo() << "Recording to " << *s_out;
-    if (s_maxBytes || s_maxSecs) {
-        auto os = logMsgInfo();
-        os << "Record ";
-        if (s_maxBytes) {
-            os << s_maxBytes << (s_maxBytes == 1 ? " byte" : " bytes");
-            if (s_maxSecs)
-                os << " or for " << s_maxSecs
-                    << (s_maxSecs == 1 ? " second" : " seconds") 
-                    << ", whichever comes first";
-        } else {
-            os << "for " << s_maxSecs 
-                << (s_maxSecs == 1 ? " second" : " seconds");
-        }
-    }
-    logMsgInfo() << "Control-C to stop recording";
-    consoleEnableCtrlC();
+    logStart(*s_out, s_endpt);
     if (s_maxSecs)
         timerUpdate(&s_timer, (chrono::seconds) s_maxSecs);
 

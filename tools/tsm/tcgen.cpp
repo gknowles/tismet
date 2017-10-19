@@ -89,7 +89,7 @@ static void logShutdown() {
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
-    os << "Written; values: " << s_valuesWritten 
+    os << "Done; values: " << s_valuesWritten 
         << "; bytes: " << s_bytesWritten
         << "; seconds: " << elapsed.count();
 }
@@ -222,7 +222,7 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
 *
 ***/
 
-class FileJob : IFileWriteNotify, ITaskNotify {
+class FileJob : IFileWriteNotify {
 public:
     static constexpr size_t kBufferSize = 4096;
 
@@ -241,9 +241,6 @@ private:
         int64_t offset, 
         FileHandle f
     ) override;
-
-    // Inherited via ITaskNotify
-    void onTask() override;
 
     FileHandle m_file;
     MetricSource m_mets;
@@ -312,14 +309,7 @@ void FileJob::onFileWrite(
     int64_t offset, 
     FileHandle f
 ) {
-    if (written < data.size())
-        m_pending.clear();
-    taskPushEvent(*this);
-}
-
-//===========================================================================
-void FileJob::onTask() {
-    if (m_pending.empty()) {
+    if (written < data.size() || m_pending.empty()) {
         shutdown();
     } else {
         write();

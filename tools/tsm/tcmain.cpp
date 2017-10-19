@@ -31,10 +31,8 @@ static void app(int argc, char * argv[]) {
     cli.versionOpt(kVersion);
     cli.helpCmd();
 
-    if (argc == 1) {
-        auto os = logMsgInfo();
-        return appSignalShutdown(cli.printHelp(os, argv[0]));
-    }
+    if (argc == 1) 
+        return appSignalShutdown(cli.printHelp(cli.conout(), argv[0]));
     if (!cli.parse(argc, argv) || !cli.exec())
         return appSignalUsageError();
 

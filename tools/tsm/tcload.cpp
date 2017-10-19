@@ -30,6 +30,39 @@ static auto & s_truncate = s_cli.opt<bool>("truncate", false)
 
 /****************************************************************************
 *     
+*   Variables
+*     
+***/
+
+static TimePoint s_startTime;
+
+
+/****************************************************************************
+*     
+*   Helpers
+*     
+***/
+
+//===========================================================================
+static void logStart(string_view target, string_view source) {
+    s_startTime = Clock::now();
+    logMsgInfo() << "Loading " << source << " into " << target;
+}
+
+//===========================================================================
+static void logShutdown(const TsdProgressInfo & info) {
+    TimePoint finish = Clock::now();
+    std::chrono::duration<double> elapsed = finish - s_startTime;
+    auto os = logMsgInfo();
+    os.imbue(locale(""));
+    os << "Done; values: " << info.values
+        << "; bytes: " << info.bytes
+        << "; seconds: " << elapsed.count();
+}
+
+
+/****************************************************************************
+*     
 *   LoadProgress
 *     
 ***/
@@ -55,10 +88,8 @@ bool LoadProgress::OnTsdProgress(
     const TsdProgressInfo & info
 ) {
     if (complete) {
-        logMsgInfo() << "Loaded: " 
-            << info.bytes << " bytes, "
-            << info.values << " values";
         tsdClose(m_h);
+        logShutdown(info);
         appSignalShutdown(EX_OK);
         delete this;
     }
@@ -78,11 +109,14 @@ static bool loadCmd(Cli & cli) {
         return cli.badUsage("No value given for <dat file[.dat]>");
 
     s_dat->defaultExt("dat");
+    s_in->defaultExt("txt");
+
+    logStart(*s_dat, *s_in);
     if (s_truncate)
         fileRemove(*s_dat);
     auto h = tsdOpen(*s_dat);
-
     auto progress = make_unique<LoadProgress>(h);
-    tsdLoadDump(progress.release(), h, s_in->defaultExt("txt"));
+    tsdLoadDump(progress.release(), h, *s_in);
+
     return cli.fail(EX_PENDING, "");
 }

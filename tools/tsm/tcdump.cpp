@@ -11,7 +11,7 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Dump command line
+*   Command line
 *
 ***/
 
@@ -30,6 +30,37 @@ static auto & s_qry = s_cli.opt<string>("f find")
 
 /****************************************************************************
 *     
+*   Variables
+*     
+***/
+
+static TimePoint s_startTime;
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+static void logStart(string_view target, string_view source) {
+    s_startTime = Clock::now();
+    logMsgInfo() << "Dumping " << source << " into " << target;
+}
+
+//===========================================================================
+static void logShutdown() {
+    TimePoint finish = Clock::now();
+    std::chrono::duration<double> elapsed = finish - s_startTime;
+    auto os = logMsgInfo();
+    os.imbue(locale(""));
+    os << "Done; seconds: " << elapsed.count();
+}
+
+
+/****************************************************************************
+*     
 *   Dump command
 *     
 ***/
@@ -39,9 +70,7 @@ static bool dumpCmd(Cli & cli) {
     if (!s_dat)
         return cli.badUsage("No value given for <dat file[.dat]>");
     s_dat->defaultExt("dat");
-    logMsgDebug() << "Dumping " << *s_dat;
 
-    auto h = tsdOpen(*s_dat);
     ostream * os{nullptr};
     ofstream ofile;
     if (!s_out)
@@ -58,8 +87,12 @@ static bool dumpCmd(Cli & cli) {
         }
         os = &ofile;
     }
+
+    logStart(*s_out, *s_dat);
+    auto h = tsdOpen(*s_dat);
     tsdWriteDump(*os, h, *s_qry);
     tsdClose(h);
-    
+    logShutdown();
+
     return true;
 }
