@@ -201,7 +201,12 @@ void carbonWrite(
     TimePoint time,
     double value
 ) {
-    ostringstream os;
-    carbonWrite(os, name, time, value);
-    out += os.str();
+    StrFrom<double> vstr(value);
+    StrFrom<time_t> tstr(Clock::to_time_t(time));
+    out += name;
+    out += ' ';
+    out += vstr;
+    out += ' ';
+    out += tstr;
+    out += '\n';
 }
