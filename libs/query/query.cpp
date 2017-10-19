@@ -136,11 +136,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
         appendNode(out, static_cast<const SegStrChoice &>(node));
         break;
     case QueryInfo::kNum:
-        {
-            ostringstream os;
-            os << static_cast<const NumNode &>(node).val;
-            out += os.str();
-        }
+        out += StrFrom<double>(static_cast<const NumNode &>(node).val);
         break;
     default:
         assert(node.type > QueryInfo::kBeforeFirstFunc);
