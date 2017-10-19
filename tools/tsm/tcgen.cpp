@@ -55,11 +55,9 @@ struct Metric {
 
 static CmdOpts s_opts;
 
-static FileHandle s_file;
 static uint64_t s_bytesWritten;
 static uint64_t s_valuesWritten;
-
-static string s_buffer;
+static TimePoint s_startTime;
 
 
 /****************************************************************************
@@ -69,58 +67,68 @@ static string s_buffer;
 ***/
 
 //===========================================================================
-static void flushValues() {
-    if (s_buffer.empty())
-        return;
-    fileAppendWait(s_file, s_buffer.data(), s_buffer.size());
-    s_buffer.clear();
+static void logStart(string_view target) {
+    s_startTime = Clock::now();
+    logMsgInfo() << "Writing to " << target;
+    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
+        auto os = logMsgInfo();
+        os.imbue(locale(""));
+        os << "Limits";
+        if (auto num = s_opts.maxValues) 
+            os << "; values: " << num;
+        if (auto num = s_opts.maxBytes)
+            os << "; bytes: " << num;
+        if (auto num = s_opts.maxSecs)
+            os << "; seconds: " << num;
+    }
 }
 
 //===========================================================================
-static bool writeValue(const Metric & met) {
-    auto base = s_buffer.size();
-    carbonWrite(s_buffer, met.name, met.time, (float) met.value);
-    auto len = base - s_buffer.size();
-    if (s_buffer.size() > 4096) {
-        flushValues();
-    }
-    s_bytesWritten += len;
-    s_valuesWritten += 1;
-    if (s_opts.maxBytes && s_bytesWritten >= s_opts.maxBytes
-        || s_opts.maxValues && s_valuesWritten >= s_opts.maxValues
-    ) {
-        return false;
-    }
-    return true;
+static void logShutdown() {
+    TimePoint finish = Clock::now();
+    std::chrono::duration<double> elapsed = finish - s_startTime;
+    auto os = logMsgInfo();
+    os.imbue(locale(""));
+    os << "Written; values: " << s_valuesWritten 
+        << "; bytes: " << s_bytesWritten
+        << "; seconds: " << elapsed.count();
 }
 
-//===========================================================================
-static bool advanceValue(
-    Metric & met, 
-    default_random_engine & reng,
-    uniform_real_distribution<> & rdist
-) {
-    if (s_opts.endTime.time_since_epoch().count() 
-        && met.time >= s_opts.endTime
-    ) {
-        return false;
-    }
-    met.time += (seconds) s_opts.intervalSecs;
-    met.value += rdist(reng);
-    return true;
-}
+
+/****************************************************************************
+*
+*   MetricSource
+*
+***/
+
+class MetricSource {
+public:
+    MetricSource();
+    Metric * next();
+
+private:
+    random_device m_rdev;
+    default_random_engine m_reng;
+    uniform_real_distribution<> m_rdist;
+
+    vector<Metric> m_metrics;
+    size_t m_pos = (size_t) -1;
+    bool m_firstPass{true};
+};
 
 //===========================================================================
-static void genValues() {
-    // create metrics
+MetricSource::MetricSource() 
+    : m_reng{m_rdev()}
+    , m_rdist{s_opts.minDelta, s_opts.maxDelta}
+    , m_metrics{s_opts.metrics}
+{
     static const char * numerals[] = {
         "zero.", "one.", "two.", "three.", "four.",
         "five.", "six.", "seven.", "eight.", "nine.",
     };
-    vector<Metric> metrics(s_opts.metrics);
     StrFrom<unsigned> str{0};
     for (unsigned i = 0; i < s_opts.metrics; ++i) {
-        auto & met = metrics[i];
+        auto & met = m_metrics[i];
         for (auto && ch : str.set(i)) {
             met.name += numerals[ch - '0'];
         }
@@ -129,27 +137,193 @@ static void genValues() {
         met.value = 0;
         met.time = s_opts.startTime;
     }
+}
 
-    random_device rdev;
-    default_random_engine reng(rdev());
-    uniform_real_distribution<> rdist(s_opts.minDelta, s_opts.maxDelta);
+//===========================================================================
+Metric * MetricSource::next() {
+    if (m_metrics.empty())
+        return nullptr;
+    if (++m_pos == m_metrics.size()) {
+        m_pos = 0;
+        m_firstPass = false;
+    }
+    auto & met = m_metrics[m_pos];
+    if (m_firstPass)
+        return &met;
 
+    // advance metric
+    if (s_opts.endTime.time_since_epoch().count() 
+        && met.time >= s_opts.endTime
+    ) {
+        m_metrics.clear();
+        return nullptr;
+    }
+    met.time += (seconds) s_opts.intervalSecs;
+    met.value += m_rdist(m_reng);
+    return &met;
+}
+
+
+/****************************************************************************
+*
+*   BufferSource
+*
+***/
+
+class BufferSource {
+public:
+    size_t next(void * out, size_t outLen, MetricSource & src);
+
+private:
+    string m_buffer;
+};
+
+//===========================================================================
+size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
+    auto base = (char *) out;
+    auto ptr = base;
     for (;;) {
-        for (auto && met : metrics) {
-            if (!writeValue(met))
-                return;
-            if (!advanceValue(met, reng, rdist))
-                return;
+        if (auto len = m_buffer.size()) {
+            if (len > outLen) {
+                memcpy(ptr, m_buffer.data(), outLen);
+                m_buffer.erase(0, outLen);
+                return ptr - base + outLen;
+            }
+            memcpy(ptr, m_buffer.data(), len);
+            ptr += len;
+            outLen -= len;
+            m_buffer.clear();
+        }
+
+        auto met = src.next();
+        if (!met) 
+            return ptr - base;
+        carbonWrite(m_buffer, met->name, met->time, (float) met->value);
+
+        // Check thresholds, if exceeded roll back last value and ensure
+        // subsequent calls return 0 bytes.
+        s_bytesWritten += m_buffer.size();
+        s_valuesWritten += 1;
+        if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
+            || s_opts.maxValues && s_valuesWritten > s_opts.maxValues
+        ) {
+            s_bytesWritten -= m_buffer.size();
+            s_valuesWritten -= 1;
+            m_buffer.clear();
+            return ptr - base;
         }
     }
 }
 
+
+/****************************************************************************
+*
+*   FileJob
+*
+***/
+
+class FileJob : IFileWriteNotify, ITaskNotify {
+public:
+    static constexpr size_t kBufferSize = 4096;
+
+public:
+    bool start(Cli & cli);
+    void shutdown();
+
+private:
+    bool generate();
+    void write();
+
+    // Inherited via IFileWriteNotify
+    void onFileWrite(
+        int written, 
+        string_view data, 
+        int64_t offset, 
+        FileHandle f
+    ) override;
+
+    // Inherited via ITaskNotify
+    void onTask() override;
+
+    FileHandle m_file;
+    MetricSource m_mets;
+    BufferSource m_bufs;
+    string m_pending;
+    string m_active;
+};
+
 //===========================================================================
-static void genValuesThread() {
-    genValues();
-    flushValues();
-    fileClose(s_file);
+bool FileJob::start(Cli & cli) {
+    auto fname = s_opts.ofile;
+    if (!fname)
+        return cli.badUsage("No value given for <output file[.txt]>");
+    if (fname.view() == "-") {
+        m_file = fileAttachStdout();
+    } else {
+        m_file = fileOpen(
+            fname.defaultExt("txt"), 
+            File::fReadWrite | File::fCreat | File::fTrunc
+        );
+        if (!m_file) {
+            return cli.fail(
+                EX_DATAERR, 
+                fname.str() + ": open <outputFile[.txt]> failed"
+            );
+        }
+    }
+
+    logStart(fname);
+    if (generate()) {
+        write();
+    } else {
+        shutdown();
+    }
+    cli.fail(EX_PENDING, "");
+    return true;
+}
+
+//===========================================================================
+void FileJob::shutdown() {
+    fileClose(m_file);
+    logShutdown();
     appSignalShutdown();
+    delete this;
+}
+
+//===========================================================================
+bool FileJob::generate() {
+    m_pending.resize(kBufferSize);
+    auto len = m_bufs.next(m_pending.data(), m_pending.size(), m_mets);
+    m_pending.resize(len);
+    return len;
+}
+
+//===========================================================================
+void FileJob::write() {
+    swap(m_pending, m_active);
+    fileAppend(this, m_file, m_active.data(), m_active.size());
+    generate();
+}
+
+//===========================================================================
+void FileJob::onFileWrite(
+    int written, 
+    string_view data, 
+    int64_t offset, 
+    FileHandle f
+) {
+    if (written < data.size())
+        m_pending.clear();
+    taskPushEvent(*this);
+}
+
+//===========================================================================
+void FileJob::onTask() {
+    if (m_pending.empty()) {
+        shutdown();
+    } else {
+        write();
+    }
 }
 
 
@@ -194,6 +368,7 @@ CmdOpts::CmdOpts() {
 
     cli.group("Metrics to Generate").sortKey("3");
     cli.opt(&metrics, "m metrics", 100)
+        .range(1, numeric_limits<decltype(metrics)>::max())
         .desc("Number of metrics");
     cli.opt(&startTime, "s start", kDefaultStartTime)
         .desc("Start time of first metric value")
@@ -213,37 +388,14 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static bool genCmd(Cli & cli) {
-    auto fname = s_opts.ofile;
-    if (!fname)
-        return cli.badUsage("No value given for <output file[.txt]>");
-    if (fname.view() == "-") {
-        s_file = fileAttachStdout();
+    if (s_opts.otype == CmdOpts::kFileOutput) {
+        auto job = make_unique<FileJob>();
+        if (job->start(cli))
+            job.release();
     } else {
-        s_file = fileOpen(
-            fname.defaultExt("txt"), 
-            File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
-        );
-        if (!s_file) {
-            return cli.fail(
-                EX_DATAERR, 
-                fname.str() + ": open <outputFile[.txt]> failed"
-            );
-        }
-    }
-    consoleEnableCtrlC();
-
-    logMsgInfo() << "Writing to " << fname;
-    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
-        auto os = logMsgInfo();
-        os << "Limits";
-        if (auto num = s_opts.maxValues) 
-            os << ", values: " << num;
-        if (auto num = s_opts.maxBytes)
-            os << ", bytes: " << num;
-        if (auto num = s_opts.maxSecs)
-            os << ", seconds: " << num;
+        assert(s_opts.otype == CmdOpts::kAddrOutput);
+        cli.fail(EX_SOFTWARE, "Address output not supported");
     }
 
-    taskPushOnce("Generate Metrics", genValuesThread);
-    return cli.fail(EX_PENDING, "");
+    return false;
 }

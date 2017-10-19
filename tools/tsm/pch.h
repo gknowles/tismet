@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <random>
+#include <string>
 
 // Platform headers
 // External library internal headers
