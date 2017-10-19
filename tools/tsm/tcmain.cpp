@@ -29,14 +29,9 @@ static void app(int argc, char * argv[]) {
     Cli cli;
     cli.header("tsm v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
-    cli.helpCmd();
-
-    if (argc == 1) 
-        return appSignalShutdown(cli.printHelp(cli.conout(), argv[0]));
-    if (!cli.parse(argc, argv) || !cli.exec())
-        return appSignalUsageError();
-
-    appSignalShutdown(EX_OK);
+    cli.helpCmd().helpNoArgs();
+    cli.exec(argc, argv);
+    return appSignalUsageError();
 }
 
 

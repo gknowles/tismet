@@ -29,9 +29,6 @@ static void app(int argc, char * argv[]) {
     Cli cli;
     cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion);
-
-    //if (argc == 1) 
-    //    return appSignalShutdown(cli.printHelp(cli.conout(), argv[0]));
     if (!cli.parse(argc, argv))
         return appSignalUsageError();
 
