@@ -65,7 +65,7 @@
 cmake_minimum_required (VERSION 3.6)
 option(LINK_STATIC_RUNTIME "Link with static c++ runtime" ON)
 option(BUILD_SHARED_LIBS "Build DLLs instead of static libs" OFF)
-option(BUILD_UNICODE "Build with unicode charset" OFF)
+option(BUILD_UNICODE "Build with Unicode charset" OFF)
 option(INSTALL_LIBS "Install includes libs" OFF)
 option(INSTALL_TOOLS "Install includes tool binaries" OFF)
 option(INSTALL_TESTS "Install includes test binaries" OFF)
@@ -314,7 +314,7 @@ if(MSVC AND ROOT_PROJECT AND NOT RECURSIVE_GENERATE)
         update_file("${sln_srcpath}" "${sln_content}")
     endif()
 
-    # Fallthrough so that (in addition to a duplicate generate :P) any 
+    # Fall through so that (in addition to a duplicate generate :P) any 
     # --build or --install gets to run with all the facts.
 endif()
 
@@ -327,25 +327,24 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
 
 if(MSVC)
+    # "/EHsc" - exceptions from c++ only (not from structured or "C")
+    # "/GF" - string pooling
+    # "/GR-" (UNUSED) - disable RTTI
+    # "/guard:cf" (UNUSED) - control flow guard
+    # "/nologo" - suppress startup banner and informational messages
+    # "/std:c++latest" - allow constructs still pending standardization
     # "/utf-8" - sets source code character set to utf-8
     # "/W4" - warning level 4
     # "/WX" - treat warnings as errors
-    # "/Zi" - debug info format - defaults to no info
-    # "/std:c++latest" - allow constructs still pending standardization
     # "/Zc:inline" - all inline functions must have definition available
     # "/Zc:rvalueCast" - enforce type conversion rules
     # "/Zc:strictStrings" - disable string literal type conversion to non-const
-    # "/nologo" - suppress startup banner and informational messages
-    # "/GR-" (UNUSED) - disable RTTI
-    # "/EHsc" - exceptions from c++ only (not from structure or "C")
-    # "/GF" - string pooling
-    # "/guard:cf" (UNUSED) - control flow guard
+    # "/Zi" - debug info format (not present would be no info)
     set(CMAKE_CXX_FLAGS "\
-        /utf-8 /W4 /WX /Zi \
-        /std:c++latest /Zc:inline /Zc:rvalueCast /Zc:strictStrings \
-        /nologo /EHsc /GF")
+        /EHsc /GF /nologo /std:c++latest /utf-8 /W4 /WX /Zi \
+        /Zc:inline /Zc:rvalueCast /Zc:strictStrings")
     if(NOT MSVC_VERSION LESS 1910)
-        # /permissive-  // reject non-conforming backward compatibilitisms
+        # /permissive-  // reject non-conforming backward compatibility-isms
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /permissive-")
     endif()
 
@@ -394,7 +393,7 @@ foreach(var ${config_defines})
     add_definitions(/D${var})
 endforeach()
 
-# Setting source_group to a single space is weird and relys on Visual Studio 
+# Setting source_group to a single space is weird and relies on Visual Studio 
 # treating it as no group, ideally we'd set it to the empty string to mean 
 # no group, but - just for regexs (bug?) - that causes cmake to use defaults.
 source_group(" " REGULAR_EXPRESSION ".*")
@@ -482,7 +481,7 @@ endforeach()
 # update deps file
 update_deps_file(${deps})
 
-# Create modifed config.h to reflect build defines
+# Create modified config.h to reflect build defines
 set(cfgname "libs/${PROJECT_NAME}/config.h")
 get_filename_component(path ${cfgname} ABSOLUTE)
 if(EXISTS "${path}")
