@@ -75,13 +75,13 @@ struct FreePage {
     unsigned nextPage;
 };
 
-struct LeafPage {
-    static const PageType type = kPageTypeLeaf;
-    PageHeader hdr;
-
-    // EXTENDS BEYOND END OF STRUCT
-    char entries[1];
-};
+//struct LeafPage {
+//    static const PageType type = kPageTypeLeaf;
+//    PageHeader hdr;
+//
+//    // EXTENDS BEYOND END OF STRUCT
+//    char entries[1];
+//};
 
 struct RadixData {
     uint16_t height;

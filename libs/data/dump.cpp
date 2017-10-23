@@ -31,7 +31,7 @@ namespace {
 
 class DumpWriter : public ITsdEnumNotify {
 public:
-    DumpWriter(ostream & os);
+    explicit DumpWriter(ostream & os);
 
     bool OnTsdValue(
         uint32_t id, 

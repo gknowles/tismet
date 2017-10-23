@@ -71,7 +71,7 @@ namespace {
 
 class LoadProgress : public ITsdProgressNotify {
 public:
-    LoadProgress(TsdFileHandle h) : m_h{h} {}
+    explicit LoadProgress(TsdFileHandle h) : m_h{h} {}
 
     // Inherited via ITsdProgressNotify
     bool OnTsdProgress(bool complete, const TsdProgressInfo & info) override;
