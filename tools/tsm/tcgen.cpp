@@ -16,6 +16,8 @@ using namespace Dim;
 *
 ***/
 
+namespace {
+
 struct CmdOpts {
     enum OutputType {
         kInvalidOutput,
@@ -46,6 +48,8 @@ struct Metric {
     TimePoint time;
 };
 
+} // namespace
+
 
 /****************************************************************************
 *
@@ -58,6 +62,8 @@ static CmdOpts s_opts;
 static uint64_t s_bytesWritten;
 static uint64_t s_valuesWritten;
 static TimePoint s_startTime;
+
+static SockMgrHandle s_mgr;
 
 
 /****************************************************************************
@@ -218,6 +224,99 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
 
 /****************************************************************************
 *
+*   AddrConn
+*
+***/
+
+class AddrConn : public IAppSocketNotify {
+public:
+    static constexpr size_t kBufferSize = 1480;
+    
+public:
+    // Inherited via IAppSocketNotify
+    void onSocketConnect(const AppSocketInfo & info) override;
+    void onSocketConnectFailed() override;
+    void onSocketDisconnect() override;
+    void onSocketRead(AppSocketData & data) override;
+
+private:
+    MetricSource m_mets;
+    BufferSource m_bufs;
+};
+
+//===========================================================================
+void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+    string buffer;
+    for (;;) {
+        buffer.resize(kBufferSize);
+        auto len = m_bufs.next(buffer.data(), buffer.size(), m_mets);
+        if (!len)
+            break;
+        buffer.resize(len);
+        socketWrite(this, buffer);
+    }
+    logShutdown();
+    appSignalShutdown();
+}
+
+//===========================================================================
+void AddrConn::onSocketConnectFailed() {
+    logMsgInfo() << "Connect failed";
+    appSignalShutdown();
+}
+
+//===========================================================================
+void AddrConn::onSocketDisconnect() {
+    logMsgInfo() << "Disconnect";
+    appSignalShutdown();
+}
+
+//===========================================================================
+void AddrConn::onSocketRead(AppSocketData & data) 
+{}
+
+
+/****************************************************************************
+*
+*   AddrJob
+*
+***/
+
+class AddrJob : IEndpointNotify {
+public:
+    bool start(Cli & cli);
+
+private:
+    // Inherited via IEndpointNotify
+    void onEndpointFound(const Endpoint * ptr, int count) override;
+
+    int m_cancelId;
+};
+
+//===========================================================================
+bool AddrJob::start(Cli & cli) {
+    logStart(s_opts.oaddr);
+    s_mgr = sockMgrConnect<AddrConn>("Metric Out");
+    endpointQuery(&m_cancelId, this, s_opts.oaddr, 2003);
+    cli.fail(EX_PENDING, "");
+    return true;
+}
+
+//===========================================================================
+void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
+    if (!count) {
+        logShutdown();
+        appSignalShutdown();
+    } else {
+        auto addrs = vector<Endpoint>(ptr, ptr + count);
+        sockMgrSetEndpoints(s_mgr, addrs);
+    }
+    delete this;
+}
+
+
+/****************************************************************************
+*
 *   FileJob
 *
 ***/
@@ -227,8 +326,9 @@ public:
     static constexpr size_t kBufferSize = 4096;
 
 public:
+    ~FileJob();
+
     bool start(Cli & cli);
-    void shutdown();
 
 private:
     bool generate();
@@ -248,6 +348,13 @@ private:
     string m_pending;
     string m_active;
 };
+
+//===========================================================================
+FileJob::~FileJob() {
+    fileClose(m_file);
+    logShutdown();
+    appSignalShutdown();
+}
 
 //===========================================================================
 bool FileJob::start(Cli & cli) {
@@ -273,18 +380,10 @@ bool FileJob::start(Cli & cli) {
     if (generate()) {
         write();
     } else {
-        shutdown();
+        delete this;
     }
     cli.fail(EX_PENDING, "");
     return true;
-}
-
-//===========================================================================
-void FileJob::shutdown() {
-    fileClose(m_file);
-    logShutdown();
-    appSignalShutdown();
-    delete this;
 }
 
 //===========================================================================
@@ -310,7 +409,7 @@ void FileJob::onFileWrite(
     FileHandle f
 ) {
     if (written < data.size() || m_pending.empty()) {
-        shutdown();
+        delete this;
     } else {
         write();
     }
@@ -344,9 +443,11 @@ CmdOpts::CmdOpts() {
                 || cli.badUsage("No output target given.");
         });
     cli.opt(&oaddr, "A addr")
-        .desc("Socket endpoint to receive metrics, port defaults to 2013")
+        .desc("Socket endpoint to receive metrics, port defaults to 2003")
         .valueDesc("ADDRESS")
         .check([&](auto&, auto&, auto&) { return otype = kAddrOutput; });
+
+    cli.group("~").title("Other");
 
     cli.group("When to Stop").sortKey("2");
     cli.opt(&maxBytes, "B bytes", 0)
@@ -384,8 +485,9 @@ static bool genCmd(Cli & cli) {
             job.release();
     } else {
         assert(s_opts.otype == CmdOpts::kAddrOutput);
-        cli.fail(EX_SOFTWARE, "Address output not supported");
+        auto job = make_unique<AddrJob>();
+        if (job->start(cli))
+            job.release();
     }
-
     return false;
 }
