@@ -11,14 +11,36 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Declarations
+*
+***/
+
+namespace {
+
+struct CmdOpts {
+    Path ofile;
+    uint64_t maxBytes;
+    unsigned maxSecs;
+    uint64_t maxValues;
+
+    string addrStr;
+    Endpoint addr;
+
+    CmdOpts();
+};
+
+} // namespace
+
+
+/****************************************************************************
+*
 *   Variables
 *
 ***/
 
+static CmdOpts s_opts;
+
 static FileHandle s_file;
-static Endpoint s_endpt;
-static uint64_t s_maxBytes;
-static uint64_t s_maxSecs;
 static uint64_t s_valuesWritten;
 static uint64_t s_bytesWritten;
 
@@ -29,14 +51,16 @@ static TimePoint s_startTime;
 static void logStart(string_view target, const Endpoint & source) {
     s_startTime = Clock::now();
     logMsgInfo() << "Recording " << source << " into " << target;
-    if (s_maxBytes || s_maxSecs) {
+    if (s_opts.maxBytes || s_opts.maxSecs) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
         os << "Limits";
-        if (s_maxBytes) 
-            os << "; bytes: " << s_maxBytes;
-        if (s_maxSecs)
-            os << "; seconds: " << s_maxSecs;
+        if (auto num = s_opts.maxValues) 
+            os << "; values: " << num;
+        if (auto num = s_opts.maxBytes) 
+            os << "; bytes: " << num;
+        if (auto num = s_opts.maxSecs)
+            os << "; seconds: " << num;
     }
 }
 
@@ -59,10 +83,13 @@ static void logShutdown() {
 ***/
 
 namespace {
+
 class RecordTimer : public ITimerNotify {
     Duration onTimer(TimePoint now) override;
 };
+
 } // namespace
+
 static RecordTimer s_timer;
 
 //===========================================================================
@@ -104,9 +131,12 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     fileAppendWait(s_file, m_buf.data(), m_buf.size());
     s_bytesWritten += m_buf.size();
     s_valuesWritten += 1;
-    if (s_bytesWritten >= s_maxBytes && !appStopping()) {
-        logMsgInfo() << "Maximum bytes received";
-        appSignalShutdown();
+    if (appStopping())
+        return;
+    if (s_opts.maxValues && s_valuesWritten >= s_opts.maxValues
+        || s_opts.maxBytes && s_bytesWritten >= s_opts.maxBytes
+    ) {
+        return appSignalShutdown();
     }
 }
 
@@ -121,6 +151,7 @@ namespace {
 
 class ShutdownNotify : public IShutdownNotify {
     void onShutdownClient(bool firstTry) override;
+    void onShutdownServer(bool firstTry) override;
 };
 
 } // namespace
@@ -130,9 +161,13 @@ static ShutdownNotify s_cleanup;
 //===========================================================================
 void ShutdownNotify::onShutdownClient(bool firstTry) {
     socketCloseWait<RecordConn>(
-        s_endpt,
+        s_opts.addr,
         (AppSocket::Family) TismetSocket::kCarbon
     );
+}
+
+//===========================================================================
+void ShutdownNotify::onShutdownServer(bool firstTry) {
     fileClose(s_file);
     logShutdown();
 }
@@ -146,47 +181,63 @@ void ShutdownNotify::onShutdownClient(bool firstTry) {
 
 static bool recordCmd(Cli & cli);
 
-static Cli s_cli = Cli{}.command("record")
-    .desc("Create recording of metrics received via carbon protocol.")
-    .action(recordCmd);
-static auto & s_out = s_cli.opt<Path>("<output file>", "")
-    .desc("'-' for stdout, otherwise extension defaults to '.txt'");
-static auto & s_endptOpt = s_cli.opt<string>("[endpoint]", "127.0.0.1:2003")
-    .desc("Endpoint to listen on");
-static auto & s_bytesOpt = s_cli.opt(&s_maxBytes, "b bytes", 0)
-    .desc("Bytes to record, 0 for unlimited");
-static auto & s_secsOpt = s_cli.opt(&s_maxSecs, "s seconds", 0)
-    .desc("Seconds to record, 0 for unlimited");
+//===========================================================================
+CmdOpts::CmdOpts() {
+    Cli cli;
+    cli.command("record")
+        .desc("Create recording of metrics received via carbon protocol.")
+        .action(recordCmd);
+    cli.opt(&ofile, "<output file>")
+        .desc("'-' for stdout, otherwise extension defaults to '.txt'")
+        .check([](auto & cli, auto & opt, auto & val) {
+            if (*opt) {
+                return (bool) opt->defaultExt("txt");
+            } else {
+                // empty path not allowed
+                return cli.badUsage("Missing argument", opt.from());
+            }
+        });
+    cli.opt(&addrStr, "[address]", "127.0.0.1:2003")
+        .desc("Socket address to listen on")
+        .after([](auto & cli, auto & opt, auto & val) {
+            return parse(&s_opts.addr, *opt, 2003)
+                || cli.badUsage(opt, *opt);
+        });
+
+    cli.group("~").title("Other");
+
+    cli.group("When to Stop").sortKey("1");
+    cli.opt(&maxBytes, "B bytes", 0)
+        .desc("Max bytes to record, 0 for unlimited");
+    cli.opt(&maxSecs, "S seconds", 0)
+        .desc("Max seconds to record, 0 for unlimited");
+    cli.opt(&maxValues, "V values", 0)
+        .desc("Max values to record, 0 for unlimited");
+}
 
 //===========================================================================
 static bool recordCmd(Cli & cli) {
-    shutdownMonitor(&s_cleanup);
-
-    if (!s_out)
-        return cli.badUsage("No value given for <output file[.txt]>");
-    if (s_out->str() != "-") {
+    if (s_opts.ofile.view() != "-") {
         s_file = fileOpen(
-            s_out->defaultExt("txt"), 
+            s_opts.ofile, 
             File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
         );
         if (!s_file) {
             return cli.fail(
                 EX_DATAERR, 
-                string(*s_out) + ": open <outputFile[.txt]> failed"
+                s_opts.ofile.str() + ": open output file failed"
             );
         }
     }
 
-    if (!parse(&s_endpt, *s_endptOpt, 2003))
-        return cli.badUsage("Bad '" + s_endptOpt.from() + "' endpoint");
-
-    logStart(*s_out, s_endpt);
-    if (s_maxSecs)
-        timerUpdate(&s_timer, (chrono::seconds) s_maxSecs);
+    shutdownMonitor(&s_cleanup);
+    logStart(s_opts.ofile, s_opts.addr);
+    if (s_opts.maxSecs)
+        timerUpdate(&s_timer, (chrono::seconds) s_opts.maxSecs);
 
     carbonInitialize();
     socketListen<RecordConn>(
-        s_endpt,
+        s_opts.addr,
         (AppSocket::Family) TismetSocket::kCarbon
     );
 
