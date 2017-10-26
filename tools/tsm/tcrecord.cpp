@@ -19,6 +19,9 @@ namespace {
 
 struct CmdOpts {
     Path ofile;
+    bool trunc;
+    bool append;
+
     uint64_t maxBytes;
     unsigned maxSecs;
     uint64_t maxValues;
@@ -213,19 +216,31 @@ CmdOpts::CmdOpts() {
         .desc("Max seconds to record, 0 for unlimited");
     cli.opt(&maxValues, "V values", 0)
         .desc("Max values to record, 0 for unlimited");
+
+    cli.group("Output Options").sortKey("2");
+    cli.opt(&trunc, "truncate.")
+        .desc("Truncate output file, if it exists.");
+    cli.opt(&append, "append.")
+        .desc("Append to output file, if it exists.")
+        .after([&](auto & cli, auto &, auto &) {
+            return (!trunc || !append)
+                || cli.badUsage("Can't use both --append and --truncate.");
+        });
 }
 
 //===========================================================================
 static bool recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
-        s_file = fileOpen(
-            s_opts.ofile, 
-            File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
-        );
+        auto flags = File::fReadWrite | File::fCreat | File::fBlocking;
+        if (s_opts.trunc)
+            flags |= File::fTrunc;
+        else if (!s_opts.append)
+            flags |= File::fExcl;
+        s_file = fileOpen(s_opts.ofile, flags);
         if (!s_file) {
             return cli.fail(
                 EX_DATAERR, 
-                s_opts.ofile.str() + ": open output file failed"
+                s_opts.ofile.str() + ": open output failed"
             );
         }
     }
