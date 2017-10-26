@@ -238,10 +238,12 @@ public:
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     void onSocketRead(AppSocketData & data) override;
+    void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
 
 private:
     MetricSource m_mets;
     BufferSource m_bufs;
+    bool m_done{false};
 };
 
 //===========================================================================
@@ -255,8 +257,7 @@ void AddrConn::onSocketConnect(const AppSocketInfo & info) {
         buffer.resize(len);
         socketWrite(this, buffer);
     }
-    logShutdown();
-    appSignalShutdown();
+    m_done = true;
 }
 
 //===========================================================================
@@ -267,13 +268,22 @@ void AddrConn::onSocketConnectFailed() {
 
 //===========================================================================
 void AddrConn::onSocketDisconnect() {
-    logMsgInfo() << "Disconnect";
+    if (!m_done)
+        logMsgInfo() << "Disconnect";
     appSignalShutdown();
 }
 
 //===========================================================================
 void AddrConn::onSocketRead(AppSocketData & data) 
 {}
+
+//===========================================================================
+void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
+    if (m_done && !info.incomplete) {
+        logShutdown();
+        appSignalShutdown();
+    }
+}
 
 
 /****************************************************************************
