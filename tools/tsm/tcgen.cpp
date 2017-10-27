@@ -73,9 +73,14 @@ static SockMgrHandle s_mgr;
 ***/
 
 //===========================================================================
-static void logStart(string_view target) {
+static void logStart(string_view target, const Endpoint * addr) {
     s_startTime = Clock::now();
-    logMsgInfo() << "Writing to " << target;
+    {
+        auto os = logMsgInfo();
+        os << "Writing to " << target;
+        if (addr) 
+            os << " (" << *addr << ")";
+    }
     if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
@@ -305,7 +310,6 @@ private:
 
 //===========================================================================
 bool AddrJob::start(Cli & cli) {
-    logStart(s_opts.oaddr);
     s_mgr = sockMgrConnect<AddrConn>("Metric Out");
     endpointQuery(&m_cancelId, this, s_opts.oaddr, 2003);
     cli.fail(EX_PENDING, "");
@@ -315,9 +319,9 @@ bool AddrJob::start(Cli & cli) {
 //===========================================================================
 void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
     if (!count) {
-        logShutdown();
         appSignalShutdown();
     } else {
+        logStart(s_opts.oaddr, ptr);
         auto addrs = vector<Endpoint>(ptr, ptr + count);
         sockMgrSetEndpoints(s_mgr, addrs);
     }
@@ -386,7 +390,7 @@ bool FileJob::start(Cli & cli) {
         }
     }
 
-    logStart(fname);
+    logStart(fname, nullptr);
     if (generate()) {
         write();
     } else {
