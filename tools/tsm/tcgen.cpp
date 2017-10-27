@@ -246,13 +246,16 @@ public:
     void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
 
 private:
+    void write();
+    
     MetricSource m_mets;
     BufferSource m_bufs;
     bool m_done{false};
+    bool m_full{false};
 };
 
 //===========================================================================
-void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+void AddrConn::write() {
     string buffer;
     for (;;) {
         buffer.resize(kBufferSize);
@@ -261,8 +264,15 @@ void AddrConn::onSocketConnect(const AppSocketInfo & info) {
             break;
         buffer.resize(len);
         socketWrite(this, buffer);
+        if (m_full)
+            return;
     }
     m_done = true;
+}
+
+//===========================================================================
+void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+    write();
 }
 
 //===========================================================================
@@ -284,7 +294,12 @@ void AddrConn::onSocketRead(AppSocketData & data)
 
 //===========================================================================
 void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
-    if (m_done && !info.incomplete) {
+    if (info.waiting) {
+        m_full = true;
+    } else if (m_full && !info.waiting) {
+        m_full = false;
+        write();
+    } else if (m_done && !info.incomplete) {
         logShutdown();
         appSignalShutdown();
     }
