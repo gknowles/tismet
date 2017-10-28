@@ -299,7 +299,10 @@ void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
     } else if (m_full && !info.waiting) {
         m_full = false;
         write();
-    } else if (m_done && !info.incomplete) {
+    } else if (m_done 
+        && !info.incomplete 
+        && info.total == s_bytesWritten
+    ) {
         logShutdown();
         appSignalShutdown();
     }
