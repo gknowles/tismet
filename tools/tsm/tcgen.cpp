@@ -235,7 +235,7 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
 
 class AddrConn : public IAppSocketNotify {
 public:
-    static constexpr size_t kBufferSize = 1480;
+    static constexpr size_t kBufferSize = 4096;
     
 public:
     // Inherited via IAppSocketNotify
