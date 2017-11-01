@@ -43,7 +43,6 @@ struct CmdOpts {
 
 static CmdOpts s_opts;
 
-static FileHandle s_file;
 static uint64_t s_valuesWritten;
 static uint64_t s_bytesWritten;
 
@@ -104,6 +103,84 @@ Duration RecordTimer::onTimer(TimePoint now) {
 
 /****************************************************************************
 *
+*   File
+*
+***/
+
+static FileHandle s_file;
+static size_t s_fpos;
+static char * s_obuf;
+static size_t s_obufLen;
+static string_view s_out;
+
+//===========================================================================
+static bool openFile() {
+    auto flags = File::fReadWrite | File::fCreat 
+        | File::fBlocking | File::fAligned;
+    if (s_opts.trunc)
+        flags |= File::fTrunc;
+    else if (!s_opts.append)
+        flags |= File::fExcl;
+    s_file = fileOpen(s_opts.ofile, flags);
+    if (!s_file) {
+        return Cli{}.fail(
+            EX_DATAERR, 
+            s_opts.ofile.str() + ": open output failed"
+        );
+    }
+
+    s_obufLen = envMemoryConfig().pageSize;
+    s_obuf = (char *) aligned_alloc(s_obufLen, s_obufLen);
+    
+    s_fpos = fileSize(s_file);
+    if (!errno) {
+        return Cli{}.fail(
+            EX_DATAERR, 
+            s_opts.ofile.str() + ": open output failed"
+        );
+    }
+    auto used = s_fpos % s_obufLen;
+    s_out = string_view{s_obuf + used, s_obufLen - used};
+    s_fpos -= used;
+    if (s_fpos) 
+        fileReadWait(s_obuf, s_obufLen, s_file, s_fpos);
+    return true;
+}
+
+//===========================================================================
+static void appendFile(string_view buf) {
+    if (!s_file) {
+        cout.write(buf.data(), buf.size());
+        return;
+    }
+    auto bytes = min(buf.size(), s_out.size());
+    memcpy((char *) s_out.data(), buf.data(), bytes);
+    s_out.remove_prefix(bytes);
+    if (s_out.empty()) {
+        fileWriteWait(s_file, s_fpos, s_obuf, s_obufLen);
+        s_fpos += s_obufLen;
+        s_out = string_view(s_obuf, s_obufLen);
+        if (auto left = buf.size() - bytes) {
+            memcpy((char *) s_out.data(), buf.data() + bytes, left);
+            s_out.remove_prefix(left);
+        }
+    }
+}
+
+//===========================================================================
+static void closeFile() {
+    if (s_out.size()) {
+        fileClose(s_file);
+        s_file = fileOpen(s_opts.ofile, File::fReadWrite | File::fBlocking);
+        fileAppendWait(s_file, s_obuf, s_obufLen - s_out.size());
+    }
+    aligned_free(s_obuf);
+    fileClose(s_file);
+}
+
+
+/****************************************************************************
+*
 *   RecordConn
 *
 ***/
@@ -111,11 +188,12 @@ Duration RecordTimer::onTimer(TimePoint now) {
 namespace {
 
 class RecordConn : public ICarbonSocketNotify {
-    string_view m_name;
-    string m_buf;
 public:
     uint32_t onCarbonMetric(string_view name) override;
     void onCarbonValue(uint32_t id, TimePoint time, double value) override;
+private:
+    string_view m_name;
+    string m_buf;
 };
 
 } // namespace
@@ -131,7 +209,7 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id == 1);
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, (float) value);
-    fileAppendWait(s_file, m_buf.data(), m_buf.size());
+    appendFile(m_buf);
     s_bytesWritten += m_buf.size();
     s_valuesWritten += 1;
     if (appStopping())
@@ -171,7 +249,8 @@ void ShutdownNotify::onShutdownClient(bool firstTry) {
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
-    fileClose(s_file);
+    if (s_file)
+        closeFile();
     logShutdown();
 }
 
@@ -194,7 +273,9 @@ CmdOpts::CmdOpts() {
         .desc("'-' for stdout, otherwise extension defaults to '.txt'")
         .check([](auto & cli, auto & opt, auto & val) {
             if (*opt) {
-                return (bool) opt->defaultExt("txt");
+                return opt->view() == "-" 
+                    ? true
+                    : (bool) opt->defaultExt("txt");
             } else {
                 // empty path not allowed
                 return cli.badUsage("Missing argument", opt.from());
@@ -231,18 +312,8 @@ CmdOpts::CmdOpts() {
 //===========================================================================
 static bool recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
-        auto flags = File::fReadWrite | File::fCreat | File::fBlocking;
-        if (s_opts.trunc)
-            flags |= File::fTrunc;
-        else if (!s_opts.append)
-            flags |= File::fExcl;
-        s_file = fileOpen(s_opts.ofile, flags);
-        if (!s_file) {
-            return cli.fail(
-                EX_DATAERR, 
-                s_opts.ofile.str() + ": open output failed"
-            );
-        }
+        if (!openFile())
+            return false;
     }
 
     shutdownMonitor(&s_cleanup);
