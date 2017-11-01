@@ -48,8 +48,10 @@
 # tools/tismet/tscarbon.cpp
 # tools/tismet/tsdata.cpp
 # tools/tismet/tsmain.cpp
+# tools/tsm/intern.h
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
+# tools/tsm/tcappendfile.cpp
 # tools/tsm/tcdump.cpp
 # tools/tsm/tcgen.cpp
 # tools/tsm/tcload.cpp

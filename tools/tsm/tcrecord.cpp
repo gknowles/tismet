@@ -19,8 +19,7 @@ namespace {
 
 struct CmdOpts {
     Path ofile;
-    bool trunc;
-    bool append;
+    FileAppendQueue::OpenExisting openMode;
 
     uint64_t maxBytes;
     unsigned maxSecs;
@@ -107,76 +106,7 @@ Duration RecordTimer::onTimer(TimePoint now) {
 *
 ***/
 
-static FileHandle s_file;
-static size_t s_fpos;
-static char * s_obuf;
-static size_t s_obufLen;
-static string_view s_out;
-
-//===========================================================================
-static bool openFile() {
-    auto flags = File::fReadWrite | File::fCreat 
-        | File::fBlocking | File::fAligned;
-    if (s_opts.trunc)
-        flags |= File::fTrunc;
-    else if (!s_opts.append)
-        flags |= File::fExcl;
-    s_file = fileOpen(s_opts.ofile, flags);
-    if (!s_file) {
-        return Cli{}.fail(
-            EX_DATAERR, 
-            s_opts.ofile.str() + ": open output failed"
-        );
-    }
-
-    s_obufLen = envMemoryConfig().pageSize;
-    s_obuf = (char *) aligned_alloc(s_obufLen, s_obufLen);
-    
-    s_fpos = fileSize(s_file);
-    if (!errno) {
-        return Cli{}.fail(
-            EX_DATAERR, 
-            s_opts.ofile.str() + ": open output failed"
-        );
-    }
-    auto used = s_fpos % s_obufLen;
-    s_out = string_view{s_obuf + used, s_obufLen - used};
-    s_fpos -= used;
-    if (s_fpos) 
-        fileReadWait(s_obuf, s_obufLen, s_file, s_fpos);
-    return true;
-}
-
-//===========================================================================
-static void appendFile(string_view buf) {
-    if (!s_file) {
-        cout.write(buf.data(), buf.size());
-        return;
-    }
-    auto bytes = min(buf.size(), s_out.size());
-    memcpy((char *) s_out.data(), buf.data(), bytes);
-    s_out.remove_prefix(bytes);
-    if (s_out.empty()) {
-        fileWriteWait(s_file, s_fpos, s_obuf, s_obufLen);
-        s_fpos += s_obufLen;
-        s_out = string_view(s_obuf, s_obufLen);
-        if (auto left = buf.size() - bytes) {
-            memcpy((char *) s_out.data(), buf.data() + bytes, left);
-            s_out.remove_prefix(left);
-        }
-    }
-}
-
-//===========================================================================
-static void closeFile() {
-    if (s_out.size()) {
-        fileClose(s_file);
-        s_file = fileOpen(s_opts.ofile, File::fReadWrite | File::fBlocking);
-        fileAppendWait(s_file, s_obuf, s_obufLen - s_out.size());
-    }
-    aligned_free(s_obuf);
-    fileClose(s_file);
-}
+static FileAppendQueue s_file{2};
 
 
 /****************************************************************************
@@ -209,7 +139,11 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id == 1);
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, (float) value);
-    appendFile(m_buf);
+    if (s_file) {
+        s_file.append(m_buf);
+    } else {
+        cout << m_buf;
+    }
     s_bytesWritten += m_buf.size();
     s_valuesWritten += 1;
     if (appStopping())
@@ -249,8 +183,7 @@ void ShutdownNotify::onShutdownClient(bool firstTry) {
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
-    if (s_file)
-        closeFile();
+    s_file.close();
     logShutdown();
 }
 
@@ -299,23 +232,25 @@ CmdOpts::CmdOpts() {
         .desc("Max values to record, 0 for unlimited");
 
     cli.group("Output Options").sortKey("2");
-    cli.opt(&trunc, "truncate.")
-        .desc("Truncate output file, if it exists.");
-    cli.opt(&append, "append.")
+    cli.opt(&openMode, "", FileAppendQueue::kFail)
+        .show(false)
+        .flagValue(true);
+    cli.opt(&openMode, "truncate.", FileAppendQueue::kTrunc)
+        .desc("Truncate output file, if it exists.")
+        .flagValue();
+    cli.opt(&openMode, "append.", FileAppendQueue::kAppend)
         .desc("Append to output file, if it exists.")
-        .after([&](auto & cli, auto &, auto &) {
-            return (!trunc || !append)
-                || cli.badUsage("Can't use both --append and --truncate.");
-        });
+        .flagValue();
 }
 
 //===========================================================================
 static bool recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
-        if (!openFile())
+        if (!s_file.open(s_opts.ofile.view(), s_opts.openMode))
             return false;
     }
 
+    consoleCatchCtrlC();
     shutdownMonitor(&s_cleanup);
     logStart(s_opts.ofile, s_opts.addr);
     if (s_opts.maxSecs)
