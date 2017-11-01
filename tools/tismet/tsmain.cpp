@@ -32,7 +32,7 @@ static void app(int argc, char * argv[]) {
     if (!cli.parse(argc, argv))
         return appSignalUsageError();
 
-    consoleEnableCtrlC();
+    consoleCatchCtrlC();
     tsDataInitialize();
     tsCarbonInitialize();
     cout << "Server started" << endl;
