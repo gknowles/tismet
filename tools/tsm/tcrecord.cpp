@@ -44,15 +44,16 @@ static CmdOpts s_opts;
 
 static uint64_t s_valuesWritten;
 static uint64_t s_bytesWritten;
-
 static TimePoint s_startTime;
+
+static FileAppendQueue s_file{10};
 
 
 //===========================================================================
 static void logStart(string_view target, const Endpoint & source) {
     s_startTime = Clock::now();
     logMsgInfo() << "Recording " << source << " into " << target;
-    if (s_opts.maxBytes || s_opts.maxSecs) {
+    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
         os << "Limits";
@@ -102,15 +103,6 @@ Duration RecordTimer::onTimer(TimePoint now) {
 
 /****************************************************************************
 *
-*   File
-*
-***/
-
-static FileAppendQueue s_file{10};
-
-
-/****************************************************************************
-*
 *   RecordConn
 *
 ***/
@@ -137,21 +129,25 @@ uint32_t RecordConn::onCarbonMetric(string_view name) {
 //===========================================================================
 void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id == 1);
+    if (appStopping())
+        return;
+
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, (float) value);
+    s_bytesWritten += m_buf.size();
+    s_valuesWritten += 1;
+    if (s_opts.maxValues && s_valuesWritten > s_opts.maxValues
+        || s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
+    ) {
+        s_bytesWritten -= m_buf.size();
+        s_valuesWritten -= 1;
+        return appSignalShutdown();
+    }
+
     if (s_file) {
         s_file.append(m_buf);
     } else {
         cout << m_buf;
-    }
-    s_bytesWritten += m_buf.size();
-    s_valuesWritten += 1;
-    if (appStopping())
-        return;
-    if (s_opts.maxValues && s_valuesWritten >= s_opts.maxValues
-        || s_opts.maxBytes && s_bytesWritten >= s_opts.maxBytes
-    ) {
-        return appSignalShutdown();
     }
 }
 
