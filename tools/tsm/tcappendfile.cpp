@@ -29,7 +29,7 @@ FileAppendQueue::~FileAppendQueue() {
 
 //===========================================================================
 bool FileAppendQueue::open(std::string_view path, OpenExisting mode) {
-    auto flags = File::fReadWrite | File::fBlocking | File::fAligned;
+    auto flags = File::fReadWrite | File::fAligned;
     switch (mode) {
     case kFail: flags |= File::fCreat | File::fExcl; break;
     case kAppend: flags |= File::fCreat; break;
@@ -69,12 +69,16 @@ void FileAppendQueue::close() {
     if (!m_file)
         return;
 
+    unique_lock<mutex> lk{m_mut};
+    while (m_usedBufs) 
+        m_cv.wait(lk);
+
     if (auto used = m_bufLen - m_buf.size()) {
         if (~fileMode(m_file) & File::fAligned) {
             fileAppendWait(m_file, m_buf.data() - used, used);
         } else {
-            // Since the old file handle was opened with fAligned we can't use it
-            // to write the trailing partial buffer.
+            // Since the old file handle was opened with fAligned we can't use 
+            // it to write the trailing partial buffer.
             Path path = filePath(m_file);
             fileClose(m_file);
             m_file = fileOpen(path, File::fReadWrite | File::fBlocking);
@@ -93,17 +97,47 @@ void FileAppendQueue::append(std::string_view data) {
     auto bytes = min(data.size(), m_buf.size());
     memcpy((char *) m_buf.data(), data.data(), bytes);
     m_buf.remove_prefix(bytes);
-    if (m_buf.empty()) {
-        fileWriteWait(m_file, m_filePos, m_buf.data() - m_bufLen, m_bufLen);
-        m_filePos += m_bufLen;
-        if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
-            m_buf = {m_buffers, m_bufLen};
-        } else {
-            m_buf = {m_buf.data(), m_bufLen};
-        }
-        if (auto left = data.size() - bytes) {
-            memcpy((char *) m_buf.data(), data.data() + bytes, left);
-            m_buf.remove_prefix(left);
-        }
+    if (!m_buf.empty()) 
+        return;
+
+    {
+        unique_lock<mutex> lk{m_mut};
+        while (m_usedBufs == m_numBufs)
+            m_cv.wait(lk);
+
+        m_usedBufs += 1;
     }
+
+    fileWrite(
+        this, 
+        m_file, 
+        m_filePos, 
+        m_buf.data() - m_bufLen, 
+        m_bufLen,
+        taskComputeQueue()
+    );
+    m_filePos += m_bufLen;
+    if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
+        m_buf = {m_buffers, m_bufLen};
+    } else {
+        m_buf = {m_buf.data(), m_bufLen};
+    }
+    if (auto left = data.size() - bytes) {
+        memcpy((char *) m_buf.data(), data.data() + bytes, left);
+        m_buf.remove_prefix(left);
+    }
+}
+
+//===========================================================================
+void FileAppendQueue::onFileWrite(
+    int written,
+    string_view data,
+    int64_t offset,
+    FileHandle f
+) {
+    {
+        unique_lock<mutex> lk{m_mut};
+        m_usedBufs -= 1;
+    }
+    m_cv.notify_all();
 }

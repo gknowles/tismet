@@ -106,7 +106,7 @@ Duration RecordTimer::onTimer(TimePoint now) {
 *
 ***/
 
-static FileAppendQueue s_file{2};
+static FileAppendQueue s_file{10};
 
 
 /****************************************************************************
@@ -233,7 +233,6 @@ CmdOpts::CmdOpts() {
 
     cli.group("Output Options").sortKey("2");
     cli.opt(&openMode, "", FileAppendQueue::kFail)
-        .show(false)
         .flagValue(true);
     cli.opt(&openMode, "truncate.", FileAppendQueue::kTrunc)
         .desc("Truncate output file, if it exists.")

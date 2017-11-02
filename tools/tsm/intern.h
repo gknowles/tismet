@@ -11,7 +11,7 @@
 *
 ***/
 
-class FileAppendQueue {
+class FileAppendQueue : Dim::IFileWriteNotify {
 public:
     FileAppendQueue(int numBuf);
     ~FileAppendQueue();
@@ -30,11 +30,21 @@ public:
     void append(std::string_view data);
 
 private:
-    char * m_buffers = nullptr;  // aligned to page boundary
-    size_t m_bufLen;
+    void onFileWrite(
+        int written,
+        std::string_view data,
+        int64_t offset,
+        Dim::FileHandle f
+    ) override;
+
+    std::mutex m_mut;
+    std::condition_variable m_cv;
+    int m_usedBufs = 0;
     int m_numBufs;
+    char * m_buffers = nullptr;  // aligned to page boundary
+    size_t m_bufLen = 0;
 
     Dim::FileHandle m_file;
     std::string_view m_buf;
-    size_t m_filePos;
+    size_t m_filePos = 0;
 };

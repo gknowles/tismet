@@ -16,10 +16,12 @@
 #include "data/tsdata.h"
 
 // Standard headers
+#include <condition_variable>
 #include <crtdbg.h>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <mutex>
 #include <random>
 #include <string>
 
