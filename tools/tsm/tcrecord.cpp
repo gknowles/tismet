@@ -46,7 +46,7 @@ static uint64_t s_valuesWritten;
 static uint64_t s_bytesWritten;
 static TimePoint s_startTime;
 
-static FileAppendQueue s_file{10};
+static FileAppendQueue s_file{10, 2};
 
 
 //===========================================================================

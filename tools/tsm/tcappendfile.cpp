@@ -16,9 +16,12 @@ using namespace Dim;
 ***/
 
 //===========================================================================
-FileAppendQueue::FileAppendQueue(int numBufs) 
+FileAppendQueue::FileAppendQueue(int numBufs, int maxWrites) 
     : m_numBufs{numBufs}
-{}
+    , m_maxWrites{maxWrites}
+{
+    assert(m_maxWrites && m_maxWrites <= m_numBufs);
+}
 
 //===========================================================================
 FileAppendQueue::~FileAppendQueue() {
@@ -70,7 +73,7 @@ void FileAppendQueue::close() {
         return;
 
     unique_lock<mutex> lk{m_mut};
-    while (m_usedBufs) 
+    while (m_fullBufs + m_lockedBufs) 
         m_cv.wait(lk);
 
     if (auto used = m_bufLen - m_buf.size()) {
@@ -102,30 +105,61 @@ void FileAppendQueue::append(std::string_view data) {
 
     {
         unique_lock<mutex> lk{m_mut};
-        while (m_usedBufs == m_numBufs)
+        while (m_fullBufs + m_lockedBufs == m_numBufs)
             m_cv.wait(lk);
 
-        m_usedBufs += 1;
+        m_fullBufs += 1;
+        if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
+            m_buf = {m_buffers, m_bufLen};
+        } else {
+            m_buf = {m_buf.data(), m_bufLen};
+        }
+
+        write_UNLK(lk);
     }
 
-    fileWrite(
-        this, 
-        m_file, 
-        m_filePos, 
-        m_buf.data() - m_bufLen, 
-        m_bufLen,
-        taskComputeQueue()
-    );
-    m_filePos += m_bufLen;
-    if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
-        m_buf = {m_buffers, m_bufLen};
-    } else {
-        m_buf = {m_buf.data(), m_bufLen};
-    }
     if (auto left = data.size() - bytes) {
         memcpy((char *) m_buf.data(), data.data() + bytes, left);
         m_buf.remove_prefix(left);
     }
+
+}
+
+//===========================================================================
+void FileAppendQueue::write_UNLK(unique_lock<mutex> & lk) {
+    if (m_numWrites == m_maxWrites)
+        return;
+
+    const char * writeBuf;
+    size_t writeCount;
+    auto epos = (int) ((m_buf.data() - m_buffers) / m_bufLen);
+    if (m_fullBufs > epos) {
+        writeCount = (m_fullBufs - epos) * m_bufLen;
+        writeBuf = m_buffers + m_numBufs * m_bufLen - writeCount;
+        m_lockedBufs += m_fullBufs - epos;
+        m_fullBufs = epos;
+    } else {
+        writeCount = m_fullBufs * m_bufLen;
+        writeBuf = m_buffers + epos * m_bufLen - writeCount;
+        m_lockedBufs += m_fullBufs;
+        m_fullBufs = 0;
+    }
+    if (!writeCount)
+        return;
+
+    m_numWrites += 1;
+    size_t writePos = m_filePos;
+    m_filePos += writeCount;
+    lk.unlock();
+
+    fileWrite(
+        this, 
+        m_file, 
+        writePos, 
+        writeBuf, 
+        writeCount,
+        taskComputeQueue()
+    );
 }
 
 //===========================================================================
@@ -137,7 +171,9 @@ void FileAppendQueue::onFileWrite(
 ) {
     {
         unique_lock<mutex> lk{m_mut};
-        m_usedBufs -= 1;
+        m_numWrites -= 1;
+        m_lockedBufs -= (int) (data.size() / m_bufLen);
+        write_UNLK(lk);
     }
     m_cv.notify_all();
 }
