@@ -105,6 +105,22 @@ static void logShutdown() {
         << "; seconds: " << elapsed.count();
 }
 
+//===========================================================================
+static bool checkLimits(size_t moreBytes) {
+    // Check thresholds, if exceeded roll back last value and ensure
+    // subsequent calls return 0 bytes.
+    s_bytesWritten += moreBytes;
+    s_valuesWritten += 1;
+    if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
+        || s_opts.maxValues && s_valuesWritten > s_opts.maxValues
+    ) {
+        s_bytesWritten -= moreBytes;
+        s_valuesWritten -= 1;
+        return false;
+    }
+    return true;
+}
+
 
 /****************************************************************************
 *
@@ -210,16 +226,10 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
         if (!met) 
             return ptr - base;
         carbonWrite(m_buffer, met->name, met->time, (float) met->value);
-
+        
         // Check thresholds, if exceeded roll back last value and ensure
         // subsequent calls return 0 bytes.
-        s_bytesWritten += m_buffer.size();
-        s_valuesWritten += 1;
-        if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
-            || s_opts.maxValues && s_valuesWritten > s_opts.maxValues
-        ) {
-            s_bytesWritten -= m_buffer.size();
-            s_valuesWritten -= 1;
+        if (!checkLimits(m_buffer.size())) {
             m_buffer.clear();
             return ptr - base;
         }
@@ -353,37 +363,23 @@ void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
 *
 ***/
 
-class FileJob : IFileWriteNotify {
-public:
-    static constexpr size_t kBufferSize = 4096;
-
+class FileJob : public ITaskNotify {
 public:
     ~FileJob();
 
     bool start(Cli & cli);
 
 private:
-    bool generate();
-    void write();
+    // Inherited via ITaskNotify
+    void onTask() override;
 
-    // Inherited via IFileWriteNotify
-    void onFileWrite(
-        int written, 
-        string_view data, 
-        int64_t offset, 
-        FileHandle f
-    ) override;
-
-    FileHandle m_file;
+    FileAppendQueue m_file{10};
     MetricSource m_mets;
-    BufferSource m_bufs;
-    string m_pending;
-    string m_active;
 };
 
 //===========================================================================
 FileJob::~FileJob() {
-    fileClose(m_file);
+    m_file.close();
     logShutdown();
     appSignalShutdown();
 }
@@ -393,14 +389,8 @@ bool FileJob::start(Cli & cli) {
     auto fname = s_opts.ofile;
     if (!fname)
         return cli.badUsage("No value given for <output file[.txt]>");
-    if (fname.view() == "-") {
-        m_file = fileAttachStdout();
-    } else {
-        m_file = fileOpen(
-            fname.defaultExt("txt"), 
-            File::fReadWrite | File::fCreat | File::fTrunc
-        );
-        if (!m_file) {
+    if (fname.view() != "-") {
+        if (!m_file.open(fname.defaultExt("txt"), FileAppendQueue::kTrunc)) {
             return cli.fail(
                 EX_DATAERR, 
                 fname.str() + ": open <outputFile[.txt]> failed"
@@ -409,42 +399,29 @@ bool FileJob::start(Cli & cli) {
     }
 
     logStart(fname, nullptr);
-    if (generate()) {
-        write();
-    } else {
-        delete this;
-    }
+    taskPushCompute(*this);
     cli.fail(EX_PENDING, "");
     return true;
 }
 
 //===========================================================================
-bool FileJob::generate() {
-    m_pending.resize(kBufferSize);
-    auto len = m_bufs.next(m_pending.data(), m_pending.size(), m_mets);
-    m_pending.resize(len);
-    return len;
-}
-
-//===========================================================================
-void FileJob::write() {
-    swap(m_pending, m_active);
-    fileAppend(this, m_file, m_active.data(), m_active.size());
-    generate();
-}
-
-//===========================================================================
-void FileJob::onFileWrite(
-    int written, 
-    string_view data, 
-    int64_t offset, 
-    FileHandle f
-) {
-    if (written < data.size() || m_pending.empty()) {
-        delete this;
-    } else {
-        write();
+void FileJob::onTask() {
+    string buf;
+    for (;;) {
+        auto met = m_mets.next();
+        if (!met)
+            break;
+        carbonWrite(buf, met->name, met->time, (float) met->value);
+        if (!checkLimits(buf.size()))
+            break;
+        if (m_file) {
+            m_file.append(buf);
+        } else {
+            cout << buf;
+        }
+        buf.clear();
     }
+    delete this;
 }
 
 
