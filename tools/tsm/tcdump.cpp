@@ -50,12 +50,44 @@ static void logStart(string_view target, string_view source) {
 }
 
 //===========================================================================
-static void logShutdown() {
+static void logShutdown(const TsdProgressInfo & info) {
     TimePoint finish = Clock::now();
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
-    os << "Done; seconds: " << elapsed.count();
+    os << "Done"
+        << "; metrics: " << info.metrics
+        << "; values: " << info.values
+        << "; bytes: " << info.bytes
+        << "; seconds: " << elapsed.count();
+}
+
+
+/****************************************************************************
+*     
+*   LoadProgress
+*     
+***/
+
+namespace {
+
+struct LoadProgress : ITsdProgressNotify {
+    TsdProgressInfo m_info;
+
+    // Inherited via ITsdProgressNotify
+    bool OnTsdProgress(bool complete, const TsdProgressInfo & info) override;
+};
+
+} // namespace
+
+//===========================================================================
+bool LoadProgress::OnTsdProgress(
+    bool complete, 
+    const TsdProgressInfo & info
+) {
+    if (complete) 
+        m_info = info;
+    return true;
 }
 
 
@@ -90,9 +122,10 @@ static bool dumpCmd(Cli & cli) {
 
     logStart(*s_out, *s_dat);
     auto h = tsdOpen(*s_dat);
-    tsdWriteDump(*os, h, *s_qry);
+    LoadProgress progress;
+    tsdWriteDump(&progress, *os, h, *s_qry);
     tsdClose(h);
-    logShutdown();
+    logShutdown(progress.m_info);
 
     return true;
 }

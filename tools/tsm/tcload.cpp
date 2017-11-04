@@ -55,7 +55,9 @@ static void logShutdown(const TsdProgressInfo & info) {
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
-    os << "Done; values: " << info.values
+    os << "Done"
+        << "; metrics: " << info.metrics
+        << "; values: " << info.values
         << "; bytes: " << info.bytes
         << "; seconds: " << elapsed.count();
 }
@@ -69,15 +71,12 @@ static void logShutdown(const TsdProgressInfo & info) {
 
 namespace {
 
-class LoadProgress : public ITsdProgressNotify {
-public:
-    explicit LoadProgress(TsdFileHandle h) : m_h{h} {}
+struct LoadProgress : ITsdProgressNotify {
+    TsdFileHandle m_f;
+    TsdProgressInfo m_info;
 
     // Inherited via ITsdProgressNotify
     bool OnTsdProgress(bool complete, const TsdProgressInfo & info) override;
-
-private:
-    TsdFileHandle m_h;
 };
 
 } // namespace
@@ -88,9 +87,14 @@ bool LoadProgress::OnTsdProgress(
     const TsdProgressInfo & info
 ) {
     if (complete) {
-        tsdClose(m_h);
-        logShutdown(info);
-        appSignalShutdown(EX_OK);
+        m_info = info;
+        tsdClose(m_f);
+        if (logGetMsgCount(kLogTypeError)) {
+            appSignalShutdown(EX_DATAERR);
+        } else {
+            logShutdown(m_info);
+            appSignalShutdown();
+        }
         delete this;
     }
     return true;
@@ -115,7 +119,8 @@ static bool loadCmd(Cli & cli) {
     if (s_truncate)
         fileRemove(*s_dat);
     auto h = tsdOpen(*s_dat);
-    auto progress = make_unique<LoadProgress>(h);
+    auto progress = make_unique<LoadProgress>();
+    progress->m_f = h;
     tsdLoadDump(progress.release(), h, *s_in);
 
     return cli.fail(EX_PENDING, "");

@@ -68,12 +68,6 @@ size_t tsdEnumValues(
     Dim::TimePoint last = Dim::TimePoint::max()
 );
 
-void tsdWriteDump(
-    std::ostream & os, 
-    TsdFileHandle h, 
-    std::string_view wildname = {}
-);
-
 struct TsdProgressInfo {
     size_t metrics{0};
     size_t totalMetrics{(size_t) -1};    // -1 for unknown
@@ -89,6 +83,14 @@ struct ITsdProgressNotify {
         const TsdProgressInfo & info
     ) = 0;
 };
+
+void tsdWriteDump(
+    ITsdProgressNotify * notify,
+    std::ostream & os, 
+    TsdFileHandle h, 
+    std::string_view wildname = {}
+);
+
 void tsdLoadDump(
     ITsdProgressNotify * notify,
     TsdFileHandle h,

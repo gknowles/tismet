@@ -44,7 +44,7 @@ static int internalTest() {
     count += tsdInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     tsdUpdateValue(h, id, start, 1.0);
-    tsdWriteDump(cout, h);
+    tsdWriteDump(nullptr, cout, h);
     tsdClose(h);
     EXPECT(count == 1);
 
@@ -57,7 +57,7 @@ static int internalTest() {
     tsdUpdateValue(h, id, start - 1min, 2.0);
     tsdUpdateValue(h, id, start + 20min, 5.0);
     tsdUpdateValue(h, id, start + 21min, 6.0);
-    tsdWriteDump(cout, h);
+    tsdWriteDump(nullptr, cout, h);
     tsdClose(h);
 
     h = tsdOpen(dat);
@@ -65,11 +65,11 @@ static int internalTest() {
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
     tsdUpdateValue(h, id, start + 40min, 7.0);
-    tsdWriteDump(cout, h);
+    tsdWriteDump(nullptr, cout, h);
     tsdUpdateValue(h, id, start + 100min, 8.0);
     
     cout << "----" << endl; 
-    tsdWriteDump(cout, h);
+    tsdWriteDump(nullptr, cout, h);
     count = 0;
     for (int i = 2; i < 30; ++i) {
         name = "this.is.metric.";
@@ -82,7 +82,7 @@ static int internalTest() {
     EXPECT(count == 28);
 
     cout << "----" << endl; 
-    tsdWriteDump(cout, h);
+    tsdWriteDump(nullptr, cout, h);
 
     UnsignedSet found;
     tsdFindMetrics(found, h, "*.is.*.*5");
@@ -90,7 +90,7 @@ static int internalTest() {
     os << found;
     EXPECT(os.str() == "5 15 25");
     cout << "----" << endl; 
-    tsdWriteDump(cout, h, "*.is.*.*5");
+    tsdWriteDump(nullptr, cout, h, "*.is.*.*5");
 
     tsdClose(h);
 

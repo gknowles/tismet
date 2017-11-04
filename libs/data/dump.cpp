@@ -31,7 +31,7 @@ namespace {
 
 class DumpWriter : public ITsdEnumNotify {
 public:
-    explicit DumpWriter(ostream & os);
+    explicit DumpWriter(ostream & os, TsdProgressInfo & info);
 
     bool OnTsdValue(
         uint32_t id, 
@@ -42,13 +42,16 @@ public:
 
 private:
     ostream & m_os;
+    TsdProgressInfo & m_info;
+    string m_buf;
 };
 
 } // namespace
 
 //===========================================================================
-DumpWriter::DumpWriter(ostream & os) 
-    : m_os{os}
+DumpWriter::DumpWriter(ostream & os, TsdProgressInfo & info) 
+    : m_info{info}
+    , m_os{os}
 {}
 
 //===========================================================================
@@ -58,21 +61,40 @@ bool DumpWriter::OnTsdValue(
     TimePoint time, 
     float val
 ) {
-    carbonWrite(m_os, name, time, val);
+    m_buf.clear();
+    carbonWrite(m_buf, name, time, val);
+    m_os << m_buf;
+    m_info.bytes += m_buf.size();
+    m_info.values += 1;
     return true;
 }
 
 //===========================================================================
 // Public API
 //===========================================================================
-void tsdWriteDump(ostream & os, TsdFileHandle h, string_view wildname) {
+void tsdWriteDump(
+    ITsdProgressNotify * notify,
+    ostream & os, 
+    TsdFileHandle h, 
+    string_view wildname
+) {
     UnsignedSet ids;
     tsdFindMetrics(ids, h, wildname);
     os << kDumpVersion << '\n';
-    DumpWriter out(os);
+    TsdProgressInfo info;
+    DumpWriter out(os, info);
     for (auto && id : ids) {
         tsdEnumValues(&out, h, id);
+        info.metrics += 1;
+        if (notify)
+            notify->OnTsdProgress(false, info);
     }
+    info.totalMetrics = info.metrics;
+    info.totalValues = info.values;
+    if (info.totalBytes != (size_t) -1) 
+        info.bytes = info.totalBytes;
+    if (notify)
+        notify->OnTsdProgress(true, info);
 }
 
 
