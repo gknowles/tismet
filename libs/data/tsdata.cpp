@@ -24,6 +24,9 @@ static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 const unsigned kDefaultPageSize = 4096;
 static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
+// Must be a multiple of fileViewAlignment()
+const size_t kSegmentSize = 65536; // 0x100'0000; // 16MiB
+
 
 /****************************************************************************
 *
@@ -75,14 +78,6 @@ struct FreePage {
     unsigned nextPage;
 };
 
-//struct LeafPage {
-//    static const PageType type = kPageTypeLeaf;
-//    PageHeader hdr;
-//
-//    // EXTENDS BEYOND END OF STRUCT
-//    char entries[1];
-//};
-
 struct RadixData {
     uint16_t height;
     uint16_t numPages;
@@ -121,9 +116,9 @@ struct DataPage {
     // time of first value on page
     TimePoint pageFirstTime; 
     
-    // Position of last value, values that come after this on the page are 
-    // either in the not yet populated future or (because it's a giant 
-    // discontinuous ring buffer) in the distant past.
+    // Position of last value, values that come after this position on the 
+    // page are either in the not yet populated future or (because it's a 
+    // giant discontinuous ring buffer) in the distant past.
     uint16_t pageLastValue; 
 
     // EXTENDS BEYOND END OF STRUCT
@@ -163,12 +158,13 @@ private:
     bool loadMetricInfo(uint32_t pgno);
     void metricFreePage(uint32_t pgno);
 
-    bool loadFreePages ();
+    bool loadFreePages();
     uint32_t allocPgno();
     template<typename T> unique_ptr<T> allocPage();
     void freePage(uint32_t pgno);
     template<typename T> unique_ptr<T> allocPage(uint32_t pgno) const;
 
+    const void * viewPageRaw(uint32_t pgno) const;
     template<typename T> const T * viewPage(uint32_t pgno) const;
     template<> const PageHeader * viewPage<PageHeader>(uint32_t pgno) const;
 
@@ -217,7 +213,7 @@ private:
     
     struct UnsignedSetWithCount {
         UnsignedSet uset;
-        size_t count{0};
+        size_t count = 0;
     };
 
     // metric ids by name length as measured in segments
@@ -232,9 +228,13 @@ private:
     RadixDigits m_rdIndex;
     RadixDigits m_rdMetric;
 
-    const MasterPage * m_hdr{nullptr};
-    FileHandle m_data;
-    FileHandle m_log;
+    FileHandle m_hdata;
+    size_t m_initialDataViewSize = 0;
+    vector<const char *> m_views;
+    const MasterPage * m_hdr = nullptr;
+
+    FileHandle m_hlog;
+    FileHandle m_hwork;
 };
 } // namespace
 
@@ -266,8 +266,15 @@ static auto & s_perfAdd = uperf("metric values added");
 //===========================================================================
 TsdFile::~TsdFile () {
     s_perfCount -= (unsigned) m_ids.size();
-    fileClose(m_data);
-    fileClose(m_log);
+
+    fileCloseView(m_hdata, m_hdr);
+    for (auto v : m_views) {
+        fileCloseView(m_hdata, v);
+    }
+    fileClose(m_hdata);
+
+    fileClose(m_hlog);
+    fileClose(m_hwork);
 }
 
 //===========================================================================
@@ -275,23 +282,31 @@ bool TsdFile::open(string_view name, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
+    assert(kSegmentSize % fileViewAlignment() == 0);
 
-    m_data = fileOpen(name, File::fCreat | File::fReadWrite);
-    if (!m_data)
+    m_hdata = fileOpen(name, File::fCreat | File::fReadWrite);
+    if (!m_hdata)
         return false;
-    if (!fileSize(m_data)) {
+    auto len = fileSize(m_hdata);
+    if (!len) {
         MasterPage tmp = {};
         tmp.hdr.type = kPageTypeMaster;
         memcpy(tmp.signature, kDataFileSig, sizeof(tmp.signature));
         tmp.pageSize = (unsigned) pageSize;
         tmp.numPages = 1;
-        fileWriteWait(m_data, 0, &tmp, sizeof(tmp));
+        fileWriteWait(m_hdata, 0, &tmp, sizeof(tmp));
     }
     const char * base;
+    assert(kSegmentSize % pageSize == 0);
+    m_initialDataViewSize = len + 2 * kSegmentSize;
+    m_initialDataViewSize -= m_initialDataViewSize % kSegmentSize;
     if (!fileOpenView(
         base, 
-        m_data, 
-        0x1'0000'0000 // numeric_limits<uint32_t>::max() * filePageSize()
+        m_hdata, 
+        File::kViewReadOnly,
+        0,  // offset
+        0,  // length (0 defaults to size of file)
+        m_initialDataViewSize
     )) {
         logMsgError() << "Open view failed on " << name;
         return false;
@@ -1118,6 +1133,38 @@ bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
 ***/
 
 //===========================================================================
+const void * TsdFile::viewPageRaw(uint32_t pgno) const {
+    if (pgno >= m_hdr->numPages)
+        return nullptr;
+    auto pageSize = m_hdr->pageSize;
+    auto pos = pageSize * pgno;
+    const char * vptr = nullptr;
+    if (pos < m_initialDataViewSize) {
+        vptr = (const char *) m_hdr + pageSize * pgno;
+    } else {
+        auto viewPos = pos - m_initialDataViewSize;
+        vptr = m_views[viewPos / kSegmentSize] + viewPos % kSegmentSize;
+    }
+    return vptr;
+}
+
+//===========================================================================
+template<typename T>
+const T * TsdFile::viewPage(uint32_t pgno) const {
+    assert(pgno < m_hdr->numPages);
+    auto ptr = static_cast<const T *>(viewPageRaw(pgno));
+    assert(ptr->hdr.type == ptr->type);
+    return ptr;
+}
+
+//===========================================================================
+template<>
+const PageHeader * TsdFile::viewPage<PageHeader>(uint32_t pgno) const {
+    auto ptr = static_cast<const PageHeader*>(viewPageRaw(pgno));
+    return ptr;
+}
+
+//===========================================================================
 uint32_t TsdFile::allocPgno () {
     auto pgno = m_hdr->freePageRoot;
     auto pageSize = m_hdr->pageSize;
@@ -1125,7 +1172,30 @@ uint32_t TsdFile::allocPgno () {
     if (!pgno) {
         pgno = m_hdr->numPages;
         mp.numPages += 1;
-        fileExtendView(m_data, (pgno + 1) * pageSize);
+        auto pos = pgno * pageSize;
+        if (pos < m_initialDataViewSize) {
+            fileExtendView(m_hdata, (const char * ) m_hdr, pos + pageSize);
+        } else {
+            auto viewPos = pos - m_initialDataViewSize;
+            auto iview = viewPos / kSegmentSize;
+            if (iview == m_views.size()) {
+                const char * view;
+                if (!fileOpenView(
+                    view, 
+                    m_hdata, 
+                    File::kViewReadOnly, 
+                    pos,
+                    0, 
+                    kSegmentSize
+                )) {
+                    logMsgCrash() << "Extend file failed on " 
+                        << filePath(m_hdata);
+                }
+                m_views.push_back(view);
+            }
+            auto view = m_views[iview];
+            fileExtendView(m_hdata, view, viewPos % kSegmentSize + pageSize);
+        }
     } else {
         auto fp = viewPage<FreePage>(pgno);
         assert(fp->hdr.type == kPageTypeFree);
@@ -1236,26 +1306,6 @@ unique_ptr<T> TsdFile::dupPage(const T & data) {
 
 //===========================================================================
 template<typename T>
-const T * TsdFile::viewPage(uint32_t pgno) const {
-    assert(pgno < m_hdr->numPages);
-    const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
-    auto ptr = static_cast<const T*>(vptr);
-    assert(ptr->hdr.type == ptr->type);
-    return ptr;
-}
-
-//===========================================================================
-template<>
-const PageHeader * TsdFile::viewPage<PageHeader>(uint32_t pgno) const {
-    if (pgno > m_hdr->numPages)
-        return nullptr;
-    const void * vptr = (char *) m_hdr + m_hdr->pageSize * pgno;
-    auto ptr = static_cast<const PageHeader*>(vptr);
-    return ptr;
-}
-
-//===========================================================================
-template<typename T>
 void TsdFile::writePage(T & data, size_t count) const {
     writePage(data.hdr.pgno, &data, count);
 }
@@ -1270,7 +1320,7 @@ void TsdFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
 void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
     assert(pgno < m_hdr->numPages);
     assert(count <= m_hdr->pageSize);
-    fileWriteWait(m_data, pgno * m_hdr->pageSize, ptr, count);
+    fileWriteWait(m_hdata, pgno * m_hdr->pageSize, ptr, count);
 }
 
 

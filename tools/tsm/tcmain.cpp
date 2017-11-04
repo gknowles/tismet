@@ -45,7 +45,7 @@ static void app(int argc, char * argv[]) {
 int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
         | _CRTDBG_LEAK_CHECK_DF
-        | _CRTDBG_DELAY_FREE_MEM_DF
+//        | _CRTDBG_DELAY_FREE_MEM_DF
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
