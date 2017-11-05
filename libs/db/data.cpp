@@ -132,29 +132,30 @@ struct MetricInfo {
     uint16_t pageLastValue; // position of last value on last page
 };
 
-class TsdFile : public HandleContent {
+class DbFile : public HandleContent {
 public:
-    ~TsdFile();
+    ~DbFile();
 
     bool open(string_view name, size_t pageSize);
+    DbStats queryStats();
+
     bool insertMetric(uint32_t & out, const string & name);
     void eraseMetric(uint32_t id);
     void updateMetric(uint32_t id, Duration retention, Duration interval);
     
-    void updateValue(uint32_t id, TimePoint time, float value);
-
     bool findMetric(uint32_t & out, const string & name) const;
     void findMetrics(UnsignedSet & out, string_view name) const;
 
+    void updateValue(uint32_t id, TimePoint time, float value);
     size_t enumValues(
-        ITsdEnumNotify * notify, 
+        IDbEnumNotify * notify, 
         uint32_t id, 
         TimePoint first, 
         TimePoint last
     );
 
 private:
-    bool loadMetricInfo(uint32_t pgno);
+    bool loadMetrics(uint32_t pgno);
     void metricFreePage(uint32_t pgno);
 
     bool loadFreePages();
@@ -193,8 +194,9 @@ private:
         size_t pos
     );
 
-    unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
     size_t valuesPerPage() const;
+    unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
+    MetricInfo & loadMetricInfo(uint32_t id, TimePoint time = {});
     bool findDataPage(
         uint32_t * dataPgno, 
         unsigned * pagePos, 
@@ -243,7 +245,7 @@ private:
 *
 ***/
 
-static HandleMap<DbHandle, TsdFile> s_files;
+static HandleMap<DbHandle, DbFile> s_files;
 
 static auto & s_perfCount = uperf("metrics (total)");
 static auto & s_perfCreated = uperf("metrics created");
@@ -257,12 +259,12 @@ static auto & s_perfAdd = uperf("metric values added");
 
 /****************************************************************************
 *
-*   TsdFile
+*   DbFile
 *
 ***/
 
 //===========================================================================
-TsdFile::~TsdFile () {
+DbFile::~DbFile () {
     s_perfCount -= (unsigned) m_ids.size();
 
     fileCloseView(m_hdata, m_hdr);
@@ -276,13 +278,16 @@ TsdFile::~TsdFile () {
 }
 
 //===========================================================================
-bool TsdFile::open(string_view name, size_t pageSize) {
+bool DbFile::open(string_view name, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
     assert(kSegmentSize % fileViewAlignment() == 0);
 
-    m_hdata = fileOpen(name, File::fCreat | File::fReadWrite);
+    m_hdata = fileOpen(
+        name, 
+        File::fCreat | File::fReadWrite | File::fDenyWrite
+    );
     if (!m_hdata)
         return false;
     auto len = fileSize(m_hdata);
@@ -324,13 +329,27 @@ bool TsdFile::open(string_view name, size_t pageSize) {
     auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
     m_rdMetric.init(m_hdr->pageSize, mpOff, ipOff);
 
-    if (!loadMetricInfo(m_hdr->metricInfoRoot))
+    if (!loadMetrics(m_hdr->metricInfoRoot))
         return false;
     if (!loadFreePages())
         return false;
 
     s_perfCount += (unsigned) m_ids.size();
     return true;
+}
+
+//===========================================================================
+DbStats DbFile::queryStats() {
+    DbStats s;
+    s.pageSize = m_hdr->pageSize;
+    s.segmentSize = kSegmentSize;
+    s.metricNameLength = sizeof(MetricPage::name);
+    s.valuesPerPage = (unsigned) valuesPerPage();
+    s.numPages = (unsigned) m_hdr->numPages;
+    s.metricIds = 0;
+    for (auto & len : m_lenIds)
+        s.metricIds += (unsigned) len.count;
+    return s;
 }
 
 
@@ -341,7 +360,7 @@ bool TsdFile::open(string_view name, size_t pageSize) {
 ***/
 
 //===========================================================================
-void TsdFile::metricFreePage (uint32_t pgno) {
+void DbFile::metricFreePage (uint32_t pgno) {
     auto mp = viewPage<MetricPage>(pgno);
     for (int i = 0; i < mp->rd.numPages; ++i) {
         if (auto pn = mp->rd.pages[i])
@@ -352,7 +371,7 @@ void TsdFile::metricFreePage (uint32_t pgno) {
 }
 
 //===========================================================================
-bool TsdFile::loadMetricInfo (uint32_t pgno) {
+bool DbFile::loadMetrics (uint32_t pgno) {
     if (!pgno)
         return true;
 
@@ -363,7 +382,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
     if (p->type == kPageTypeRadix) {
         auto rp = reinterpret_cast<const RadixPage*>(p);
         for (int i = 0; i < rp->rd.numPages; ++i) {
-            if (!loadMetricInfo(rp->rd.pages[i]))
+            if (!loadMetrics(rp->rd.pages[i]))
                 return false;
         }
         return true;
@@ -387,7 +406,7 @@ bool TsdFile::loadMetricInfo (uint32_t pgno) {
 }
 
 //===========================================================================
-bool TsdFile::findMetric(uint32_t & out, const string & name) const {
+bool DbFile::findMetric(uint32_t & out, const string & name) const {
     auto i = m_metricIds.find(name);
     if (i == m_metricIds.end())
         return false;
@@ -396,7 +415,7 @@ bool TsdFile::findMetric(uint32_t & out, const string & name) const {
 }
 
 //===========================================================================
-void TsdFile::findMetrics(UnsignedSet & out, string_view name) const {
+void DbFile::findMetrics(UnsignedSet & out, string_view name) const {
     if (name.empty()) {
         out = m_ids;
         return;
@@ -456,7 +475,7 @@ void TsdFile::findMetrics(UnsignedSet & out, string_view name) const {
 }
 
 //===========================================================================
-void TsdFile::indexInsertMetric(uint32_t id, const string & name) {
+void DbFile::indexInsertMetric(uint32_t id, const string & name) {
     m_metricIds[name] = id;
     m_ids.insert(id);
     vector<string_view> segs;
@@ -476,7 +495,7 @@ void TsdFile::indexInsertMetric(uint32_t id, const string & name) {
 }
 
 //===========================================================================
-void TsdFile::indexEraseMetric(uint32_t id, const string & name) {
+void DbFile::indexEraseMetric(uint32_t id, const string & name) {
     [[maybe_unused]] auto num = m_metricIds.erase(name);
     assert(num == 1);
     m_ids.erase(id);
@@ -503,7 +522,7 @@ void TsdFile::indexEraseMetric(uint32_t id, const string & name) {
 }
 
 //===========================================================================
-bool TsdFile::insertMetric(uint32_t & out, const string & name) {
+bool DbFile::insertMetric(uint32_t & out, const string & name) {
     assert(!name.empty());
     assert(name.size() < kMaxMetricNameLen);
     auto i = m_metricIds.find(name);
@@ -564,13 +583,13 @@ bool TsdFile::insertMetric(uint32_t & out, const string & name) {
 }
 
 //===========================================================================
-void TsdFile::eraseMetric(uint32_t id) {
+void DbFile::eraseMetric(uint32_t id) {
     if (uint32_t pgno = m_metricInfo[id].infoPage) 
         metricFreePage(pgno);
 }
 
 //===========================================================================
-void TsdFile::updateMetric(
+void DbFile::updateMetric(
     uint32_t id, 
     Duration retention, 
     Duration interval
@@ -598,13 +617,13 @@ void TsdFile::updateMetric(
 ***/
 
 //===========================================================================
-size_t TsdFile::valuesPerPage() const {
+size_t DbFile::valuesPerPage() const {
     return (m_hdr->pageSize - offsetof(DataPage, values)) 
-        / sizeof(float);
+        / sizeof(DataPage::values[0]);
 }
 
 //===========================================================================
-unique_ptr<DataPage> TsdFile::allocDataPage(uint32_t id, TimePoint time) {
+unique_ptr<DataPage> DbFile::allocDataPage(uint32_t id, TimePoint time) {
     auto vpp = valuesPerPage();
     auto dp = allocPage<DataPage>(id);
     dp->pageLastValue = 0;
@@ -615,20 +634,24 @@ unique_ptr<DataPage> TsdFile::allocDataPage(uint32_t id, TimePoint time) {
 }
 
 //===========================================================================
-void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
+MetricInfo & DbFile::loadMetricInfo(uint32_t id, TimePoint time) {
     auto & mi = m_metricInfo[id];
     assert(mi.infoPage);
 
-    // round time down to metric's sampling interval
-    time -= time.time_since_epoch() % mi.interval;
-
-    auto vpp = valuesPerPage();
-
-    // ensure all info about the last page is loaded, the expectation is that 
-    // almost all updates are to the last page.
     if (!mi.lastPage) {
+        // metric has no value pages
+        if (time == TimePoint{}) {
+            // no time to create value page? exit
+            return mi;
+        }
+
+        // create empty page that covers the requested time
+
+        // round time down to metric's sampling interval
+        time -= time.time_since_epoch() % mi.interval;
+
         auto dp = allocDataPage(id, time);
-        dp->pageLastValue = (uint16_t) (id % vpp);
+        dp->pageLastValue = (uint16_t) (id % valuesPerPage());
         dp->pageFirstTime = time - dp->pageLastValue * mi.interval;
         writePage(*dp, m_hdr->pageSize);
 
@@ -642,12 +665,27 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
         mi.pageFirstTime = dp->pageFirstTime;
         mi.pageLastValue = dp->pageLastValue;
     }
+
+    // Update metric info from value page if it has no page data.
     if (mi.pageFirstTime == TimePoint{}) {
         auto dp = viewPage<DataPage>(mi.lastPage);
         mi.pageFirstTime = dp->pageFirstTime;
         mi.pageLastValue = dp->pageLastValue;
     }
 
+    return mi;
+}
+
+//===========================================================================
+void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
+    // ensure all info about the last page is loaded, the expectation is that 
+    // almost all updates are to the last page.
+    auto & mi = loadMetricInfo(id, time);
+
+    // round time down to metric's sampling interval
+    time -= time.time_since_epoch() % mi.interval;
+
+    auto vpp = valuesPerPage();
     auto pageInterval = vpp * mi.interval;
     auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
 
@@ -715,7 +753,8 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
     //-----------------------------------------------------------------------
     // after last known value
 
-    // If past the end of the page, check if it's past the end of all pages
+    // If past the end of the page, check if it's also past the retention of 
+    // all pages.
     if (time >= endPageTime) {
         auto mp = viewPage<MetricPage>(mi.infoPage);
         // further in the future than the retention period? remove all values
@@ -807,24 +846,26 @@ void TsdFile::updateValue(uint32_t id, TimePoint time, float value) {
 }
 
 //===========================================================================
-// false if time is outside of retention period
-bool TsdFile::findDataPage(
+// Returns false if time is outside of the retention period, or if no retention 
+// period has been established because there is no data. Otherwise it sets:
+//  - dataPage: the page number that contains the time point, or zero if the 
+//      page is missing. Missing pages can occur when the recorded values have 
+//      large gaps that span entire pages.
+//  - pagePos: the position of the page (whether or not it's missing) of the 
+//      page within the ring buffer of value pages for the metric.
+bool DbFile::findDataPage(
     uint32_t * dataPage,
     unsigned * pagePos,
     uint32_t id,
     TimePoint time
 ) {
-    auto & mi = m_metricInfo[id];
-    assert(mi.infoPage);
+    auto & mi = loadMetricInfo(id);
 
-    if (!mi.lastPage)
+    if (!mi.lastPage) {
+        // metric has no value pages (i.e. no values)
         return false;
-    if (mi.pageFirstTime == TimePoint{}) {
-        auto dp = viewPage<DataPage>(mi.lastPage);
-        mi.pageFirstTime = dp->pageFirstTime;
-        mi.pageLastValue = dp->pageLastValue;
     }
-    
+
     auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
 
     time -= time.time_since_epoch() % mi.interval;
@@ -852,14 +893,13 @@ bool TsdFile::findDataPage(
 }
 
 //===========================================================================
-size_t TsdFile::enumValues(
-    ITsdEnumNotify * notify, 
+size_t DbFile::enumValues(
+    IDbEnumNotify * notify, 
     uint32_t id, 
     TimePoint first, 
     TimePoint last
 ) {
-    auto & mi = m_metricInfo[id];
-    assert(mi.infoPage);
+    auto & mi = loadMetricInfo(id);
 
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;
@@ -922,7 +962,7 @@ size_t TsdFile::enumValues(
                 auto value = dp->values[vpos];
                 if (!isnan(value)) {
                     count += 1;
-                    if (!notify->OnTsdValue(id, name, first, value))
+                    if (!notify->OnDbValue(id, name, first, value))
                         return count;
                 }
             }
@@ -960,7 +1000,7 @@ static const RadixData * radixData(const PageHeader * hdr) {
 }
 
 //===========================================================================
-void TsdFile::radixFreePage(uint32_t pgno) {
+void DbFile::radixFreePage(uint32_t pgno) {
     auto rp = viewPage<RadixPage>(pgno);
     for (int i = 0; i < rp->rd.numPages; ++i) {
         if (uint32_t p = rp->rd.pages[i]) 
@@ -969,7 +1009,7 @@ void TsdFile::radixFreePage(uint32_t pgno) {
 }
 
 //===========================================================================
-void TsdFile::radixClear(PageHeader & hdr) {
+void DbFile::radixClear(PageHeader & hdr) {
     auto rd = radixData(&hdr);
     for (int i = 0; i < rd->numPages; ++i) {
         if (uint32_t p = rd->pages[i]) {
@@ -981,7 +1021,7 @@ void TsdFile::radixClear(PageHeader & hdr) {
 }
 
 //===========================================================================
-void TsdFile::radixErase(
+void DbFile::radixErase(
     PageHeader & rhdr, 
     size_t firstPos, 
     size_t lastPos
@@ -1018,7 +1058,7 @@ void TsdFile::radixErase(
 }
 
 //===========================================================================
-bool TsdFile::radixFind(
+bool DbFile::radixFind(
     PageHeader const ** hdr, 
     RadixData const ** rd, 
     size_t * rpos,
@@ -1055,7 +1095,7 @@ bool TsdFile::radixFind(
 }
 
 //===========================================================================
-bool TsdFile::radixFind(uint32_t * out, uint32_t root, size_t pos) {
+bool DbFile::radixFind(uint32_t * out, uint32_t root, size_t pos) {
     const PageHeader * hdr;
     const RadixData * rd;
     size_t rpos;
@@ -1068,7 +1108,7 @@ bool TsdFile::radixFind(uint32_t * out, uint32_t root, size_t pos) {
 }
 
 //===========================================================================
-bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
+bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
     auto hdr = viewPage<PageHeader>(root);
     auto rd = radixData(hdr);
     RadixDigits & cvt = (hdr->type == kPageTypeMetric) 
@@ -1129,7 +1169,7 @@ bool TsdFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
 ***/
 
 //===========================================================================
-const void * TsdFile::viewPageRaw(uint32_t pgno) const {
+const void * DbFile::viewPageRaw(uint32_t pgno) const {
     if (pgno >= m_hdr->numPages)
         return nullptr;
     auto pageSize = m_hdr->pageSize;
@@ -1146,7 +1186,7 @@ const void * TsdFile::viewPageRaw(uint32_t pgno) const {
 
 //===========================================================================
 template<typename T>
-const T * TsdFile::viewPage(uint32_t pgno) const {
+const T * DbFile::viewPage(uint32_t pgno) const {
     assert(pgno < m_hdr->numPages);
     auto ptr = static_cast<const T *>(viewPageRaw(pgno));
     assert(ptr->hdr.type == ptr->type);
@@ -1155,13 +1195,13 @@ const T * TsdFile::viewPage(uint32_t pgno) const {
 
 //===========================================================================
 template<>
-const PageHeader * TsdFile::viewPage<PageHeader>(uint32_t pgno) const {
+const PageHeader * DbFile::viewPage<PageHeader>(uint32_t pgno) const {
     auto ptr = static_cast<const PageHeader*>(viewPageRaw(pgno));
     return ptr;
 }
 
 //===========================================================================
-uint32_t TsdFile::allocPgno () {
+uint32_t DbFile::allocPgno () {
     auto pgno = m_hdr->freePageRoot;
     auto pageSize = m_hdr->pageSize;
     auto mp = *m_hdr;
@@ -1203,7 +1243,7 @@ uint32_t TsdFile::allocPgno () {
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> TsdFile::allocPage(uint32_t id) {
+unique_ptr<T> DbFile::allocPage(uint32_t id) {
     auto pgno = allocPgno();
     auto pageSize = m_hdr->pageSize;
     void * vptr = new char[pageSize];
@@ -1218,7 +1258,7 @@ unique_ptr<T> TsdFile::allocPage(uint32_t id) {
 }
 
 //===========================================================================
-bool TsdFile::loadFreePages () {
+bool DbFile::loadFreePages () {
     auto pgno = m_hdr->freePageRoot;
     size_t num = 0;
     UnsignedSet found;
@@ -1235,7 +1275,7 @@ bool TsdFile::loadFreePages () {
 }
 
 //===========================================================================
-void TsdFile::freePage(uint32_t pgno) {
+void DbFile::freePage(uint32_t pgno) {
     assert(pgno < m_hdr->numPages);
     auto p = viewPage<PageHeader>(pgno);
     assert(p->type != kPageTypeFree);
@@ -1267,13 +1307,13 @@ void TsdFile::freePage(uint32_t pgno) {
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> TsdFile::editPage(uint32_t pgno) const {
+unique_ptr<T> DbFile::editPage(uint32_t pgno) const {
     return editPage(*viewPage<T>(pgno));
 }
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> TsdFile::editPage(const T & data) const {
+unique_ptr<T> DbFile::editPage(const T & data) const {
     auto pageSize = m_hdr->pageSize;
     void * vptr = new char[pageSize];
     T * ptr = new(vptr) T;
@@ -1283,13 +1323,13 @@ unique_ptr<T> TsdFile::editPage(const T & data) const {
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> TsdFile::dupPage(uint32_t pgno) {
+unique_ptr<T> DbFile::dupPage(uint32_t pgno) {
     return dupPage(*viewPage<T>(pgno));
 }
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> TsdFile::dupPage(const T & data) {
+unique_ptr<T> DbFile::dupPage(const T & data) {
     auto ptr = editPage(data);
     ptr->hdr.pgno = allocPgno();
     return ptr;
@@ -1297,18 +1337,18 @@ unique_ptr<T> TsdFile::dupPage(const T & data) {
 
 //===========================================================================
 template<typename T>
-void TsdFile::writePage(T & data, size_t count) const {
+void DbFile::writePage(T & data, size_t count) const {
     writePage(data.hdr.pgno, &data, count);
 }
 
 //===========================================================================
 template<>
-void TsdFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
+void DbFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
     writePage(hdr.pgno, &hdr, count);
 }
 
 //===========================================================================
-void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
+void DbFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
     assert(pgno < m_hdr->numPages);
     assert(count <= m_hdr->pageSize);
     fileWriteWait(m_hdata, pgno * m_hdr->pageSize, ptr, count);
@@ -1323,7 +1363,7 @@ void TsdFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
 
 //===========================================================================
 DbHandle dbOpen(string_view name, size_t pageSize) {
-    auto db = make_unique<TsdFile>();
+    auto db = make_unique<DbFile>();
     if (!db->open(name, pageSize))
         return DbHandle{};
 
@@ -1337,10 +1377,28 @@ void dbClose(DbHandle h) {
 }
 
 //===========================================================================
+DbStats dbQueryStats(DbHandle h) {
+    auto * db = s_files.find(h);
+    assert(db);
+    return db->queryStats();
+}
+
+//===========================================================================
 bool dbFindMetric(uint32_t & out, DbHandle h, string_view name) {
     auto * db = s_files.find(h);
     assert(db);
     return db->findMetric(out, string(name));
+}
+
+//===========================================================================
+void dbFindMetrics(
+    Dim::UnsignedSet & out,
+    DbHandle h,
+    std::string_view name
+) {
+    auto * db = s_files.find(h);
+    assert(db);
+    db->findMetrics(out, name);
 }
 
 //===========================================================================
@@ -1382,19 +1440,8 @@ void dbUpdateValue(
 }
 
 //===========================================================================
-void dbFindMetrics(
-    Dim::UnsignedSet & out,
-    DbHandle h,
-    std::string_view name
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->findMetrics(out, name);
-}
-
-//===========================================================================
 size_t dbEnumValues(
-    ITsdEnumNotify * notify,
+    IDbEnumNotify * notify,
     DbHandle h,
     uint32_t id,
     TimePoint first,

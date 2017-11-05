@@ -10,7 +10,7 @@
 
 /****************************************************************************
 *
-*   Declarations
+*   Database of time series metrics
 *
 ***/
 
@@ -20,8 +20,27 @@ DbHandle dbOpen(std::string_view name, size_t pageSize = 0);
 
 void dbClose(DbHandle h);
 
+struct DbStats {
+    // Constant for life of database
+    unsigned pageSize;
+    unsigned segmentSize;
+    unsigned metricNameLength; // includes terminating null
+    unsigned valuesPerPage;
+
+    // Change as data is modified
+    unsigned numPages;
+    unsigned metricIds;
+};
+DbStats dbQueryStats(DbHandle h);
+
 // returns true if found
 bool dbFindMetric(uint32_t & out, DbHandle h, std::string_view name);
+
+void dbFindMetrics(
+    Dim::UnsignedSet & out,
+    DbHandle h,
+    std::string_view wildcardName = {}  // empty name for all
+);
 
 // returns true if inserted, false if it already existed, sets out either way
 bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
@@ -43,17 +62,11 @@ void dbUpdateValue(
     float value
 );
 
-void dbFindMetrics(
-    Dim::UnsignedSet & out,
-    DbHandle h,
-    std::string_view wildcardName = {}  // empty name for all
-);
-
-struct ITsdEnumNotify {
-    virtual ~ITsdEnumNotify() {}
+struct IDbEnumNotify {
+    virtual ~IDbEnumNotify() {}
     // Called for each matching value, return false to abort the enum, 
     // otherwise it continues to the next value.
-    virtual bool OnTsdValue(
+    virtual bool OnDbValue(
         uint32_t id,
         std::string_view name,
         Dim::TimePoint time,
@@ -61,12 +74,19 @@ struct ITsdEnumNotify {
     ) = 0;
 };
 size_t dbEnumValues(
-    ITsdEnumNotify * notify,
+    IDbEnumNotify * notify,
     DbHandle h,
     uint32_t id,
     Dim::TimePoint first = {},
     Dim::TimePoint last = Dim::TimePoint::max()
 );
+
+
+/****************************************************************************
+*
+*   Database dump files
+*
+***/
 
 struct DbProgressInfo {
     size_t metrics{0};
