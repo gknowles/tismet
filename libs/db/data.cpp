@@ -806,11 +806,13 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
     auto first = (mp->lastPagePos + 1) % numPages;
     auto last = first + num;
     if (num) {
+        endPageTime += num * pageInterval;
         if (last <= numPages) {
             radixErase(mp->hdr, first, last);
         } else {
+            last %= numPages;
             radixErase(mp->hdr, first, numPages);
-            radixErase(mp->hdr, 0, last % numPages);
+            radixErase(mp->hdr, 0, last);
         }
     }
 
