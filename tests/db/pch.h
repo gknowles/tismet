@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// pch.h - tismet test tsdata
+// pch.h - tismet test db
 
 // Public header
 // External library public headers
@@ -10,7 +10,7 @@
 #include "app/app.h"
 #include "core/core.h"
 
-#include "data/tsdata.h"
+#include "db/db.h"
 
 // Standard headers
 #include <crtdbg.h>

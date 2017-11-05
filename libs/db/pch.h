@@ -1,11 +1,11 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// pch.h - tismet data
+// pch.h - tismet db
 
 // Public header
-#include "data/radix.h"
-#include "data/tsdata.h"
+#include "db/radix.h"
+#include "db/db.h"
 
 // External library public headers
 #include "dimcli/cli.h"

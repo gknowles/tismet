@@ -16,7 +16,7 @@ using namespace Dim;
 ***/
 
 static SockMgrHandle s_mgr;
-static TsdFileHandle s_tsd;
+static DbHandle s_db;
 
 
 /****************************************************************************
@@ -41,14 +41,14 @@ public:
 //===========================================================================
 uint32_t RecordConn::onCarbonMetric(string_view name) {
     uint32_t id;
-    tsdInsertMetric(id, s_tsd, name);
+    dbInsertMetric(id, s_db, name);
     return id;
 }
 
 //===========================================================================
 void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id);
-    tsdUpdateValue(s_tsd, id, time, (float) value);
+    dbUpdateValue(s_db, id, time, (float) value);
 }
 
 
@@ -60,7 +60,7 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
 
 //===========================================================================
 void tsCarbonInitialize() {
-    s_tsd = tsDataHandle();
+    s_db = tsDataHandle();
     carbonInitialize();
     s_mgr = sockMgrListen(
         "carbon",

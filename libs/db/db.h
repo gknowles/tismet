@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// tsdata.h - tismet data
+// db.h - tismet db
 #pragma once
 
 #include "core/core.h"
@@ -14,38 +14,38 @@
 *
 ***/
 
-struct TsdFileHandle : Dim::HandleBase {};
+struct DbHandle : Dim::HandleBase {};
 
-TsdFileHandle tsdOpen(std::string_view name, size_t pageSize = 0);
+DbHandle dbOpen(std::string_view name, size_t pageSize = 0);
 
-void tsdClose(TsdFileHandle h);
+void dbClose(DbHandle h);
 
 // returns true if found
-bool tsdFindMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
+bool dbFindMetric(uint32_t & out, DbHandle h, std::string_view name);
 
 // returns true if inserted, false if it already existed, sets out either way
-bool tsdInsertMetric(uint32_t & out, TsdFileHandle h, std::string_view name);
+bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 
-void tsdEraseMetric(TsdFileHandle h, uint32_t id);
+void dbEraseMetric(DbHandle h, uint32_t id);
 
 // Removes all existing data when retention or interval are changed.
-void tsdUpdateMetric(
-    TsdFileHandle h,
+void dbUpdateMetric(
+    DbHandle h,
     uint32_t id,
     Dim::Duration retention,
     Dim::Duration interval
 );
 
-void tsdUpdateValue(
-    TsdFileHandle h, 
+void dbUpdateValue(
+    DbHandle h, 
     uint32_t id, 
     Dim::TimePoint time, 
     float value
 );
 
-void tsdFindMetrics(
+void dbFindMetrics(
     Dim::UnsignedSet & out,
-    TsdFileHandle h,
+    DbHandle h,
     std::string_view wildcardName = {}  // empty name for all
 );
 
@@ -60,15 +60,15 @@ struct ITsdEnumNotify {
         float value
     ) = 0;
 };
-size_t tsdEnumValues(
+size_t dbEnumValues(
     ITsdEnumNotify * notify,
-    TsdFileHandle h,
+    DbHandle h,
     uint32_t id,
     Dim::TimePoint first = {},
     Dim::TimePoint last = Dim::TimePoint::max()
 );
 
-struct TsdProgressInfo {
+struct DbProgressInfo {
     size_t metrics{0};
     size_t totalMetrics{(size_t) -1};    // -1 for unknown
     size_t values{0};
@@ -76,23 +76,23 @@ struct TsdProgressInfo {
     size_t bytes{0};
     size_t totalBytes{(size_t) -1};
 };
-struct ITsdProgressNotify {
-    virtual ~ITsdProgressNotify() {}
-    virtual bool OnTsdProgress(
+struct IDbProgressNotify {
+    virtual ~IDbProgressNotify() {}
+    virtual bool OnDbProgress(
         bool complete, 
-        const TsdProgressInfo & info
+        const DbProgressInfo & info
     ) = 0;
 };
 
-void tsdWriteDump(
-    ITsdProgressNotify * notify,
+void dbWriteDump(
+    IDbProgressNotify * notify,
     std::ostream & os, 
-    TsdFileHandle h, 
+    DbHandle h, 
     std::string_view wildname = {}
 );
 
-void tsdLoadDump(
-    ITsdProgressNotify * notify,
-    TsdFileHandle h,
+void dbLoadDump(
+    IDbProgressNotify * notify,
+    DbHandle h,
     const Dim::Path & src
 );

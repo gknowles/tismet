@@ -9,4 +9,4 @@ void tsCarbonInitialize();
 
 // Main
 void tsDataInitialize();
-TsdFileHandle tsDataHandle();
+DbHandle tsDataHandle();

@@ -50,7 +50,7 @@ static void logStart(string_view target, string_view source) {
 }
 
 //===========================================================================
-static void logShutdown(const TsdProgressInfo & info) {
+static void logShutdown(const DbProgressInfo & info) {
     TimePoint finish = Clock::now();
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
@@ -71,19 +71,19 @@ static void logShutdown(const TsdProgressInfo & info) {
 
 namespace {
 
-struct LoadProgress : ITsdProgressNotify {
-    TsdProgressInfo m_info;
+struct LoadProgress : IDbProgressNotify {
+    DbProgressInfo m_info;
 
-    // Inherited via ITsdProgressNotify
-    bool OnTsdProgress(bool complete, const TsdProgressInfo & info) override;
+    // Inherited via IDbProgressNotify
+    bool OnDbProgress(bool complete, const DbProgressInfo & info) override;
 };
 
 } // namespace
 
 //===========================================================================
-bool LoadProgress::OnTsdProgress(
+bool LoadProgress::OnDbProgress(
     bool complete, 
-    const TsdProgressInfo & info
+    const DbProgressInfo & info
 ) {
     if (complete) 
         m_info = info;
@@ -121,10 +121,10 @@ static bool dumpCmd(Cli & cli) {
     }
 
     logStart(*s_out, *s_dat);
-    auto h = tsdOpen(*s_dat);
+    auto h = dbOpen(*s_dat);
     LoadProgress progress;
-    tsdWriteDump(&progress, *os, h, *s_qry);
-    tsdClose(h);
+    dbWriteDump(&progress, *os, h, *s_qry);
+    dbClose(h);
     logShutdown(progress.m_info);
 
     return true;

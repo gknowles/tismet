@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dump.cpp - tismet data
+// dump.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -29,11 +29,11 @@ static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 namespace {
 
-class DumpWriter : public ITsdEnumNotify {
+class DumpWriter : public IDbEnumNotify {
 public:
-    explicit DumpWriter(ostream & os, TsdProgressInfo & info);
+    explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    bool OnTsdValue(
+    bool OnDbValue(
         uint32_t id, 
         string_view name, 
         TimePoint time, 
@@ -42,20 +42,20 @@ public:
 
 private:
     ostream & m_os;
-    TsdProgressInfo & m_info;
+    DbProgressInfo & m_info;
     string m_buf;
 };
 
 } // namespace
 
 //===========================================================================
-DumpWriter::DumpWriter(ostream & os, TsdProgressInfo & info) 
+DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info) 
     : m_info{info}
     , m_os{os}
 {}
 
 //===========================================================================
-bool DumpWriter::OnTsdValue(
+bool DumpWriter::OnDbValue(
     uint32_t id, 
     string_view name, 
     TimePoint time, 
@@ -72,29 +72,29 @@ bool DumpWriter::OnTsdValue(
 //===========================================================================
 // Public API
 //===========================================================================
-void tsdWriteDump(
-    ITsdProgressNotify * notify,
+void dbWriteDump(
+    IDbProgressNotify * notify,
     ostream & os, 
-    TsdFileHandle h, 
+    DbHandle h, 
     string_view wildname
 ) {
     UnsignedSet ids;
-    tsdFindMetrics(ids, h, wildname);
+    dbFindMetrics(ids, h, wildname);
     os << kDumpVersion << '\n';
-    TsdProgressInfo info;
+    DbProgressInfo info;
     DumpWriter out(os, info);
     for (auto && id : ids) {
-        tsdEnumValues(&out, h, id);
+        dbEnumValues(&out, h, id);
         info.metrics += 1;
         if (notify)
-            notify->OnTsdProgress(false, info);
+            notify->OnDbProgress(false, info);
     }
     info.totalMetrics = info.metrics;
     info.totalValues = info.values;
     if (info.totalBytes != (size_t) -1) 
         info.bytes = info.totalBytes;
     if (notify)
-        notify->OnTsdProgress(true, info);
+        notify->OnDbProgress(true, info);
 }
 
 
@@ -106,12 +106,12 @@ void tsdWriteDump(
 
 namespace {
 
-class TsdWriter 
+class DbWriter 
     : public ICarbonNotify 
     , public IFileReadNotify
 {
 public:
-    TsdWriter(ITsdProgressNotify * notify, TsdFileHandle h);
+    DbWriter(IDbProgressNotify * notify, DbHandle h);
 
     // Inherited via ICarbonNotify
     uint32_t onCarbonMetric(string_view name) override;
@@ -131,38 +131,38 @@ public:
     void onFileEnd(int64_t offset, FileHandle f) override;
 
 private:
-    TsdFileHandle m_tsd;
-    ITsdProgressNotify * m_notify{nullptr};
-    TsdProgressInfo m_info;
+    DbHandle m_db;
+    IDbProgressNotify * m_notify{nullptr};
+    DbProgressInfo m_info;
 };
 
 } // namespace
 
 //===========================================================================
-TsdWriter::TsdWriter(ITsdProgressNotify * notify, TsdFileHandle h)
+DbWriter::DbWriter(IDbProgressNotify * notify, DbHandle h)
     : m_notify{notify}
-    , m_tsd{h}
+    , m_db{h}
 {}
 
 //===========================================================================
-uint32_t TsdWriter::onCarbonMetric(string_view name) {
+uint32_t DbWriter::onCarbonMetric(string_view name) {
     uint32_t id;
-    tsdInsertMetric(id, m_tsd, name);
+    dbInsertMetric(id, m_db, name);
     return id;
 }
 
 //===========================================================================
-void TsdWriter::onCarbonValue(
+void DbWriter::onCarbonValue(
     uint32_t id,
     TimePoint time,
     double value
 ) {
     m_info.values += 1;
-    tsdUpdateValue(m_tsd, id, time, (float) value);
+    dbUpdateValue(m_db, id, time, (float) value);
 }
 
 //===========================================================================
-bool TsdWriter::onFileRead(
+bool DbWriter::onFileRead(
     size_t * bytesUsed,
     string_view data, 
     int64_t offset, 
@@ -182,32 +182,32 @@ bool TsdWriter::onFileRead(
         while (!data.empty() && (data[0] == '\r' || data[0] == '\n')) 
             data.remove_prefix(1);
     }
-    if (!m_notify->OnTsdProgress(false, m_info))
+    if (!m_notify->OnDbProgress(false, m_info))
         return false;
     return append(data);
 }
 
 //===========================================================================
-void TsdWriter::onFileEnd(int64_t offset, FileHandle f) {
+void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalMetrics = m_info.metrics;
     m_info.totalValues = m_info.values;
     if (m_info.totalBytes != (size_t) -1) 
         m_info.bytes = m_info.totalBytes;
-    m_notify->OnTsdProgress(true, m_info);
+    m_notify->OnDbProgress(true, m_info);
     delete this;
 }
 
 //===========================================================================
 // Public API
 //===========================================================================
-void tsdLoadDump(
-    ITsdProgressNotify * notify,
-    TsdFileHandle h,
+void dbLoadDump(
+    IDbProgressNotify * notify,
+    DbHandle h,
     const Dim::Path & src
 ) {
     static const unsigned kBufferLen = 4096;
     // make sure there's room for the complete version info in the buffer
     static_assert(kBufferLen > size(kDumpVersion) + 2);
-    auto writer = new TsdWriter{notify, h};
+    auto writer = new DbWriter{notify, h};
     fileStreamBinary(writer, src, kBufferLen);
 }

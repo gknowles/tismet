@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-static TsdFileHandle s_tsd;
+static DbHandle s_db;
 
 
 /****************************************************************************
@@ -36,7 +36,7 @@ static ShutdownNotify s_cleanup;
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
-    tsdClose(s_tsd);
+    dbClose(s_db);
 }
 
 
@@ -51,11 +51,11 @@ void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     string path;
     appDataPath(path, "metrics.dat");
-    s_tsd = tsdOpen(path);
+    s_db = dbOpen(path);
 }
 
 //===========================================================================
-TsdFileHandle tsDataHandle() {
-    assert(s_tsd);
-    return s_tsd;
+DbHandle tsDataHandle() {
+    assert(s_db);
+    return s_db;
 }

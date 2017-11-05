@@ -50,7 +50,7 @@ static void logStart(string_view target, string_view source) {
 }
 
 //===========================================================================
-static void logShutdown(const TsdProgressInfo & info) {
+static void logShutdown(const DbProgressInfo & info) {
     TimePoint finish = Clock::now();
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
@@ -71,24 +71,24 @@ static void logShutdown(const TsdProgressInfo & info) {
 
 namespace {
 
-struct LoadProgress : ITsdProgressNotify {
-    TsdFileHandle m_f;
-    TsdProgressInfo m_info;
+struct LoadProgress : IDbProgressNotify {
+    DbHandle m_f;
+    DbProgressInfo m_info;
 
-    // Inherited via ITsdProgressNotify
-    bool OnTsdProgress(bool complete, const TsdProgressInfo & info) override;
+    // Inherited via IDbProgressNotify
+    bool OnDbProgress(bool complete, const DbProgressInfo & info) override;
 };
 
 } // namespace
 
 //===========================================================================
-bool LoadProgress::OnTsdProgress(
+bool LoadProgress::OnDbProgress(
     bool complete, 
-    const TsdProgressInfo & info
+    const DbProgressInfo & info
 ) {
     if (complete) {
         m_info = info;
-        tsdClose(m_f);
+        dbClose(m_f);
         if (logGetMsgCount(kLogTypeError)) {
             appSignalShutdown(EX_DATAERR);
         } else {
@@ -118,10 +118,10 @@ static bool loadCmd(Cli & cli) {
     logStart(*s_dat, *s_in);
     if (s_truncate)
         fileRemove(*s_dat);
-    auto h = tsdOpen(*s_dat);
+    auto h = dbOpen(*s_dat);
     auto progress = make_unique<LoadProgress>();
     progress->m_f = h;
-    tsdLoadDump(progress.release(), h, *s_in);
+    dbLoadDump(progress.release(), h, *s_in);
 
     return cli.fail(EX_PENDING, "");
 }

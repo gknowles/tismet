@@ -35,4 +35,4 @@ test_script:
     - bin\carbon
     - bin\query
     - bin\radix --test
-    - bin\tsdata
+    - bin\db

@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// tsdtest.cpp - tismet test tsdata
+// dbtest.cpp - tismet test db
 #include "pch.h"
 #pragma hdrstop
 
@@ -38,61 +38,61 @@ static int internalTest() {
 
     const char dat[] = "test.dat";
     fs::remove(dat);
-    auto h = tsdOpen(dat, 128);
+    auto h = dbOpen(dat, 128);
     uint32_t id;
     unsigned count = 0;
-    count += tsdInsertMetric(id, h, name);
+    count += dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
-    tsdUpdateValue(h, id, start, 1.0);
-    tsdWriteDump(nullptr, cout, h);
-    tsdClose(h);
+    dbUpdateValue(h, id, start, 1.0);
+    dbWriteDump(nullptr, cout, h);
+    dbClose(h);
     EXPECT(count == 1);
 
-    h = tsdOpen(dat);
-    count = tsdInsertMetric(id, h, name);
+    h = dbOpen(dat);
+    count = dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
-    tsdUpdateValue(h, id, start, 3.0);
-    tsdUpdateValue(h, id, start + 1min, 4.0);
-    tsdUpdateValue(h, id, start - 1min, 2.0);
-    tsdUpdateValue(h, id, start + 20min, 5.0);
-    tsdUpdateValue(h, id, start + 21min, 6.0);
-    tsdWriteDump(nullptr, cout, h);
-    tsdClose(h);
+    dbUpdateValue(h, id, start, 3.0);
+    dbUpdateValue(h, id, start + 1min, 4.0);
+    dbUpdateValue(h, id, start - 1min, 2.0);
+    dbUpdateValue(h, id, start + 22min, 5.0);
+    dbUpdateValue(h, id, start + 23min, 6.0);
+    dbWriteDump(nullptr, cout, h);
+    dbClose(h);
 
-    h = tsdOpen(dat);
-    count = tsdInsertMetric(id, h, name);
+    h = dbOpen(dat);
+    count = dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
-    tsdUpdateValue(h, id, start + 40min, 7.0);
-    tsdWriteDump(nullptr, cout, h);
-    tsdUpdateValue(h, id, start + 100min, 8.0);
+    dbUpdateValue(h, id, start + 44min, 7.0);
+    dbWriteDump(nullptr, cout, h);
+    dbUpdateValue(h, id, start + 100min, 8.0);
     
     cout << "----" << endl; 
-    tsdWriteDump(nullptr, cout, h);
+    dbWriteDump(nullptr, cout, h);
     count = 0;
     for (int i = 2; i < 30; ++i) {
         name = "this.is.metric.";
         name += to_string(i);
         uint32_t i2;
-        count += tsdInsertMetric(i2, h, name);
-        tsdUpdateValue(h, i2, start, (float) i);
+        count += dbInsertMetric(i2, h, name);
+        dbUpdateValue(h, i2, start, (float) i);
     }
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 28);
 
     cout << "----" << endl; 
-    tsdWriteDump(nullptr, cout, h);
+    dbWriteDump(nullptr, cout, h);
 
     UnsignedSet found;
-    tsdFindMetrics(found, h, "*.is.*.*5");
+    dbFindMetrics(found, h, "*.is.*.*5");
     ostringstream os;
     os << found;
     EXPECT(os.str() == "5 15 25");
     cout << "----" << endl; 
-    tsdWriteDump(nullptr, cout, h, "*.is.*.*5");
+    dbWriteDump(nullptr, cout, h, "*.is.*.*5");
 
-    tsdClose(h);
+    dbClose(h);
 
     return EX_OK;
 }
