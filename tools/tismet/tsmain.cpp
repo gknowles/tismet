@@ -20,6 +20,29 @@ const char kVersion[] = "1.0";
 
 /****************************************************************************
 *     
+*   Initialize
+*     
+***/
+
+namespace {
+
+class InitializeTask : public ITaskNotify {
+    void onTask() override;
+};
+
+} // namespace
+
+static InitializeTask s_initTask;
+
+//===========================================================================
+void InitializeTask::onTask() {
+    tsDataInitialize();
+    tsCarbonInitialize();
+}
+
+
+/****************************************************************************
+*     
 *   Application
 *     
 ***/
@@ -33,8 +56,7 @@ static void app(int argc, char * argv[]) {
         return appSignalUsageError();
 
     consoleCatchCtrlC();
-    tsDataInitialize();
-    tsCarbonInitialize();
+    taskPushCompute(s_initTask);
     cout << "Server started" << endl;
 }
 
