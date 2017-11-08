@@ -233,6 +233,7 @@ private:
     size_t m_initialDataViewSize = 0;
     vector<const char *> m_views;
     const MasterPage * m_hdr = nullptr;
+    size_t m_pageSize = 0;
 
     FileHandle m_hlog;
     FileHandle m_hwork;
@@ -328,11 +329,16 @@ bool DbFile::open(string_view name, size_t pageSize) {
         logMsgError() << "Bad signature in " << name;
         return false;
     }
+    m_pageSize = m_hdr->pageSize;
+    if (kSegmentSize % m_pageSize != 0) {
+        logMsgError() << "Invalid page size in " << name;
+        return false;
+    }
 
     auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
-    m_rdIndex.init(m_hdr->pageSize, ipOff, ipOff);
+    m_rdIndex.init(m_pageSize, ipOff, ipOff);
     auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
-    m_rdMetric.init(m_hdr->pageSize, mpOff, ipOff);
+    m_rdMetric.init(m_pageSize, mpOff, ipOff);
 
     if (!loadMetrics(m_hdr->metricInfoRoot))
         return false;
@@ -345,7 +351,7 @@ bool DbFile::open(string_view name, size_t pageSize) {
 //===========================================================================
 DbStats DbFile::queryStats() {
     DbStats s;
-    s.pageSize = m_hdr->pageSize;
+    s.pageSize = (unsigned) m_pageSize;
     s.segmentSize = kSegmentSize;
     s.metricNameLength = sizeof(MetricPage::name);
     s.valuesPerPage = (unsigned) valuesPerPage();
@@ -609,7 +615,7 @@ void DbFile::updateMetric(
     radixClear(nmp->hdr);
     nmp->lastPage = 0;
     nmp->lastPagePos = 0;
-    writePage(*nmp, m_hdr->pageSize);
+    writePage(*nmp, m_pageSize);
     mi.lastPage = 0;
     mi.pageFirstTime = {};
     mi.pageLastValue = 0;
@@ -624,7 +630,7 @@ void DbFile::updateMetric(
 
 //===========================================================================
 size_t DbFile::valuesPerPage() const {
-    return (m_hdr->pageSize - offsetof(DataPage, values)) 
+    return (m_pageSize - offsetof(DataPage, values)) 
         / sizeof(DataPage::values[0]);
 }
 
@@ -659,13 +665,13 @@ MetricInfo & DbFile::loadMetricInfo(uint32_t id, TimePoint time) {
         auto dp = allocDataPage(id, time);
         dp->pageLastValue = (uint16_t) (id % valuesPerPage());
         dp->pageFirstTime = time - dp->pageLastValue * mi.interval;
-        writePage(*dp, m_hdr->pageSize);
+        writePage(*dp, m_pageSize);
 
         auto mp = editPage<MetricPage>(mi.infoPage);
         mp->lastPage = dp->hdr.pgno;
         assert(mp->lastPagePos == 0);
         mp->rd.pages[0] = mp->lastPage;
-        writePage(*mp, m_hdr->pageSize);
+        writePage(*mp, m_pageSize);
 
         mi.lastPage = mp->lastPage;
         mi.pageFirstTime = dp->pageFirstTime;
@@ -725,7 +731,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
                 auto dp = allocDataPage(id, pageTime);
                 dp->pageLastValue = (uint16_t) vpp - 1;
-                writePage(*dp, m_hdr->pageSize);
+                writePage(*dp, m_pageSize);
                 dpno = dp->hdr.pgno;
                 [[maybe_unused]] bool inserted = radixInsert(
                     mi.infoPage, 
@@ -751,7 +757,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 s_perfChange += 1;
             }
             ref = value;
-            writePage(*dp, m_hdr->pageSize);
+            writePage(*dp, m_pageSize);
         }
         return;
     }
@@ -770,7 +776,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
             radixClear(nmp->hdr);
             nmp->lastPage = 0;
             nmp->lastPagePos = 0;
-            writePage(*nmp, m_hdr->pageSize);
+            writePage(*nmp, m_pageSize);
             mi.lastPage = 0;
             mi.pageFirstTime = {};
             mi.pageLastValue = 0;
@@ -793,13 +799,13 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
             s_perfAdd += 1;
             dp->values[i] = value;
             mi.pageLastValue = dp->pageLastValue = i;
-            writePage(*dp, m_hdr->pageSize);
+            writePage(*dp, m_pageSize);
             return;
         }
         dp->values[i] = NAN;
     }
     mi.pageLastValue = dp->pageLastValue = i;
-    writePage(*dp, m_hdr->pageSize);
+    writePage(*dp, m_pageSize);
 
     //-----------------------------------------------------------------------
     // value is after last page
@@ -828,16 +834,16 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
     if (!mp->lastPage) {
         dp = allocDataPage(id, endPageTime);
         mp->lastPage = dp->hdr.pgno;
-        writePage(*mp, m_hdr->pageSize);
+        writePage(*mp, m_pageSize);
         [[maybe_unused]] bool inserted = radixInsert(
             mi.infoPage, 
             mp->lastPagePos, 
             mp->lastPage
         );
         assert(inserted);
-        writePage(*dp, m_hdr->pageSize);
+        writePage(*dp, m_pageSize);
     } else {
-        writePage(*mp, m_hdr->pageSize);
+        writePage(*mp, m_pageSize);
         dp = editPage<DataPage>(mp->lastPage);
         dp->pageFirstTime = endPageTime;
         dp->pageLastValue = 0;
@@ -1061,7 +1067,7 @@ void DbFile::radixErase(
             }
         }
         if (nhdr)
-            writePage(*nhdr, m_hdr->pageSize);
+            writePage(*nhdr, m_pageSize);
     }
 }
 
@@ -1131,14 +1137,14 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
         mid->rd.height = rd->height;
         mid->rd.numPages = (uint16_t) cvt.pageEntries();
         memcpy(mid->rd.pages, rd->pages, rd->numPages * sizeof(rd->pages[0]));
-        writePage(*mid, m_hdr->pageSize);
+        writePage(*mid, m_pageSize);
 
         auto nhdr = editPage(*hdr);
         auto nrd = radixData(nhdr.get());
         nrd->height += 1;
         memset(nrd->pages, 0, nrd->numPages * sizeof(nrd->pages[0]));
         nrd->pages[0] = mid->hdr.pgno;
-        writePage(*nhdr, m_hdr->pageSize);
+        writePage(*nhdr, m_pageSize);
     }
     int * d = digits;
     while (count) {
@@ -1151,7 +1157,7 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
             auto nhdr = editPage(*hdr);
             auto nrd = radixData(nhdr.get());
             nrd->pages[pos] = next->hdr.pgno;
-            writePage(*nhdr, m_hdr->pageSize);
+            writePage(*nhdr, m_pageSize);
             assert(rd->pages[pos]);
         }
         hdr = viewPage<PageHeader>(rd->pages[pos]);
@@ -1165,7 +1171,7 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
     auto nhdr = editPage(*hdr);
     auto nrd = radixData(nhdr.get());
     nrd->pages[*d] = value;
-    writePage(*nhdr, m_hdr->pageSize);
+    writePage(*nhdr, m_pageSize);
     return true;
 }
 
@@ -1180,11 +1186,10 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
 const void * DbFile::viewPageRaw(uint32_t pgno) const {
     if (pgno >= m_hdr->numPages)
         return nullptr;
-    auto pageSize = m_hdr->pageSize;
-    auto pos = pageSize * pgno;
+    auto pos = pgno * m_pageSize;
     const char * vptr = nullptr;
     if (pos < m_initialDataViewSize) {
-        vptr = (const char *) m_hdr + pageSize * pgno;
+        vptr = (const char *) m_hdr + pos;
     } else {
         auto viewPos = pos - m_initialDataViewSize;
         vptr = m_views[viewPos / kSegmentSize] + viewPos % kSegmentSize;
@@ -1211,15 +1216,19 @@ const PageHeader * DbFile::viewPage<PageHeader>(uint32_t pgno) const {
 //===========================================================================
 uint32_t DbFile::allocPgno () {
     auto pgno = m_hdr->freePageRoot;
-    auto pageSize = m_hdr->pageSize;
     auto mp = *m_hdr;
     if (!pgno) {
         pgno = m_hdr->numPages;
         mp.numPages += 1;
-        auto pos = pgno * pageSize;
+        auto pos = pgno * m_pageSize;
         if (pos < m_initialDataViewSize) {
-            if (pos < kDefaultInitialSize)
-                fileExtendView(m_hdata, (const char * ) m_hdr, pos + pageSize);
+            if (pos < kDefaultInitialSize) {
+                fileExtendView(
+                    m_hdata, 
+                    (const char * ) m_hdr, 
+                    pos + m_pageSize
+                );
+            }
         } else {
             auto viewPos = pos - m_initialDataViewSize;
             auto iview = viewPos / kSegmentSize;
@@ -1252,9 +1261,8 @@ uint32_t DbFile::allocPgno () {
 template<typename T>
 unique_ptr<T> DbFile::allocPage(uint32_t id) {
     auto pgno = allocPgno();
-    auto pageSize = m_hdr->pageSize;
-    void * vptr = new char[pageSize];
-    memset(vptr, 0, pageSize);
+    void * vptr = new char[m_pageSize];
+    memset(vptr, 0, m_pageSize);
     T * ptr = new(vptr) T;
     ptr->hdr.type = ptr->type;
     ptr->hdr.pgno = pgno;
@@ -1321,10 +1329,9 @@ unique_ptr<T> DbFile::editPage(uint32_t pgno) const {
 //===========================================================================
 template<typename T>
 unique_ptr<T> DbFile::editPage(const T & data) const {
-    auto pageSize = m_hdr->pageSize;
-    void * vptr = new char[pageSize];
+    void * vptr = new char[m_pageSize];
     T * ptr = new(vptr) T;
-    memcpy(ptr, &data, pageSize);
+    memcpy(ptr, &data, m_pageSize);
     return unique_ptr<T>(ptr);
 }
 
@@ -1357,8 +1364,8 @@ void DbFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
 //===========================================================================
 void DbFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
     assert(pgno < m_hdr->numPages);
-    assert(count <= m_hdr->pageSize);
-    fileWriteWait(m_hdata, pgno * m_hdr->pageSize, ptr, count);
+    assert(count <= m_pageSize);
+    fileWriteWait(m_hdata, pgno * m_pageSize, ptr, count);
 }
 
 
