@@ -26,6 +26,7 @@ static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
 // Must be a multiple of fileViewAlignment()
 const size_t kSegmentSize = 0x100'0000; // 16MiB
+const size_t kDefaultInitialSize = 2 * kSegmentSize;
 
 
 /****************************************************************************
@@ -301,14 +302,18 @@ bool DbFile::open(string_view name, size_t pageSize) {
     }
     const char * base;
     assert(kSegmentSize % pageSize == 0);
-    m_initialDataViewSize = len + 2 * kSegmentSize;
+    m_initialDataViewSize = len + kSegmentSize - 1;
     m_initialDataViewSize -= m_initialDataViewSize % kSegmentSize;
+    m_initialDataViewSize = max(m_initialDataViewSize, kDefaultInitialSize);
+    int64_t initSize = m_initialDataViewSize >= kDefaultInitialSize
+        ? m_initialDataViewSize
+        : 0;
     if (!fileOpenView(
         base, 
         m_hdata, 
         File::kViewReadOnly,
-        0,  // offset
-        0,  // length (0 defaults to size of file)
+        0,          // offset
+        initSize,   // length (0 defaults to size of file)
         m_initialDataViewSize
     )) {
         logMsgError() << "Open view failed on " << name;
@@ -334,7 +339,6 @@ bool DbFile::open(string_view name, size_t pageSize) {
     if (!loadFreePages())
         return false;
 
-    s_perfCount += (unsigned) m_ids.size();
     return true;
 }
 
@@ -399,6 +403,8 @@ bool DbFile::loadMetrics (uint32_t pgno) {
         mi.infoPage = mp->hdr.pgno;
         mi.interval = mp->interval;
         mi.lastPage = mp->lastPage;
+
+        s_perfCount += 1;
         return true;
     }
 
@@ -1212,7 +1218,8 @@ uint32_t DbFile::allocPgno () {
         mp.numPages += 1;
         auto pos = pgno * pageSize;
         if (pos < m_initialDataViewSize) {
-            fileExtendView(m_hdata, (const char * ) m_hdr, pos + pageSize);
+            if (pos < kDefaultInitialSize)
+                fileExtendView(m_hdata, (const char * ) m_hdr, pos + pageSize);
         } else {
             auto viewPos = pos - m_initialDataViewSize;
             auto iview = viewPos / kSegmentSize;
@@ -1223,7 +1230,7 @@ uint32_t DbFile::allocPgno () {
                     m_hdata, 
                     File::kViewReadOnly, 
                     pos,
-                    0, 
+                    kSegmentSize, 
                     kSegmentSize
                 )) {
                     logMsgCrash() << "Extend file failed on " 
@@ -1231,8 +1238,6 @@ uint32_t DbFile::allocPgno () {
                 }
                 m_views.push_back(view);
             }
-            auto view = m_views[iview];
-            fileExtendView(m_hdata, view, viewPos % kSegmentSize + pageSize);
         }
     } else {
         auto fp = viewPage<FreePage>(pgno);
