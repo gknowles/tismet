@@ -50,8 +50,8 @@ private:
 
 //===========================================================================
 DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info) 
-    : m_info{info}
-    , m_os{os}
+    : m_os{os}
+    , m_info{info}
 {}
 
 //===========================================================================
@@ -140,8 +140,8 @@ private:
 
 //===========================================================================
 DbWriter::DbWriter(IDbProgressNotify * notify, DbHandle h)
-    : m_notify{notify}
-    , m_db{h}
+    : m_db{h}
+    , m_notify{notify}
 {}
 
 //===========================================================================
