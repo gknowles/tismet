@@ -33,7 +33,7 @@ static void tests() {
     int line = 0;
     int digits[10];
 
-    RadixDigits rd{100, 0, 0, 4095};
+    DbRadix rd{100, 0, 0, 4095};
     auto count = rd.convert(digits, size(digits), 4032);
     EXPECT(count == 3);
     EXPECT(vector<int>(digits, digits + 3) == vector<int>({6, 11, 7}));
@@ -81,7 +81,7 @@ static void app(int argc, char * argv[]) {
     if (*test)
         return tests();
 
-    RadixDigits rd{*pageSize, *roff, *poff, *maxPages - 1};
+    DbRadix rd{*pageSize, *roff, *poff, *maxPages - 1};
     cout << rd << endl;
 
     int digits[10];

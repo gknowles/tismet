@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// radix.cpp - tismet db
+// dbradix.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -11,12 +11,12 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   RadixDigits
+*   DbRadix
 *
 ***/
 
 //===========================================================================
-RadixDigits::RadixDigits(
+DbRadix::DbRadix(
     size_t pageSize, 
     size_t rootOffset,
     size_t pageOffset,
@@ -26,7 +26,7 @@ RadixDigits::RadixDigits(
 }
 
 //===========================================================================
-void RadixDigits::init(
+void DbRadix::init(
     size_t pageSize, 
     size_t rootOffset,
     size_t pageOffset,
@@ -42,7 +42,7 @@ void RadixDigits::init(
 }
 
 //===========================================================================
-size_t RadixDigits::convert(
+size_t DbRadix::convert(
     int * out, 
     size_t maxDigits, 
     size_t value
@@ -63,12 +63,12 @@ size_t RadixDigits::convert(
 }
 
 //===========================================================================
-size_t RadixDigits::rootEntries() const {
+size_t DbRadix::rootEntries() const {
     return (uint32_t) (m_pageSize - m_rootOffset) / sizeof(uint32_t);
 }
 
 //===========================================================================
-size_t RadixDigits::pageEntries() const {
+size_t DbRadix::pageEntries() const {
     return (uint32_t) (m_pageSize - m_pageOffset) / sizeof(uint32_t);
 }
 
@@ -80,7 +80,7 @@ size_t RadixDigits::pageEntries() const {
 ***/
 
 //===========================================================================
-ostream & operator<< (ostream & os, const RadixDigits & rd) {
+ostream & operator<< (ostream & os, const DbRadix & rd) {
     os << rd.m_pageSize << ' ' << rd.m_rootOffset << ' ' 
         << rd.m_pageOffset << ' ' << rd.m_maxPage;
     return os;

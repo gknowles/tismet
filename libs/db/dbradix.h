@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// radix.h - tismet db
+// dbradix.h - tismet db
 #pragma once
 
 #include "cppconf/cppconf.h"
@@ -16,10 +16,10 @@
 *
 ***/
 
-class RadixDigits {
+class DbRadix {
 public:
-    RadixDigits() {}
-    RadixDigits(
+    DbRadix() {}
+    DbRadix(
         size_t pageSize, 
         size_t rootOffset,
         size_t pageOffset = 64,
@@ -38,7 +38,7 @@ public:
 private:
     friend std::ostream & operator<< (
         std::ostream & os, 
-        const RadixDigits & rd
+        const DbRadix & rd
     );
 
     size_t m_pageSize{0};   // page size - offset = space for radix list 
@@ -47,4 +47,4 @@ private:
     size_t m_maxPage{0};    // maximum page number that is convertable
 };
 
-std::ostream & operator<< (std::ostream & os, const RadixDigits & rd);
+std::ostream & operator<< (std::ostream & os, const DbRadix & rd);

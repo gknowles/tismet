@@ -4,8 +4,8 @@
 // pch.h - tismet db
 
 // Public header
-#include "db/radix.h"
 #include "db/db.h"
+#include "db/dbradix.h"
 
 // External library public headers
 #include "dimcli/cli.h"
@@ -25,3 +25,4 @@
 // Platform headers
 // External library internal headers
 // Internal headers
+#include "dbint.h"
