@@ -30,7 +30,7 @@ static void app(int argc, char * argv[]) {
     cli.header("tsm v"s + kVersion + " (" __DATE__ ")");
     cli.versionOpt(kVersion, "tsm");
     cli.helpCmd().helpNoArgs();
-    cli.exec(argc, argv);
+    (void) cli.exec(argc, argv);
     return appSignalUsageError();
 }
 
