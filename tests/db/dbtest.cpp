@@ -41,7 +41,7 @@ static int internalTest() {
     auto h = dbOpen(dat, 128);
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
-    EXPECT(stats.numPages == 1);
+    EXPECT(stats.numPages == 2);
     auto pgt = stats.valuesPerPage * 1min;
     uint32_t id;
     unsigned count = 0;

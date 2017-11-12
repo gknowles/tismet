@@ -25,22 +25,22 @@ DbFileView<Writable>::~DbFileView() {
 template<bool Writable>
 bool DbFileView<Writable>::open(
     FileHandle file, 
-    size_t segmentSize, 
+    size_t viewSize, 
     size_t pageSize
 ) {
     assert(!m_file && "file view already open");
     assert(pageSize == pow2Ceil(pageSize));
-    assert(segmentSize % fileViewAlignment() == 0);
-    assert(segmentSize % pageSize == 0);
+    assert(viewSize % fileViewAlignment() == 0);
+    assert(viewSize % pageSize == 0);
 
-    m_segmentSize = segmentSize;
+    m_viewSize = viewSize;
     m_pageSize = pageSize;
 
     // First view is the size of the entire file rounded up to segment size,
     // and always at least two segments. 
     auto len = fileSize(file);
-    m_firstViewSize = len + segmentSize - 1;
-    m_firstViewSize -= m_firstViewSize % segmentSize;
+    m_firstViewSize = len + viewSize - 1;
+    m_firstViewSize -= m_firstViewSize % viewSize;
     m_firstViewSize = max(m_firstViewSize, minFirstSize());
 
     int64_t commit = m_firstViewSize > minFirstSize() ? m_firstViewSize : 0;
@@ -87,7 +87,7 @@ void DbFileView<Writable>::growToFit(uint32_t pgno) {
     }
 
     auto viewPos = pos - m_firstViewSize;
-    auto iview = viewPos / m_segmentSize;
+    auto iview = viewPos / m_viewSize;
     if (iview < m_views.size())
         return;
     assert(iview == m_views.size() && "non-contiguous grow request");
@@ -97,8 +97,8 @@ void DbFileView<Writable>::growToFit(uint32_t pgno) {
         m_file,
         kMode,
         pos,
-        m_segmentSize,
-        m_segmentSize
+        m_viewSize,
+        m_viewSize
     )) {
         logMsgCrash() << "Extend file failed on " << filePath(m_file);
     }
@@ -114,7 +114,7 @@ const void * DbFileView<Writable>::rptr(uint32_t pgno) const {
 //===========================================================================
 template<bool Writable>
 size_t DbFileView<Writable>::minFirstSize() const {
-    return 2 * m_segmentSize;
+    return 2 * m_viewSize;
 }
 
 //===========================================================================
@@ -126,9 +126,9 @@ auto DbFileView<Writable>::ptr(uint32_t pgno) const
     if (pos < m_firstViewSize)
         return m_view + pos;
     auto viewPos = pos - m_firstViewSize;
-    auto iview = viewPos / m_segmentSize;
+    auto iview = viewPos / m_viewSize;
     if (iview < m_views.size())
-        return m_views[iview] + viewPos % m_segmentSize;
+        return m_views[iview] + viewPos % m_viewSize;
     return nullptr;
 }
 

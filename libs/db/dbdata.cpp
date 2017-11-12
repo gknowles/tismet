@@ -26,8 +26,8 @@ const unsigned kDefaultPageSize = 4096;
 static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 
 // Must be a multiple of fileViewAlignment()
-const size_t kSegmentSize = 0x100'0000; // 16MiB
-const size_t kDefaultFirstViewSize = 2 * kSegmentSize;
+const size_t kViewSize = 0x100'0000; // 16MiB
+const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
 
 /****************************************************************************
@@ -46,7 +46,7 @@ const unsigned kDataFileSig[] = {
 };
 
 namespace {
-enum PageType {
+enum PageType : uint32_t {
     kPageTypeFree = 'F',
     kPageTypeMaster = 'M',
     kPageTypeMetric = 'm',
@@ -57,7 +57,7 @@ enum PageType {
 };
 
 struct PageHeader {
-    unsigned type;
+    PageType type;
     uint32_t pgno;
     uint32_t id;
     uint32_t checksum;
@@ -73,7 +73,8 @@ struct MasterPage {
     unsigned freePageRoot;
     unsigned metricInfoRoot;
 };
-static_assert(is_standard_layout<MasterPage>::value);
+static_assert(is_standard_layout_v<MasterPage>);
+static_assert(2 * sizeof(MasterPage) <= kMinPageSize);
 
 struct FreePage {
     static const PageType type = kPageTypeFree;
@@ -197,7 +198,11 @@ private:
     );
 
     size_t valuesPerPage() const;
-    unique_ptr<DataPage> allocDataPage(uint32_t id, TimePoint time);
+    unique_ptr<DataPage> allocDataPage(
+        uint32_t id, 
+        TimePoint time, 
+        uint16_t lastValue
+    );
     MetricInfo & loadMetricInfo(uint32_t id, TimePoint time = {});
     bool findDataPage(
         uint32_t * dataPgno, 
@@ -281,11 +286,11 @@ bool DbFile::open(string_view name, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
-    assert(kSegmentSize % fileViewAlignment() == 0);
+    assert(kViewSize % fileViewAlignment() == 0);
 
     m_fdata = fileOpen(
         name, 
-        File::fCreat | File::fReadWrite | File::fDenyWrite
+        File::fCreat | File::fReadWrite | File::fDenyWrite | File::fBlocking
     );
     if (!m_fdata)
         return false;
@@ -302,7 +307,7 @@ bool DbFile::open(string_view name, size_t pageSize) {
         fileReadWait(&tmp, sizeof(tmp), m_fdata, 0);
         pageSize = tmp.pageSize;
     }
-    if (!m_vdata.open(m_fdata, kSegmentSize, pageSize)) {
+    if (!m_vdata.open(m_fdata, kViewSize, pageSize)) {
         logMsgError() << "Open view failed on " << name;
         return false;
     }
@@ -316,7 +321,7 @@ bool DbFile::open(string_view name, size_t pageSize) {
         return false;
     }
     m_pageSize = m_hdr->pageSize;
-    if (m_pageSize < kMinPageSize || kSegmentSize % m_pageSize != 0) {
+    if (m_pageSize < kMinPageSize || kViewSize % m_pageSize != 0) {
         logMsgError() << "Invalid page size in " << name;
         return false;
     }
@@ -326,6 +331,15 @@ bool DbFile::open(string_view name, size_t pageSize) {
     auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
     m_rdMetric.init(m_pageSize, mpOff, ipOff);
 
+    if (!m_hdr->metricInfoRoot) {
+        auto rp = allocPage<RadixPage>(0);
+        rp->rd.height = 0;
+        rp->rd.numPages = (uint16_t) m_rdIndex.rootEntries();
+        writePage(*rp);
+        auto masp = *m_hdr;
+        masp.metricInfoRoot = rp->hdr.pgno;
+        writePage(masp);
+    }
     if (!loadMetrics(m_hdr->metricInfoRoot))
         return false;
     if (!loadFreePages())
@@ -338,7 +352,7 @@ bool DbFile::open(string_view name, size_t pageSize) {
 DbStats DbFile::queryStats() {
     DbStats s;
     s.pageSize = (unsigned) m_pageSize;
-    s.segmentSize = kSegmentSize;
+    s.viewSize = kViewSize;
     s.metricNameLength = sizeof(MetricPage::name);
     s.valuesPerPage = (unsigned) valuesPerPage();
     s.numPages = (unsigned) m_hdr->numPages;
@@ -561,15 +575,6 @@ bool DbFile::insertMetric(uint32_t & out, const string & name) {
     mi.interval = mp->interval;
 
     // update index
-    if (!m_hdr->metricInfoRoot) {
-        auto rp = allocPage<RadixPage>(0);
-        rp->rd.height = 0;
-        rp->rd.numPages = (uint16_t) m_rdIndex.rootEntries();
-        writePage(*rp);
-        auto masp = *m_hdr;
-        masp.metricInfoRoot = rp->hdr.pgno;
-        writePage(masp);
-    }
     [[maybe_unused]] bool inserted = radixInsert(
         m_hdr->metricInfoRoot, 
         id, 
@@ -592,16 +597,21 @@ void DbFile::updateMetric(
     Duration retention, 
     Duration interval
 ) {
+    // TODO: validate interval and retention
+
     auto & mi = m_metricInfo[id];
     auto mp = viewPage<MetricPage>(mi.infoPage);
     if (mp->retention == retention && mp->interval == interval)
         return;
 
     auto nmp = editPage(*mp);
+    nmp->retention = retention;
+    nmp->interval = interval;
     radixClear(nmp->hdr);
     nmp->lastPage = 0;
     nmp->lastPagePos = 0;
     writePage(*nmp, m_pageSize);
+    mi.interval = interval;
     mi.lastPage = 0;
     mi.pageFirstTime = {};
     mi.pageLastValue = 0;
@@ -621,10 +631,14 @@ size_t DbFile::valuesPerPage() const {
 }
 
 //===========================================================================
-unique_ptr<DataPage> DbFile::allocDataPage(uint32_t id, TimePoint time) {
+unique_ptr<DataPage> DbFile::allocDataPage(
+    uint32_t id, 
+    TimePoint time, 
+    uint16_t lastValue
+) {
     auto vpp = valuesPerPage();
     auto dp = allocPage<DataPage>(id);
-    dp->pageLastValue = 0;
+    dp->pageLastValue = lastValue;
     dp->pageFirstTime = time;
     for (auto i = 0; i < vpp; ++i) 
         dp->values[i] = NAN;
@@ -648,9 +662,9 @@ MetricInfo & DbFile::loadMetricInfo(uint32_t id, TimePoint time) {
         // round time down to metric's sampling interval
         time -= time.time_since_epoch() % mi.interval;
 
-        auto dp = allocDataPage(id, time);
-        dp->pageLastValue = (uint16_t) (id % valuesPerPage());
-        dp->pageFirstTime = time - dp->pageLastValue * mi.interval;
+        auto lastValue = (uint16_t) (id % valuesPerPage());
+        auto pageTime = time - lastValue * mi.interval;
+        auto dp = allocDataPage(id, pageTime, lastValue);
         writePage(*dp, m_pageSize);
 
         auto mp = editPage<MetricPage>(mi.infoPage);
@@ -715,8 +729,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
 				ent = (time - pageTime) / mi.interval;
 			} else if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
-                auto dp = allocDataPage(id, pageTime);
-                dp->pageLastValue = (uint16_t) vpp - 1;
+                auto dp = allocDataPage(id, pageTime, (uint16_t) vpp - 1);
                 writePage(*dp, m_pageSize);
                 dpno = dp->hdr.pgno;
                 [[maybe_unused]] bool inserted = radixInsert(
@@ -818,7 +831,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
     mp->lastPagePos = (unsigned) last;
     radixFind(&mp->lastPage, mi.infoPage, last);
     if (!mp->lastPage) {
-        dp = allocDataPage(id, endPageTime);
+        dp = allocDataPage(id, endPageTime, 0);
         mp->lastPage = dp->hdr.pgno;
         writePage(*mp, m_pageSize);
         [[maybe_unused]] bool inserted = radixInsert(
