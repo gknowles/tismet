@@ -357,7 +357,7 @@ bool queryParse(QueryInfo & qry, string_view src) {
     qry = {};
     qry.text = qry.heap.strdup(text.c_str());
     parser = QueryParser{&qry};
-    [[maybe_unused]] bool success = parser.parse(qry.text);
+    bool success [[maybe_unused]] = parser.parse(qry.text);
     assert(success);
     return true;
 }

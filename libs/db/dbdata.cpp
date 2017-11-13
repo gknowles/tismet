@@ -474,7 +474,7 @@ void DbFile::findMetrics(UnsignedSet & out, string_view name) const {
     }
 
     QueryInfo qry;
-    [[maybe_unused]] bool result = queryParse(qry, name);
+    bool result [[maybe_unused]] = queryParse(qry, name);
     assert(result);
     if (~qry.flags & QueryInfo::fWild) {
         uint32_t id;
@@ -548,7 +548,7 @@ void DbFile::indexInsertMetric(uint32_t id, const string & name) {
 
 //===========================================================================
 void DbFile::indexEraseMetric(uint32_t id, const string & name) {
-    [[maybe_unused]] auto num = m_metricIds.erase(name);
+    auto num [[maybe_unused]] = m_metricIds.erase(name);
     assert(num == 1);
     m_ids.erase(id);
     vector<string_view> segs;
@@ -615,7 +615,7 @@ bool DbFile::insertMetric(uint32_t & out, const string & name) {
     mi.interval = mp->interval;
 
     // update index
-    [[maybe_unused]] bool inserted = radixInsert(
+    bool inserted [[maybe_unused]] = radixInsert(
         kMetricIndexPageNum, 
         id, 
         mp->hdr.pgno
@@ -772,7 +772,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 auto dp = allocDataPage(id, pageTime, (uint16_t) vpp - 1);
                 writePage(*dp, m_pageSize);
                 dpno = dp->hdr.pgno;
-                [[maybe_unused]] bool inserted = radixInsert(
+                bool inserted [[maybe_unused]] = radixInsert(
                     mi.infoPage, 
                     pagePos, 
                     dpno
@@ -874,7 +874,7 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
         dp = allocDataPage(id, endPageTime, 0);
         mp->lastPage = dp->hdr.pgno;
         writePage(*mp, m_pageSize);
-        [[maybe_unused]] bool inserted = radixInsert(
+        bool inserted [[maybe_unused]] = radixInsert(
             mi.infoPage, 
             mp->lastPagePos, 
             mp->lastPage
