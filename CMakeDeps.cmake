@@ -75,6 +75,8 @@
 # vendor/dimapp/libs/app/webadmin.cpp
 # vendor/dimapp/libs/core/algo.h
 # vendor/dimapp/libs/core/appint.h
+# vendor/dimapp/libs/core/bitview.cpp
+# vendor/dimapp/libs/core/bitview.h
 # vendor/dimapp/libs/core/charbuf.cpp
 # vendor/dimapp/libs/core/charbuf.h
 # vendor/dimapp/libs/core/core.h

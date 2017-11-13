@@ -29,14 +29,15 @@ static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 const size_t kViewSize = 0x100'0000; // 16MiB
 const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
+const uint32_t kMasterPageNum = 0;
+const uint32_t kMetricIndexPageNum = 1;
+
 
 /****************************************************************************
 *
 *   Private
 *
 ***/
-
-const char kDumpVersion[] = "Tismet Dump Version 2017.1";
 
 const unsigned kDataFileSig[] = { 
     0x39515728, 
@@ -49,6 +50,7 @@ namespace {
 enum PageType : uint32_t {
     kPageTypeFree = 'F',
     kPageTypeMaster = 'M',
+    kPageTypeSegment = 'S',
     kPageTypeMetric = 'm',
     kPageTypeRadix = 'r',
     kPageTypeData = 'd',
@@ -64,14 +66,17 @@ struct PageHeader {
     uint64_t lsn;
 };
 
+struct SegmentPage {
+    static const PageType type = kPageTypeSegment;
+    PageHeader hdr;
+};
+
 struct MasterPage {
     static const PageType type = kPageTypeMaster;
-    PageHeader hdr;
+    SegmentPage segment;
     char signature[sizeof(kDataFileSig)];
     unsigned pageSize;
-    unsigned numPages;
-    unsigned freePageRoot;
-    unsigned metricInfoRoot;
+    unsigned segmentSize;
 };
 static_assert(is_standard_layout_v<MasterPage>);
 static_assert(2 * sizeof(MasterPage) <= kMinPageSize);
@@ -163,12 +168,12 @@ private:
 
     bool loadFreePages();
     uint32_t allocPgno();
-    template<typename T> unique_ptr<T> allocPage(uint32_t id);
+    template<typename T> 
+    unique_ptr<T> allocPage(uint32_t id, uint32_t pgno = 0);
     void freePage(uint32_t pgno);
 
     const void * viewPageRaw(uint32_t pgno) const;
     template<typename T> const T * viewPage(uint32_t pgno) const;
-    template<> const PageHeader * viewPage<PageHeader>(uint32_t pgno) const;
 
     // get copy of page to update and then write
     template<typename T> unique_ptr<T> editPage(uint32_t pgno) const;
@@ -180,8 +185,6 @@ private:
 
     template<typename T> 
     void writePage(T & data, size_t count = sizeof(T)) const;
-    template<> 
-    void writePage<PageHeader>(PageHeader & hdr, size_t count) const;
     void writePage(uint32_t pgno, const void * ptr, size_t count) const;
 
     void radixClear(PageHeader & hdr);
@@ -239,6 +242,8 @@ private:
     DbReadView m_vdata;
     const MasterPage * m_hdr = nullptr;
     size_t m_pageSize = 0;
+    size_t m_numPages = 0;
+    UnsignedSet m_freePages;
 
     FileHandle m_flog;
     FileHandle m_fwork;
@@ -262,6 +267,33 @@ static auto & s_perfOld = uperf("metric values ignored (old)");
 static auto & s_perfDup = uperf("metric values ignored (same)");
 static auto & s_perfChange = uperf("metric values changed");
 static auto & s_perfAdd = uperf("metric values added");
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+constexpr uint32_t pagesPerSegment(size_t pageSize) {
+    static_assert(CHAR_BIT == 8);
+    return uint32_t(CHAR_BIT * pageSize / 2);
+}
+
+//===========================================================================
+constexpr size_t segmentSize(size_t pageSize) {
+    static_assert(CHAR_BIT == 8);
+    return pageSize * pagesPerSegment(pageSize);
+}
+
+//===========================================================================
+constexpr pair<uint32_t, size_t> segmentPage(uint32_t pgno, size_t pageSize) {
+    auto pps = pagesPerSegment(pageSize);
+    auto segPage = pgno / pps * pps;
+    auto segPos = pgno % pps;
+    return {(uint32_t) segPage, segPos};
+}
 
 
 /****************************************************************************
@@ -295,54 +327,60 @@ bool DbFile::open(string_view name, size_t pageSize) {
     if (!m_fdata)
         return false;
     auto len = fileSize(m_fdata);
+    MasterPage tmp = {};
     if (!len) {
-        MasterPage tmp = {};
-        tmp.hdr.type = kPageTypeMaster;
+        tmp.segment.hdr.type = kPageTypeMaster;
+        auto segSize = segmentSize(pageSize);
+        assert(segSize <= numeric_limits<decltype(tmp.segmentSize)>::max());
+        tmp.segmentSize = (unsigned) segSize;
         memcpy(tmp.signature, kDataFileSig, sizeof(tmp.signature));
         tmp.pageSize = (unsigned) pageSize;
-        tmp.numPages = 1;
         fileWriteWait(m_fdata, 0, &tmp, sizeof(tmp));
+        vector<uint64_t> freemap;
+        freemap.assign(pageSize / 2 / sizeof(uint64_t), 0xffff'ffff'ffff'ffff);
+        freemap[0] = 0xffff'ffff'ffff'fffe;
+        fileWriteWait(m_fdata, pageSize / 2, freemap.data(), pageSize / 2);
+        len = pageSize;
     } else {
-        MasterPage tmp = {};
         fileReadWait(&tmp, sizeof(tmp), m_fdata, 0);
         pageSize = tmp.pageSize;
     }
-    if (!m_vdata.open(m_fdata, kViewSize, pageSize)) {
-        logMsgError() << "Open view failed on " << name;
-        return false;
-    }
-    m_hdr = (const MasterPage *) m_vdata.rptr(0);
-    if (memcmp(
-        m_hdr->signature, 
-        kDataFileSig, 
-        sizeof(m_hdr->signature)
-    ) != 0) {
+    if (memcmp(tmp.signature, kDataFileSig, sizeof(tmp.signature)) != 0) {
         logMsgError() << "Bad signature in " << name;
         return false;
     }
-    m_pageSize = m_hdr->pageSize;
+    m_pageSize = tmp.pageSize;
     if (m_pageSize < kMinPageSize || kViewSize % m_pageSize != 0) {
         logMsgError() << "Invalid page size in " << name;
         return false;
     }
+    if (tmp.segmentSize != segmentSize(m_pageSize)) {
+        logMsgError() << "Invalid segment size in " << name;
+        return false;
+    }
+    m_numPages = len / pageSize;
+
+    if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
+        logMsgError() << "Open view failed on " << name;
+        return false;
+    }
+    m_hdr = (const MasterPage *) m_vdata.rptr(0);
 
     auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
     m_rdIndex.init(m_pageSize, ipOff, ipOff);
     auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
     m_rdMetric.init(m_pageSize, mpOff, ipOff);
 
-    if (!m_hdr->metricInfoRoot) {
+    if (!loadFreePages())
+        return false;
+    if (m_numPages == 1) {
         auto rp = allocPage<RadixPage>(0);
+        assert(rp->hdr.pgno == kMetricIndexPageNum);
         rp->rd.height = 0;
         rp->rd.numPages = (uint16_t) m_rdIndex.rootEntries();
         writePage(*rp);
-        auto masp = *m_hdr;
-        masp.metricInfoRoot = rp->hdr.pgno;
-        writePage(masp);
     }
-    if (!loadMetrics(m_hdr->metricInfoRoot))
-        return false;
-    if (!loadFreePages())
+    if (!loadMetrics(kMetricIndexPageNum))
         return false;
 
     return true;
@@ -352,10 +390,12 @@ bool DbFile::open(string_view name, size_t pageSize) {
 DbStats DbFile::queryStats() {
     DbStats s;
     s.pageSize = (unsigned) m_pageSize;
+    s.segmentSize = (unsigned) m_hdr->segmentSize;
     s.viewSize = kViewSize;
     s.metricNameLength = sizeof(MetricPage::name);
     s.valuesPerPage = (unsigned) valuesPerPage();
-    s.numPages = (unsigned) m_hdr->numPages;
+    s.numPages = (unsigned) m_numPages;
+    s.freePages = (unsigned) m_freePages.size();
     s.metricIds = 0;
     for (auto & len : m_lenIds)
         s.metricIds += (unsigned) len.count;
@@ -576,7 +616,7 @@ bool DbFile::insertMetric(uint32_t & out, const string & name) {
 
     // update index
     [[maybe_unused]] bool inserted = radixInsert(
-        m_hdr->metricInfoRoot, 
+        kMetricIndexPageNum, 
         id, 
         mp->hdr.pgno
     );
@@ -1182,8 +1222,15 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
 ***/
 
 //===========================================================================
+static BitView segmentBitView(void * hdr, size_t pageSize) {
+    auto base = (uint64_t *) ((char *) hdr + pageSize / 2);
+    auto words = pageSize / 2 / sizeof(uint64_t);
+    return {base, words};
+}
+
+//===========================================================================
 const void * DbFile::viewPageRaw(uint32_t pgno) const {
-    if (pgno >= m_hdr->numPages)
+    if (pgno >= m_numPages)
         return nullptr;
     return m_vdata.rptr(pgno);
 }
@@ -1191,40 +1238,108 @@ const void * DbFile::viewPageRaw(uint32_t pgno) const {
 //===========================================================================
 template<typename T>
 const T * DbFile::viewPage(uint32_t pgno) const {
-    assert(pgno < m_hdr->numPages);
+    assert(pgno < m_numPages);
     auto ptr = static_cast<const T *>(viewPageRaw(pgno));
-    assert(ptr->hdr.type == ptr->type);
+    if constexpr (!is_same_v<T, PageHeader>) {
+        assert(ptr->hdr.type == ptr->type);
+    }
     return ptr;
 }
 
 //===========================================================================
-template<>
-const PageHeader * DbFile::viewPage<PageHeader>(uint32_t pgno) const {
-    auto ptr = static_cast<const PageHeader*>(viewPageRaw(pgno));
-    return ptr;
+bool DbFile::loadFreePages () {
+    auto pps = pagesPerSegment(m_pageSize);
+    assert(m_freePages.empty());
+    for (uint32_t pgno = 0; pgno < m_numPages; pgno += pps) {
+        auto pp = segmentPage(pgno, m_pageSize);
+        auto segPage = pp.first;
+        assert(!pp.second);
+        auto sp = viewPage<PageHeader>(segPage);
+        assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
+        auto bits = segmentBitView(const_cast<PageHeader *>(sp), m_pageSize);
+        for (auto first = bits.find(0); first != bits.npos; ) {
+            auto last = bits.findZero(first);
+            if (last == bits.npos) 
+                last = pps;
+            m_freePages.insert(
+                pgno + (unsigned) first, 
+                pgno + (unsigned) last - 1
+            );
+            first = bits.find(last);
+        }
+    }
+
+    // validate that pages in free list are in fact free
+    uint32_t blank = 0;
+    for (auto && pgno : m_freePages) {
+        if (pgno >= m_numPages)
+            break;
+        auto fp = viewPage<PageHeader>(pgno);
+        if (!fp || fp->type && fp->type != kPageTypeFree) {
+            logMsgError() << "Bad free page #" << pgno << " in " 
+                << filePath(m_fdata);
+            return false;
+        }
+        if (fp->type) {
+            if (blank) {
+                logMsgError() << "Blank data page #" << pgno << " in " 
+                    << filePath(m_fdata);
+                return false;
+            }
+        } else if (!blank) {
+            blank = pgno;
+        }
+    }
+    if (blank && blank < m_numPages) {
+        logMsgInfo() << "Trimmed " << m_numPages - blank << " blank pages";
+        m_numPages = blank;
+    }
+    return true;
 }
 
 //===========================================================================
 uint32_t DbFile::allocPgno () {
-    auto pgno = m_hdr->freePageRoot;
-    auto mp = *m_hdr;
-    if (!pgno) {
-        pgno = m_hdr->numPages;
-        mp.numPages += 1;
-        m_vdata.growToFit(pgno);
-    } else {
-        auto fp = viewPage<FreePage>(pgno);
-        assert(fp->hdr.type == kPageTypeFree);
-        mp.freePageRoot = fp->nextPage;
+    if (m_freePages.empty()) {
+        auto [segPage, segPos] = segmentPage((uint32_t) m_numPages, m_pageSize);
+        assert(segPage == m_numPages && !segPos);
+        (void) segPos;
+        m_numPages += 1;
+        m_vdata.growToFit(segPage);
+        auto nsp = allocPage<SegmentPage>(0, segPage);
+        auto bits = segmentBitView(nsp.get(), m_pageSize);
+        bits.set();
+        bits.reset(0);
+        writePage(*nsp, m_pageSize);
+        auto pps = pagesPerSegment(m_pageSize);
+        m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
-    writePage(mp);
+    auto pgno = *m_freePages.lowerBound(0);
+    m_freePages.erase(pgno);
+
+    auto [segPage, segPos] = segmentPage(pgno, m_pageSize);
+    auto sp = viewPage<PageHeader>(segPage);
+    assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
+    auto nsp = editPage(*sp);
+    auto bits = segmentBitView(nsp.get(), m_pageSize);
+    assert(bits[segPos]);
+    bits.reset(segPos);
+    writePage(*nsp, m_pageSize);
+    if (pgno >= m_numPages) {
+        assert(pgno == m_numPages);
+        m_numPages += 1;
+        m_vdata.growToFit(pgno);
+    }
+
+    auto fp [[maybe_unused]] = viewPage<PageHeader>(pgno);
+    assert(!fp->type || fp->type == kPageTypeFree);
     return pgno;
 }
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> DbFile::allocPage(uint32_t id) {
-    auto pgno = allocPgno();
+unique_ptr<T> DbFile::allocPage(uint32_t id, uint32_t pgno) {
+    if (!pgno)
+        pgno = allocPgno();
     void * vptr = new char[m_pageSize];
     memset(vptr, 0, m_pageSize);
     T * ptr = new(vptr) T;
@@ -1237,25 +1352,8 @@ unique_ptr<T> DbFile::allocPage(uint32_t id) {
 }
 
 //===========================================================================
-bool DbFile::loadFreePages () {
-    auto pgno = m_hdr->freePageRoot;
-    size_t num = 0;
-    UnsignedSet found;
-    while (pgno) {
-        auto p = viewPage<PageHeader>(pgno);
-        if (!p || p->type != kPageTypeFree)
-            return false;
-        num += 1;
-        found.insert(pgno);
-        auto fp = reinterpret_cast<const FreePage*>(p);
-        pgno = fp->nextPage;
-    }
-    return num == found.size();
-}
-
-//===========================================================================
 void DbFile::freePage(uint32_t pgno) {
-    assert(pgno < m_hdr->numPages);
+    assert(pgno < m_numPages);
     auto p = viewPage<PageHeader>(pgno);
     assert(p->type != kPageTypeFree);
     FreePage fp;
@@ -1276,12 +1374,19 @@ void DbFile::freePage(uint32_t pgno) {
     case kPageTypeBranch:
         logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
     }
+
     fp.hdr.type = kPageTypeFree;
-    fp.nextPage = m_hdr->freePageRoot;
-    writePage(fp);
-    auto mp = *m_hdr;
-    mp.freePageRoot = pgno;
-    writePage(mp);
+    writePage(fp, m_pageSize);
+    m_freePages.insert(pgno);
+
+    auto [segPage, segPos] = segmentPage(pgno, m_pageSize);
+    auto sp = viewPage<PageHeader>(segPage);
+    assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
+    auto nsp = editPage(*sp);
+    auto bits = segmentBitView(nsp.get(), m_pageSize);
+    assert(!bits[segPos]);
+    bits.set(segPos);
+    writePage(*nsp, m_pageSize);
 }
 
 //===========================================================================
@@ -1316,18 +1421,20 @@ unique_ptr<T> DbFile::dupPage(const T & data) {
 //===========================================================================
 template<typename T>
 void DbFile::writePage(T & data, size_t count) const {
-    writePage(data.hdr.pgno, &data, count);
-}
-
-//===========================================================================
-template<>
-void DbFile::writePage<PageHeader>(PageHeader & hdr, size_t count) const {
-    writePage(hdr.pgno, &hdr, count);
+    if constexpr (is_same_v<T, PageHeader>) {
+        writePage(data.pgno, &data, count);
+    } else if constexpr (is_same_v<T, MasterPage>) {
+        assert((void *) &data == (void *) &data.segment.hdr);
+        writePage(data.segment.hdr.pgno, &data, count);
+    } else {
+        assert((void *) &data == (void *) &data.hdr);
+        writePage(data.hdr.pgno, &data, count);
+    }
 }
 
 //===========================================================================
 void DbFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
-    assert(pgno < m_hdr->numPages);
+    assert(pgno < m_numPages);
     assert(count <= m_pageSize);
     fileWriteWait(m_fdata, pgno * m_pageSize, ptr, count);
 }

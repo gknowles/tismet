@@ -23,12 +23,14 @@ void dbClose(DbHandle h);
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;
+    unsigned segmentSize;
     unsigned viewSize;
     unsigned metricNameLength; // includes terminating null
     unsigned valuesPerPage;
 
     // Change as data is modified
     unsigned numPages;
+    unsigned freePages;
     unsigned metricIds;
 };
 DbStats dbQueryStats(DbHandle h);
