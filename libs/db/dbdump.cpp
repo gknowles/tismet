@@ -33,7 +33,7 @@ class DumpWriter : public IDbEnumNotify {
 public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    bool OnDbValue(
+    bool OnDbSample(
         uint32_t id, 
         string_view name, 
         TimePoint time, 
@@ -55,7 +55,7 @@ DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
 {}
 
 //===========================================================================
-bool DumpWriter::OnDbValue(
+bool DumpWriter::OnDbSample(
     uint32_t id, 
     string_view name, 
     TimePoint time, 
@@ -65,7 +65,7 @@ bool DumpWriter::OnDbValue(
     carbonWrite(m_buf, name, time, val);
     m_os << m_buf;
     m_info.bytes += m_buf.size();
-    m_info.values += 1;
+    m_info.samples += 1;
     return true;
 }
 
@@ -84,13 +84,13 @@ void dbWriteDump(
     DbProgressInfo info;
     DumpWriter out(os, info);
     for (auto && id : ids) {
-        dbEnumValues(&out, h, id);
+        dbEnumSamples(&out, h, id);
         info.metrics += 1;
         if (notify)
             notify->OnDbProgress(false, info);
     }
     info.totalMetrics = info.metrics;
-    info.totalValues = info.values;
+    info.totalValues = info.samples;
     if (info.totalBytes != (size_t) -1) 
         info.bytes = info.totalBytes;
     if (notify)
@@ -157,8 +157,8 @@ void DbWriter::onCarbonValue(
     TimePoint time,
     double value
 ) {
-    m_info.values += 1;
-    dbUpdateValue(m_db, id, time, (float) value);
+    m_info.samples += 1;
+    dbUpdateSample(m_db, id, time, (float) value);
 }
 
 //===========================================================================
@@ -190,7 +190,7 @@ bool DbWriter::onFileRead(
 //===========================================================================
 void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalMetrics = m_info.metrics;
-    m_info.totalValues = m_info.values;
+    m_info.totalValues = m_info.samples;
     if (m_info.totalBytes != (size_t) -1) 
         m_info.bytes = m_info.totalBytes;
     m_notify->OnDbProgress(true, m_info);

@@ -53,9 +53,7 @@ enum PageType : uint32_t {
     kPageTypeSegment = 'S',
     kPageTypeMetric = 'm',
     kPageTypeRadix = 'r',
-    kPageTypeData = 'd',
-    kPageTypeBranch = 'b',
-    kPageTypeLeaf = 'l',
+    kPageTypeSample = 's',
 };
 
 struct PageHeader {
@@ -116,28 +114,28 @@ struct MetricPage {
     RadixData rd; 
 };
 
-struct DataPage {
-    static const PageType type = kPageTypeData;
+struct SamplePage {
+    static const PageType type = kPageTypeSample;
     PageHeader hdr;
 
-    // time of first value on page
+    // time of first sample on page
     TimePoint pageFirstTime; 
     
-    // Position of last value, values that come after this position on the 
+    // Position of last sample, samples that come after this position on the 
     // page are either in the not yet populated future or (because it's a 
     // giant discontinuous ring buffer) in the distant past.
-    uint16_t pageLastValue; 
+    uint16_t pageLastSample; 
 
     // EXTENDS BEYOND END OF STRUCT
-    float values[1];
+    float samples[1];
 };
 
 struct MetricInfo {
     Duration interval;
     uint32_t infoPage;
-    uint32_t lastPage; // page with most recent data values
-    TimePoint pageFirstTime; // time of first value on last page
-    uint16_t pageLastValue; // position of last value on last page
+    uint32_t lastPage; // page with most recent samples
+    TimePoint pageFirstTime; // time of first sample on last page
+    uint16_t pageLastSample; // position of last sample on last page
 };
 
 class DbFile : public HandleContent {
@@ -154,8 +152,8 @@ public:
     bool findMetric(uint32_t & out, const string & name) const;
     void findMetrics(UnsignedSet & out, string_view name) const;
 
-    void updateValue(uint32_t id, TimePoint time, float value);
-    size_t enumValues(
+    void updateSample(uint32_t id, TimePoint time, float value);
+    size_t enumSamples(
         IDbEnumNotify * notify, 
         uint32_t id, 
         TimePoint first, 
@@ -184,8 +182,8 @@ private:
     template<typename T> unique_ptr<T> dupPage(const T & data);
 
     template<typename T> 
-    void writePage(T & data, size_t count = sizeof(T)) const;
-    void writePage(uint32_t pgno, const void * ptr, size_t count) const;
+    void writePage(T & data) const;
+    void writePagePrefix(uint32_t pgno, const void * ptr, size_t count) const;
 
     void radixClear(PageHeader & hdr);
     void radixErase(PageHeader & hdr, size_t firstPos, size_t lastPos);
@@ -200,15 +198,15 @@ private:
         size_t pos
     );
 
-    size_t valuesPerPage() const;
-    unique_ptr<DataPage> allocDataPage(
+    size_t samplesPerPage() const;
+    unique_ptr<SamplePage> allocSamplePage(
         uint32_t id, 
         TimePoint time, 
-        uint16_t lastValue
+        uint16_t lastSample
     );
     MetricInfo & loadMetricInfo(uint32_t id, TimePoint time = {});
-    bool findDataPage(
-        uint32_t * dataPgno, 
+    bool findSamplePage(
+        uint32_t * pgno, 
         unsigned * pagePos, 
         uint32_t id,
         TimePoint time
@@ -229,9 +227,9 @@ private:
     // metric ids by name length as measured in segments
     vector<UnsignedSetWithCount> m_lenIds;
 
-    // Index of metric ids by value of segments of their names. So the 
-    // wildcard *.red.* could be matched by finding all the metrics whose name
-    // has "red" as the second segment (m_segIds[1]["red"]) and three segments
+    // Index of metric ids by the segments of their names. So the wildcard 
+    // *.red.* could be matched by finding all the metrics whose name has 
+    // "red" as the second segment (m_segIds[1]["red"]) and three segments 
     // long (m_lenIds[3]).
     vector<unordered_map<string, UnsignedSetWithCount>> m_segIds;
 
@@ -263,10 +261,10 @@ static auto & s_perfCount = uperf("metrics (total)");
 static auto & s_perfCreated = uperf("metrics created");
 static auto & s_perfDeleted = uperf("metrics deleted");
 
-static auto & s_perfOld = uperf("metric values ignored (old)");
-static auto & s_perfDup = uperf("metric values ignored (same)");
-static auto & s_perfChange = uperf("metric values changed");
-static auto & s_perfAdd = uperf("metric values added");
+static auto & s_perfOld = uperf("samples ignored (old)");
+static auto & s_perfDup = uperf("samples ignored (same)");
+static auto & s_perfChange = uperf("samples changed");
+static auto & s_perfAdd = uperf("samples added");
 
 
 /****************************************************************************
@@ -393,7 +391,7 @@ DbStats DbFile::queryStats() {
     s.segmentSize = (unsigned) m_hdr->segmentSize;
     s.viewSize = kViewSize;
     s.metricNameLength = sizeof(MetricPage::name);
-    s.valuesPerPage = (unsigned) valuesPerPage();
+    s.samplesPerPage = (unsigned) samplesPerPage();
     s.numPages = (unsigned) m_numPages;
     s.freePages = (unsigned) m_freePages.size();
     s.metricIds = 0;
@@ -650,38 +648,38 @@ void DbFile::updateMetric(
     radixClear(nmp->hdr);
     nmp->lastPage = 0;
     nmp->lastPagePos = 0;
-    writePage(*nmp, m_pageSize);
+    writePage(*nmp);
     mi.interval = interval;
     mi.lastPage = 0;
     mi.pageFirstTime = {};
-    mi.pageLastValue = 0;
+    mi.pageLastSample = 0;
 }
 
 
 /****************************************************************************
 *
-*   Metric data values
+*   Samples
 *
 ***/
 
 //===========================================================================
-size_t DbFile::valuesPerPage() const {
-    return (m_pageSize - offsetof(DataPage, values)) 
-        / sizeof(DataPage::values[0]);
+size_t DbFile::samplesPerPage() const {
+    return (m_pageSize - offsetof(SamplePage, samples)) 
+        / sizeof(SamplePage::samples[0]);
 }
 
 //===========================================================================
-unique_ptr<DataPage> DbFile::allocDataPage(
+unique_ptr<SamplePage> DbFile::allocSamplePage(
     uint32_t id, 
     TimePoint time, 
-    uint16_t lastValue
+    uint16_t lastSample
 ) {
-    auto vpp = valuesPerPage();
-    auto dp = allocPage<DataPage>(id);
-    dp->pageLastValue = lastValue;
+    auto vpp = samplesPerPage();
+    auto dp = allocPage<SamplePage>(id);
+    dp->pageLastSample = lastSample;
     dp->pageFirstTime = time;
     for (auto i = 0; i < vpp; ++i) 
-        dp->values[i] = NAN;
+        dp->samples[i] = NAN;
     return dp;
 }
 
@@ -691,9 +689,9 @@ MetricInfo & DbFile::loadMetricInfo(uint32_t id, TimePoint time) {
     assert(mi.infoPage);
 
     if (!mi.lastPage) {
-        // metric has no value pages
+        // metric has no sample pages
         if (time == TimePoint{}) {
-            // no time to create value page? exit
+            // no time to create sample page? exit
             return mi;
         }
 
@@ -702,34 +700,34 @@ MetricInfo & DbFile::loadMetricInfo(uint32_t id, TimePoint time) {
         // round time down to metric's sampling interval
         time -= time.time_since_epoch() % mi.interval;
 
-        auto lastValue = (uint16_t) (id % valuesPerPage());
-        auto pageTime = time - lastValue * mi.interval;
-        auto dp = allocDataPage(id, pageTime, lastValue);
-        writePage(*dp, m_pageSize);
+        auto lastSample = (uint16_t) (id % samplesPerPage());
+        auto pageTime = time - lastSample * mi.interval;
+        auto dp = allocSamplePage(id, pageTime, lastSample);
+        writePage(*dp);
 
         auto mp = editPage<MetricPage>(mi.infoPage);
         mp->lastPage = dp->hdr.pgno;
         assert(mp->lastPagePos == 0);
         mp->rd.pages[0] = mp->lastPage;
-        writePage(*mp, m_pageSize);
+        writePage(*mp);
 
         mi.lastPage = mp->lastPage;
         mi.pageFirstTime = dp->pageFirstTime;
-        mi.pageLastValue = dp->pageLastValue;
+        mi.pageLastSample = dp->pageLastSample;
     }
 
-    // Update metric info from value page if it has no page data.
+    // Update metric info from sample page if it has no page data.
     if (mi.pageFirstTime == TimePoint{}) {
-        auto dp = viewPage<DataPage>(mi.lastPage);
+        auto dp = viewPage<SamplePage>(mi.lastPage);
         mi.pageFirstTime = dp->pageFirstTime;
-        mi.pageLastValue = dp->pageLastValue;
+        mi.pageLastSample = dp->pageLastSample;
     }
 
     return mi;
 }
 
 //===========================================================================
-void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
+void DbFile::updateSample(uint32_t id, TimePoint time, float value) {
     // ensure all info about the last page is loaded, the expectation is that 
     // almost all updates are to the last page.
     auto & mi = loadMetricInfo(id, time);
@@ -737,22 +735,22 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
     // round time down to metric's sampling interval
     time -= time.time_since_epoch() % mi.interval;
 
-    auto vpp = valuesPerPage();
-    auto pageInterval = vpp * mi.interval;
-    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
+    auto spp = samplesPerPage();
+    auto pageInterval = spp * mi.interval;
+    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
 
     // one interval past last time on page (aka first time on next page)
     auto endPageTime = mi.pageFirstTime + pageInterval; 
 
-    // updating historical value?
-    if (time <= lastValueTime) {
+    // updating historical sample?
+    if (time <= lastSampleTime) {
         auto dpno = mi.lastPage;
 		auto ent = numeric_limits<uint64_t>::max();
 		if (time < mi.pageFirstTime) {
             auto mp = viewPage<MetricPage>(mi.infoPage);
-			auto firstValueTime = lastValueTime - mp->retention + mi.interval;
-            if (time < firstValueTime) {
-                // before first value
+			auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
+            if (time < firstSampleTime) {
+                // before first sample
                 s_perfOld += 1;
                 return;
             }
@@ -764,13 +762,13 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
 			if (pagePos == mp->lastPagePos) {
 				// Still on the tip page of the ring buffer, but in the old 
-				// values section. 
+				// samples section. 
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
 				ent = (time - pageTime) / mi.interval;
 			} else if (!radixFind(&dpno, mi.infoPage, pagePos)) {
                 auto pageTime = mi.pageFirstTime - off * pageInterval;
-                auto dp = allocDataPage(id, pageTime, (uint16_t) vpp - 1);
-                writePage(*dp, m_pageSize);
+                auto dp = allocSamplePage(id, pageTime, (uint16_t) spp - 1);
+                writePage(*dp);
                 dpno = dp->hdr.pgno;
                 bool inserted [[maybe_unused]] = radixInsert(
                     mi.infoPage, 
@@ -780,13 +778,13 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 assert(inserted);
             }
         }
-        auto dp = editPage<DataPage>(dpno);
+        auto dp = editPage<SamplePage>(dpno);
 		if (ent == numeric_limits<uint64_t>::max()) {
 			assert(time >= dp->pageFirstTime);
 			ent = (time - dp->pageFirstTime) / mi.interval;
 		}
-        assert(ent < (unsigned) vpp);
-        auto & ref = dp->values[ent];
+        assert(ent < (unsigned) spp);
+        auto & ref = dp->samples[ent];
         if (ref == value) {
             s_perfDup += 1;
         } else {
@@ -796,64 +794,64 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
                 s_perfChange += 1;
             }
             ref = value;
-            writePage(*dp, m_pageSize);
+            writePage(*dp);
         }
         return;
     }
     
     //-----------------------------------------------------------------------
-    // after last known value
+    // after last known sample
 
     // If past the end of the page, check if it's also past the retention of 
     // all pages.
     if (time >= endPageTime) {
         auto mp = viewPage<MetricPage>(mi.infoPage);
-        // further in the future than the retention period? remove all values
-        // and add as new initial value.
-        if (time >= lastValueTime + mp->retention) {
+        // further in the future than the retention period? remove all samples
+        // and add as new initial sample.
+        if (time >= lastSampleTime + mp->retention) {
             auto nmp = editPage<MetricPage>(mi.infoPage);
             radixClear(nmp->hdr);
             nmp->lastPage = 0;
             nmp->lastPagePos = 0;
-            writePage(*nmp, m_pageSize);
+            writePage(*nmp);
             mi.lastPage = 0;
             mi.pageFirstTime = {};
-            mi.pageLastValue = 0;
-            updateValue(id, time, value);
+            mi.pageLastSample = 0;
+            updateSample(id, time, value);
             return;
         }
     }
 
     // update last page
-    auto dp = editPage<DataPage>(mi.lastPage);
+    auto dp = editPage<SamplePage>(mi.lastPage);
     assert(mi.pageFirstTime == dp->pageFirstTime);
-    assert(mi.pageLastValue == dp->pageLastValue);
-    auto i = mi.pageLastValue;
+    assert(mi.pageLastSample == dp->pageLastSample);
+    auto i = mi.pageLastSample;
     for (;;) {
         i += 1;
-        lastValueTime += mi.interval;
-        if (lastValueTime == endPageTime)
+        lastSampleTime += mi.interval;
+        if (lastSampleTime == endPageTime)
             break;
-        if (lastValueTime == time) {
+        if (lastSampleTime == time) {
             s_perfAdd += 1;
-            dp->values[i] = value;
-            mi.pageLastValue = dp->pageLastValue = i;
-            writePage(*dp, m_pageSize);
+            dp->samples[i] = value;
+            mi.pageLastSample = dp->pageLastSample = i;
+            writePage(*dp);
             return;
         }
-        dp->values[i] = NAN;
+        dp->samples[i] = NAN;
     }
-    mi.pageLastValue = dp->pageLastValue = i;
-    writePage(*dp, m_pageSize);
+    mi.pageLastSample = dp->pageLastSample = i;
+    writePage(*dp);
 
     //-----------------------------------------------------------------------
-    // value is after last page
+    // sample is after last page
 
-    // delete pages between last page and the one the value is on
+    // delete pages between last page and the one the sample is on
     auto num = (time - endPageTime) / pageInterval;
     auto mp = editPage<MetricPage>(mi.infoPage);
-    auto numValues = mp->retention / mp->interval;
-    auto numPages = (numValues - 1) / vpp + 1;
+    auto numSamples = mp->retention / mp->interval;
+    auto numPages = (numSamples - 1) / spp + 1;
     auto first = (mp->lastPagePos + 1) % numPages;
     auto last = first + num;
     if (num) {
@@ -871,82 +869,82 @@ void DbFile::updateValue(uint32_t id, TimePoint time, float value) {
     mp->lastPagePos = (unsigned) last;
     radixFind(&mp->lastPage, mi.infoPage, last);
     if (!mp->lastPage) {
-        dp = allocDataPage(id, endPageTime, 0);
+        dp = allocSamplePage(id, endPageTime, 0);
         mp->lastPage = dp->hdr.pgno;
-        writePage(*mp, m_pageSize);
+        writePage(*mp);
         bool inserted [[maybe_unused]] = radixInsert(
             mi.infoPage, 
             mp->lastPagePos, 
             mp->lastPage
         );
         assert(inserted);
-        writePage(*dp, m_pageSize);
+        writePage(*dp);
     } else {
-        writePage(*mp, m_pageSize);
-        dp = editPage<DataPage>(mp->lastPage);
+        writePage(*mp);
+        dp = editPage<SamplePage>(mp->lastPage);
         dp->pageFirstTime = endPageTime;
-        dp->pageLastValue = 0;
-        dp->values[0] = NAN;
+        dp->pageLastSample = 0;
+        dp->samples[0] = NAN;
         writePage(*dp);
     }
 
     mi.lastPage = mp->lastPage;
     mi.pageFirstTime = dp->pageFirstTime;
-    mi.pageLastValue = dp->pageLastValue;
+    mi.pageLastSample = dp->pageLastSample;
 
-    // write value to new last page
-    updateValue(id, time, value);
+    // write sample to new last page
+    updateSample(id, time, value);
 }
 
 //===========================================================================
 // Returns false if time is outside of the retention period, or if no retention 
-// period has been established because there is no data. Otherwise it sets:
-//  - dataPage: the page number that contains the time point, or zero if the 
-//      page is missing. Missing pages can occur when the recorded values have 
-//      large gaps that span entire pages.
-//  - pagePos: the position of the page (whether or not it's missing) of the 
-//      page within the ring buffer of value pages for the metric.
-bool DbFile::findDataPage(
-    uint32_t * dataPage,
-    unsigned * pagePos,
+// period has been established because there are no samples. Otherwise it sets:
+//  - outPgno: the page number that contains the time point, or zero if the page
+//      is missing. Missing pages can occur when the recorded samples have large
+//      gaps that span entire pages.
+//  - outPos: the position of the page (whether or not it's missing) of the 
+//      page within the ring buffer of sample pages for the metric.
+bool DbFile::findSamplePage(
+    uint32_t * outPgno,
+    unsigned * outPos,
     uint32_t id,
     TimePoint time
 ) {
     auto & mi = loadMetricInfo(id);
 
     if (!mi.lastPage) {
-        // metric has no value pages (i.e. no values)
+        // metric has no sample pages (i.e. no samples)
         return false;
     }
 
-    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
+    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
 
     time -= time.time_since_epoch() % mi.interval;
     auto mp = viewPage<MetricPage>(mi.infoPage);
 
     if (time >= mi.pageFirstTime) {
-        if (time > lastValueTime)
+        if (time > lastSampleTime)
             return false;
-        *dataPage = mi.lastPage;
-        *pagePos = mp->lastPagePos;
+        *outPgno = mi.lastPage;
+        *outPos = mp->lastPagePos;
         return true;
     }
 
-    if (time <= lastValueTime - mp->retention) {
-        // before first value
+    if (time <= lastSampleTime - mp->retention) {
+        // before first sample
         return false;
     }
-    auto pageInterval = valuesPerPage() * mi.interval;
+    auto pageInterval = samplesPerPage() * mi.interval;
     auto off = (mi.pageFirstTime - time - mi.interval) / pageInterval + 1;
     auto pages = (mp->retention + pageInterval - mi.interval) / pageInterval;
-    *pagePos = (uint32_t) (mp->lastPagePos + pages - off) % pages;
-    if (!radixFind(dataPage, mi.infoPage, *pagePos))
-        *dataPage = 0;
+    *outPos = (uint32_t) (mp->lastPagePos + pages - off) % pages;
+    if (!radixFind(outPgno, mi.infoPage, *outPos))
+        *outPgno = 0;
     return true;
 }
 
 //===========================================================================
-size_t DbFile::enumValues(
+size_t DbFile::enumSamples(
     IDbEnumNotify * notify, 
     uint32_t id, 
     TimePoint first, 
@@ -962,29 +960,29 @@ size_t DbFile::enumValues(
     
     uint32_t dpno;
     unsigned dppos;
-    bool found = findDataPage(&dpno, &dppos, id, first);
+    bool found = findSamplePage(&dpno, &dppos, id, first);
     if (!found && first >= mi.pageFirstTime)
         return 0;
 
     auto mp = viewPage<MetricPage>(mi.infoPage);
-    auto lastValueTime = mi.pageFirstTime + mi.pageLastValue * mi.interval;
-    if (last > lastValueTime)
-        last = lastValueTime;
+    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
+    if (last > lastSampleTime)
+        last = lastSampleTime;
 
     if (!found) {
         if (first < last)
-            first = lastValueTime - mp->retention + mi.interval;
+            first = lastSampleTime - mp->retention + mi.interval;
         if (first > last)
             return 0;
-        found = findDataPage(&dpno, &dppos, id, first);
+        found = findSamplePage(&dpno, &dppos, id, first);
         assert(found);
     }
 
     auto name = string_view(mp->name);
-    auto vpp = valuesPerPage();
+    auto vpp = samplesPerPage();
     auto pageInterval = vpp * mi.interval;
-    auto numValues = mp->retention / mp->interval;
-    auto numPages = (numValues - 1) / vpp + 1;
+    auto numSamples = mp->retention / mp->interval;
+    auto numPages = (numSamples - 1) / vpp + 1;
 
     unsigned count = 0;
     for (;;) {
@@ -994,13 +992,13 @@ size_t DbFile::enumValues(
             auto pageOff = (mi.pageFirstTime - first) / pageInterval - 1;
             first = mi.pageFirstTime - pageOff * pageInterval;
         } else {
-            auto dp = viewPage<DataPage>(dpno);
+            auto dp = viewPage<SamplePage>(dpno);
             auto fpt = dp->pageFirstTime;
             auto vpos = (first - fpt) / mi.interval;
-            auto pageLastValue = dp->pageLastValue == vpp
+            auto pageLastSample = dp->pageLastSample == vpp
                 ? vpp - 1
-                : dp->pageLastValue;
-            auto lastPageTime = fpt + pageLastValue * mi.interval;
+                : dp->pageLastSample;
+            auto lastPageTime = fpt + pageLastSample * mi.interval;
             if (vpos < 0) {
                 // in the old section of the tip page in the ring buffer
                 vpos += numPages * vpp;
@@ -1012,10 +1010,10 @@ size_t DbFile::enumValues(
             if (last < lastPageTime) 
                 lastPageTime = last;
             for (; first <= lastPageTime; first += mi.interval, ++vpos) {
-                auto value = dp->values[vpos];
+                auto value = dp->samples[vpos];
                 if (!isnan(value)) {
                     count += 1;
-                    if (!notify->OnDbValue(id, name, first, value))
+                    if (!notify->OnDbSample(id, name, first, value))
                         return count;
                 }
             }
@@ -1106,7 +1104,7 @@ void DbFile::radixErase(
             }
         }
         if (nhdr)
-            writePage(*nhdr, m_pageSize);
+            writePage(*nhdr);
     }
 }
 
@@ -1176,14 +1174,14 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
         mid->rd.height = rd->height;
         mid->rd.numPages = (uint16_t) cvt.pageEntries();
         memcpy(mid->rd.pages, rd->pages, rd->numPages * sizeof(rd->pages[0]));
-        writePage(*mid, m_pageSize);
+        writePage(*mid);
 
         auto nhdr = editPage(*hdr);
         auto nrd = radixData(nhdr.get());
         nrd->height += 1;
         memset(nrd->pages, 0, nrd->numPages * sizeof(nrd->pages[0]));
         nrd->pages[0] = mid->hdr.pgno;
-        writePage(*nhdr, m_pageSize);
+        writePage(*nhdr);
     }
     int * d = digits;
     while (count) {
@@ -1196,7 +1194,7 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
             auto nhdr = editPage(*hdr);
             auto nrd = radixData(nhdr.get());
             nrd->pages[pos] = next->hdr.pgno;
-            writePage(*nhdr, m_pageSize);
+            writePage(*nhdr);
             assert(rd->pages[pos]);
         }
         hdr = viewPage<PageHeader>(rd->pages[pos]);
@@ -1210,7 +1208,7 @@ bool DbFile::radixInsert(uint32_t root, size_t pos, uint32_t value) {
     auto nhdr = editPage(*hdr);
     auto nrd = radixData(nhdr.get());
     nrd->pages[*d] = value;
-    writePage(*nhdr, m_pageSize);
+    writePage(*nhdr);
     return true;
 }
 
@@ -1309,7 +1307,7 @@ uint32_t DbFile::allocPgno () {
         auto bits = segmentBitView(nsp.get(), m_pageSize);
         bits.set();
         bits.reset(0);
-        writePage(*nsp, m_pageSize);
+        writePage(*nsp);
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
@@ -1323,7 +1321,7 @@ uint32_t DbFile::allocPgno () {
     auto bits = segmentBitView(nsp.get(), m_pageSize);
     assert(bits[segPos]);
     bits.reset(segPos);
-    writePage(*nsp, m_pageSize);
+    writePage(*nsp);
     if (pgno >= m_numPages) {
         assert(pgno == m_numPages);
         m_numPages += 1;
@@ -1365,18 +1363,16 @@ void DbFile::freePage(uint32_t pgno) {
     case kPageTypeRadix:
         radixFreePage(pgno);
         break;
-    case kPageTypeData:
-    case kPageTypeLeaf:
+    case kPageTypeSample:
         break;
     case kPageTypeFree:
         logMsgCrash() << "freePage: page already free";
     default:
-    case kPageTypeBranch:
         logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
     }
 
     fp.hdr.type = kPageTypeFree;
-    writePage(fp, m_pageSize);
+    writePagePrefix(fp.hdr.pgno, &fp, sizeof(fp));
     m_freePages.insert(pgno);
 
     auto [segPage, segPos] = segmentPage(pgno, m_pageSize);
@@ -1386,7 +1382,7 @@ void DbFile::freePage(uint32_t pgno) {
     auto bits = segmentBitView(nsp.get(), m_pageSize);
     assert(!bits[segPos]);
     bits.set(segPos);
-    writePage(*nsp, m_pageSize);
+    writePage(*nsp);
 }
 
 //===========================================================================
@@ -1420,22 +1416,27 @@ unique_ptr<T> DbFile::dupPage(const T & data) {
 
 //===========================================================================
 template<typename T>
-void DbFile::writePage(T & data, size_t count) const {
+void DbFile::writePage(T & data) const {
+    assert(m_pageSize);
     if constexpr (is_same_v<T, PageHeader>) {
-        writePage(data.pgno, &data, count);
+        writePagePrefix(data.pgno, &data, m_pageSize);
     } else if constexpr (is_same_v<T, MasterPage>) {
         assert((void *) &data == (void *) &data.segment.hdr);
-        writePage(data.segment.hdr.pgno, &data, count);
+        writePagePrefix(data.segment.hdr.pgno, &data, m_pageSize);
     } else {
         assert((void *) &data == (void *) &data.hdr);
-        writePage(data.hdr.pgno, &data, count);
+        writePagePrefix(data.hdr.pgno, &data, m_pageSize);
     }
 }
 
 //===========================================================================
-void DbFile::writePage(uint32_t pgno, const void * ptr, size_t count) const {
+void DbFile::writePagePrefix(
+    uint32_t pgno, 
+    const void * ptr, 
+    size_t count
+) const {
     assert(pgno < m_numPages);
-    assert(count <= m_pageSize);
+    assert(count && count <= m_pageSize);
     fileWriteWait(m_fdata, pgno * m_pageSize, ptr, count);
 }
 
@@ -1513,7 +1514,7 @@ void dbUpdateMetric(
 }
 
 //===========================================================================
-void dbUpdateValue(
+void dbUpdateSample(
     DbHandle h, 
     uint32_t id, 
     TimePoint time, 
@@ -1521,11 +1522,11 @@ void dbUpdateValue(
 ) {
     auto * db = s_files.find(h);
     assert(db);
-    db->updateValue(id, time, value);
+    db->updateSample(id, time, value);
 }
 
 //===========================================================================
-size_t dbEnumValues(
+size_t dbEnumSamples(
     IDbEnumNotify * notify,
     DbHandle h,
     uint32_t id,
@@ -1534,5 +1535,5 @@ size_t dbEnumValues(
 ) {
     auto * db = s_files.find(h);
     assert(db);
-    return db->enumValues(notify, id, first, last);
+    return db->enumSamples(notify, id, first, last);
 }

@@ -48,7 +48,7 @@ uint32_t RecordConn::onCarbonMetric(string_view name) {
 //===========================================================================
 void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id);
-    dbUpdateValue(s_db, id, time, (float) value);
+    dbUpdateSample(s_db, id, time, (float) value);
 }
 
 

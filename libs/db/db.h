@@ -26,7 +26,7 @@ struct DbStats {
     unsigned segmentSize;
     unsigned viewSize;
     unsigned metricNameLength; // includes terminating null
-    unsigned valuesPerPage;
+    unsigned samplesPerPage;
 
     // Change as data is modified
     unsigned numPages;
@@ -57,7 +57,7 @@ void dbUpdateMetric(
     Dim::Duration interval
 );
 
-void dbUpdateValue(
+void dbUpdateSample(
     DbHandle h, 
     uint32_t id, 
     Dim::TimePoint time, 
@@ -68,14 +68,14 @@ struct IDbEnumNotify {
     virtual ~IDbEnumNotify() {}
     // Called for each matching value, return false to abort the enum, 
     // otherwise it continues to the next value.
-    virtual bool OnDbValue(
+    virtual bool OnDbSample(
         uint32_t id,
         std::string_view name,
         Dim::TimePoint time,
         float value
     ) = 0;
 };
-size_t dbEnumValues(
+size_t dbEnumSamples(
     IDbEnumNotify * notify,
     DbHandle h,
     uint32_t id,
@@ -93,7 +93,7 @@ size_t dbEnumValues(
 struct DbProgressInfo {
     size_t metrics{0};
     size_t totalMetrics{(size_t) -1};    // -1 for unknown
-    size_t values{0};
+    size_t samples{0};
     size_t totalValues{(size_t) -1};
     size_t bytes{0};
     size_t totalBytes{(size_t) -1};

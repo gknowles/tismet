@@ -57,7 +57,7 @@ static void logShutdown(const DbProgressInfo & info) {
     os.imbue(locale(""));
     os << "Done"
         << "; metrics: " << info.metrics
-        << "; values: " << info.values
+        << "; samples: " << info.samples
         << "; bytes: " << info.bytes
         << "; seconds: " << elapsed.count();
 }

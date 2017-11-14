@@ -42,12 +42,12 @@ static int internalTest() {
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
-    auto pgt = stats.valuesPerPage * 1min;
+    auto pgt = stats.samplesPerPage * 1min;
     uint32_t id;
     unsigned count = 0;
     count += dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
-    dbUpdateValue(h, id, start, 1.0);
+    dbUpdateSample(h, id, start, 1.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 4);
     dbWriteDump(nullptr, cout, h);
@@ -58,15 +58,15 @@ static int internalTest() {
     count = dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 0);
-    dbUpdateValue(h, id, start, 3.0);
-    dbUpdateValue(h, id, start + 1min, 4.0);
-    dbUpdateValue(h, id, start - 1min, 2.0);
+    dbUpdateSample(h, id, start, 3.0);
+    dbUpdateSample(h, id, start + 1min, 4.0);
+    dbUpdateSample(h, id, start - 1min, 2.0);
     // add to start of new page 2
-    dbUpdateValue(h, id, start + pgt - 1min, 5.0);
+    dbUpdateSample(h, id, start + pgt - 1min, 5.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     // another on page 2
-    dbUpdateValue(h, id, start + pgt, 6.0);
+    dbUpdateSample(h, id, start + pgt, 6.0);
     dbWriteDump(nullptr, cout, h);
     dbClose(h);
 
@@ -77,13 +77,13 @@ static int internalTest() {
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     // add to very end of page 2
-    dbUpdateValue(h, id, start + 2 * pgt - 2min, 7.0);
+    dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     dbWriteDump(nullptr, cout, h);
     // add to new page 5. creates values pages 3, 4, 5, and a radix page 
     // to track the value pages.
-    dbUpdateValue(h, id, start + 4 * pgt + 10min, 8.0);
+    dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 7);
     
@@ -95,7 +95,7 @@ static int internalTest() {
         name += to_string(i);
         uint32_t i2;
         count += dbInsertMetric(i2, h, name);
-        dbUpdateValue(h, i2, start, (float) i);
+        dbUpdateSample(h, i2, start, (float) i);
     }
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 28);

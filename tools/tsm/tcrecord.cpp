@@ -23,7 +23,7 @@ struct CmdOpts {
 
     uint64_t maxBytes;
     unsigned maxSecs;
-    uint64_t maxValues;
+    uint64_t maxSamples;
 
     string addrStr;
     Endpoint addr;
@@ -42,7 +42,7 @@ struct CmdOpts {
 
 static CmdOpts s_opts;
 
-static uint64_t s_valuesWritten;
+static uint64_t s_samplesWritten;
 static uint64_t s_bytesWritten;
 static TimePoint s_startTime;
 
@@ -53,12 +53,12 @@ static FileAppendQueue s_file{10, 2};
 static void logStart(string_view target, const Endpoint & source) {
     s_startTime = Clock::now();
     logMsgInfo() << "Recording " << source << " into " << target;
-    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxValues) {
+    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxSamples) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
         os << "Limits";
-        if (auto num = s_opts.maxValues) 
-            os << "; values: " << num;
+        if (auto num = s_opts.maxSamples) 
+            os << "; samples: " << num;
         if (auto num = s_opts.maxBytes) 
             os << "; bytes: " << num;
         if (auto num = s_opts.maxSecs)
@@ -72,7 +72,7 @@ static void logShutdown() {
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
-    os << "Done; values: " << s_valuesWritten
+    os << "Done; samples: " << s_samplesWritten
         << "; bytes: " << s_bytesWritten
         << "; seconds: " << elapsed.count();
 }
@@ -135,12 +135,12 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, (float) value);
     s_bytesWritten += m_buf.size();
-    s_valuesWritten += 1;
-    if (s_opts.maxValues && s_valuesWritten > s_opts.maxValues
+    s_samplesWritten += 1;
+    if (s_opts.maxSamples && s_samplesWritten > s_opts.maxSamples
         || s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
     ) {
         s_bytesWritten -= m_buf.size();
-        s_valuesWritten -= 1;
+        s_samplesWritten -= 1;
         return appSignalShutdown();
     }
 
@@ -222,10 +222,10 @@ CmdOpts::CmdOpts() {
     cli.group("When to Stop").sortKey("1");
     cli.opt(&maxBytes, "B bytes", 0)
         .desc("Max bytes to record, 0 for unlimited");
-    cli.opt(&maxSecs, "S seconds", 0)
+    cli.opt(&maxSecs, "T time", 0)
         .desc("Max seconds to record, 0 for unlimited");
-    cli.opt(&maxValues, "V values", 0)
-        .desc("Max values to record, 0 for unlimited");
+    cli.opt(&maxSamples, "S samples", 0)
+        .desc("Max samples to record, 0 for unlimited");
 
     cli.group("Output Options").sortKey("2");
     cli.opt(&openMode, "", FileAppendQueue::kFail)

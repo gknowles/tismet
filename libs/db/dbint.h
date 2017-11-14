@@ -55,22 +55,22 @@ public:
 ***/
 
 enum DbLogRecType {
-    kRecTypeInit,               // [any] page type
+    kRecTypeInitSegment,        // [segment]
     kRecTypeInitMetric,         // [metric] name
-    kRecTypeInitData,           // [data] pageTime, lastPos
+    kRecTypeInitSample,         // [sample] pageTime, lastPos
     kRecTypeInitRadix,          // [radix] height, isWithList, page list
     kRecTypeFree,               // [any] nextPage
     kRecTypeUpdateMetric,       // [metric] retention, interval
-    kRecTypeUpdateValueIndex,   // [metric] pos, pgno, isNewLast, isRadix
-    kRecTypeUpdateValue,        // [data] first, last, value, isNewLastFlag
+    kRecTypeUpdateSampleIndex,  // [metric] pos, pgno, isNewLast, isRadix
+    kRecTypeUpdateSample,       // [sample] first, last, value, isNewLastFlag
                                 //   [first, last) = NANs, last = value
-    kRecTypeEraseValueIndex,    // [metric]
-    kRecTypeUpdateValueTime,    // [data] first time
+    kRecTypeEraseSampleIndex,   // [metric]
+    kRecTypeUpdateSampleTime,   // [sample] first time
     kRecTypeEraseRadix,         // [metric/radix] firstPos, lastPos
     kRecTypeCopyRadix,          // [radix] height, page list
     kRecTypePromoteRadix,       // [metric/radix] height
     kRecTypeUpdateRadix,        // [radix] pos, pgno
-    kRecTypeUpdateFreeRoot,     // [master] pgno
+    kRecTypeUpdateFreeMap,      // [master/segment] pgno, isFree
 };
 
 struct DbLogRec {
