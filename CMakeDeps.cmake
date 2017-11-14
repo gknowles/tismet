@@ -13,6 +13,7 @@
 # libs/carbon/carbonparseint.h
 # libs/carbon/pch.cpp
 # libs/carbon/pch.h
+# libs/db/db.cpp
 # libs/db/db.h
 # libs/db/dbdata.cpp
 # libs/db/dbdump.cpp

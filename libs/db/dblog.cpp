@@ -45,19 +45,19 @@ DbTxn::~DbTxn() {
 }
 
 //===========================================================================
-void DbTxn::logFree(uint32_t pgno) {
+void DbTxn::logPageFree(uint32_t pgno) {
     assert(m_lsn);
     m_lsn += 1;
 }
 
 //===========================================================================
-void DbTxn::logInitSegment(uint32_t pgno) {
+void DbTxn::logSegmentInit(uint32_t pgno) {
     assert(m_lsn);
     m_lsn += 1;
 }
 
 //===========================================================================
-void DbTxn::logUpdateSegment(
+void DbTxn::logSegmentUpdate(
     uint32_t pgno,
     uint32_t refPage,
     bool free
@@ -67,7 +67,7 @@ void DbTxn::logUpdateSegment(
 }
 
 //===========================================================================
-void DbTxn::logInitRadix(
+void DbTxn::logRadixInit(
     uint32_t pgno,
     uint16_t height,
     uint32_t * firstPage,
@@ -78,7 +78,7 @@ void DbTxn::logInitRadix(
 }
 
 //===========================================================================
-void DbTxn::logUpdateRadix(
+void DbTxn::logRadixUpdate(
     uint32_t pgno,
     size_t pos,
     uint32_t refPage
@@ -88,18 +88,7 @@ void DbTxn::logUpdateRadix(
 }
 
 //===========================================================================
-void DbTxn::logCopyRadix(
-    uint32_t pgno,
-    uint16_t height,
-    uint32_t * firstPage,
-    uint32_t * lastPage
-) {
-    assert(m_lsn);
-    m_lsn += 1;
-}
-
-//===========================================================================
-void DbTxn::logEraseRadix(
+void DbTxn::logRadixErase(
     uint32_t pgno,
     size_t firstPos,
     size_t lastPos
@@ -109,13 +98,7 @@ void DbTxn::logEraseRadix(
 }
 
 //===========================================================================
-void DbTxn::logPromoteRadix(uint32_t pgno, uint16_t height) {
-    assert(m_lsn);
-    m_lsn += 1;
-}
-
-//===========================================================================
-void DbTxn::logInitMetric(
+void DbTxn::logMetricInit(
     uint32_t pgno,
     string_view name,
     Duration retention,
@@ -126,7 +109,7 @@ void DbTxn::logInitMetric(
 }
 
 //===========================================================================
-void DbTxn::logUpdateMetric(
+void DbTxn::logMetricUpdate(
     uint32_t pgno,
     Duration retention,
     Duration interval
@@ -136,13 +119,13 @@ void DbTxn::logUpdateMetric(
 }
 
 //===========================================================================
-void DbTxn::logClearSampleIndex(uint32_t pgno) {
+void DbTxn::logMetricClearSamples(uint32_t pgno) {
     assert(m_lsn);
     m_lsn += 1;
 }
 
 //===========================================================================
-void DbTxn::logUpdateSampleIndex(
+void DbTxn::logMetricUpdateSamples(
     uint32_t pgno,
     size_t pos,
     uint32_t refPage,
@@ -154,7 +137,7 @@ void DbTxn::logUpdateSampleIndex(
 }
 
 //===========================================================================
-void DbTxn::logInitSample(
+void DbTxn::logSampleInit(
     uint32_t pgno,
     TimePoint pageTime,
     size_t lastPos
@@ -164,7 +147,7 @@ void DbTxn::logInitSample(
 }
 
 //===========================================================================
-void DbTxn::logUpdateSample(
+void DbTxn::logSampleUpdate(
     uint32_t pgno,
     size_t firstPos,
     size_t lastPos,
@@ -176,7 +159,7 @@ void DbTxn::logUpdateSample(
 }
 
 //===========================================================================
-void DbTxn::logUpdateSampleTime(
+void DbTxn::logSampleUpdateTime(
     uint32_t pgno,
     TimePoint pageTime
 ) {

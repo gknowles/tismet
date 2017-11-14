@@ -58,16 +58,16 @@ void dbUpdateMetric(
 );
 
 void dbUpdateSample(
-    DbHandle h, 
-    uint32_t id, 
-    Dim::TimePoint time, 
+    DbHandle h,
+    uint32_t id,
+    Dim::TimePoint time,
     float value
 );
 
 struct IDbEnumNotify {
     virtual ~IDbEnumNotify() {}
-    // Called for each matching value, return false to abort the enum, 
-    // otherwise it continues to the next value.
+    // Called for each matching sample, return false to abort the enum,
+    // otherwise it continues to the next sample.
     virtual bool OnDbSample(
         uint32_t id,
         std::string_view name,
@@ -101,15 +101,15 @@ struct DbProgressInfo {
 struct IDbProgressNotify {
     virtual ~IDbProgressNotify() {}
     virtual bool OnDbProgress(
-        bool complete, 
+        bool complete,
         const DbProgressInfo & info
     ) = 0;
 };
 
 void dbWriteDump(
     IDbProgressNotify * notify,
-    std::ostream & os, 
-    DbHandle h, 
+    std::ostream & os,
+    DbHandle h,
     std::string_view wildname = {}
 );
 
