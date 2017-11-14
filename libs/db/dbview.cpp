@@ -151,5 +151,5 @@ void * DbWriteView::wptr(uint32_t pgno) const {
 *
 ***/
 
-template class DbFileView<false>;
-template class DbFileView<true>;
+template class DbFileView<false>;   // read only
+template class DbFileView<true>;    // read/write

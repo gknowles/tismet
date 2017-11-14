@@ -24,7 +24,7 @@ public:
 
 protected:
     using Pointer = std::conditional_t<Writable, char *, const char *>;
-    static constexpr Dim::File::ViewMode kMode = Writable 
+    static constexpr Dim::File::ViewMode kMode = Writable
         ? Dim::File::kViewReadWrite
         : Dim::File::kViewReadOnly;
     size_t minFirstSize() const;
@@ -39,7 +39,7 @@ private:
     size_t m_pageSize = 0;
 };
 
-class DbReadView : public DbFileView<false> 
+class DbReadView : public DbFileView<false>
 {};
 
 class DbWriteView : public DbFileView<true> {
@@ -54,36 +54,122 @@ public:
 *
 ***/
 
-enum DbLogRecType {
+enum DbLogRecType : uint8_t {
+    kRecTypeFree,               // [any]
     kRecTypeInitSegment,        // [segment]
-    kRecTypeInitMetric,         // [metric] name
-    kRecTypeInitSample,         // [sample] pageTime, lastPos
+    kRecTypeUpdateSegment,      // [master/segment] pgno, isFree
     kRecTypeInitRadix,          // [radix] height, isWithList, page list
-    kRecTypeFree,               // [any] nextPage
+    kRecTypeUpdateRadix,        // [radix] pos, pgno
+    kRecTypeCopyRadix,          // [radix] height, page list
+    kRecTypeEraseRadix,         // [metric/radix] firstPos, lastPos
+    kRecTypePromoteRadix,       // [metric/radix] height
+    kRecTypeInitMetric,         // [metric] name
     kRecTypeUpdateMetric,       // [metric] retention, interval
+    kRecTypeClearSampleIndex,   // [metric]
     kRecTypeUpdateSampleIndex,  // [metric] pos, pgno, isNewLast, isRadix
+    kRecTypeInitSample,         // [sample] pageTime, lastPos
     kRecTypeUpdateSample,       // [sample] first, last, value, isNewLastFlag
                                 //   [first, last) = NANs, last = value
-    kRecTypeEraseSampleIndex,   // [metric]
-    kRecTypeUpdateSampleTime,   // [sample] first time
-    kRecTypeEraseRadix,         // [metric/radix] firstPos, lastPos
-    kRecTypeCopyRadix,          // [radix] height, page list
-    kRecTypePromoteRadix,       // [metric/radix] height
-    kRecTypeUpdateRadix,        // [radix] pos, pgno
-    kRecTypeUpdateFreeMap,      // [master/segment] pgno, isFree
+    kRecTypeUpdateSampleTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
+    kRecTypeCommit,             // N/A
 };
 
 struct DbLogRec {
-    DbLogRecType type;
+    uint64_t seq : 16;
+    uint64_t txn : 48;
     uint32_t pgno;
-    uint64_t lsn;
-    uint32_t checksum;
+    DbLogRecType type;
 };
 
 class DbLog {
 public:
+    bool open(std::string_view file);
+
+    // Returns initial LSN for transaction, each log event updates it, and
+    // finally it is consumed and invalidated by the call to commit that
+    // completes the transaction.
+    uint64_t beginTrans();
+    void commit(uint64_t & lsn);
 
 private:
+    DbLogRec * alloc(size_t bytes);
+
     Dim::FileHandle m_file;
-    
+    uint64_t m_lastTxnId = 0;
+};
+
+class DbTxn {
+public:
+    DbTxn(DbLog & log);
+    ~DbTxn();
+
+    void logFree(uint32_t pgno);
+    void logInitSegment(uint32_t pgno);
+    void logUpdateSegment(
+        uint32_t pgno,
+        uint32_t refPage,
+        bool free
+    );
+    void logInitRadix(
+        uint32_t pgno,
+        uint16_t height,
+        uint32_t * firstPage,
+        uint32_t * lastPage
+    );
+    void logUpdateRadix(
+        uint32_t pgno,
+        size_t pos,
+        uint32_t refPage
+    );
+    void logCopyRadix(
+        uint32_t pgno,
+        uint16_t height,
+        uint32_t * firstPage,
+        uint32_t * lastPage
+    );
+    void logEraseRadix(
+        uint32_t pgno,
+        size_t firstPos,
+        size_t lastPos
+    );
+    void logPromoteRadix(uint32_t pgno, uint16_t height);
+    void logInitMetric(
+        uint32_t pgno,
+        std::string_view name,
+        Dim::Duration retention,
+        Dim::Duration interval
+    );
+    void logUpdateMetric(
+        uint32_t pgno,
+        Dim::Duration retention,
+        Dim::Duration interval
+    );
+    void logClearSampleIndex(uint32_t pgno);
+    void logUpdateSampleIndex(
+        uint32_t pgno,
+        size_t pos,
+        uint32_t refPage,
+        bool updateLast,
+        bool updateIndex
+    );
+    void logInitSample(
+        uint32_t pgno,
+        Dim::TimePoint pageTime,
+        size_t lastPos
+    );
+    void logUpdateSample(
+        uint32_t pgno,
+        size_t firstPos,
+        size_t lastPos,
+        float value,
+        bool updateLast
+    );
+    void logUpdateSampleTime(
+        uint32_t pgno,
+        Dim::TimePoint pageTime
+    );
+
+private:
+    DbLog & m_log;
+    uint64_t m_lsn;
 };

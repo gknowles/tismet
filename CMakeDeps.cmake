@@ -17,6 +17,7 @@
 # libs/db/dbdata.cpp
 # libs/db/dbdump.cpp
 # libs/db/dbint.h
+# libs/db/dblog.cpp
 # libs/db/dbradix.cpp
 # libs/db/dbradix.h
 # libs/db/dbview.cpp
