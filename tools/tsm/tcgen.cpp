@@ -78,14 +78,14 @@ static void logStart(string_view target, const Endpoint * addr) {
     {
         auto os = logMsgInfo();
         os << "Writing to " << target;
-        if (addr) 
+        if (addr)
             os << " (" << *addr << ")";
     }
     if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxSamples) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
         os << "Limits";
-        if (auto num = s_opts.maxSamples) 
+        if (auto num = s_opts.maxSamples)
             os << "; samples: " << num;
         if (auto num = s_opts.maxBytes)
             os << "; bytes: " << num;
@@ -100,7 +100,7 @@ static void logShutdown() {
     std::chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
-    os << "Done; samples: " << s_samplesWritten 
+    os << "Done; samples: " << s_samplesWritten
         << "; bytes: " << s_bytesWritten
         << "; seconds: " << elapsed.count();
 }
@@ -144,7 +144,7 @@ private:
 };
 
 //===========================================================================
-MetricSource::MetricSource() 
+MetricSource::MetricSource()
     : m_reng{m_rdev()}
     , m_rdist{s_opts.minDelta, s_opts.maxDelta}
     , m_metrics{s_opts.metrics}
@@ -179,7 +179,7 @@ Metric * MetricSource::next() {
         return &met;
 
     // advance metric
-    if (s_opts.endTime.time_since_epoch().count() 
+    if (s_opts.endTime.time_since_epoch().count()
         && met.time >= s_opts.endTime
     ) {
         m_metrics.clear();
@@ -223,10 +223,10 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
         }
 
         auto met = src.next();
-        if (!met) 
+        if (!met)
             return ptr - base;
         carbonWrite(m_buffer, met->name, met->time, (float) met->value);
-        
+
         // Check thresholds, if exceeded roll back last value and ensure
         // subsequent calls return 0 bytes.
         if (!checkLimits(m_buffer.size())) {
@@ -246,7 +246,7 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
 class AddrConn : public IAppSocketNotify {
 public:
     static constexpr size_t kBufferSize = 4096;
-    
+
 public:
     // Inherited via IAppSocketNotify
     void onSocketConnect(const AppSocketInfo & info) override;
@@ -257,7 +257,7 @@ public:
 
 private:
     void write();
-    
+
     MetricSource m_mets;
     BufferSource m_bufs;
     bool m_done{false};
@@ -299,7 +299,7 @@ void AddrConn::onSocketDisconnect() {
 }
 
 //===========================================================================
-void AddrConn::onSocketRead(AppSocketData & data) 
+void AddrConn::onSocketRead(AppSocketData & data)
 {}
 
 //===========================================================================
@@ -309,8 +309,8 @@ void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
     } else if (m_full && !info.waiting) {
         m_full = false;
         write();
-    } else if (m_done 
-        && !info.incomplete 
+    } else if (m_done
+        && !info.incomplete
         && info.total == s_bytesWritten
     ) {
         logShutdown();
@@ -392,7 +392,7 @@ bool FileJob::start(Cli & cli) {
     if (fname.view() != "-") {
         if (!m_file.open(fname.defaultExt("txt"), FileAppendQueue::kTrunc)) {
             return cli.fail(
-                EX_DATAERR, 
+                EX_DATAERR,
                 fname.str() + ": open <outputFile[.txt]> failed"
             );
         }
@@ -434,7 +434,7 @@ void FileJob::onTask() {
 static bool genCmd(Cli & cli);
 
 // 1998-07-09 16:00:00 UTC
-constexpr TimePoint kDefaultStartTime{12'544'473'600s}; 
+constexpr TimePoint kDefaultStartTime{12'544'473'600s};
 
 //===========================================================================
 CmdOpts::CmdOpts() {

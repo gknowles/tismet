@@ -19,12 +19,12 @@ path = path-seg *("." path-seg) { Start+, End+ }
 path-seg = 1*(seg-literal / seg-blot / seg-char-list / seg-str-list)
     { Start+, End+ }
 
-; * 
+; *
 seg-literal = 1*scl-char { Start+, End+ }
 seg-blot = "*" { End }
 
 ; [] - allows '-' ranges, but not negation (leading '^')
-seg-char-list = "[" [scl-dash] *(scl-single-nd ["-" scl-range-end]) 
+seg-char-list = "[" [scl-dash] *(scl-single-nd ["-" scl-range-end])
     [scl-single] "]" { End }
 scl-single = scl-char { Char+ }
 scl-single-nd = scl-char-nd { Char+, As scl-single }
@@ -36,11 +36,11 @@ seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { Start, End }
 seg-str-wsval = *WSP seg-str-val *WSP
 seg-str-val = 1*scl-char { Start+, End+ }
 
-scl-char-nd = ALPHA / DIGIT 
+scl-char-nd = ALPHA / DIGIT
     / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
-    / "+" 
-    / ":" / ";" / "<" / "=" / ">" / "?" 
-    / "@" / "\" / "^" / "_" 
+    / "+"
+    / ":" / ";" / "<" / "=" / ">" / "?"
+    / "@" / "\" / "^" / "_"
     / "`" / "|" / "~"
 scl-char = scl-char-nd / "-"
 

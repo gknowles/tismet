@@ -48,8 +48,8 @@ private:
     std::string m_buf;
 };
 
-class ICarbonSocketNotify 
-    : public Dim::IAppSocketNotify 
+class ICarbonSocketNotify
+    : public Dim::IAppSocketNotify
     , public ICarbonNotify
 {
 private:
@@ -76,20 +76,20 @@ struct CarbonUpdate {
 };
 
 // Returns false on malformed input, and true otherwise (update successfully
-// parsed or more data needed). On return if upd.name is empty more data is 
+// parsed or more data needed). On return if upd.name is empty more data is
 // needed and src is unchanged, otherwise upd is fully populated and src is
 // adjusted to reference the leftover suffix of src that was not parsed.
 bool carbonParse(CarbonUpdate & upd, std::string_view & src);
 
 void carbonWrite(
-    std::ostream & os, 
-    std::string_view name, 
+    std::ostream & os,
+    std::string_view name,
     Dim::TimePoint time,
     double value
 );
 void carbonWrite(
-    std::string & out, 
-    std::string_view name, 
+    std::string & out,
+    std::string_view name,
     Dim::TimePoint time,
     double value
 );

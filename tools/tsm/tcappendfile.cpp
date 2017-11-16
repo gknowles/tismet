@@ -16,7 +16,7 @@ using namespace Dim;
 ***/
 
 //===========================================================================
-FileAppendQueue::FileAppendQueue(int numBufs, int maxWrites) 
+FileAppendQueue::FileAppendQueue(int numBufs, int maxWrites)
     : m_numBufs{numBufs}
     , m_maxWrites{maxWrites}
 {
@@ -73,14 +73,14 @@ void FileAppendQueue::close() {
         return;
 
     unique_lock<mutex> lk{m_mut};
-    while (m_fullBufs + m_lockedBufs) 
+    while (m_fullBufs + m_lockedBufs)
         m_cv.wait(lk);
 
     if (auto used = m_bufLen - m_buf.size()) {
         if (~fileMode(m_file) & File::fAligned) {
             fileAppendWait(m_file, m_buf.data() - used, used);
         } else {
-            // Since the old file handle was opened with fAligned we can't use 
+            // Since the old file handle was opened with fAligned we can't use
             // it to write the trailing partial buffer.
             Path path = filePath(m_file);
             fileClose(m_file);
@@ -100,7 +100,7 @@ void FileAppendQueue::append(std::string_view data) {
     auto bytes = min(data.size(), m_buf.size());
     memcpy((char *) m_buf.data(), data.data(), bytes);
     m_buf.remove_prefix(bytes);
-    if (!m_buf.empty()) 
+    if (!m_buf.empty())
         return;
 
     {
@@ -153,10 +153,10 @@ void FileAppendQueue::write_UNLK(unique_lock<mutex> & lk) {
     lk.unlock();
 
     fileWrite(
-        this, 
-        m_file, 
-        writePos, 
-        writeBuf, 
+        this,
+        m_file,
+        writePos,
+        writeBuf,
         writeCount,
         taskComputeQueue()
     );

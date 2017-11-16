@@ -38,7 +38,7 @@ namespace {
 static auto & s_perfClients = uperf("carbon clients");
 static auto & s_perfCurrent = uperf("carbon clients (current)");
 static auto & s_perfUpdates = uperf("carbon updates");
-static auto & s_perfErrors = uperf("carbon errors"); 
+static auto & s_perfErrors = uperf("carbon errors");
 
 
 /****************************************************************************
@@ -116,7 +116,7 @@ void ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
 namespace {
 class CarbonMatch : public IAppSocketMatchNotify {
     AppSocket::MatchType OnMatch(
-        AppSocket::Family fam, 
+        AppSocket::Family fam,
         string_view view) override;
 };
 static CarbonMatch s_sockMatch;
@@ -156,7 +156,7 @@ void carbonInitialize() {
 
 //===========================================================================
 // characters allowed in metric names:
-//  graphite: 
+//  graphite:
 //      normal: alnum + !#$%&"'+-.:;<=>?@^_`|~\
 //      strict: a-z A-Z _ - . =
 //      wildcards: *[]{}
@@ -185,8 +185,8 @@ bool carbonParse(CarbonUpdate & upd, string_view & src) {
 
 //===========================================================================
 void carbonWrite(
-    ostream & os, 
-    string_view name, 
+    ostream & os,
+    string_view name,
     TimePoint time,
     double value
 ) {
@@ -197,8 +197,8 @@ void carbonWrite(
 
 //===========================================================================
 void carbonWrite(
-    string & out, 
-    string_view name, 
+    string & out,
+    string_view name,
     TimePoint time,
     double value
 ) {

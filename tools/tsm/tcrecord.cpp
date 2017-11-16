@@ -57,9 +57,9 @@ static void logStart(string_view target, const Endpoint & source) {
         auto os = logMsgInfo();
         os.imbue(locale(""));
         os << "Limits";
-        if (auto num = s_opts.maxSamples) 
+        if (auto num = s_opts.maxSamples)
             os << "; samples: " << num;
-        if (auto num = s_opts.maxBytes) 
+        if (auto num = s_opts.maxBytes)
             os << "; bytes: " << num;
         if (auto num = s_opts.maxSecs)
             os << "; seconds: " << num;
@@ -202,7 +202,7 @@ CmdOpts::CmdOpts() {
         .desc("'-' for stdout, otherwise extension defaults to '.txt'")
         .check([](auto & cli, auto & opt, auto & val) {
             if (*opt) {
-                return opt->view() == "-" 
+                return opt->view() == "-"
                     ? true
                     : (bool) opt->defaultExt("txt");
             } else {

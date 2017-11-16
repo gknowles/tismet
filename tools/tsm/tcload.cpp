@@ -10,9 +10,9 @@ using namespace Dim;
 
 
 /****************************************************************************
-*     
+*
 *   Command line
-*     
+*
 ***/
 
 static bool loadCmd(Cli & cli);
@@ -29,18 +29,18 @@ static auto & s_truncate = s_cli.opt<bool>("truncate", false)
 
 
 /****************************************************************************
-*     
+*
 *   Variables
-*     
+*
 ***/
 
 static TimePoint s_startTime;
 
 
 /****************************************************************************
-*     
+*
 *   Helpers
-*     
+*
 ***/
 
 //===========================================================================
@@ -64,9 +64,9 @@ static void logShutdown(const DbProgressInfo & info) {
 
 
 /****************************************************************************
-*     
+*
 *   LoadProgress
-*     
+*
 ***/
 
 namespace {
@@ -83,7 +83,7 @@ struct LoadProgress : IDbProgressNotify {
 
 //===========================================================================
 bool LoadProgress::OnDbProgress(
-    bool complete, 
+    bool complete,
     const DbProgressInfo & info
 ) {
     if (complete) {
@@ -102,9 +102,9 @@ bool LoadProgress::OnDbProgress(
 
 
 /****************************************************************************
-*     
+*
 *   Load command
-*     
+*
 ***/
 
 //===========================================================================

@@ -24,8 +24,8 @@ DbFileView<Writable>::~DbFileView() {
 //===========================================================================
 template<bool Writable>
 bool DbFileView<Writable>::open(
-    FileHandle file, 
-    size_t viewSize, 
+    FileHandle file,
+    size_t viewSize,
     size_t pageSize
 ) {
     assert(!m_file && "file view already open");
@@ -37,7 +37,7 @@ bool DbFileView<Writable>::open(
     m_pageSize = pageSize;
 
     // First view is the size of the entire file rounded up to segment size,
-    // and always at least two segments. 
+    // and always at least two segments.
     auto len = fileSize(file);
     m_firstViewSize = len + viewSize - 1;
     m_firstViewSize -= m_firstViewSize % viewSize;
@@ -119,8 +119,8 @@ size_t DbFileView<Writable>::minFirstSize() const {
 
 //===========================================================================
 template<bool Writable>
-auto DbFileView<Writable>::ptr(uint32_t pgno) const 
-    -> Pointer 
+auto DbFileView<Writable>::ptr(uint32_t pgno) const
+    -> Pointer
 {
     auto pos = pgno * m_pageSize;
     if (pos < m_firstViewSize)

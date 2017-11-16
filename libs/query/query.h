@@ -40,14 +40,14 @@ struct QueryInfo {
     Dim::TempHeap heap;
 };
 
-// Returns false on malformed input, otherwise true and the query was 
+// Returns false on malformed input, otherwise true and the query was
 // successfully parsed.
 bool queryParse(QueryInfo & qry, std::string_view src);
 
-// Returns returns an entry for each segment of path. "out" will empty if 
+// Returns returns an entry for each segment of path. "out" will empty if
 // query is not a path.
 void queryPathSegments(
-    std::vector<QueryInfo::PathSegment> & out, 
+    std::vector<QueryInfo::PathSegment> & out,
     const QueryInfo & qry
 );
 // Use the node values returned by queryPathSegments()

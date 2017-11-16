@@ -34,8 +34,8 @@ using namespace Dim;
 static void parseTest(
     int line,
     string_view text,
-    float value, 
-    TimePoint time, 
+    float value,
+    TimePoint time,
     string_view name = "metric"
 ) {
     CarbonUpdate upd;
@@ -59,9 +59,9 @@ static void internalTest() {
 
 
 /****************************************************************************
-*     
+*
 *   Application
-*     
+*
 ***/
 
 //===========================================================================
@@ -92,7 +92,7 @@ static void app(int argc, char * argv[]) {
 
 //===========================================================================
 int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
         | _CRTDBG_LEAK_CHECK_DF
         | _CRTDBG_DELAY_FREE_MEM_DF
     );

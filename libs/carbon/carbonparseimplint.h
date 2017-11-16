@@ -20,26 +20,26 @@
 //===========================================================================
 inline bool CarbonParser::onExpMinusEnd () {
     m_expMinus = true;
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onExpNumChar (char ch) {
     m_exp = 10 * m_exp + (ch - '0');
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onFracNumChar (char ch) {
     m_int = 10 * m_int + (ch - '0');
     m_frac += 1;
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onIntNumChar (char ch) {
     m_int = 10 * m_int + (ch - '0');
-    return true; 
+    return true;
 }
 
 //===========================================================================
@@ -66,29 +66,29 @@ inline bool CarbonParser::onMetricEnd () {
     }
     m_int = 0;
 
-    return false; 
+    return false;
 }
 
 //===========================================================================
 inline bool CarbonParser::onIntMinusEnd () {
     m_minus = true;
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onPathStart (const char * ptr) {
     m_nameStart = ptr;
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onPathEnd (const char * eptr) {
     m_nameEnd = eptr;
-    return true; 
+    return true;
 }
 
 //===========================================================================
 inline bool CarbonParser::onTimestampChar (char ch) {
     m_seconds = 10 * m_seconds + (ch - '0');
-    return true; 
+    return true;
 }

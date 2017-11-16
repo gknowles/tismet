@@ -40,31 +40,31 @@ struct QueryInfo::Node : Dim::ListBaseLink<> {
 QueryInfo::Node * addPath(QueryInfo * qi);
 QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * path);
 QueryInfo::Node * addSegLiteral(
-    QueryInfo * qi, 
-    QueryInfo::Node * seg, 
+    QueryInfo * qi,
+    QueryInfo::Node * seg,
     std::string_view val
 );
 QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * seg);
 QueryInfo::Node * addSegChoices(
-    QueryInfo * qi, 
-    QueryInfo::Node * seg, 
+    QueryInfo * qi,
+    QueryInfo::Node * seg,
     std::bitset<256> & vals
 );
 QueryInfo::Node * addSegStrChoices(QueryInfo * qi, QueryInfo::Node * seg);
 QueryInfo::Node * addSegChoice(
-    QueryInfo * qi, 
+    QueryInfo * qi,
     QueryInfo::Node * seg,
     std::string_view val
 );
 QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type);
 QueryInfo::Node * addFuncArg(
-    QueryInfo * qi, 
-    QueryInfo::Node * func, 
+    QueryInfo * qi,
+    QueryInfo::Node * func,
     QueryInfo::NodeType type
 );
 QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * func);
 QueryInfo::Node * addNumArg(
-    QueryInfo * qi, 
-    QueryInfo::Node * func, 
+    QueryInfo * qi,
+    QueryInfo::Node * func,
     double val
 );

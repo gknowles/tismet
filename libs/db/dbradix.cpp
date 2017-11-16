@@ -17,7 +17,7 @@ using namespace Dim;
 
 //===========================================================================
 DbRadix::DbRadix(
-    size_t pageSize, 
+    size_t pageSize,
     size_t rootOffset,
     size_t pageOffset,
     size_t maxPage
@@ -27,7 +27,7 @@ DbRadix::DbRadix(
 
 //===========================================================================
 void DbRadix::init(
-    size_t pageSize, 
+    size_t pageSize,
     size_t rootOffset,
     size_t pageOffset,
     size_t maxPage
@@ -43,8 +43,8 @@ void DbRadix::init(
 
 //===========================================================================
 size_t DbRadix::convert(
-    int * out, 
-    size_t maxDigits, 
+    int * out,
+    size_t maxDigits,
     size_t value
 ) const {
     int * base = out;
@@ -81,7 +81,7 @@ size_t DbRadix::pageEntries() const {
 
 //===========================================================================
 ostream & operator<< (ostream & os, const DbRadix & rd) {
-    os << rd.m_pageSize << ' ' << rd.m_rootOffset << ' ' 
+    os << rd.m_pageSize << ' ' << rd.m_rootOffset << ' '
         << rd.m_pageOffset << ' ' << rd.m_maxPage;
     return os;
 }

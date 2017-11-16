@@ -20,13 +20,13 @@ class DbRadix {
 public:
     DbRadix() {}
     DbRadix(
-        size_t pageSize, 
+        size_t pageSize,
         size_t rootOffset,
         size_t pageOffset = 64,
         size_t maxPage = std::numeric_limits<uint32_t>::max()
     );
     void init(
-        size_t pageSize, 
+        size_t pageSize,
         size_t rootOffset,
         size_t pageOffset = 64,
         size_t maxPage = std::numeric_limits<uint32_t>::max()
@@ -37,11 +37,11 @@ public:
 
 private:
     friend std::ostream & operator<< (
-        std::ostream & os, 
+        std::ostream & os,
         const DbRadix & rd
     );
 
-    size_t m_pageSize{0};   // page size - offset = space for radix list 
+    size_t m_pageSize{0};   // page size - offset = space for radix list
     size_t m_rootOffset{0}; // offset, in sizeof(pgno), to radix list on root
     size_t m_pageOffset{0}; // offset to radix list on all non-root pages
     size_t m_maxPage{0};    // maximum page number that is convertable

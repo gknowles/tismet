@@ -19,11 +19,11 @@ BSLASH = %x5c ; \
 
 ; Path
 path = 1*path-chars { Start+, End+ }
-path-chars = ALPHA / DIGIT 
+path-chars = ALPHA / DIGIT
     / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
-    / "+" / "-" / "." 
-    / ":" / ";" / "<" / "=" / ">" / "?" 
-    / "@" / "\" / "^" / "_" 
+    / "+" / "-" / "."
+    / ":" / ";" / "<" / "=" / ">" / "?"
+    / "@" / "\" / "^" / "_"
     / "`" / "|" / "~"
 
 ; Timestamp

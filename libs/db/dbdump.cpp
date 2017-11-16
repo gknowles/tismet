@@ -34,9 +34,9 @@ public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
     bool OnDbSample(
-        uint32_t id, 
-        string_view name, 
-        TimePoint time, 
+        uint32_t id,
+        string_view name,
+        TimePoint time,
         float val
     ) override;
 
@@ -49,16 +49,16 @@ private:
 } // namespace
 
 //===========================================================================
-DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info) 
+DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
     : m_os{os}
     , m_info{info}
 {}
 
 //===========================================================================
 bool DumpWriter::OnDbSample(
-    uint32_t id, 
-    string_view name, 
-    TimePoint time, 
+    uint32_t id,
+    string_view name,
+    TimePoint time,
     float val
 ) {
     m_buf.clear();
@@ -74,8 +74,8 @@ bool DumpWriter::OnDbSample(
 //===========================================================================
 void dbWriteDump(
     IDbProgressNotify * notify,
-    ostream & os, 
-    DbHandle h, 
+    ostream & os,
+    DbHandle h,
     string_view wildname
 ) {
     UnsignedSet ids;
@@ -91,7 +91,7 @@ void dbWriteDump(
     }
     info.totalMetrics = info.metrics;
     info.totalValues = info.samples;
-    if (info.totalBytes != (size_t) -1) 
+    if (info.totalBytes != (size_t) -1)
         info.bytes = info.totalBytes;
     if (notify)
         notify->OnDbProgress(true, info);
@@ -106,8 +106,8 @@ void dbWriteDump(
 
 namespace {
 
-class DbWriter 
-    : public ICarbonNotify 
+class DbWriter
+    : public ICarbonNotify
     , public IFileReadNotify
 {
 public:
@@ -124,8 +124,8 @@ public:
     // Inherited via IFileReadNotify
     bool onFileRead(
         size_t * bytesUsed,
-        string_view data, 
-        int64_t offset, 
+        string_view data,
+        int64_t offset,
         FileHandle f
     ) override;
     void onFileEnd(int64_t offset, FileHandle f) override;
@@ -164,8 +164,8 @@ void DbWriter::onCarbonValue(
 //===========================================================================
 bool DbWriter::onFileRead(
     size_t * bytesUsed,
-    string_view data, 
-    int64_t offset, 
+    string_view data,
+    int64_t offset,
     FileHandle f
 ) {
     *bytesUsed = data.size();
@@ -179,7 +179,7 @@ bool DbWriter::onFileRead(
             return false;
         }
         data.remove_prefix(size(kDumpVersion));
-        while (!data.empty() && (data[0] == '\r' || data[0] == '\n')) 
+        while (!data.empty() && (data[0] == '\r' || data[0] == '\n'))
             data.remove_prefix(1);
     }
     if (!m_notify->OnDbProgress(false, m_info))
@@ -191,7 +191,7 @@ bool DbWriter::onFileRead(
 void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalMetrics = m_info.metrics;
     m_info.totalValues = m_info.samples;
-    if (m_info.totalBytes != (size_t) -1) 
+    if (m_info.totalBytes != (size_t) -1)
         m_info.bytes = m_info.totalBytes;
     m_notify->OnDbProgress(true, m_info);
     delete this;

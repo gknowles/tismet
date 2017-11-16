@@ -81,13 +81,13 @@ static int internalTest() {
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     dbWriteDump(nullptr, cout, h);
-    // add to new page 5. creates values pages 3, 4, 5, and a radix page 
+    // add to new page 5. creates values pages 3, 4, 5, and a radix page
     // to track the value pages.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 7);
-    
-    cout << "----" << endl; 
+
+    cout << "----" << endl;
     dbWriteDump(nullptr, cout, h);
     count = 0;
     for (int i = 2; i < 30; ++i) {
@@ -100,7 +100,7 @@ static int internalTest() {
     cout << "metrics inserted: " << count << endl;
     EXPECT(count == 28);
 
-    cout << "----" << endl; 
+    cout << "----" << endl;
     dbWriteDump(nullptr, cout, h);
 
     UnsignedSet found;
@@ -108,7 +108,7 @@ static int internalTest() {
     ostringstream os;
     os << found;
     EXPECT(os.str() == "5 15 25");
-    cout << "----" << endl; 
+    cout << "----" << endl;
     dbWriteDump(nullptr, cout, h, "*.is.*.*5");
 
     dbClose(h);
@@ -118,9 +118,9 @@ static int internalTest() {
 
 
 /****************************************************************************
-*     
+*
 *   Application
-*     
+*
 ***/
 
 //===========================================================================
@@ -151,7 +151,7 @@ static void app(int argc, char * argv[]) {
 
 //===========================================================================
 int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
         | _CRTDBG_LEAK_CHECK_DF
         | _CRTDBG_DELAY_FREE_MEM_DF
     );

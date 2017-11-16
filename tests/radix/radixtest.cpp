@@ -61,12 +61,12 @@ static void app(int argc, char * argv[]) {
     auto & pageSize = cli.opt<size_t>("b", 4096)
         .desc("size of pages used by radix index");
     auto & maxPages = cli.opt<size_t>(
-        "m", 
+        "m",
         (size_t) numeric_limits<uint32_t>::max() + 1)
         .desc("maximum number of pages allowed in index");
     auto & poff = cli.opt<size_t>("p").desc("offset to list in normal pages");
     auto & roff = cli.opt<size_t>("r").desc("offset to list in root pages")
-        .after([&](auto & cli, auto & opt, auto & val) { 
+        .after([&](auto & cli, auto & opt, auto & val) {
             if (!opt)
                 *opt = *pageSize / 2;
             return true;
@@ -105,7 +105,7 @@ static void app(int argc, char * argv[]) {
 
 //===========================================================================
 int main(int argc, char * argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
         | _CRTDBG_LEAK_CHECK_DF
         | _CRTDBG_DELAY_FREE_MEM_DF
     );

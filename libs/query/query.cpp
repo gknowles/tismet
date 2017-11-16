@@ -57,7 +57,7 @@ const TokenTable::Token s_funcNames[] = {
     { QueryInfo::kFnMaximumAbove, "maximumAbove" },
     { QueryInfo::kFnSum,          "sum" },
 };
-static_assert(size(s_funcNames) == 
+static_assert(size(s_funcNames) ==
     QueryInfo::kAfterLastFunc - QueryInfo::kBeforeFirstFunc - 1);
 const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 
@@ -112,7 +112,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
         }
         break;
     case QueryInfo::kPathSeg:
-        for (auto && sn : static_cast<const PathSeg &>(node).nodes) 
+        for (auto && sn : static_cast<const PathSeg &>(node).nodes)
             appendNode(out, sn);
         break;
     case QueryInfo::kSegLiteral:
@@ -199,8 +199,8 @@ QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * node) {
 
 //===========================================================================
 QueryInfo::Node * addSegLiteral(
-    QueryInfo * qi, 
-    QueryInfo::Node * node, 
+    QueryInfo * qi,
+    QueryInfo::Node * node,
     string_view val
 ) {
     assert(node->type == QueryInfo::kPathSeg);
@@ -228,7 +228,7 @@ QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * node) {
 //===========================================================================
 QueryInfo::Node * addSegChoices(
     QueryInfo * qi,
-    QueryInfo::Node * node, 
+    QueryInfo::Node * node,
     bitset<256> & vals
 ) {
     assert(node->type == QueryInfo::kPathSeg);
@@ -292,8 +292,8 @@ QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type) {
 
 //===========================================================================
 QueryInfo::Node * addFuncArg(
-    QueryInfo * qi, 
-    QueryInfo::Node * node, 
+    QueryInfo * qi,
+    QueryInfo::Node * node,
     QueryInfo::NodeType type
 ) {
     assert(node->type > QueryInfo::kBeforeFirstFunc);
@@ -318,8 +318,8 @@ QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * node) {
 
 //===========================================================================
 QueryInfo::Node * addNumArg(
-    QueryInfo * qi, 
-    QueryInfo::Node * node, 
+    QueryInfo * qi,
+    QueryInfo::Node * node,
     double val
 ) {
     assert(node->type > QueryInfo::kBeforeFirstFunc);
@@ -364,7 +364,7 @@ bool queryParse(QueryInfo & qry, string_view src) {
 
 //===========================================================================
 void queryPathSegments(
-    vector<QueryInfo::PathSegment> & out, 
+    vector<QueryInfo::PathSegment> & out,
     const QueryInfo & qry
 ) {
     out.clear();
@@ -378,7 +378,7 @@ void queryPathSegments(
             si.flags |= QueryInfo::fWild;
         si.node = &seg;
         auto lit = static_cast<const SegLiteral *>(sn.nodes.front());
-        if (lit->type == QueryInfo::kSegLiteral) 
+        if (lit->type == QueryInfo::kSegLiteral)
             si.prefix = lit->val;
         out.push_back(si);
     }

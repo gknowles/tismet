@@ -29,9 +29,9 @@ static auto & s_qry = s_cli.opt<string>("f find")
 
 
 /****************************************************************************
-*     
+*
 *   Variables
-*     
+*
 ***/
 
 static TimePoint s_startTime;
@@ -64,9 +64,9 @@ static void logShutdown(const DbProgressInfo & info) {
 
 
 /****************************************************************************
-*     
+*
 *   LoadProgress
-*     
+*
 ***/
 
 namespace {
@@ -82,19 +82,19 @@ struct LoadProgress : IDbProgressNotify {
 
 //===========================================================================
 bool LoadProgress::OnDbProgress(
-    bool complete, 
+    bool complete,
     const DbProgressInfo & info
 ) {
-    if (complete) 
+    if (complete)
         m_info = info;
     return true;
 }
 
 
 /****************************************************************************
-*     
+*
 *   Dump command
-*     
+*
 ***/
 
 //===========================================================================
@@ -113,7 +113,7 @@ static bool dumpCmd(Cli & cli) {
         ofile.open(s_out->str(), ios::trunc);
         if (!ofile) {
             return cli.fail(
-                EX_DATAERR, 
+                EX_DATAERR,
                 string(s_out->c_str()) + ": invalid <outputFile[.txt]>"
             );
         }
