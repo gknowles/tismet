@@ -46,20 +46,21 @@ static void parseTest(
 static void internalTest() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
+    EXPECT_PARSE("sum(sum(a))", "sum(sum(a))");
     EXPECT_PARSE("a[b]c[de]f", "abc[de]f");
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
     EXPECT_PARSE("a[62-41]", "a[12346]");
     EXPECT_PARSE("a.b.c", "a.b.c");
     EXPECT_PARSE("sum( a )", "sum(a)");
-    EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))", 
+    EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))",
         "sum(maximumAbove(a.b[12346], 2))");
 }
 
 
 /****************************************************************************
-*     
+*
 *   Application
-*     
+*
 ***/
 
 //===========================================================================
@@ -90,7 +91,7 @@ static void app(int argc, char * argv[]) {
 
 //===========================================================================
 int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF 
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
         | _CRTDBG_LEAK_CHECK_DF
         | _CRTDBG_DELAY_FREE_MEM_DF
     );
