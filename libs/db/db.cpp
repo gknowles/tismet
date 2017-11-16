@@ -19,6 +19,7 @@ namespace {
 
 class DbBase : public HandleContent {
 public:
+    DbBase();
     ~DbBase();
 
     bool open(string_view name, size_t pageSize);
@@ -99,6 +100,11 @@ static auto & s_perfDeleted = uperf("metrics deleted");
 *   DbBase
 *
 ***/
+
+//===========================================================================
+DbBase::DbBase ()
+    : m_log(m_data)
+{}
 
 //===========================================================================
 DbBase::~DbBase () {

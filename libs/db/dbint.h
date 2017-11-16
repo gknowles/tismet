@@ -78,28 +78,44 @@ enum DbLogRecType : uint8_t {
     kRecTypeTxnCommit,          // N/A
 };
 
-struct DbLogRec {
-    uint64_t seq : 16;
-    uint64_t txn : 48;
-    uint32_t pgno;
-    DbLogRecType type;
-};
+class DbData;
 
 class DbLog {
 public:
+    struct Record;
+
+public:
+    DbLog(DbData & data);
+
     bool open(std::string_view file);
 
     // Returns initial LSN for transaction, each log event updates it, and
     // finally it is consumed and invalidated by the call to commit that
     // completes the transaction.
-    uint64_t beginTrans();
-    void commit(uint64_t & lsn);
+    uint16_t beginTrans();
+    void commit(uint16_t txn);
+
+    template<typename T>
+    T * alloc(
+        uint16_t txn,
+        DbLogRecType type,
+        uint32_t pgno,
+        size_t bytes = sizeof(T)
+    );
+
+    Record * alloc(
+        uint16_t txn,
+        DbLogRecType type,
+        uint32_t pgno,
+        size_t bytes
+    );
+    void apply(Record * rec);
 
 private:
-    DbLogRec * alloc(size_t bytes);
-
+    DbData & m_data;
     Dim::FileHandle m_file;
-    uint64_t m_lastTxnId = 0;
+    uint16_t m_lastTxnId = 0;
+    uint64_t m_lastLsn = 0;
 };
 
 class DbTxn {
@@ -168,7 +184,7 @@ public:
 
 private:
     DbLog & m_log;
-    uint64_t m_lsn;
+    uint16_t m_txn;
 };
 
 
@@ -180,7 +196,6 @@ private:
 
 class DbData : public Dim::HandleContent {
 public:
-    struct PageHeader;
     struct SegmentPage;
     struct MasterPage;
     struct FreePage;
@@ -231,8 +246,6 @@ public:
         Dim::TimePoint last
     );
 
-    const std::unordered_map<std::string, uint32_t> & metrics() const;
-
     void applyPageFree(uint32_t pgno);
     void applySegmentInit(uint32_t pgno);
     void applySegmentUpdate(
@@ -263,10 +276,6 @@ private:
     template<typename T> std::unique_ptr<T> editPage(uint32_t pgno) const;
     template<typename T> std::unique_ptr<T> editPage(const T & data) const;
 
-    // allocate new page (with new id) that is a copy of an existing page
-    template<typename T> std::unique_ptr<T> dupPage(uint32_t pgno);
-    template<typename T> std::unique_ptr<T> dupPage(const T & data);
-
     template<typename T>
     void writePage(T & data) const;
     void writePagePrefix(
@@ -275,17 +284,17 @@ private:
         size_t count
     ) const;
 
-    void radixClear(DbTxn & txn, PageHeader & hdr);
+    void radixClear(DbTxn & txn, DbPageHeader & hdr);
     void radixErase(
         DbTxn & txn,
-        PageHeader & hdr,
+        DbPageHeader & hdr,
         size_t firstPos,
         size_t lastPos
     );
     void radixFreePage(DbTxn & txn, uint32_t pgno);
     bool radixInsert(DbTxn & txn, uint32_t root, size_t pos, uint32_t value);
     bool radixFind(
-        PageHeader const ** hdr,
+        DbPageHeader const ** hdr,
         RadixData const ** rd,
         size_t * rpos,
         uint32_t root,

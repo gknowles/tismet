@@ -46,9 +46,7 @@ const unsigned kDataFileSig[] = {
     0xa33f3ba2
 };
 
-namespace {
-
-enum PageType : uint32_t {
+enum DbPageType : uint32_t {
     kPageTypeFree = 'F',
     kPageTypeMaster = 'M',
     kPageTypeSegment = 'S',
@@ -57,23 +55,13 @@ enum PageType : uint32_t {
     kPageTypeSample = 's',
 };
 
-} // namespace
-
-struct DbData::PageHeader {
-    PageType type;
-    uint32_t pgno;
-    uint32_t id;
-    uint32_t checksum;
-    uint64_t lsn;
-};
-
 struct DbData::SegmentPage {
-    static const PageType type = kPageTypeSegment;
-    PageHeader hdr;
+    static const DbPageType type = kPageTypeSegment;
+    DbPageHeader hdr;
 };
 
 struct DbData::MasterPage {
-    static const PageType type = kPageTypeMaster;
+    static const DbPageType type = kPageTypeMaster;
     SegmentPage segment;
     char signature[sizeof(kDataFileSig)];
     unsigned pageSize;
@@ -83,9 +71,8 @@ static_assert(is_standard_layout_v<DbData::MasterPage>);
 static_assert(2 * sizeof(DbData::MasterPage) <= kMinPageSize);
 
 struct DbData::FreePage {
-    static const PageType type = kPageTypeFree;
-    PageHeader hdr;
-    unsigned nextPage;
+    static const DbPageType type = kPageTypeFree;
+    DbPageHeader hdr;
 };
 
 struct DbData::RadixData {
@@ -97,16 +84,16 @@ struct DbData::RadixData {
 };
 
 struct DbData::RadixPage {
-    static const PageType type = kPageTypeRadix;
-    PageHeader hdr;
+    static const DbPageType type = kPageTypeRadix;
+    DbPageHeader hdr;
 
     // EXTENDS BEYOND END OF STRUCT
     RadixData rd;
 };
 
 struct DbData::MetricPage {
-    static const PageType type = kPageTypeMetric;
-    PageHeader hdr;
+    static const DbPageType type = kPageTypeMetric;
+    DbPageHeader hdr;
     char name[kMaxMetricNameLen];
     Duration interval;
     Duration retention;
@@ -118,8 +105,8 @@ struct DbData::MetricPage {
 };
 
 struct DbData::SamplePage {
-    static const PageType type = kPageTypeSample;
-    PageHeader hdr;
+    static const DbPageType type = kPageTypeSample;
+    DbPageHeader hdr;
 
     // time of first sample on page
     TimePoint pageFirstTime;
@@ -307,7 +294,7 @@ bool DbData::loadMetrics (
     if (!pgno)
         return true;
 
-    auto p = viewPage<PageHeader>(pgno);
+    auto p = viewPage<DbPageHeader>(pgno);
     if (!p)
         return false;
 
@@ -817,7 +804,7 @@ size_t DbData::enumSamples(
 ***/
 
 //===========================================================================
-static DbData::RadixData * radixData(DbData::PageHeader * hdr) {
+static DbData::RadixData * radixData(DbPageHeader * hdr) {
     if (hdr->type == kPageTypeMetric) {
         return &reinterpret_cast<DbData::MetricPage *>(hdr)->rd;
     } else {
@@ -827,8 +814,8 @@ static DbData::RadixData * radixData(DbData::PageHeader * hdr) {
 }
 
 //===========================================================================
-static const DbData::RadixData * radixData(const DbData::PageHeader * hdr) {
-    return radixData(const_cast<DbData::PageHeader *>(hdr));
+static const DbData::RadixData * radixData(const DbPageHeader * hdr) {
+    return radixData(const_cast<DbPageHeader *>(hdr));
 }
 
 //===========================================================================
@@ -841,7 +828,7 @@ void DbData::radixFreePage(DbTxn & txn, uint32_t pgno) {
 }
 
 //===========================================================================
-void DbData::radixClear(DbTxn & txn, PageHeader & hdr) {
+void DbData::radixClear(DbTxn & txn, DbPageHeader & hdr) {
     auto rd = radixData(&hdr);
     for (int i = 0; i < rd->numPages; ++i) {
         if (uint32_t p = rd->pages[i]) {
@@ -855,19 +842,19 @@ void DbData::radixClear(DbTxn & txn, PageHeader & hdr) {
 //===========================================================================
 void DbData::radixErase(
     DbTxn & txn,
-    PageHeader & rhdr,
+    DbPageHeader & rhdr,
     size_t firstPos,
     size_t lastPos
 ) {
     assert(firstPos <= lastPos);
     while (firstPos < lastPos) {
-        const PageHeader * hdr;
+        const DbPageHeader * hdr;
         const RadixData * rd;
         size_t rpos;
         if (!radixFind(&hdr, &rd, &rpos, rhdr.pgno, firstPos))
             return;
 
-        unique_ptr<PageHeader> nhdr;
+        unique_ptr<DbPageHeader> nhdr;
         RadixData * nrd;
         if (hdr == &rhdr) {
             nrd = radixData(&rhdr);
@@ -897,7 +884,7 @@ bool DbData::radixInsert(
     size_t pos,
     uint32_t value
 ) {
-    auto hdr = viewPage<PageHeader>(root);
+    auto hdr = viewPage<DbPageHeader>(root);
     auto rd = radixData(hdr);
     DbRadix & cvt = (hdr->type == kPageTypeMetric)
         ? m_rdMetric
@@ -934,7 +921,7 @@ bool DbData::radixInsert(
             writePage(*nhdr);
             assert(rd->pages[pos]);
         }
-        hdr = viewPage<PageHeader>(rd->pages[pos]);
+        hdr = viewPage<DbPageHeader>(rd->pages[pos]);
         rd = radixData(hdr);
         d += 1;
         count -= 1;
@@ -951,13 +938,13 @@ bool DbData::radixInsert(
 
 //===========================================================================
 bool DbData::radixFind(
-    PageHeader const ** hdr,
+    DbPageHeader const ** hdr,
     RadixData const ** rd,
     size_t * rpos,
     uint32_t root,
     size_t pos
 ) {
-    *hdr = viewPage<PageHeader>(root);
+    *hdr = viewPage<DbPageHeader>(root);
     *rd = radixData(*hdr);
     DbRadix & cvt = ((*hdr)->type == kPageTypeMetric)
         ? m_rdMetric
@@ -973,7 +960,7 @@ bool DbData::radixFind(
         int pos = (height > count) ? 0 : *d;
         if (!(*rd)->pages[pos])
             return false;
-        *hdr = viewPage<PageHeader>((*rd)->pages[pos]);
+        *hdr = viewPage<DbPageHeader>((*rd)->pages[pos]);
         *rd = radixData(*hdr);
         assert((*rd)->height == height - 1);
         if (height == count) {
@@ -988,7 +975,7 @@ bool DbData::radixFind(
 
 //===========================================================================
 bool DbData::radixFind(uint32_t * out, uint32_t root, size_t pos) {
-    const PageHeader * hdr;
+    const DbPageHeader * hdr;
     const RadixData * rd;
     size_t rpos;
     if (radixFind(&hdr, &rd, &rpos, root, pos)) {
@@ -1002,7 +989,7 @@ bool DbData::radixFind(uint32_t * out, uint32_t root, size_t pos) {
 
 /****************************************************************************
 *
-*   Page management
+*   Segments
 *
 ***/
 
@@ -1014,24 +1001,6 @@ static BitView segmentBitView(void * hdr, size_t pageSize) {
 }
 
 //===========================================================================
-const void * DbData::viewPageRaw(uint32_t pgno) const {
-    if (pgno >= m_numPages)
-        return nullptr;
-    return m_vdata.rptr(pgno);
-}
-
-//===========================================================================
-template<typename T>
-const T * DbData::viewPage(uint32_t pgno) const {
-    assert(pgno < m_numPages);
-    auto ptr = static_cast<const T *>(viewPageRaw(pgno));
-    if constexpr (!is_same_v<T, PageHeader>) {
-        assert(ptr->hdr.type == ptr->type);
-    }
-    return ptr;
-}
-
-//===========================================================================
 bool DbData::loadFreePages () {
     auto pps = pagesPerSegment(m_pageSize);
     assert(m_freePages.empty());
@@ -1039,9 +1008,9 @@ bool DbData::loadFreePages () {
         auto pp = segmentPage(pgno, m_pageSize);
         auto segPage = pp.first;
         assert(!pp.second);
-        auto sp = viewPage<PageHeader>(segPage);
+        auto sp = viewPage<DbPageHeader>(segPage);
         assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
-        auto bits = segmentBitView(const_cast<PageHeader *>(sp), m_pageSize);
+        auto bits = segmentBitView(const_cast<DbPageHeader *>(sp), m_pageSize);
         for (auto first = bits.find(0); first != bits.npos; ) {
             auto last = bits.findZero(first);
             if (last == bits.npos)
@@ -1059,7 +1028,7 @@ bool DbData::loadFreePages () {
     for (auto && pgno : m_freePages) {
         if (pgno >= m_numPages)
             break;
-        auto fp = viewPage<PageHeader>(pgno);
+        auto fp = viewPage<DbPageHeader>(pgno);
         if (!fp || fp->type && fp->type != kPageTypeFree) {
             logMsgError() << "Bad free page #" << pgno << " in "
                 << filePath(m_fdata);
@@ -1090,32 +1059,22 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
         (void) segPos;
         m_numPages += 1;
         m_vdata.growToFit(segPage);
-        auto nsp = allocPage<SegmentPage>(0, segPage);
-        auto bits = segmentBitView(nsp.get(), m_pageSize);
-        bits.set();
-        bits.reset(0);
-        writePage(*nsp);
+        txn.logSegmentInit(segPage);
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
     auto pgno = *m_freePages.lowerBound(0);
     m_freePages.erase(pgno);
 
-    auto [segPage, segPos] = segmentPage(pgno, m_pageSize);
-    auto sp = viewPage<PageHeader>(segPage);
-    assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
-    auto nsp = editPage(*sp);
-    auto bits = segmentBitView(nsp.get(), m_pageSize);
-    assert(bits[segPos]);
-    bits.reset(segPos);
-    writePage(*nsp);
+    auto segPage = segmentPage(pgno, m_pageSize).first;
+    txn.logSegmentUpdate(segPage, pgno, false);
     if (pgno >= m_numPages) {
         assert(pgno == m_numPages);
         m_numPages += 1;
         m_vdata.growToFit(pgno);
     }
 
-    auto fp [[maybe_unused]] = viewPage<PageHeader>(pgno);
+    auto fp [[maybe_unused]] = viewPage<DbPageHeader>(pgno);
     assert(!fp->type || fp->type == kPageTypeFree);
     return pgno;
 }
@@ -1128,23 +1087,9 @@ unique_ptr<T> DbData::allocPage(DbTxn & txn, uint32_t id) {
 }
 
 //===========================================================================
-template<typename T>
-unique_ptr<T> DbData::allocPage(uint32_t id, uint32_t pgno) {
-    void * vptr = new char[m_pageSize];
-    memset(vptr, 0, m_pageSize);
-    T * ptr = new(vptr) T;
-    ptr->hdr.type = ptr->type;
-    ptr->hdr.pgno = pgno;
-    ptr->hdr.id = id;
-    ptr->hdr.checksum = 0;
-    ptr->hdr.lsn = 0;
-    return unique_ptr<T>(ptr);
-}
-
-//===========================================================================
 void DbData::freePage(DbTxn & txn, uint32_t pgno) {
     assert(pgno < m_numPages);
-    auto p = viewPage<PageHeader>(pgno);
+    auto p = viewPage<DbPageHeader>(pgno);
     assert(p->type != kPageTypeFree);
     FreePage fp;
     fp.hdr = *p;
@@ -1163,20 +1108,89 @@ void DbData::freePage(DbTxn & txn, uint32_t pgno) {
         logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
     }
 
-    fp.hdr.type = kPageTypeFree;
     txn.logPageFree(pgno);
-    writePagePrefix(fp.hdr.pgno, &fp, sizeof(fp));
     m_freePages.insert(pgno);
 
+    auto segPage = segmentPage(pgno, m_pageSize).first;
+    txn.logSegmentUpdate(segPage, pgno, true);
+}
+
+//===========================================================================
+void DbData::applyPageFree(uint32_t pgno) {
+    assert(pgno < m_numPages);
+    auto p = viewPage<DbPageHeader>(pgno);
+    FreePage fp;
+    fp.hdr = *p;
+    fp.hdr.type = kPageTypeFree;
+    writePagePrefix(fp.hdr.pgno, &fp, sizeof(fp));
+}
+
+//===========================================================================
+void DbData::applySegmentInit(uint32_t pgno) {
     auto [segPage, segPos] = segmentPage(pgno, m_pageSize);
-    auto sp = viewPage<PageHeader>(segPage);
+    assert(segPage == pgno && !segPos);
+    (void) segPos;
+    auto nsp = allocPage<SegmentPage>(0, segPage);
+    auto bits = segmentBitView(nsp.get(), m_pageSize);
+    bits.set();
+    bits.reset(0);
+    writePage(*nsp);
+}
+
+//===========================================================================
+void DbData::applySegmentUpdate(
+    uint32_t pgno,
+    uint32_t refPage,
+    bool free
+) {
+    auto [segPage, segPos] = segmentPage(refPage, m_pageSize);
+    assert(segPage == pgno);
+    auto sp = viewPage<DbPageHeader>(segPage);
     assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
     auto nsp = editPage(*sp);
     auto bits = segmentBitView(nsp.get(), m_pageSize);
-    assert(!bits[segPos]);
-    bits.set(segPos);
-    txn.logSegmentUpdate(segPage, pgno, true);
+    assert(bits[segPos] != free);
+    bits.set(segPos, free);
     writePage(*nsp);
+}
+
+
+/****************************************************************************
+*
+*   Page management
+*
+***/
+
+//===========================================================================
+const void * DbData::viewPageRaw(uint32_t pgno) const {
+    if (pgno >= m_numPages)
+        return nullptr;
+    return m_vdata.rptr(pgno);
+}
+
+//===========================================================================
+template<typename T>
+const T * DbData::viewPage(uint32_t pgno) const {
+    assert(pgno < m_numPages);
+    auto ptr = static_cast<const T *>(viewPageRaw(pgno));
+    if constexpr (!is_same_v<T, DbPageHeader>) {
+        assert(ptr->hdr.type == ptr->type);
+    }
+    return ptr;
+}
+
+//===========================================================================
+template<typename T>
+unique_ptr<T> DbData::allocPage(uint32_t id, uint32_t pgno) {
+    void * vptr = new char[m_pageSize];
+    memset(vptr, 0, m_pageSize);
+    T * ptr = new(vptr) T;
+    ptr->hdr.type = ptr->type;
+    ptr->hdr.pgno = pgno;
+    ptr->hdr.id = id;
+    ptr->hdr.checksum = 0;
+    ptr->hdr.lsn = 0;
+    return unique_ptr<T>(ptr);
 }
 
 //===========================================================================
@@ -1196,23 +1210,9 @@ unique_ptr<T> DbData::editPage(const T & data) const {
 
 //===========================================================================
 template<typename T>
-unique_ptr<T> DbData::dupPage(uint32_t pgno) {
-    return dupPage(*viewPage<T>(pgno));
-}
-
-//===========================================================================
-template<typename T>
-unique_ptr<T> DbData::dupPage(const T & data) {
-    auto ptr = editPage(data);
-    ptr->hdr.pgno = allocPgno();
-    return ptr;
-}
-
-//===========================================================================
-template<typename T>
 void DbData::writePage(T & data) const {
     assert(m_pageSize);
-    if constexpr (is_same_v<T, PageHeader>) {
+    if constexpr (is_same_v<T, DbPageHeader>) {
         writePagePrefix(data.pgno, &data, m_pageSize);
     } else if constexpr (is_same_v<T, MasterPage>) {
         assert((void *) &data == (void *) &data.segment.hdr);
