@@ -234,7 +234,7 @@ void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
     auto mp = txn.viewPage<MetricPage>(pgno);
     radixDestruct(txn, mp->hdr);
 
-    m_metricInfo[mp->hdr.id] = {};
+    m_metricPos[mp->hdr.id] = {};
     s_perfCount -= 1;
     m_numMetrics -= 1;
 }
@@ -267,9 +267,9 @@ bool DbData::loadMetrics (
         if (!metricIds.insert({mp->name, mp->hdr.id}).second)
             logMsgError() << "Metric multiply defined, " << mp->name;
 
-        if (m_metricInfo.size() <= mp->hdr.id)
-            m_metricInfo.resize(mp->hdr.id + 1);
-        auto & mi = m_metricInfo[mp->hdr.id];
+        if (m_metricPos.size() <= mp->hdr.id)
+            m_metricPos.resize(mp->hdr.id + 1);
+        auto & mi = m_metricPos[mp->hdr.id];
         mi.infoPage = mp->hdr.pgno;
         mi.interval = mp->interval;
         mi.lastPage = mp->lastPage;
@@ -298,9 +298,9 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, const string & name) {
     );
 
     auto mp = txn.viewPage<MetricPage>(pgno);
-    if (id >= m_metricInfo.size())
-        m_metricInfo.resize(id + 1);
-    auto & mi = m_metricInfo[id];
+    if (id >= m_metricPos.size())
+        m_metricPos.resize(id + 1);
+    auto & mi = m_metricPos[id];
     assert(!mi.infoPage);
     mi = {};
     mi.infoPage = mp->hdr.pgno;
@@ -339,7 +339,7 @@ void DbData::applyMetricInit(
 
 //===========================================================================
 bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
-    if (uint32_t pgno = m_metricInfo[id].infoPage) {
+    if (uint32_t pgno = m_metricPos[id].infoPage) {
         name = txn.viewPage<MetricPage>(pgno)->name;
         freePage(txn, pgno);
         return true;
@@ -348,23 +348,36 @@ bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
 }
 
 //===========================================================================
+bool DbData::getMetricInfo(DbTxn & txn, MetricInfo & info, uint32_t id) {
+    if (id >= m_metricPos.size()) {
+        info = {};
+        return false;
+    }
+    auto & mi = m_metricPos[id];
+    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    info.retention = mp->retention;
+    info.interval = mp->interval;
+    return true;
+}
+
+//===========================================================================
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    Duration retention,
-    Duration interval
+    const MetricInfo & info
 ) {
+    assert(id < m_metricPos.size());
     // TODO: validate interval and retention
 
-    auto & mi = m_metricInfo[id];
+    auto & mi = m_metricPos[id];
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    if (mp->retention == retention && mp->interval == interval)
+    if (mp->retention == info.retention && mp->interval == info.interval)
         return;
 
     radixDestruct(txn, mp->hdr);
-    txn.logMetricUpdate(mi.infoPage, retention, interval);
+    txn.logMetricUpdate(mi.infoPage, info.retention, info.interval);
 
-    mi.interval = interval;
+    mi.interval = info.interval;
     mi.lastPage = 0;
     mi.pageFirstTime = {};
     mi.pageLastSample = 0;
@@ -398,8 +411,8 @@ size_t DbData::samplesPerPage() const {
 }
 
 //===========================================================================
-DbData::MetricInfo & DbData::loadMetricInfo(DbTxn & txn, uint32_t id) {
-    auto & mi = m_metricInfo[id];
+DbData::MetricPosition & DbData::loadMetricPos(DbTxn & txn, uint32_t id) {
+    auto & mi = m_metricPos[id];
     assert(mi.infoPage);
 
     // Update metric info from sample page if it has no page data.
@@ -412,12 +425,12 @@ DbData::MetricInfo & DbData::loadMetricInfo(DbTxn & txn, uint32_t id) {
 }
 
 //===========================================================================
-DbData::MetricInfo & DbData::loadMetricInfo(
+DbData::MetricPosition & DbData::loadMetricPos(
     DbTxn & txn,
     uint32_t id,
     TimePoint time
 ) {
-    auto & mi = m_metricInfo[id];
+    auto & mi = m_metricPos[id];
     assert(mi.infoPage);
 
     if (!mi.lastPage) {
@@ -445,7 +458,7 @@ DbData::MetricInfo & DbData::loadMetricInfo(
         mi.pageLastSample = lastSample;
     }
 
-    return loadMetricInfo(txn, id);
+    return loadMetricPos(txn, id);
 }
 
 //===========================================================================
@@ -486,7 +499,7 @@ void DbData::updateSample(
 
     // ensure all info about the last page is loaded, the expectation is that
     // almost all updates are to the last page.
-    auto & mi = loadMetricInfo(txn, id, time);
+    auto & mi = loadMetricPos(txn, id, time);
 
     // round time down to metric's sampling interval
     time -= time.time_since_epoch() % mi.interval;
@@ -704,7 +717,7 @@ bool DbData::findSamplePage(
     uint32_t id,
     TimePoint time
 ) {
-    auto & mi = loadMetricInfo(txn, id);
+    auto & mi = loadMetricPos(txn, id);
 
     if (!mi.lastPage) {
         // metric has no sample pages (i.e. no samples)
@@ -745,7 +758,7 @@ size_t DbData::enumSamples(
     TimePoint first,
     TimePoint last
 ) {
-    auto & mi = loadMetricInfo(txn, id);
+    auto & mi = loadMetricPos(txn, id);
 
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;

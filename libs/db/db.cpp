@@ -27,10 +27,10 @@ public:
 
     bool insertMetric(uint32_t & out, const string & name);
     void eraseMetric(uint32_t id);
+    bool getMetricInfo(MetricInfo & info, uint32_t id);
     void updateMetric(
         uint32_t id,
-        Duration retention,
-        Duration interval
+        const MetricInfo & info
     );
 
     bool findMetric(uint32_t & out, const string & name) const;
@@ -302,13 +302,18 @@ void DbBase::eraseMetric(uint32_t id) {
 }
 
 //===========================================================================
+bool DbBase::getMetricInfo(MetricInfo & info, uint32_t id) {
+    DbTxn txn{m_log, m_work};
+    return m_data.getMetricInfo(txn, info, id);
+}
+
+//===========================================================================
 void DbBase::updateMetric(
     uint32_t id,
-    Duration retention,
-    Duration interval
+    const MetricInfo & info
 ) {
     DbTxn txn{m_log, m_work};
-    m_data.updateMetric(txn, id, retention, interval);
+    m_data.updateMetric(txn, id, info);
 }
 
 
@@ -397,15 +402,25 @@ void dbEraseMetric(DbHandle h, uint32_t id) {
 }
 
 //===========================================================================
-void dbUpdateMetric(
+bool dbGetMetricInfo(
+    MetricInfo & info,
     DbHandle h,
-    uint32_t id,
-    Duration retention,
-    Duration interval
+    uint32_t id
 ) {
     auto * db = s_files.find(h);
     assert(db);
-    db->updateMetric(id, retention, interval);
+    return db->getMetricInfo(info, id);
+}
+
+//===========================================================================
+void dbUpdateMetric(
+    DbHandle h,
+    uint32_t id,
+    const MetricInfo & info
+) {
+    auto * db = s_files.find(h);
+    assert(db);
+    db->updateMetric(id, info);
 }
 
 //===========================================================================

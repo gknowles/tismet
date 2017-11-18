@@ -48,12 +48,20 @@ bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 
 void dbEraseMetric(DbHandle h, uint32_t id);
 
+struct MetricInfo {
+    Dim::Duration retention;
+    Dim::Duration interval;
+};
+bool dbGetMetricInfo(
+    MetricInfo & info,
+    DbHandle h,
+    uint32_t id
+);
 // Removes all existing data when retention or interval are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
-    Dim::Duration retention,
-    Dim::Duration interval
+    const MetricInfo & info
 );
 
 void dbUpdateSample(

@@ -296,7 +296,7 @@ public:
 
     struct RadixData;
 
-    struct MetricInfo {
+    struct MetricPosition {
         Dim::Duration interval;
         uint32_t infoPage;
         uint32_t lastPage; // page with most recent samples
@@ -316,11 +316,11 @@ public:
 
     void insertMetric(DbTxn & txn, uint32_t id, const std::string & name);
     bool eraseMetric(DbTxn & txn, std::string & name, uint32_t id);
+    bool getMetricInfo(DbTxn & txn, MetricInfo & info, uint32_t id);
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
-        Dim::Duration retention,
-        Dim::Duration interval
+        const MetricInfo & info
     );
 
     void updateSample(
@@ -428,8 +428,8 @@ private:
         Dim::TimePoint time,
         uint16_t lastSample
     );
-    MetricInfo & loadMetricInfo(DbTxn & txn, uint32_t id);
-    MetricInfo & loadMetricInfo(DbTxn & txn, uint32_t id, Dim::TimePoint time);
+    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id);
+    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id, Dim::TimePoint time);
     bool findSamplePage(
         DbTxn & txn,
         uint32_t * pgno,
@@ -438,7 +438,7 @@ private:
         Dim::TimePoint time
     );
 
-    std::vector<MetricInfo> m_metricInfo;
+    std::vector<MetricPosition> m_metricPos;
 
     DbRadix m_rdIndex;
     DbRadix m_rdMetric;
