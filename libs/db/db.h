@@ -24,7 +24,6 @@ struct DbStats {
     // Constant for life of database
     unsigned pageSize;
     unsigned segmentSize;
-    unsigned viewSize;
     unsigned metricNameLength; // includes terminating null
     unsigned samplesPerPage;
 

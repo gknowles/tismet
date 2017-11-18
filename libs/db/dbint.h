@@ -7,6 +7,15 @@
 
 /****************************************************************************
 *
+*   Declarations
+*
+***/
+
+const unsigned kMinPageSize = 128;
+
+
+/****************************************************************************
+*
 *   DbView
 *
 ***/
@@ -21,6 +30,8 @@ public:
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint32_t pgno) const;
+    size_t pageSize() const { return m_pageSize; }
+    size_t viewSize() const { return m_viewSize; }
 
 protected:
     using Pointer = std::conditional_t<Writable, char *, const char *>;
@@ -50,26 +61,85 @@ public:
 
 /****************************************************************************
 *
+*   DbWork
+*
+***/
+
+enum DbPageType : uint32_t;
+
+struct DbPageHeader {
+    DbPageType type;
+    uint32_t pgno;
+    uint32_t id;
+    uint32_t checksum;
+    uint64_t lsn;
+};
+
+class DbWork {
+public:
+    ~DbWork();
+
+    bool open(
+        std::string_view datafile,
+        std::string_view workfile,
+        size_t pageSize
+    );
+    void close();
+    void flush();
+    void growToFit(uint32_t pgno);
+
+    const void * rptr(uint64_t txn, uint32_t pgno) const;
+    void * wptr(uint64_t txn, uint32_t pgno);
+    size_t pageSize() const { return m_pageSize; }
+    size_t viewSize() const { return m_vwork.viewSize(); }
+    size_t size() const { return m_pages.size(); }
+
+    void lsnCommitted(uint64_t lsn);
+
+    // TODO: remove!
+    void writePage(const DbPageHeader * hdr);
+
+private:
+    bool openWork(std::string_view workfile, size_t pageSize);
+    bool openData(std::string_view datafile);
+
+    // One entry for every data page, may point to either a data or work view
+    std::vector<void *> m_pages;
+    size_t m_pageSize{0};
+
+    DbWriteView m_vdata;
+    Dim::FileHandle m_fdata;
+    DbWriteView m_vwork;
+    Dim::FileHandle m_fwork;
+    size_t m_workPages{0};
+    Dim::UnsignedSet m_freeWorkPages;
+};
+
+
+/****************************************************************************
+*
 *   DbLog
 *
 ***/
 
 enum DbLogRecType : uint8_t {
+    kRecTypeMasterInit,         // [master]
     kRecTypePageFree,           // [any]
     kRecTypeSegmentInit,        // [segment]
-    kRecTypeSegmentAlloc,       // [master/segment] pgno
-    kRecTypeSegmentFree,        // [master/segment] pgno
-    kRecTypeRadixInit,          // [radix] height
-    kRecTypeRadixInitList,      // [radix] height, page list
-    kRecTypeRadixUpdate,        // [radix] pos, pgno
+    kRecTypeSegmentAlloc,       // [master/segment] refPage
+    kRecTypeSegmentFree,        // [master/segment] refPage
+    kRecTypeRadixInit,          // [radix] id, height
+    kRecTypeRadixInitList,      // [radix] id, height, page list
     kRecTypeRadixErase,         // [metric/radix] firstPos, lastPos
-    kRecTypeMetricInit,         // [metric] name
+    kRecTypeRadixPromote,       // [radix] refPage
+    kRecTypeRadixUpdate,        // [radix] refPos, refPage
+    kRecTypeMetricInit,         // [metric] name, id, retention, interval
     kRecTypeMetricUpdate,       // [metric] retention, interval
-    kRecTypeMetricClearIndex,   // [metric] (clears index & last)
-    kRecTypeMetricUpdateIndex,  // [metric] pos, pgno
-    kRecTypeMetricUpdateLast,   // [metric] pos, pgno
-    kRecTypeMetricUpdateIndexAndLast, // [metric] pos, pgno
-    kRecTypeSampleInit,         // [sample] pageTime, lastPos
+    kRecTypeMetricClearSamples, // [metric] (clears index & last)
+    kRecTypeMetricUpdateIndex,  // [metric] refPos, refPage
+    kRecTypeMetricUpdateLast,   // [metric] refPos, refPage
+    kRecTypeMetricUpdateIndexAndLast, // [metric] refPos, refPage
+    kRecTypeSampleInit,         // [sample] id, pageTime, lastPos
     kRecTypeSampleUpdate,       // [sample] first, last, value
                                 //   [first, last) = NANs, last = value
     kRecTypeSampleUpdateLast,   // [sample] first, last, value
@@ -85,69 +155,60 @@ public:
     struct Record;
 
 public:
-    DbLog(DbData & data);
+    DbLog(DbData & data, DbWork & work);
 
     bool open(std::string_view file);
 
-    // Returns initial LSN for transaction, each log event updates it, and
-    // finally it is consumed and invalidated by the call to commit that
-    // completes the transaction.
-    uint16_t beginTrans();
-    void commit(uint16_t txn);
-
-    template<typename T>
-    T * alloc(
-        uint16_t txn,
-        DbLogRecType type,
-        uint32_t pgno,
-        size_t bytes = sizeof(T)
-    );
+    // Returns initial LSN for transaction.
+    uint64_t beginTrans();
+    void commit(uint64_t txn);
 
     Record * alloc(
-        uint16_t txn,
+        uint64_t txn,
         DbLogRecType type,
         uint32_t pgno,
         size_t bytes
     );
-    void apply(Record * rec);
+    void apply(const Record * log);
 
 private:
+    void apply(void * ptr, const Record * log);
+
     DbData & m_data;
+    DbWork & m_work;
     Dim::FileHandle m_file;
-    uint16_t m_lastTxnId = 0;
+    uint16_t m_lastTxn = 0;
     uint64_t m_lastLsn = 0;
 };
 
 class DbTxn {
 public:
-    DbTxn(DbLog & log);
+    DbTxn(DbLog & log, DbWork & work);
     ~DbTxn();
 
+    template<typename T> const T * viewPage(uint32_t pgno) const;
+    template<typename T> const T * editPage(uint32_t pgno);
+    size_t pageSize() const { return m_work.pageSize(); }
+    size_t numPages() const { return m_work.size(); }
+    void growToFit(uint32_t pgno) { m_work.growToFit(pgno); }
+
+    void logMasterInit(uint32_t pgno);
     void logPageFree(uint32_t pgno);
     void logSegmentInit(uint32_t pgno);
-    void logSegmentUpdate(
-        uint32_t pgno,
-        uint32_t refPage,
-        bool free
-    );
+    void logSegmentUpdate(uint32_t pgno, uint32_t refPage, bool free);
     void logRadixInit(
         uint32_t pgno,
+        uint32_t id,
         uint16_t height,
-        uint32_t * firstPage,
-        uint32_t * lastPage
+        const uint32_t * firstPage,
+        const uint32_t * lastPage
     );
-    void logRadixUpdate(
-        uint32_t pgno,
-        size_t pos,
-        uint32_t refPage
-    );
-    void logRadixErase(
-        uint32_t pgno,
-        size_t firstPos,
-        size_t lastPos
-    );
+    void logRadixErase(uint32_t pgno, size_t firstPos, size_t lastPos);
+    void logRadixPromote(uint32_t pgno, uint32_t refPage);
+    void logRadixUpdate(uint32_t pgno, size_t pos, uint32_t refPage);
     void logMetricInit(
         uint32_t pgno,
+        uint32_t id,
         std::string_view name,
         Dim::Duration retention,
         Dim::Duration interval
@@ -160,32 +221,62 @@ public:
     void logMetricClearSamples(uint32_t pgno);
     void logMetricUpdateSamples(
         uint32_t pgno,
-        size_t pos,
+        size_t refPos,
         uint32_t refPage,
         bool updateLast,
         bool updateIndex
     );
     void logSampleInit(
         uint32_t pgno,
+        uint32_t id,
         Dim::TimePoint pageTime,
-        size_t lastPos
+        size_t lastSample
     );
     void logSampleUpdate(
         uint32_t pgno,
-        size_t firstPos,
-        size_t lastPos,
+        size_t firstSample,
+        size_t lastSample,
         float value,
         bool updateLast
     );
-    void logSampleUpdateTime(
-        uint32_t pgno,
-        Dim::TimePoint pageTime
-    );
+    void logSampleUpdateTime(uint32_t pgno, Dim::TimePoint pageTime);
 
 private:
+    template<typename T>
+    T * alloc(
+        DbLogRecType type,
+        uint32_t pgno,
+        size_t bytes = sizeof(T)
+    );
+
     DbLog & m_log;
-    uint16_t m_txn;
+    DbWork & m_work;
+    uint64_t m_txn{0};
 };
+
+//===========================================================================
+template<typename T>
+const T * DbTxn::viewPage(uint32_t pgno) const {
+    auto ptr = static_cast<const T *>(m_work.rptr(m_txn, pgno));
+    if constexpr (!std::is_same_v<T, DbPageHeader>) {
+        assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
+        //assert(offsetof(T, hdr) == 0);
+        assert(ptr->hdr.type == ptr->type);
+    }
+    return ptr;
+}
+
+//===========================================================================
+template<typename T>
+const T * DbTxn::editPage(uint32_t pgno) {
+    auto ptr = static_cast<const T *>(m_work.wptr(m_txn, pgno));
+    if constexpr (!std::is_same_v<T, DbPageHeader>) {
+        assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
+        assert(offsetof(T, hdr) == 0);
+        assert(ptr->hdr.type == ptr->type);
+    }
+    return ptr;
+}
 
 
 /****************************************************************************
@@ -197,7 +288,7 @@ private:
 class DbData : public Dim::HandleContent {
 public:
     struct SegmentPage;
-    struct MasterPage;
+    struct ZeroPage;
     struct FreePage;
     struct RadixPage;
     struct MetricPage;
@@ -219,8 +310,7 @@ public:
     bool open(
         DbTxn & txn,
         std::unordered_map<std::string, uint32_t> & metricIds,
-        std::string_view name,
-        size_t pageSize
+        std::string_view name
     );
     DbStats queryStats();
 
@@ -240,67 +330,96 @@ public:
         float value
     );
     size_t enumSamples(
+        DbTxn & txn,
         IDbEnumNotify * notify,
         uint32_t id,
         Dim::TimePoint first,
         Dim::TimePoint last
     );
 
-    void applyPageFree(uint32_t pgno);
-    void applySegmentInit(uint32_t pgno);
-    void applySegmentUpdate(
-        uint32_t pgno,
-        uint32_t refPage,
-        bool free
+    void applyMasterInit(void * ptr);
+    void applyPageFree(void * ptr);
+    void applySegmentInit(void * ptr);
+    void applySegmentUpdate(void * ptr, uint32_t refPage, bool free);
+    void applyRadixInit(
+        void * ptr,
+        uint32_t id,
+        uint16_t height,
+        const uint32_t * firstPgno,
+        const uint32_t * lastPgno
     );
+    void applyRadixErase(void * ptr, size_t firstPos, size_t lastPos);
+    void applyRadixPromote(void * ptr, uint32_t refPage);
+    void applyRadixUpdate(void * ptr, size_t pos, uint32_t refPage);
+    void applyMetricInit(
+        void * ptr,
+        uint32_t id,
+        std::string_view name,
+        Dim::Duration retention,
+        Dim::Duration interval
+    );
+    void applyMetricUpdate(
+        void * ptr,
+        Dim::Duration retention,
+        Dim::Duration interval
+    );
+    void applyMetricClearSamples(void * ptr);
+    void applyMetricUpdateSamples(
+        void * ptr,
+        size_t pos,
+        uint32_t refPage,
+        bool updateLast,
+        bool updateIndex
+    );
+    void applySampleInit(
+        void * ptr,
+        uint32_t id,
+        Dim::TimePoint pageTime,
+        size_t lastSample
+    );
+    void applySampleUpdate(
+        void * ptr,
+        size_t firstPos,
+        size_t lastPos,
+        float value,
+        bool updateLast
+    );
+    void applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime);
 
 private:
     bool loadMetrics(
+        DbTxn & txn,
         std::unordered_map<std::string, uint32_t> & metricIds,
         uint32_t pgno
     );
-    void metricFreePage(DbTxn & txn, uint32_t pgno);
+    void metricDestructPage(DbTxn & txn, uint32_t pgno);
 
-    bool loadFreePages();
+    bool loadFreePages(DbTxn & txn);
     uint32_t allocPgno(DbTxn & txn);
-    template<typename T>
-    std::unique_ptr<T> allocPage(DbTxn & txn, uint32_t id);
-    template<typename T>
-    std::unique_ptr<T> allocPage(uint32_t id, uint32_t pgno);
     void freePage(DbTxn & txn, uint32_t pgno);
 
-    const void * viewPageRaw(uint32_t pgno) const;
-    template<typename T> const T * viewPage(uint32_t pgno) const;
-
-    // get copy of page to update and then write
-    template<typename T> std::unique_ptr<T> editPage(uint32_t pgno) const;
-    template<typename T> std::unique_ptr<T> editPage(const T & data) const;
-
-    template<typename T>
-    void writePage(T & data) const;
-    void writePagePrefix(
-        uint32_t pgno,
-        const void * ptr,
-        size_t count
-    ) const;
-
-    void radixClear(DbTxn & txn, DbPageHeader & hdr);
+    void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
     void radixErase(
         DbTxn & txn,
-        DbPageHeader & hdr,
+        const DbPageHeader & hdr,
         size_t firstPos,
         size_t lastPos
     );
-    void radixFreePage(DbTxn & txn, uint32_t pgno);
+    void radixDestructPage(DbTxn & txn, uint32_t pgno);
     bool radixInsert(DbTxn & txn, uint32_t root, size_t pos, uint32_t value);
+
+    // Returns false pos is past the end of the index.
     bool radixFind(
+        DbTxn & txn,
         DbPageHeader const ** hdr,
         RadixData const ** rd,
         size_t * rpos,
         uint32_t root,
         size_t pos
     );
-    bool radixFind(uint32_t * out, uint32_t root, size_t pos);
+    // Returns false if no value was found at the position, including if it's
+    // past the end of the index.
+    bool radixFind(DbTxn & txn, uint32_t * out, uint32_t root, size_t pos);
 
     size_t samplesPerPage() const;
     std::unique_ptr<SamplePage> allocSamplePage(
@@ -309,9 +428,10 @@ private:
         Dim::TimePoint time,
         uint16_t lastSample
     );
-    MetricInfo & loadMetricInfo(uint32_t id);
+    MetricInfo & loadMetricInfo(DbTxn & txn, uint32_t id);
     MetricInfo & loadMetricInfo(DbTxn & txn, uint32_t id, Dim::TimePoint time);
     bool findSamplePage(
+        DbTxn & txn,
         uint32_t * pgno,
         unsigned * pagePos,
         uint32_t id,
@@ -325,7 +445,7 @@ private:
 
     Dim::FileHandle m_fdata;
     DbReadView m_vdata;
-    const MasterPage * m_hdr = nullptr;
+    size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;

@@ -22,6 +22,7 @@
 # libs/db/dbradix.cpp
 # libs/db/dbradix.h
 # libs/db/dbview.cpp
+# libs/db/dbwork.cpp
 # libs/db/pch.cpp
 # libs/db/pch.h
 # libs/query/pch.cpp

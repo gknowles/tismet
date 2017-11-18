@@ -69,6 +69,7 @@ private:
     // long (m_lenIds[3]).
     vector<unordered_map<string, UnsignedSetWithCount>> m_segIds;
 
+    DbWork m_work;
     DbData m_data;
     DbLog m_log;
 };
@@ -103,7 +104,7 @@ static auto & s_perfDeleted = uperf("metrics deleted");
 
 //===========================================================================
 DbBase::DbBase ()
-    : m_log(m_data)
+    : m_log(m_data, m_work)
 {}
 
 //===========================================================================
@@ -112,8 +113,12 @@ DbBase::~DbBase () {
 
 //===========================================================================
 bool DbBase::open(string_view name, size_t pageSize) {
-    DbTxn txn{m_log};
-    if (!m_data.open(txn, m_metricIds, name, pageSize))
+    auto datafile = Path(name).setExt("tsd");
+    auto workfile = Path(name).setExt("tsw");
+    if (!m_work.open(datafile, workfile, pageSize))
+        return false;
+    DbTxn txn{m_log, m_work};
+    if (!m_data.open(txn, m_metricIds, datafile))
         return false;
 
     for (auto && [name, id] : m_metricIds)
@@ -133,7 +138,7 @@ DbStats DbBase::queryStats() {
 
 /****************************************************************************
 *
-*   Metric index
+*   Metrics
 *
 ***/
 
@@ -280,7 +285,7 @@ bool DbBase::insertMetric(uint32_t & out, const string & name) {
     indexInsertMetric(id, name);
 
     // set info page
-    DbTxn txn{m_log};
+    DbTxn txn{m_log, m_work};
     m_data.insertMetric(txn, id, name);
     s_perfCreated += 1;
     return true;
@@ -288,7 +293,7 @@ bool DbBase::insertMetric(uint32_t & out, const string & name) {
 
 //===========================================================================
 void DbBase::eraseMetric(uint32_t id) {
-    DbTxn txn{m_log};
+    DbTxn txn{m_log, m_work};
     string name;
     if (m_data.eraseMetric(txn, name, id)) {
         indexEraseMetric(id, name);
@@ -302,7 +307,7 @@ void DbBase::updateMetric(
     Duration retention,
     Duration interval
 ) {
-    DbTxn txn{m_log};
+    DbTxn txn{m_log, m_work};
     m_data.updateMetric(txn, id, retention, interval);
 }
 
@@ -315,7 +320,7 @@ void DbBase::updateMetric(
 
 //===========================================================================
 void DbBase::updateSample(uint32_t id, TimePoint time, float value) {
-    DbTxn txn{m_log};
+    DbTxn txn{m_log, m_work};
     m_data.updateSample(txn, id, time, value);
 }
 
@@ -326,7 +331,8 @@ size_t DbBase::enumSamples(
     TimePoint first,
     TimePoint last
 ) {
-    return m_data.enumSamples(notify, id, first, last);
+    DbTxn txn{m_log, m_work};
+    return m_data.enumSamples(txn, notify, id, first, last);
 }
 
 

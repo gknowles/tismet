@@ -18,6 +18,7 @@
 #include "query/query.h"
 
 // Standard headers
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <queue>

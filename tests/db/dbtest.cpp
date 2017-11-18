@@ -36,8 +36,9 @@ static int internalTest() {
     TimePoint start = Clock::from_time_t(900'000'000);
     string name = "this.is.metric.1";
 
-    const char dat[] = "test.dat";
-    fs::remove(dat);
+    const char dat[] = "test";
+    fs::remove("test.tsd");
+    fs::remove("test.tsw");
     auto h = dbOpen(dat, 128);
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
@@ -81,7 +82,7 @@ static int internalTest() {
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     dbWriteDump(nullptr, cout, h);
-    // add to new page 5. creates values pages 3, 4, 5, and a radix page
+    // add to new page 5. creates sample pages 3, 4, 5, and a radix page
     // to track the value pages.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
