@@ -112,6 +112,17 @@ static int internalTest() {
     cout << "----" << endl;
     dbWriteDump(nullptr, cout, h, "*.is.*.*5");
 
+    for (int i = 100; ; ++i) {
+        stats = dbQueryStats(h);
+        if (stats.numPages > stats.segmentSize / stats.pageSize)
+            break;
+        name = "this.is.metric.";
+        name += to_string(i);
+        uint32_t id;
+        count += dbInsertMetric(id, h, name);
+        dbUpdateSample(h, id, start, (float) i);
+    };
+
     dbClose(h);
 
     return EX_OK;
