@@ -17,7 +17,7 @@ using namespace Dim;
 
 namespace {
 
-class DbBase : public HandleContent {
+class DbBase : public HandleContent, public IDbEnumNotify {
 public:
     DbBase();
     ~DbBase();
@@ -43,6 +43,14 @@ public:
         TimePoint first,
         TimePoint last
     );
+
+    // Inherited via IDbEnumNotify
+    bool OnDbSample(
+        uint32_t id,
+        std::string_view name,
+        Dim::TimePoint time,
+        float value
+    ) override;
 
 private:
     void indexInsertMetric(
@@ -118,11 +126,17 @@ bool DbBase::open(string_view name, size_t pageSize) {
     if (!m_work.open(datafile, workfile, pageSize))
         return false;
     DbTxn txn{m_log, m_work};
-    if (!m_data.open(txn, m_metricIds, datafile))
-        return false;
+    return m_data.open(txn, this, datafile);
+}
 
-    for (auto && [name, id] : m_metricIds)
-        indexInsertMetric(id, name, false);
+//===========================================================================
+bool DbBase::OnDbSample(
+    uint32_t id,
+    std::string_view name,
+    Dim::TimePoint time,
+    float value
+) {
+    indexInsertMetric(id, string(name), true);
     return true;
 }
 
@@ -217,8 +231,10 @@ void DbBase::indexInsertMetric(
     const string & name,
     bool inclByName
 ) {
-    if (inclByName)
-        m_metricIds[name] = id;
+    if (inclByName) {
+        if (!m_metricIds.insert({name, id}).second)
+            logMsgError() << "Metric multiply defined, " << name;
+    }
     m_ids.insert(id);
     vector<string_view> segs;
     strSplit(segs, name, '.');

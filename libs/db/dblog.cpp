@@ -177,8 +177,8 @@ void DbLog::apply(const Record * log) {
 //===========================================================================
 void DbLog::apply(void * hdr, const Record * log) {
     switch (log->type) {
-    case kRecTypeMasterInit:
-        return m_data.applyMasterInit(hdr);
+    case kRecTypeZeroInit:
+        return m_data.applyZeroInit(hdr);
     case kRecTypePageFree:
         return m_data.applyPageFree(hdr);
     case kRecTypeSegmentInit:
@@ -348,8 +348,8 @@ T * DbTxn::alloc(
 }
 
 //===========================================================================
-void DbTxn::logMasterInit(uint32_t pgno) {
-    auto rec = alloc<DbLog::Record>(kRecTypeMasterInit, pgno);
+void DbTxn::logZeroInit(uint32_t pgno) {
+    auto rec = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
     m_log.apply(rec);
 }
 

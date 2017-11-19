@@ -123,7 +123,7 @@ private:
 ***/
 
 enum DbLogRecType : uint8_t {
-    kRecTypeMasterInit,         // [master]
+    kRecTypeZeroInit,         // [master]
     kRecTypePageFree,           // [any]
     kRecTypeSegmentInit,        // [segment]
     kRecTypeSegmentAlloc,       // [master/segment] refPage
@@ -192,7 +192,7 @@ public:
     size_t numPages() const { return m_work.size(); }
     void growToFit(uint32_t pgno) { m_work.growToFit(pgno); }
 
-    void logMasterInit(uint32_t pgno);
+    void logZeroInit(uint32_t pgno);
     void logPageFree(uint32_t pgno);
     void logSegmentInit(uint32_t pgno);
     void logSegmentUpdate(uint32_t pgno, uint32_t refPage, bool free);
@@ -309,7 +309,7 @@ public:
 
     bool open(
         DbTxn & txn,
-        std::unordered_map<std::string, uint32_t> & metricIds,
+        IDbEnumNotify * notify,
         std::string_view name
     );
     DbStats queryStats();
@@ -337,7 +337,7 @@ public:
         Dim::TimePoint last
     );
 
-    void applyMasterInit(void * ptr);
+    void applyZeroInit(void * ptr);
     void applyPageFree(void * ptr);
     void applySegmentInit(void * ptr);
     void applySegmentUpdate(void * ptr, uint32_t refPage, bool free);
@@ -389,7 +389,7 @@ public:
 private:
     bool loadMetrics(
         DbTxn & txn,
-        std::unordered_map<std::string, uint32_t> & metricIds,
+        IDbEnumNotify * notify,
         uint32_t pgno
     );
     void metricDestructPage(DbTxn & txn, uint32_t pgno);

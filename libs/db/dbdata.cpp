@@ -40,7 +40,7 @@ const unsigned kDataFileSig[] = {
 
 enum DbPageType : uint32_t {
     kPageTypeFree = 'F',
-    kPageTypeMaster = 'dZ',
+    kPageTypeZero = 'dZ',
     kPageTypeSegment = 'S',
     kPageTypeMetric = 'm',
     kPageTypeRadix = 'r',
@@ -53,7 +53,7 @@ struct DbData::SegmentPage {
 };
 
 struct DbData::ZeroPage {
-    static const DbPageType type = kPageTypeMaster;
+    static const DbPageType type = kPageTypeZero;
     union {
         DbPageHeader hdr;
         SegmentPage segment;
@@ -173,13 +173,13 @@ DbData::~DbData () {
 //===========================================================================
 bool DbData::open(
     DbTxn & txn,
-    unordered_map<string, uint32_t> & metricIds,
+    IDbEnumNotify * notify,
     string_view name
 ) {
     m_pageSize = txn.pageSize();
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
     if (!zp->hdr.type)
-        txn.logMasterInit(kZeroPageNum);
+        txn.logZeroInit(kZeroPageNum);
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
         logMsgError() << "Bad signature in " << name;
@@ -204,7 +204,7 @@ bool DbData::open(
         assert(pgno == kMetricIndexPageNum);
         txn.logRadixInit(pgno, 0, 0, nullptr, nullptr);
     }
-    if (!loadMetrics(txn, metricIds, kMetricIndexPageNum))
+    if (!loadMetrics(txn, notify, kMetricIndexPageNum))
         return false;
 
     return true;
@@ -242,7 +242,7 @@ void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
 //===========================================================================
 bool DbData::loadMetrics (
     DbTxn & txn,
-    unordered_map<string, uint32_t> & metricIds,
+    IDbEnumNotify * notify,
     uint32_t pgno
 ) {
     if (!pgno)
@@ -255,7 +255,7 @@ bool DbData::loadMetrics (
     if (p->type == kPageTypeRadix) {
         auto rp = reinterpret_cast<const RadixPage*>(p);
         for (int i = 0; i < rp->rd.numPages; ++i) {
-            if (!loadMetrics(txn, metricIds, rp->rd.pages[i]))
+            if (!loadMetrics(txn, notify, rp->rd.pages[i]))
                 return false;
         }
         return true;
@@ -263,9 +263,8 @@ bool DbData::loadMetrics (
 
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
-
-        if (!metricIds.insert({mp->name, mp->hdr.id}).second)
-            logMsgError() << "Metric multiply defined, " << mp->name;
+        if (notify)
+            notify->OnDbSample(mp->hdr.id, mp->name, {}, 0);
 
         if (m_metricPos.size() <= mp->hdr.id)
             m_metricPos.resize(mp->hdr.id + 1);
@@ -1090,7 +1089,7 @@ bool DbData::loadFreePages (DbTxn & txn) {
         auto segPage = pp.first;
         assert(!pp.second);
         auto sp = txn.viewPage<DbPageHeader>(segPage);
-        assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
+        assert(sp->type == kPageTypeSegment || sp->type == kPageTypeZero);
         auto bits = segmentBitView(const_cast<DbPageHeader *>(sp), m_pageSize);
         for (auto first = bits.find(0); first != bits.npos; ) {
             auto last = bits.findZero(first);
@@ -1196,8 +1195,9 @@ void DbData::applyPageFree(void * ptr) {
 }
 
 //===========================================================================
-void DbData::applyMasterInit(void * ptr) {
+void DbData::applyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
+    assert(zp->hdr.type == 0);
     zp->hdr.type = zp->type;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
@@ -1214,6 +1214,7 @@ void DbData::applyMasterInit(void * ptr) {
 //===========================================================================
 void DbData::applySegmentInit(void * ptr) {
     auto sp = static_cast<SegmentPage *>(ptr);
+    assert(sp->hdr.type == 0);
     sp->hdr.type = sp->type;
     sp->hdr.id = 0;
     auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
@@ -1231,10 +1232,9 @@ void DbData::applySegmentUpdate(
     bool free
 ) {
     auto sp = static_cast<SegmentPage *>(ptr);
-    assert(sp->hdr.pgno == 0);
+    assert(sp->hdr.type == kPageTypeZero || sp->hdr.type == kPageTypeSegment);
     auto [segPage, segPos] = segmentPage(refPage, m_pageSize);
     assert(sp->hdr.pgno == segPage);
-    assert(sp->type == kPageTypeSegment || sp->type == kPageTypeMaster);
     auto bits = segmentBitView(sp, m_pageSize);
     assert(bits[segPos] != free);
     bits.set(segPos, free);
