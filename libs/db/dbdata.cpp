@@ -263,8 +263,8 @@ bool DbData::loadMetrics (
 
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
-        if (notify)
-            notify->OnDbSample(mp->hdr.id, mp->name, {}, 0);
+        if (notify && !notify->OnDbSample(mp->hdr.id, mp->name, {}, 0))
+            return false;
 
         if (m_metricPos.size() <= mp->hdr.id)
             m_metricPos.resize(mp->hdr.id + 1);
@@ -1217,9 +1217,10 @@ void DbData::applySegmentInit(void * ptr) {
     assert(sp->hdr.type == 0);
     sp->hdr.type = sp->type;
     sp->hdr.id = 0;
-    auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
-    assert(segPage == sp->hdr.pgno && !segPos);
-    (void) segPos;
+    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
+        auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
+        assert(segPage == sp->hdr.pgno && !segPos);
+    }
     auto bits = segmentBitView(sp, m_pageSize);
     bits.set();
     bits.reset(0);
@@ -1235,6 +1236,7 @@ void DbData::applySegmentUpdate(
     assert(sp->hdr.type == kPageTypeZero || sp->hdr.type == kPageTypeSegment);
     auto [segPage, segPos] = segmentPage(refPage, m_pageSize);
     assert(sp->hdr.pgno == segPage);
+    ignore = segPage;
     auto bits = segmentBitView(sp, m_pageSize);
     assert(bits[segPos] != free);
     bits.set(segPos, free);

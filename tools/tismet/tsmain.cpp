@@ -26,8 +26,14 @@ const char kVersion[] = "1.0";
 
 namespace {
 
-class InitializeTask : public ITaskNotify {
+class InitializeTask
+    : public IShutdownNotify
+    , public ITaskNotify
+{
     void onTask() override;
+    void onShutdownClient(bool firstTry) override;
+
+    atomic<bool> m_ready{false};
 };
 
 } // namespace
@@ -37,7 +43,15 @@ static InitializeTask s_initTask;
 //===========================================================================
 void InitializeTask::onTask() {
     tsDataInitialize();
-    tsCarbonInitialize();
+    if (!appStopping())
+        tsCarbonInitialize();
+    m_ready = true;
+}
+
+//===========================================================================
+void InitializeTask::onShutdownClient(bool firstTry) {
+    if (!m_ready)
+        shutdownIncomplete();
 }
 
 
@@ -56,6 +70,7 @@ static void app(int argc, char * argv[]) {
         return appSignalUsageError();
 
     consoleCatchCtrlC();
+    shutdownMonitor(&s_initTask);
     taskPushCompute(s_initTask);
     cout << "Server started" << endl;
 }

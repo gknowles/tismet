@@ -137,7 +137,7 @@ bool DbBase::OnDbSample(
     float value
 ) {
     indexInsertMetric(id, string(name), true);
-    return true;
+    return !appStopping();
 }
 
 //===========================================================================
