@@ -6,8 +6,8 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace std::chrono;
 using namespace Dim;
-namespace fs = std::experimental::filesystem;
 
 
 /****************************************************************************
@@ -37,8 +37,8 @@ static int internalTest() {
     string name = "this.is.metric.1";
 
     const char dat[] = "test";
-    fs::remove("test.tsd");
-    fs::remove("test.tsw");
+    fileRemove("test.tsd");
+    fileRemove("test.tsw");
     auto h = dbOpen(dat, 128);
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
@@ -48,6 +48,10 @@ static int internalTest() {
     unsigned count = 0;
     count += dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
+    MetricInfo info;
+    info.retention = duration_cast<Duration>(6.5 * pgt);
+    info.interval = 1min;
+    dbUpdateMetric(h, id, info);
     dbUpdateSample(h, id, start, 1.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 4);
@@ -87,11 +91,32 @@ static int internalTest() {
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 7);
+    // add to historical page
+    dbUpdateSample(h, id, start - 2min, 1);
+    stats = dbQueryStats(h);
+    EXPECT(stats.numPages == 8);
+    // circle back onto that historical page, reassigning it's time
+    dbUpdateSample(h, id, start + 6 * pgt, 6);
+    stats = dbQueryStats(h);
+    EXPECT(stats.numPages == 8);
+    EXPECT(stats.freePages == 504);
+    EXPECT(stats.metrics == 1);
+    // add sample more than the retention period in the future
+    dbUpdateSample(h, id, start + 20 * pgt, 1);
+    stats = dbQueryStats(h);
+    EXPECT(stats.freePages == 508);
+    EXPECT(stats.metrics == 1);
+    // erase metric
+    dbEraseMetric(h, id);
+    stats = dbQueryStats(h);
+    EXPECT(stats.numPages == 8);
+    EXPECT(stats.freePages == 510);
+    EXPECT(stats.metrics == 0);
 
     cout << "----" << endl;
     dbWriteDump(nullptr, cout, h);
     count = 0;
-    for (int i = 2; i < 30; ++i) {
+    for (int i = 1; i < 30; ++i) {
         name = "this.is.metric.";
         name += to_string(i);
         uint32_t i2;
@@ -99,7 +124,7 @@ static int internalTest() {
         dbUpdateSample(h, i2, start, (float) i);
     }
     cout << "metrics inserted: " << count << endl;
-    EXPECT(count == 28);
+    EXPECT(count == 29);
 
     cout << "----" << endl;
     dbWriteDump(nullptr, cout, h);

@@ -143,9 +143,9 @@ bool DbBase::OnDbSample(
 //===========================================================================
 DbStats DbBase::queryStats() {
     DbStats s = m_data.queryStats();
-    s.metricIds = 0;
+    s.metrics = 0;
     for (auto & len : m_lenIds)
-        s.metricIds += (unsigned) len.count;
+        s.metrics += (unsigned) len.count;
     return s;
 }
 

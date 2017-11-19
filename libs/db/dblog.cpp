@@ -15,6 +15,33 @@ using namespace Dim;
 *
 ***/
 
+enum DbLogRecType : uint8_t {
+    kRecTypeZeroInit,           // [master]
+    kRecTypePageFree,           // [any]
+    kRecTypeSegmentInit,        // [segment]
+    kRecTypeSegmentAlloc,       // [master/segment] refPage
+    kRecTypeSegmentFree,        // [master/segment] refPage
+    kRecTypeRadixInit,          // [radix] id, height
+    kRecTypeRadixInitList,      // [radix] id, height, page list
+    kRecTypeRadixErase,         // [metric/radix] firstPos, lastPos
+    kRecTypeRadixPromote,       // [radix] refPage
+    kRecTypeRadixUpdate,        // [radix] refPos, refPage
+    kRecTypeMetricInit,         // [metric] name, id, retention, interval
+    kRecTypeMetricUpdate,       // [metric] retention, interval
+    kRecTypeMetricClearSamples, // [metric] (clears index & last)
+    kRecTypeMetricUpdateLast,   // [metric] refPos, refPage
+    kRecTypeMetricUpdateLastAndIndex, // [metric] refPos, refPage
+    kRecTypeSampleInit,         // [sample] id, pageTime, lastPos
+    kRecTypeSampleUpdate,       // [sample] first, last, value
+                                //   [first, last) = NANs, last = value
+    kRecTypeSampleUpdateLast,   // [sample] first, last, value
+                                //   [first, last) = NANs, last = value
+    kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
+
+    kRecTypeTxnBegin,           // N/A
+    kRecTypeTxnCommit,          // N/A
+};
+
 #pragma pack(push)
 #pragma pack(1)
 
@@ -31,6 +58,13 @@ struct DbLog::Record {
 };
 
 namespace {
+
+//---------------------------------------------------------------------------
+// Transaction
+struct TransactionRec {
+    DbLogRecType type;
+    uint16_t txn;
+};
 
 //---------------------------------------------------------------------------
 // Segment
@@ -111,10 +145,67 @@ struct SampleUpdateTimeRec {
     TimePoint pageTime;
 };
 
-
 } // namespace
 
 #pragma pack(pop)
+
+
+/****************************************************************************
+*
+*   Helpers
+*
+***/
+
+//===========================================================================
+inline static size_t size(const DbLog::Record * log) {
+    switch (log->type) {
+    case kRecTypeZeroInit:
+    case kRecTypePageFree:
+    case kRecTypeSegmentInit:
+        return sizeof(DbLog::Record);
+    case kRecTypeSegmentAlloc:
+    case kRecTypeSegmentFree:
+        return sizeof(SegmentUpdateRec);
+    case kRecTypeRadixInit:
+        return sizeof(RadixInitRec);
+    case kRecTypeRadixInitList: {
+        auto rec = reinterpret_cast<const RadixInitListRec *>(log);
+        return offsetof(RadixInitListRec, pages)
+            + rec->numPages * sizeof(*rec->pages);
+    }
+    case kRecTypeRadixErase:
+        return sizeof(RadixEraseRec);
+    case kRecTypeRadixPromote:
+        return sizeof(RadixPromoteRec);
+    case kRecTypeRadixUpdate:
+        return sizeof(RadixUpdateRec);
+    case kRecTypeMetricInit: {
+        auto rec = reinterpret_cast<const MetricInitRec *>(log);
+        return offsetof(MetricInitRec, name)
+            + strlen(rec->name) + 1;
+    }
+    case kRecTypeMetricUpdate:
+        return sizeof(MetricUpdateRec);
+    case kRecTypeMetricClearSamples:
+        return sizeof(DbLog::Record);
+    case kRecTypeMetricUpdateLast:
+    case kRecTypeMetricUpdateLastAndIndex:
+        return sizeof(MetricUpdateSamplesRec);
+    case kRecTypeSampleInit:
+        return sizeof(SampleInitRec);
+    case kRecTypeSampleUpdate:
+    case kRecTypeSampleUpdateLast:
+        return sizeof(SampleUpdateRec);
+    case kRecTypeSampleUpdateTime:
+        return sizeof(SampleUpdateTimeRec);
+    case kRecTypeTxnBegin:
+    case kRecTypeTxnCommit:
+        return sizeof(TransactionRec);
+    }
+
+    logMsgCrash() << "Unknown log record type, " << log->type;
+    return 0;
+}
 
 
 /****************************************************************************
@@ -130,36 +221,69 @@ DbLog::DbLog(DbData & data, DbWork & work)
 {}
 
 //===========================================================================
-uint64_t DbLog::beginTrans() {
+unsigned DbLog::beginTxn() {
     for (;;) {
         if (++m_lastTxn)
             break;
     }
+    auto bytes = sizeof(TransactionRec);
+    auto rec = (TransactionRec *) alloc(bytes);
+    rec->type = kRecTypeTxnBegin;
+    rec->txn = m_lastTxn;
+    log((Record *) rec, bytes);
     return m_lastTxn;
 }
 
 //===========================================================================
-void DbLog::commit(uint64_t txn) {
+void DbLog::commit(unsigned txn) {
+    auto bytes = sizeof(TransactionRec);
+    auto rec = (TransactionRec *) alloc(bytes);
+    rec->type = kRecTypeTxnCommit;
+    rec->txn = m_lastTxn;
+    log((Record *) rec, bytes);
+}
+
+//===========================================================================
+void * DbLog::alloc(size_t bytes) {
+    static string s_rec;
+    s_rec.resize(bytes);
+    return s_rec.data();
 }
 
 //===========================================================================
 DbLog::Record * DbLog::alloc(
-    uint64_t txn,
+    unsigned txn,
     DbLogRecType type,
     uint32_t pgno,
     size_t bytes
 ) {
-    static string s_rec;
     assert(txn);
     auto lsn = ++m_lastLsn;
     assert(bytes >= sizeof(DbLog::Record));
-    s_rec.resize(bytes);
-    auto rec = (Record *) s_rec.data();
+    auto rec = (Record *) alloc(bytes);
     rec->lsn.u.txn = txn;
     rec->lsn.u.seq = lsn;
     rec->type = type;
     rec->pgno = pgno;
     return rec;
+}
+
+//===========================================================================
+void DbLog::log(const Record * log, size_t bytes) {
+    assert(bytes == size(log));
+
+    switch (log->type) {
+    case kRecTypeTxnBegin: {
+        auto rec = reinterpret_cast<const TransactionRec *>(log);
+        return applyBeginTxn(rec->txn);
+    }
+    case kRecTypeTxnCommit: {
+        auto rec = reinterpret_cast<const TransactionRec *>(log);
+        return applyCommit(rec->txn);
+    }
+    default:
+        return apply(log);
+    }
 }
 
 //===========================================================================
@@ -175,8 +299,19 @@ void DbLog::apply(const Record * log) {
 }
 
 //===========================================================================
+void DbLog::applyBeginTxn(uint16_t txn) {
+}
+
+//===========================================================================
+void DbLog::applyCommit(uint16_t txn) {
+}
+
+//===========================================================================
 void DbLog::apply(void * hdr, const Record * log) {
     switch (log->type) {
+    default:
+        logMsgCrash() << "unknown log record type, " << log->type;
+        return;
     case kRecTypeZeroInit:
         return m_data.applyZeroInit(hdr);
     case kRecTypePageFree:
@@ -244,33 +379,21 @@ void DbLog::apply(void * hdr, const Record * log) {
     }
     case kRecTypeMetricClearSamples:
         return m_data.applyMetricClearSamples(hdr);
-    case kRecTypeMetricUpdateIndex: {
-        auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
-        return m_data.applyMetricUpdateSamples(
-            hdr,
-            rec->refPos,
-            rec->refPage,
-            false,
-            true
-        );
-    }
     case kRecTypeMetricUpdateLast: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
         return m_data.applyMetricUpdateSamples(
             hdr,
             rec->refPos,
             rec->refPage,
-            true,
             false
         );
     }
-    case kRecTypeMetricUpdateIndexAndLast: {
+    case kRecTypeMetricUpdateLastAndIndex: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
         return m_data.applyMetricUpdateSamples(
             hdr,
             rec->refPos,
             rec->refPage,
-            true,
             true
         );
     }
@@ -309,9 +432,7 @@ void DbLog::apply(void * hdr, const Record * log) {
         return m_data.applySampleUpdateTime(hdr, rec->pageTime);
     }
 
-    case kRecTypeTxnCommit:
-        abort();
-    }
+    } // end case
 }
 
 
@@ -326,7 +447,7 @@ DbTxn::DbTxn(DbLog & log, DbWork & work)
     : m_log{log}
     , m_work{work}
 {
-    m_txn = m_log.beginTrans();
+    m_txn = m_log.beginTxn();
 }
 
 //===========================================================================
@@ -336,33 +457,33 @@ DbTxn::~DbTxn() {
 
 //===========================================================================
 template<typename T>
-T * DbTxn::alloc(
+pair<T *, size_t> DbTxn::alloc(
     DbLogRecType type,
     uint32_t pgno,
     size_t bytes
 ) {
     assert(bytes >= sizeof(T));
     if (!m_txn)
-        m_txn = m_log.beginTrans();
-    return (T *) m_log.alloc(m_txn, type, pgno, bytes);
+        m_txn = m_log.beginTxn();
+    return {(T *) m_log.alloc(m_txn, type, pgno, bytes), bytes};
 }
 
 //===========================================================================
 void DbTxn::logZeroInit(uint32_t pgno) {
-    auto rec = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
-    m_log.apply(rec);
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
+    m_log.log(rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logPageFree(uint32_t pgno) {
-    auto rec = alloc<DbLog::Record>(kRecTypePageFree, pgno);
-    m_log.apply(rec);
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
+    m_log.log(rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logSegmentInit(uint32_t pgno) {
-    auto rec = alloc<DbLog::Record>(kRecTypeSegmentInit, pgno);
-    m_log.apply(rec);
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeSegmentInit, pgno);
+    m_log.log(rec, bytes);
 }
 
 //===========================================================================
@@ -371,12 +492,12 @@ void DbTxn::logSegmentUpdate(
     uint32_t refPage,
     bool free
 ) {
-    auto rec = alloc<SegmentUpdateRec>(
+    auto [rec, bytes] = alloc<SegmentUpdateRec>(
         free ? kRecTypeSegmentFree : kRecTypeSegmentAlloc,
         pgno
     );
     rec->refPage = refPage;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -388,27 +509,27 @@ void DbTxn::logRadixInit(
     const uint32_t * lastPage
 ) {
     if (firstPage == lastPage) {
-        auto rec = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);
+        auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);
         rec->id = id;
         rec->height = height;
-        m_log.apply(&rec->hdr);
+        m_log.log(&rec->hdr, bytes);
         return;
     }
 
     auto count = lastPage - firstPage;
     assert(count <= numeric_limits<uint16_t>::max());
-    auto bytes = count * sizeof(*firstPage);
+    auto extra = count * sizeof(*firstPage);
     auto offset = offsetof(RadixInitListRec, pages);
-    auto rec = alloc<RadixInitListRec>(
+    auto [rec, bytes] = alloc<RadixInitListRec>(
         kRecTypeRadixInitList,
         pgno,
-        offset + bytes
+        offset + extra
     );
     rec->id = id;
     rec->height = height;
     rec->numPages = (uint16_t) count;
-    memcpy(rec->pages, firstPage, bytes);
-    m_log.apply(&rec->hdr);
+    memcpy(rec->pages, firstPage, extra);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -417,17 +538,17 @@ void DbTxn::logRadixErase(
     size_t firstPos,
     size_t lastPos
 ) {
-    auto rec = alloc<RadixEraseRec>(kRecTypeRadixErase, pgno);
+    auto [rec, bytes] = alloc<RadixEraseRec>(kRecTypeRadixErase, pgno);
     rec->firstPos = (uint16_t) firstPos;
     rec->lastPos = (uint16_t) lastPos;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logRadixPromote(uint32_t pgno, uint32_t refPage) {
-    auto rec = alloc<RadixPromoteRec>(kRecTypeRadixPromote, pgno);
+    auto [rec, bytes] = alloc<RadixPromoteRec>(kRecTypeRadixPromote, pgno);
     rec->refPage = refPage;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -436,10 +557,10 @@ void DbTxn::logRadixUpdate(
     size_t refPos,
     uint32_t refPage
 ) {
-    auto rec = alloc<RadixUpdateRec>(kRecTypeRadixUpdate, pgno);
+    auto [rec, bytes] = alloc<RadixUpdateRec>(kRecTypeRadixUpdate, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -450,14 +571,18 @@ void DbTxn::logMetricInit(
     Duration retention,
     Duration interval
 ) {
+    auto extra = name.size() + 1;
     auto offset = offsetof(MetricInitRec, name);
-    auto bytes = name.size() + 1;
-    auto rec = alloc<MetricInitRec>(kRecTypeMetricInit, pgno, offset + bytes);
+    auto [rec, bytes] = alloc<MetricInitRec>(
+        kRecTypeMetricInit,
+        pgno,
+        offset + extra
+    );
     rec->id = id;
     rec->retention = retention;
     rec->interval = interval;
-    memcpy(rec->name, name.data(), bytes);
-    m_log.apply(&rec->hdr);
+    memcpy(rec->name, name.data(), extra);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -466,16 +591,16 @@ void DbTxn::logMetricUpdate(
     Duration retention,
     Duration interval
 ) {
-    auto rec = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
+    auto [rec, bytes] = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
     rec->retention = retention;
     rec->interval = interval;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logMetricClearSamples(uint32_t pgno) {
-    auto rec = alloc<DbLog::Record>(kRecTypeMetricClearSamples, pgno);
-    m_log.apply(rec);
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeMetricClearSamples, pgno);
+    m_log.log(rec, bytes);
 }
 
 //===========================================================================
@@ -483,21 +608,15 @@ void DbTxn::logMetricUpdateSamples(
     uint32_t pgno,
     size_t refPos,
     uint32_t refPage,
-    bool updateLast,
     bool updateIndex
 ) {
-    assert(updateLast || updateIndex);
-    static const DbLogRecType types[] = {
-        DbLogRecType{0},
-        kRecTypeMetricUpdateIndex,
-        kRecTypeMetricUpdateLast,
-        kRecTypeMetricUpdateIndexAndLast,
-    };
-    auto type = types[2 * updateLast + updateIndex];
-    auto rec = alloc<MetricUpdateSamplesRec>(type, pgno);
+    auto type = updateIndex
+        ? kRecTypeMetricUpdateLastAndIndex
+        : kRecTypeMetricUpdateLast;
+    auto [rec, bytes] = alloc<MetricUpdateSamplesRec>(type, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -507,11 +626,11 @@ void DbTxn::logSampleInit(
     TimePoint pageTime,
     size_t lastSample
 ) {
-    auto rec = alloc<SampleInitRec>(kRecTypeSampleInit, pgno);
+    auto [rec, bytes] = alloc<SampleInitRec>(kRecTypeSampleInit, pgno);
     rec->id = id;
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -523,18 +642,18 @@ void DbTxn::logSampleUpdate(
     bool updateLast
 ) {
     auto type = updateLast ? kRecTypeSampleUpdateLast : kRecTypeSampleUpdate;
-    auto rec = alloc<SampleUpdateRec>(type, pgno);
+    auto [rec, bytes] = alloc<SampleUpdateRec>(type, pgno);
     assert(firstSample <= lastSample);
     assert(lastSample <= numeric_limits<decltype(rec->firstSample)>::max());
     rec->firstSample = (uint16_t) firstSample;
     rec->lastSample = (uint16_t) lastSample;
     rec->value = value;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logSampleUpdateTime(uint32_t pgno, TimePoint pageTime) {
-    auto rec = alloc<SampleInitRec>(kRecTypeSampleUpdateTime, pgno);
+    auto [rec, bytes] = alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
-    m_log.apply(&rec->hdr);
+    m_log.log(&rec->hdr, bytes);
 }

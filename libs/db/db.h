@@ -30,7 +30,7 @@ struct DbStats {
     // Change as data is modified
     unsigned numPages;
     unsigned freePages;
-    unsigned metricIds;
+    unsigned metrics;
 };
 DbStats dbQueryStats(DbHandle h);
 

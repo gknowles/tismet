@@ -122,32 +122,7 @@ private:
 *
 ***/
 
-enum DbLogRecType : uint8_t {
-    kRecTypeZeroInit,         // [master]
-    kRecTypePageFree,           // [any]
-    kRecTypeSegmentInit,        // [segment]
-    kRecTypeSegmentAlloc,       // [master/segment] refPage
-    kRecTypeSegmentFree,        // [master/segment] refPage
-    kRecTypeRadixInit,          // [radix] id, height
-    kRecTypeRadixInitList,      // [radix] id, height, page list
-    kRecTypeRadixErase,         // [metric/radix] firstPos, lastPos
-    kRecTypeRadixPromote,       // [radix] refPage
-    kRecTypeRadixUpdate,        // [radix] refPos, refPage
-    kRecTypeMetricInit,         // [metric] name, id, retention, interval
-    kRecTypeMetricUpdate,       // [metric] retention, interval
-    kRecTypeMetricClearSamples, // [metric] (clears index & last)
-    kRecTypeMetricUpdateIndex,  // [metric] refPos, refPage
-    kRecTypeMetricUpdateLast,   // [metric] refPos, refPage
-    kRecTypeMetricUpdateIndexAndLast, // [metric] refPos, refPage
-    kRecTypeSampleInit,         // [sample] id, pageTime, lastPos
-    kRecTypeSampleUpdate,       // [sample] first, last, value
-                                //   [first, last) = NANs, last = value
-    kRecTypeSampleUpdateLast,   // [sample] first, last, value
-                                //   [first, last) = NANs, last = value
-    kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
-    kRecTypeTxnCommit,          // N/A
-};
-
+enum DbLogRecType : uint8_t;
 class DbData;
 
 class DbLog {
@@ -159,20 +134,25 @@ public:
 
     bool open(std::string_view file);
 
-    // Returns initial LSN for transaction.
-    uint64_t beginTrans();
-    void commit(uint64_t txn);
+    // Returns transaction id.
+    unsigned beginTxn();
+    void commit(unsigned txn);
 
     Record * alloc(
-        uint64_t txn,
+        unsigned txn,
         DbLogRecType type,
         uint32_t pgno,
         size_t bytes
     );
-    void apply(const Record * log);
+    void log(const Record * log, size_t bytes);
 
 private:
+    void * alloc(size_t bytes);
+
+    void apply(const Record * log);
     void apply(void * ptr, const Record * log);
+    void applyBeginTxn(uint16_t txn);
+    void applyCommit(uint16_t txn);
 
     DbData & m_data;
     DbWork & m_work;
@@ -223,7 +203,6 @@ public:
         uint32_t pgno,
         size_t refPos,
         uint32_t refPage,
-        bool updateLast,
         bool updateIndex
     );
     void logSampleInit(
@@ -243,7 +222,7 @@ public:
 
 private:
     template<typename T>
-    T * alloc(
+    std::pair<T *, size_t> alloc(
         DbLogRecType type,
         uint32_t pgno,
         size_t bytes = sizeof(T)
@@ -251,7 +230,7 @@ private:
 
     DbLog & m_log;
     DbWork & m_work;
-    uint64_t m_txn{0};
+    unsigned m_txn{0};
 };
 
 //===========================================================================
@@ -259,8 +238,9 @@ template<typename T>
 const T * DbTxn::viewPage(uint32_t pgno) const {
     auto ptr = static_cast<const T *>(m_work.rptr(m_txn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
+        // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
-        //assert(offsetof(T, hdr) == 0);
+        assert(intptr_t(ptr) == intptr_t(&ptr->hdr));
         assert(ptr->hdr.type == ptr->type);
     }
     return ptr;
@@ -368,7 +348,6 @@ public:
         void * ptr,
         size_t pos,
         uint32_t refPage,
-        bool updateLast,
         bool updateIndex
     );
     void applySampleInit(
@@ -408,7 +387,7 @@ private:
     void radixDestructPage(DbTxn & txn, uint32_t pgno);
     bool radixInsert(DbTxn & txn, uint32_t root, size_t pos, uint32_t value);
 
-    // Returns false pos is past the end of the index.
+    // Returns false if pos is past the end of the index.
     bool radixFind(
         DbTxn & txn,
         DbPageHeader const ** hdr,

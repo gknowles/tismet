@@ -326,6 +326,11 @@ void DbData::applyMetricInit(
     Duration interval
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
+    if (mp->hdr.type == kPageTypeFree) {
+        memset((char *) mp + sizeof(mp->hdr), 0, m_pageSize - sizeof(mp->hdr));
+    } else {
+        assert(!mp->hdr.type);
+    }
     mp->hdr.type = mp->type;
     mp->hdr.id = id;
     auto count = name.copy(mp->name, size(mp->name) - 1);
@@ -340,7 +345,8 @@ void DbData::applyMetricInit(
 bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
     if (uint32_t pgno = m_metricPos[id].infoPage) {
         name = txn.viewPage<MetricPage>(pgno)->name;
-        freePage(txn, pgno);
+        auto rp = txn.viewPage<RadixPage>(kMetricIndexPageNum);
+        radixErase(txn, rp->hdr, id, id + 1);
         return true;
     }
     return false;
@@ -394,6 +400,8 @@ void DbData::applyMetricUpdate(
     mp->interval = interval;
     mp->lastPage = 0;
     mp->lastPagePos = 0;
+    mp->rd.height = 0;
+    memset(mp->rd.pages, 0, mp->rd.numPages * sizeof(*mp->rd.pages));
 }
 
 
@@ -443,14 +451,7 @@ DbData::MetricPosition & DbData::loadMetricPos(
         auto pageTime = time - lastSample * mi.interval;
         auto spno = allocPgno(txn);
         txn.logSampleInit(spno, id, pageTime, lastSample);
-
-        txn.logMetricUpdateSamples(
-            mi.infoPage,
-            0,
-            spno,
-            true,
-            true
-        );
+        txn.logMetricUpdateSamples(mi.infoPage, 0, spno, true);
 
         mi.lastPage = spno;
         mi.pageFirstTime = pageTime;
@@ -466,6 +467,7 @@ void DbData::applyMetricClearSamples(void * ptr) {
     assert(mp->hdr.type == mp->type);
     mp->lastPage = 0;
     mp->lastPagePos = 0;
+    mp->rd.height = 0;
     memset(mp->rd.pages, 0, mp->rd.numPages * sizeof(*mp->rd.pages));
 }
 
@@ -474,15 +476,12 @@ void DbData::applyMetricUpdateSamples(
     void * ptr,
     size_t pos,
     uint32_t refPage,
-    bool updateLast,
     bool updateIndex
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->type);
-    if (updateLast) {
-        mp->lastPage = refPage;
-        mp->lastPagePos = (unsigned) pos;
-    }
+    mp->lastPage = refPage;
+    mp->lastPagePos = (unsigned) pos;
     if (updateIndex)
         mp->rd.pages[pos] = refPage;
 }
@@ -646,7 +645,7 @@ void DbData::updateSample(
     } else {
         txn.logSampleUpdateTime(lastPage, endPageTime);
     }
-    txn.logMetricUpdateSamples(mi.infoPage, last, lastPage, true, false);
+    txn.logMetricUpdateSamples(mi.infoPage, last, lastPage, false);
 
     mi.lastPage = lastPage;
     mi.pageFirstTime = endPageTime;
@@ -664,6 +663,11 @@ void DbData::applySampleInit(
     size_t lastSample
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
+    if (sp->hdr.type == kPageTypeFree) {
+        memset((char *) sp + sizeof(sp->hdr), 0, m_pageSize - sizeof(sp->hdr));
+    } else {
+        assert(!sp->hdr.type);
+    }
     sp->hdr.type = sp->type;
     sp->hdr.id = id;
     sp->pageLastSample = (uint16_t) lastSample;
@@ -896,7 +900,7 @@ void DbData::radixErase(
                 freePage(txn, p);
         }
         auto nextPos = firstPos + lastPagePos - rpos;
-        txn.logRadixErase(rhdr.pgno, firstPos, nextPos);
+        txn.logRadixErase(hdr->pgno, firstPos, nextPos);
         firstPos = nextPos;
     }
 }
@@ -964,6 +968,11 @@ void DbData::applyRadixInit(
     const uint32_t * lastPgno
 ) {
     auto rp = static_cast<RadixPage *>(ptr);
+    if (rp->hdr.type == kPageTypeFree) {
+        memset((char *) rp + sizeof(rp->hdr), 0, m_pageSize - sizeof(rp->hdr));
+    } else {
+        assert(!rp->hdr.type);
+    }
     rp->hdr.type = rp->type;
     rp->hdr.id = id;
     rp->rd.height = height;
@@ -1191,13 +1200,14 @@ void DbData::freePage(DbTxn & txn, uint32_t pgno) {
 //===========================================================================
 void DbData::applyPageFree(void * ptr) {
     auto fp = static_cast<FreePage *>(ptr);
+    assert(fp->hdr.type && fp->hdr.type != kPageTypeFree);
     fp->hdr.type = kPageTypeFree;
 }
 
 //===========================================================================
 void DbData::applyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
-    assert(zp->hdr.type == 0);
+    assert(!zp->hdr.type);
     zp->hdr.type = zp->type;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
@@ -1214,7 +1224,7 @@ void DbData::applyZeroInit(void * ptr) {
 //===========================================================================
 void DbData::applySegmentInit(void * ptr) {
     auto sp = static_cast<SegmentPage *>(ptr);
-    assert(sp->hdr.type == 0);
+    assert(!sp->hdr.type);
     sp->hdr.type = sp->type;
     sp->hdr.id = 0;
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
