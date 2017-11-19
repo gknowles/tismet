@@ -61,7 +61,7 @@ public:
 
 /****************************************************************************
 *
-*   DbWork
+*   DbPage
 *
 ***/
 
@@ -75,9 +75,9 @@ struct DbPageHeader {
     uint64_t lsn;
 };
 
-class DbWork {
+class DbPage {
 public:
-    ~DbWork();
+    ~DbPage();
 
     bool open(
         std::string_view datafile,
@@ -130,7 +130,7 @@ public:
     struct Record;
 
 public:
-    DbLog(DbData & data, DbWork & work);
+    DbLog(DbData & data, DbPage & page);
 
     bool open(std::string_view file);
 
@@ -155,7 +155,7 @@ private:
     void applyCommit(uint16_t txn);
 
     DbData & m_data;
-    DbWork & m_work;
+    DbPage & m_page;
     Dim::FileHandle m_file;
     uint16_t m_lastTxn = 0;
     uint64_t m_lastLsn = 0;
@@ -163,14 +163,14 @@ private:
 
 class DbTxn {
 public:
-    DbTxn(DbLog & log, DbWork & work);
+    DbTxn(DbLog & log, DbPage & page);
     ~DbTxn();
 
     template<typename T> const T * viewPage(uint32_t pgno) const;
     template<typename T> const T * editPage(uint32_t pgno);
-    size_t pageSize() const { return m_work.pageSize(); }
-    size_t numPages() const { return m_work.size(); }
-    void growToFit(uint32_t pgno) { m_work.growToFit(pgno); }
+    size_t pageSize() const { return m_page.pageSize(); }
+    size_t numPages() const { return m_page.size(); }
+    void growToFit(uint32_t pgno) { m_page.growToFit(pgno); }
 
     void logZeroInit(uint32_t pgno);
     void logPageFree(uint32_t pgno);
@@ -229,14 +229,14 @@ private:
     );
 
     DbLog & m_log;
-    DbWork & m_work;
+    DbPage & m_page;
     unsigned m_txn{0};
 };
 
 //===========================================================================
 template<typename T>
 const T * DbTxn::viewPage(uint32_t pgno) const {
-    auto ptr = static_cast<const T *>(m_work.rptr(m_txn, pgno));
+    auto ptr = static_cast<const T *>(m_page.rptr(m_txn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
@@ -249,7 +249,7 @@ const T * DbTxn::viewPage(uint32_t pgno) const {
 //===========================================================================
 template<typename T>
 const T * DbTxn::editPage(uint32_t pgno) {
-    auto ptr = static_cast<const T *>(m_work.wptr(m_txn, pgno));
+    auto ptr = static_cast<const T *>(m_page.wptr(m_txn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(offsetof(T, hdr) == 0);

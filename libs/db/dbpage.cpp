@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dbwork.cpp - tismet db
+// dbpage.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -51,17 +51,17 @@ struct ZeroPage {
 
 /****************************************************************************
 *
-*   DbWork
+*   DbPage
 *
 ***/
 
 //===========================================================================
-DbWork::~DbWork() {
+DbPage::~DbPage() {
     close();
 }
 
 //===========================================================================
-bool DbWork::open(
+bool DbPage::open(
     string_view datafile,
     string_view workfile,
     size_t pageSize
@@ -74,7 +74,7 @@ bool DbWork::open(
 }
 
 //===========================================================================
-bool DbWork::openWork(string_view workfile, size_t pageSize) {
+bool DbPage::openWork(string_view workfile, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
@@ -116,7 +116,7 @@ bool DbWork::openWork(string_view workfile, size_t pageSize) {
 }
 
 //===========================================================================
-bool DbWork::openData(string_view datafile) {
+bool DbPage::openData(string_view datafile) {
     m_fdata = fileOpen(
         datafile,
         File::fCreat | File::fReadWrite | File::fDenyWrite | File::fBlocking
@@ -147,7 +147,7 @@ bool DbWork::openData(string_view datafile) {
 }
 
 //===========================================================================
-void DbWork::close() {
+void DbPage::close() {
     m_pages.clear();
     m_pageSize = 0;
     m_vdata.close();
@@ -158,11 +158,11 @@ void DbWork::close() {
 }
 
 //===========================================================================
-void DbWork::flush() {
+void DbPage::flush() {
 }
 
 //===========================================================================
-void DbWork::growToFit(uint32_t pgno) {
+void DbPage::growToFit(uint32_t pgno) {
     if (pgno < m_pages.size())
         return;
     assert(pgno == m_pages.size());
@@ -171,7 +171,7 @@ void DbWork::growToFit(uint32_t pgno) {
 }
 
 //===========================================================================
-const void * DbWork::rptr(uint64_t txn, uint32_t pgno) const {
+const void * DbPage::rptr(uint64_t txn, uint32_t pgno) const {
     assert(pgno < m_pages.size());
     auto ptr = const_cast<const void *>(m_pages[pgno]);
     if (!ptr)
@@ -180,7 +180,7 @@ const void * DbWork::rptr(uint64_t txn, uint32_t pgno) const {
 }
 
 //===========================================================================
-void * DbWork::wptr(uint64_t txn, uint32_t pgno) {
+void * DbPage::wptr(uint64_t txn, uint32_t pgno) {
     assert(pgno < m_pages.size());
     auto ptr = m_pages[pgno];
     if (!ptr)
@@ -192,6 +192,6 @@ void * DbWork::wptr(uint64_t txn, uint32_t pgno) {
 }
 
 //===========================================================================
-void DbWork::writePage(const DbPageHeader * hdr) {
+void DbPage::writePage(const DbPageHeader * hdr) {
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }

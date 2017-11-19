@@ -215,9 +215,9 @@ inline static size_t size(const DbLog::Record * log) {
 ***/
 
 //===========================================================================
-DbLog::DbLog(DbData & data, DbWork & work)
+DbLog::DbLog(DbData & data, DbPage & work)
     : m_data(data)
-    , m_work(work)
+    , m_page(work)
 {}
 
 //===========================================================================
@@ -288,14 +288,14 @@ void DbLog::log(const Record * log, size_t bytes) {
 
 //===========================================================================
 void DbLog::apply(const Record * log) {
-    auto vptr = make_unique<char[]>(m_work.pageSize());
+    auto vptr = make_unique<char[]>(m_page.pageSize());
     auto ptr = new(vptr.get()) DbPageHeader;
-    auto rptr = m_work.rptr(log->lsn.full, log->pgno);
-    memcpy(ptr, rptr, m_work.pageSize());
+    auto rptr = m_page.rptr(log->lsn.full, log->pgno);
+    memcpy(ptr, rptr, m_page.pageSize());
     ptr->pgno = log->pgno;
     ptr->lsn = log->lsn.full;
     apply(ptr, log);
-    m_work.writePage(ptr);
+    m_page.writePage(ptr);
 }
 
 //===========================================================================
@@ -443,9 +443,9 @@ void DbLog::apply(void * hdr, const Record * log) {
 ***/
 
 //===========================================================================
-DbTxn::DbTxn(DbLog & log, DbWork & work)
+DbTxn::DbTxn(DbLog & log, DbPage & work)
     : m_log{log}
-    , m_work{work}
+    , m_page{work}
 {
     m_txn = m_log.beginTxn();
 }
