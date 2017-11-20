@@ -287,7 +287,11 @@ public:
 public:
     ~DbData();
 
-    bool open(
+    // Allows updates from DbLog to be applied
+    void openForApply(size_t pageSize);
+
+    // After open metrics and samples can be updated and queried
+    bool openForUpdate(
         DbTxn & txn,
         IDbEnumNotify * notify,
         std::string_view name
@@ -422,8 +426,6 @@ private:
     DbRadix m_rdIndex;
     DbRadix m_rdMetric;
 
-    Dim::FileHandle m_fdata;
-    DbReadView m_vdata;
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
     size_t m_numPages = 0;

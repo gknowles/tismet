@@ -221,6 +221,11 @@ DbLog::DbLog(DbData & data, DbPage & work)
 {}
 
 //===========================================================================
+bool DbLog::open(string_view logfile) {
+    return true;
+}
+
+//===========================================================================
 unsigned DbLog::beginTxn() {
     for (;;) {
         if (++m_lastTxn)

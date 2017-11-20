@@ -166,17 +166,26 @@ constexpr pair<uint32_t, size_t> segmentPage(uint32_t pgno, size_t pageSize) {
 //===========================================================================
 DbData::~DbData () {
     s_perfCount -= m_numMetrics;
-    m_vdata.close();
-    fileClose(m_fdata);
 }
 
 //===========================================================================
-bool DbData::open(
+void DbData::openForApply(size_t pageSize) {
+    m_pageSize = pageSize;
+
+    auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
+    m_rdIndex.init(m_pageSize, ipOff, ipOff);
+    auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
+    m_rdMetric.init(m_pageSize, mpOff, ipOff);
+}
+
+//===========================================================================
+bool DbData::openForUpdate(
     DbTxn & txn,
     IDbEnumNotify * notify,
     string_view name
 ) {
-    m_pageSize = txn.pageSize();
+    assert(m_pageSize);
+
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
     if (!zp->hdr.type)
         txn.logZeroInit(kZeroPageNum);
@@ -191,11 +200,6 @@ bool DbData::open(
     }
     m_numPages = txn.numPages();
     m_segmentSize = zp->segmentSize;
-
-    auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
-    m_rdIndex.init(m_pageSize, ipOff, ipOff);
-    auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
-    m_rdMetric.init(m_pageSize, mpOff, ipOff);
 
     if (!loadFreePages(txn))
         return false;
@@ -1119,14 +1123,12 @@ bool DbData::loadFreePages (DbTxn & txn) {
             break;
         auto fp = txn.viewPage<DbPageHeader>(pgno);
         if (!fp || fp->type && fp->type != kPageTypeFree) {
-            logMsgError() << "Bad free page #" << pgno << " in "
-                << filePath(m_fdata);
+            logMsgError() << "Bad free page #" << pgno;
             return false;
         }
         if (fp->type) {
             if (blank) {
-                logMsgError() << "Blank data page #" << pgno << " in "
-                    << filePath(m_fdata);
+                logMsgError() << "Blank data page #" << pgno;
                 return false;
             }
         } else if (!blank) {

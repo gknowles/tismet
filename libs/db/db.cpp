@@ -123,10 +123,14 @@ DbBase::~DbBase () {
 bool DbBase::open(string_view name, size_t pageSize) {
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
+    auto logfile = Path(name).setExt("tsl");
     if (!m_page.open(datafile, workfile, pageSize))
         return false;
+    m_data.openForApply(m_page.pageSize());
+    if (!m_log.open(logfile))
+        return false;
     DbTxn txn{m_log, m_page};
-    return m_data.open(txn, this, datafile);
+    return m_data.openForUpdate(txn, this, datafile);
 }
 
 //===========================================================================
