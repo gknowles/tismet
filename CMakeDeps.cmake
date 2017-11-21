@@ -19,6 +19,7 @@
 # libs/db/dbdump.cpp
 # libs/db/dbint.h
 # libs/db/dblog.cpp
+# libs/db/dblogrec.cpp
 # libs/db/dbpage.cpp
 # libs/db/dbradix.cpp
 # libs/db/dbradix.h

@@ -129,6 +129,9 @@ class DbLog {
 public:
     struct Record;
 
+    static uint32_t getPgno(const Record * log);
+    static uint64_t getLsn(const Record * log);
+
 public:
     DbLog(DbData & data, DbPage & page);
 
@@ -147,6 +150,9 @@ public:
     void log(const Record * log, size_t bytes);
 
 private:
+    void logBeginTxn(unsigned txn);
+    void logCommit(unsigned txn);
+
     void * alloc(size_t bytes);
 
     void apply(const Record * log);
