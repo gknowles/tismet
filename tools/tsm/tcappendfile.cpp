@@ -32,7 +32,7 @@ FileAppendQueue::~FileAppendQueue() {
 
 //===========================================================================
 bool FileAppendQueue::open(std::string_view path, OpenExisting mode) {
-    auto flags = File::fReadWrite | File::fAligned;
+    auto flags = File::fReadWrite;
     switch (mode) {
     case kFail: flags |= File::fCreat | File::fExcl; break;
     case kAppend: flags |= File::fCreat; break;
@@ -105,10 +105,10 @@ void FileAppendQueue::append(std::string_view data) {
 
     {
         unique_lock<mutex> lk{m_mut};
+        m_fullBufs += 1;
         while (m_fullBufs + m_lockedBufs == m_numBufs)
             m_cv.wait(lk);
 
-        m_fullBufs += 1;
         if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
             m_buf = {m_buffers, m_bufLen};
         } else {
