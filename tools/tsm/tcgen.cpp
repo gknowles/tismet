@@ -107,8 +107,7 @@ static void logShutdown() {
 
 //===========================================================================
 static bool checkLimits(size_t moreBytes) {
-    // Check thresholds, if exceeded roll back last value and ensure
-    // subsequent calls return 0 bytes.
+    // Update counters and check thresholds, if exceeded roll back last value.
     s_bytesWritten += moreBytes;
     s_samplesWritten += 1;
     if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
@@ -398,6 +397,7 @@ bool FileJob::start(Cli & cli) {
         }
     }
 
+    taskSetQueueThreads(taskComputeQueue(), 2);
     logStart(fname, nullptr);
     taskPushCompute(*this);
     cli.fail(EX_PENDING, "");

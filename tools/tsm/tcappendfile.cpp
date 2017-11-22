@@ -32,7 +32,7 @@ FileAppendQueue::~FileAppendQueue() {
 
 //===========================================================================
 bool FileAppendQueue::open(std::string_view path, OpenExisting mode) {
-    auto flags = File::fReadWrite;
+    auto flags = File::fReadWrite | File::fAligned | File::fBlocking;
     switch (mode) {
     case kFail: flags |= File::fCreat | File::fExcl; break;
     case kAppend: flags |= File::fCreat; break;
@@ -103,20 +103,17 @@ void FileAppendQueue::append(std::string_view data) {
     if (!m_buf.empty())
         return;
 
-    {
-        unique_lock<mutex> lk{m_mut};
-        m_fullBufs += 1;
-        while (m_fullBufs + m_lockedBufs == m_numBufs)
-            m_cv.wait(lk);
-
-        if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
-            m_buf = {m_buffers, m_bufLen};
-        } else {
-            m_buf = {m_buf.data(), m_bufLen};
-        }
-
-        write_UNLK(lk);
+    unique_lock<mutex> lk{m_mut};
+    m_fullBufs += 1;
+    if (m_buf.data() == m_buffers + m_numBufs * m_bufLen) {
+        m_buf = {m_buffers, m_bufLen};
+    } else {
+        m_buf = {m_buf.data(), m_bufLen};
     }
+    write_LK();
+
+    while (m_fullBufs + m_lockedBufs == m_numBufs)
+        m_cv.wait(lk);
 
     if (auto left = data.size() - bytes) {
         memcpy((char *) m_buf.data(), data.data() + bytes, left);
@@ -126,7 +123,7 @@ void FileAppendQueue::append(std::string_view data) {
 }
 
 //===========================================================================
-void FileAppendQueue::write_UNLK(unique_lock<mutex> & lk) {
+void FileAppendQueue::write_LK() {
     if (m_numWrites == m_maxWrites)
         return;
 
@@ -150,7 +147,6 @@ void FileAppendQueue::write_UNLK(unique_lock<mutex> & lk) {
     m_numWrites += 1;
     size_t writePos = m_filePos;
     m_filePos += writeCount;
-    lk.unlock();
 
     fileWrite(
         this,
@@ -173,7 +169,7 @@ void FileAppendQueue::onFileWrite(
         unique_lock<mutex> lk{m_mut};
         m_numWrites -= 1;
         m_lockedBufs -= (int) (data.size() / m_bufLen);
-        write_UNLK(lk);
+        write_LK();
     }
     m_cv.notify_all();
 }

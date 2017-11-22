@@ -30,7 +30,7 @@ public:
     void append(std::string_view data);
 
 private:
-    void write_UNLK(std::unique_lock<std::mutex> & lk);
+    void write_LK();
 
     void onFileWrite(
         int written,

@@ -254,6 +254,7 @@ static bool recordCmd(Cli & cli) {
     if (s_opts.maxSecs)
         timerUpdate(&s_timer, (chrono::seconds) s_opts.maxSecs);
 
+    taskSetQueueThreads(taskComputeQueue(), 1);
     carbonInitialize();
     socketListen<RecordConn>(
         s_opts.addr,
