@@ -135,19 +135,22 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, (float) value);
     s_bytesWritten += m_buf.size();
-    s_samplesWritten += 1;
-    if (s_opts.maxSamples && s_samplesWritten > s_opts.maxSamples
-        || s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
-    ) {
+    if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes) {
         s_bytesWritten -= m_buf.size();
-        s_samplesWritten -= 1;
         return appSignalShutdown();
     }
+    s_samplesWritten += 1;
 
     if (s_file) {
         s_file.append(m_buf);
     } else {
         cout << m_buf;
+    }
+
+    if (s_opts.maxSamples && s_samplesWritten == s_opts.maxSamples
+        || s_opts.maxBytes && s_bytesWritten == s_opts.maxBytes
+    ) {
+        return appSignalShutdown();
     }
 }
 
