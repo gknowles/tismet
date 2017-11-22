@@ -52,6 +52,10 @@ void tsDataInitialize() {
     string path;
     appDataPath(path, "metrics.dat");
     s_db = dbOpen(path);
+    if (!s_db) {
+        logMsgError() << "Unable to open database, " << path;
+        return appSignalShutdown(EX_DATAERR);
+    }
 }
 
 //===========================================================================
