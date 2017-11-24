@@ -73,7 +73,6 @@
 # vendor/dimapp/libs/app/console.h
 # vendor/dimapp/libs/app/env.h
 # vendor/dimapp/libs/app/logfile.cpp
-# vendor/dimapp/libs/app/logfile.h
 # vendor/dimapp/libs/app/pch.cpp
 # vendor/dimapp/libs/app/pch.h
 # vendor/dimapp/libs/app/webadmin.cpp
