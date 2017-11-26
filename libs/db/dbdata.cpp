@@ -35,7 +35,7 @@ const unsigned kDataFileSig[] = {
     0x39515728,
     0x4873456d,
     0xf6bfd8a1,
-    0xa33f3ba2
+    0xa33f3ba2,
 };
 
 enum DbPageType : uint32_t {
@@ -194,8 +194,12 @@ bool DbData::openForUpdate(
         logMsgError() << "Bad signature in " << name;
         return false;
     }
+    if (zp->pageSize != m_pageSize) {
+        logMsgError() << "Mismatched page size in " << name;
+        return false;
+    }
     if (zp->segmentSize != segmentSize(m_pageSize)) {
-        logMsgError() << "Invalid segment size in " << name;
+        logMsgError() << "Mismatched segment size in " << name;
         return false;
     }
     m_numPages = txn.numPages();
@@ -1150,7 +1154,6 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
         (void) segPos;
         m_numPages += 1;
         txn.growToFit(segPage);
-        txn.logSegmentInit(segPage);
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
@@ -1224,32 +1227,27 @@ void DbData::applyZeroInit(void * ptr) {
 }
 
 //===========================================================================
-void DbData::applySegmentInit(void * ptr) {
-    auto sp = static_cast<SegmentPage *>(ptr);
-    assert(!sp->hdr.type);
-    sp->hdr.type = sp->type;
-    sp->hdr.id = 0;
-    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
-        assert(segPage == sp->hdr.pgno && !segPos);
-    }
-    auto bits = segmentBitView(sp, m_pageSize);
-    bits.set();
-    bits.reset(0);
-}
-
-//===========================================================================
 void DbData::applySegmentUpdate(
     void * ptr,
     uint32_t refPage,
     bool free
 ) {
     auto sp = static_cast<SegmentPage *>(ptr);
+    auto bits = segmentBitView(sp, m_pageSize);
+    if (!sp->hdr.type) {
+        sp->hdr.type = sp->type;
+        sp->hdr.id = 0;
+        if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
+            auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
+            assert(segPage == sp->hdr.pgno && !segPos);
+        }
+        bits.set();
+        bits.reset(0);
+    }
     assert(sp->hdr.type == kPageTypeZero || sp->hdr.type == kPageTypeSegment);
     auto [segPage, segPos] = segmentPage(refPage, m_pageSize);
     assert(sp->hdr.pgno == segPage);
     ignore = segPage;
-    auto bits = segmentBitView(sp, m_pageSize);
     assert(bits[segPos] != free);
     bits.set(segPos, free);
 }

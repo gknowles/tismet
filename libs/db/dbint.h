@@ -72,6 +72,8 @@ struct DbPageHeader {
     uint32_t pgno;
     uint32_t id;
     uint32_t checksum;
+
+    // point at which page became dirty, 0 for clean pages
     uint64_t lsn;
 };
 
@@ -125,46 +127,106 @@ private:
 enum DbLogRecType : uint8_t;
 class DbData;
 
-class DbLog {
+class DbLog : Dim::ITimerNotify, Dim::IFileWriteNotify {
 public:
-    struct Record;
+    enum BufferMode : int;
 
+    struct Record;
+    static size_t size(const Record * log);
     static uint32_t getPgno(const Record * log);
     static uint64_t getLsn(const Record * log);
+    static uint16_t getLocalTxn(const Record * log);
+    static void setLogPos(Record * log, uint64_t lsn, uint16_t localTxn);
+
+    static uint64_t getLsn(uint64_t logPos);
+    static uint16_t getLocalTxn(uint64_t logPos);
+    static uint64_t getTxn(uint64_t lsn, uint16_t localTxn);
+
+    struct PageInfo {
+        uint32_t pgno;
+        uint64_t firstLsn;
+        uint64_t lastLsn;
+    };
 
 public:
     DbLog(DbData & data, DbPage & page);
+    ~DbLog();
 
     bool open(std::string_view file);
+    void close();
 
     // Returns transaction id.
-    unsigned beginTxn();
-    void commit(unsigned txn);
+    uint64_t beginTxn();
+    void commit(uint64_t txn);
 
     Record * alloc(
-        unsigned txn,
+        uint64_t txn,
         DbLogRecType type,
         uint32_t pgno,
         size_t bytes
     );
-    void log(const Record * log, size_t bytes);
+    void logAndApply(uint64_t txn, Record * log, size_t bytes);
 
 private:
-    void logBeginTxn(unsigned txn);
-    void logCommit(unsigned txn);
+    char * bufPtr(size_t ibuf);
 
-    void * alloc(size_t bytes);
+    Dim::Duration onTimer(Dim::TimePoint now) override;
+    void onFileWrite(
+        int written,
+        std::string_view data,
+        int64_t offset,
+        Dim::FileHandle f
+    ) override;
 
-    void apply(const Record * log);
-    void apply(void * ptr, const Record * log);
+    bool loadPages();
+    bool recover();
+
+    uint64_t logCheckpointStart();
+    void logCheckpointEnd(uint64_t startLsn);
+    uint64_t logBeginTxn(uint16_t localTxn);
+    void logCommit(uint64_t txn);
+
+    void log(Record * log, size_t bytes, bool setLsn);
+    void prepareBuffer_LK(
+        const void * log,
+        size_t bytesOnOldPage,
+        size_t bytesOnNewPage
+    );
+
+    enum ApplyMode {
+        kApplyAnalyze,
+        kApplyRedo,
+    };
+    void apply(const Record * log, ApplyMode mode);
+    void applyRedo(const Record * log);
+    void applyRedo(void * ptr, const Record * log);
+    void applyCheckpointStart(uint64_t lsn);
+    void applyCheckpointEnd(uint64_t lsn, uint64_t startLsn);
     void applyBeginTxn(uint16_t txn);
     void applyCommit(uint16_t txn);
 
     DbData & m_data;
     DbPage & m_page;
-    Dim::FileHandle m_file;
-    uint16_t m_lastTxn = 0;
-    uint64_t m_lastLsn = 0;
+    Dim::FileHandle m_flog;
+    uint16_t m_lastLocalTxn{0};
+    uint64_t m_lastLsn{0};          // last assigned
+    uint64_t m_checkpointLsn{0};    // last (perhaps unfinished) checkpoint
+    uint64_t m_stableLsn{0};        // last known durably saved
+
+    Dim::UnsignedSet m_freePages;
+    std::deque<PageInfo> m_pages;
+    size_t m_numPages{0};
+    size_t m_pageSize{0};
+
+    std::mutex m_bufMut;
+    std::condition_variable m_bufAvailCv;
+    std::vector<BufferMode> m_bufModes;
+    std::unique_ptr<char[]> m_buffers;
+    unsigned m_numBufs{0};
+    unsigned m_emptyBufs{0};
+    unsigned m_curBuf{0};
+    size_t m_bufPos{0};
+    size_t m_logPos{0};
 };
 
 class DbTxn {
@@ -180,7 +242,6 @@ public:
 
     void logZeroInit(uint32_t pgno);
     void logPageFree(uint32_t pgno);
-    void logSegmentInit(uint32_t pgno);
     void logSegmentUpdate(uint32_t pgno, uint32_t refPage, bool free);
     void logRadixInit(
         uint32_t pgno,
@@ -233,10 +294,12 @@ private:
         uint32_t pgno,
         size_t bytes = sizeof(T)
     );
+    void log(DbLog::Record * rec, size_t bytes);
 
     DbLog & m_log;
     DbPage & m_page;
-    unsigned m_txn{0};
+    uint64_t m_txn{0};
+    std::string m_buffer;
 };
 
 //===========================================================================
@@ -329,7 +392,6 @@ public:
 
     void applyZeroInit(void * ptr);
     void applyPageFree(void * ptr);
-    void applySegmentInit(void * ptr);
     void applySegmentUpdate(void * ptr, uint32_t refPage, bool free);
     void applyRadixInit(
         void * ptr,

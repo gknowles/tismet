@@ -20,8 +20,10 @@
 // Standard headers
 #include <cassert>
 #include <cmath>
+#include <condition_variable>
 #include <cstddef>
-#include <queue>
+#include <deque>
+#include <mutex>
 
 // Platform headers
 // External library internal headers
