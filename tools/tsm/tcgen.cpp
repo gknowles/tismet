@@ -372,7 +372,7 @@ private:
     // Inherited via ITaskNotify
     void onTask() override;
 
-    FileAppendQueue m_file{10, 2};
+    FileAppendQueue m_file{100, 2};
     MetricSource m_mets;
 };
 

@@ -32,7 +32,7 @@ FileAppendQueue::~FileAppendQueue() {
 
 //===========================================================================
 bool FileAppendQueue::open(std::string_view path, OpenExisting mode) {
-    auto flags = File::fReadWrite | File::fAligned | File::fBlocking;
+    auto flags = File::fReadWrite | File::fAligned;
     switch (mode) {
     case kFail: flags |= File::fCreat | File::fExcl; break;
     case kAppend: flags |= File::fCreat; break;
