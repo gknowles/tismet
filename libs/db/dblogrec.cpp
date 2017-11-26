@@ -16,9 +16,13 @@ using namespace Dim;
 ***/
 
 enum DbLogRecType : uint8_t {
+    kRecTypeCheckpointStart,    //
+    kRecTypeCheckpointEnd,      // startLsn
+    kRecTypeTxnBegin,           // N/A
+    kRecTypeTxnCommit,          // N/A
+
     kRecTypeZeroInit,           // [master]
     kRecTypePageFree,           // [any]
-    kRecTypeSegmentInit,        // [segment]
     kRecTypeSegmentAlloc,       // [master/segment] refPage
     kRecTypeSegmentFree,        // [master/segment] refPage
     kRecTypeRadixInit,          // [radix] id, height
@@ -37,9 +41,6 @@ enum DbLogRecType : uint8_t {
     kRecTypeSampleUpdateLast,   // [sample] first, last, value
                                 //   [first, last) = NANs, last = value
     kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
-
-    kRecTypeTxnBegin,           // N/A
-    kRecTypeTxnCommit,          // N/A
 };
 
 #pragma pack(push)
@@ -49,21 +50,28 @@ struct DbLog::Record {
     DbLogRecType type;
     uint32_t pgno;
     union {
-        uint64_t full;
+        uint64_t txn;
         struct {
-            uint64_t seq : 48;
-            uint64_t txn : 16;
+            uint64_t localTxn : 16;
+            uint64_t lsn : 48;
         } u;
-    } lsn;
+    } logPos;
 };
 
 namespace {
 
 //---------------------------------------------------------------------------
+// Checkpoint
+struct CheckpointEndRec {
+    DbLog::Record hdr;
+    uint64_t startLsn;
+};
+
+//---------------------------------------------------------------------------
 // Transaction
 struct TransactionRec {
     DbLogRecType type;
-    uint16_t txn;
+    uint16_t localTxn;
 };
 
 //---------------------------------------------------------------------------
@@ -152,16 +160,23 @@ struct SampleUpdateTimeRec {
 
 /****************************************************************************
 *
-*   Helpers
+*   DbLog
 *
 ***/
 
 //===========================================================================
-inline static size_t size(const DbLog::Record * log) {
+// static
+size_t DbLog::size(const DbLog::Record * log) {
     switch (log->type) {
+    case kRecTypeCheckpointStart:
+        return sizeof(DbLog::Record);
+    case kRecTypeCheckpointEnd:
+        return sizeof(CheckpointEndRec);
+    case kRecTypeTxnBegin:
+    case kRecTypeTxnCommit:
+        return sizeof(TransactionRec);
     case kRecTypeZeroInit:
     case kRecTypePageFree:
-    case kRecTypeSegmentInit:
         return sizeof(DbLog::Record);
     case kRecTypeSegmentAlloc:
     case kRecTypeSegmentFree:
@@ -198,21 +213,11 @@ inline static size_t size(const DbLog::Record * log) {
         return sizeof(SampleUpdateRec);
     case kRecTypeSampleUpdateTime:
         return sizeof(SampleUpdateTimeRec);
-    case kRecTypeTxnBegin:
-    case kRecTypeTxnCommit:
-        return sizeof(TransactionRec);
     }
 
     logMsgCrash() << "Unknown log record type, " << log->type;
     return 0;
 }
-
-
-/****************************************************************************
-*
-*   DbLog
-*
-***/
 
 //===========================================================================
 // static
@@ -223,72 +228,128 @@ uint32_t DbLog::getPgno(const DbLog::Record * log) {
 //===========================================================================
 // static
 uint64_t DbLog::getLsn(const DbLog::Record * log) {
-    return log->lsn.full;
+    return log->logPos.u.lsn;
 }
 
 //===========================================================================
-void DbLog::logBeginTxn(unsigned txn) {
-    auto bytes = sizeof(TransactionRec);
-    auto rec = (TransactionRec *) alloc(bytes);
-    rec->type = kRecTypeTxnBegin;
-    rec->txn = (uint16_t) txn;
-    log((Record *) rec, bytes);
+// static
+uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
+    return log->logPos.u.localTxn;
 }
 
 //===========================================================================
-void DbLog::logCommit(unsigned txn) {
-    auto bytes = sizeof(TransactionRec);
-    auto rec = (TransactionRec *) alloc(bytes);
-    rec->type = kRecTypeTxnCommit;
-    rec->txn = m_lastTxn;
-    log((Record *) rec, bytes);
+// static
+uint64_t DbLog::getLsn(uint64_t logPos) {
+    Record tmp;
+    tmp.logPos.txn = logPos;
+    return tmp.logPos.u.lsn;
 }
 
 //===========================================================================
-void * DbLog::alloc(size_t bytes) {
-    static string s_rec;
-    s_rec.resize(bytes);
-    return s_rec.data();
+// static
+uint16_t DbLog::getLocalTxn(uint64_t logPos) {
+    Record tmp;
+    tmp.logPos.txn = logPos;
+    return tmp.logPos.u.localTxn;
 }
 
 //===========================================================================
-DbLog::Record * DbLog::alloc(
-    unsigned txn,
-    DbLogRecType type,
-    uint32_t pgno,
-    size_t bytes
-) {
+// static
+uint64_t DbLog::getTxn(uint64_t lsn, uint16_t localTxn) {
+    Record tmp;
+    tmp.logPos.u.lsn = lsn;
+    tmp.logPos.u.localTxn = localTxn;
+    return tmp.logPos.txn;
+}
+
+//===========================================================================
+// static
+void DbLog::setLogPos(DbLog::Record * log, uint64_t lsn, uint16_t localTxn) {
+    log->logPos.u.lsn = lsn;
+    log->logPos.u.localTxn = localTxn;
+}
+
+//===========================================================================
+uint64_t DbLog::logCheckpointStart() {
+    Record rec;
+    rec.type = kRecTypeCheckpointStart;
+    rec.pgno = 0;
+    rec.logPos = {};
+    log(&rec, sizeof(rec), true);
+    return rec.logPos.u.lsn;
+}
+
+//===========================================================================
+void DbLog::logCheckpointEnd(uint64_t startLsn) {
+    CheckpointEndRec rec;
+    rec.hdr.type = kRecTypeCheckpointEnd;
+    rec.hdr.pgno = 0;
+    rec.hdr.logPos = {};
+    rec.startLsn = startLsn;
+    log((Record *) &rec, sizeof(rec), true);
+}
+
+//===========================================================================
+uint64_t DbLog::logBeginTxn(uint16_t localTxn) {
+    TransactionRec rec;
+    rec.type = kRecTypeTxnBegin;
+    rec.localTxn = localTxn;
+    log((Record *) &rec, sizeof(rec), false);
+    return getTxn(m_lastLsn, m_lastLocalTxn);
+}
+
+//===========================================================================
+void DbLog::logCommit(uint64_t txn) {
+    TransactionRec rec;
+    rec.type = kRecTypeTxnCommit;
+    rec.localTxn = getLocalTxn(txn);
+    log((Record *) &rec, sizeof(rec), false);
+}
+
+//===========================================================================
+void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     assert(txn);
-    auto lsn = ++m_lastLsn;
     assert(bytes >= sizeof(DbLog::Record));
-    auto rec = (Record *) alloc(bytes);
-    rec->lsn.u.txn = txn;
-    rec->lsn.u.seq = lsn;
-    rec->type = type;
-    rec->pgno = pgno;
-    return rec;
+    rec->logPos.u.lsn = 0;
+    rec->logPos.u.localTxn = getLocalTxn(txn);
+    log(rec, bytes, true);
+    apply(rec, kApplyRedo);
 }
 
 //===========================================================================
-void DbLog::log(const Record * log, size_t bytes) {
-    assert(bytes == size(log));
-
+void DbLog::apply(const Record * log, ApplyMode mode) {
     switch (log->type) {
-    case kRecTypeTxnBegin: {
-        auto rec = reinterpret_cast<const TransactionRec *>(log);
-        return applyBeginTxn(rec->txn);
-    }
-    case kRecTypeTxnCommit: {
-        auto rec = reinterpret_cast<const TransactionRec *>(log);
-        return applyCommit(rec->txn);
-    }
+    case kRecTypeCheckpointStart:
+        if (mode == kApplyAnalyze)
+            applyCheckpointStart(log->logPos.u.lsn);
+        break;
+    case kRecTypeCheckpointEnd:
+        if (mode == kApplyAnalyze) {
+            auto rec = reinterpret_cast<const CheckpointEndRec *>(log);
+            applyCheckpointEnd(rec->hdr.logPos.u.lsn, rec->startLsn);
+        }
+        break;
+    case kRecTypeTxnBegin:
+        if (mode == kApplyAnalyze) {
+            auto rec = reinterpret_cast<const TransactionRec *>(log);
+            applyBeginTxn(rec->localTxn);
+        }
+        break;
+    case kRecTypeTxnCommit:
+        if (mode == kApplyAnalyze) {
+            auto rec = reinterpret_cast<const TransactionRec *>(log);
+            applyCommit(rec->localTxn);
+        }
+        break;
     default:
-        return apply(log);
+        if (mode == kApplyRedo)
+            applyRedo(log);
+        break;
     }
 }
 
 //===========================================================================
-void DbLog::apply(void * hdr, const Record * log) {
+void DbLog::applyRedo(void * hdr, const Record * log) {
     switch (log->type) {
     default:
         logMsgCrash() << "unknown log record type, " << log->type;
@@ -297,8 +358,6 @@ void DbLog::apply(void * hdr, const Record * log) {
         return m_data.applyZeroInit(hdr);
     case kRecTypePageFree:
         return m_data.applyPageFree(hdr);
-    case kRecTypeSegmentInit:
-        return m_data.applySegmentInit(hdr);
     case kRecTypeSegmentAlloc: {
         auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
         return m_data.applySegmentUpdate(hdr, rec->refPage, false);
@@ -433,25 +492,31 @@ pair<T *, size_t> DbTxn::alloc(
     assert(bytes >= sizeof(T));
     if (!m_txn)
         m_txn = m_log.beginTxn();
-    return {(T *) m_log.alloc(m_txn, type, pgno, bytes), bytes};
+    m_buffer.resize(bytes);
+    auto * lr = (DbLog::Record *) m_buffer.data();
+    lr->logPos.txn = 0;
+    lr->type = type;
+    lr->pgno = pgno;
+    return {(T *) m_buffer.data(), bytes};
+}
+
+//===========================================================================
+void DbTxn::log(DbLog::Record * rec, size_t bytes) {
+    if (!m_txn)
+        m_txn = m_log.beginTxn();
+    m_log.logAndApply(m_txn, rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logZeroInit(uint32_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
-    m_log.log(rec, bytes);
+    log(rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logPageFree(uint32_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
-    m_log.log(rec, bytes);
-}
-
-//===========================================================================
-void DbTxn::logSegmentInit(uint32_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeSegmentInit, pgno);
-    m_log.log(rec, bytes);
+    log(rec, bytes);
 }
 
 //===========================================================================
@@ -465,7 +530,7 @@ void DbTxn::logSegmentUpdate(
         pgno
     );
     rec->refPage = refPage;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -480,7 +545,7 @@ void DbTxn::logRadixInit(
         auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);
         rec->id = id;
         rec->height = height;
-        m_log.log(&rec->hdr, bytes);
+        log(&rec->hdr, bytes);
         return;
     }
 
@@ -497,7 +562,7 @@ void DbTxn::logRadixInit(
     rec->height = height;
     rec->numPages = (uint16_t) count;
     memcpy(rec->pages, firstPage, extra);
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -509,14 +574,14 @@ void DbTxn::logRadixErase(
     auto [rec, bytes] = alloc<RadixEraseRec>(kRecTypeRadixErase, pgno);
     rec->firstPos = (uint16_t) firstPos;
     rec->lastPos = (uint16_t) lastPos;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logRadixPromote(uint32_t pgno, uint32_t refPage) {
     auto [rec, bytes] = alloc<RadixPromoteRec>(kRecTypeRadixPromote, pgno);
     rec->refPage = refPage;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -528,7 +593,7 @@ void DbTxn::logRadixUpdate(
     auto [rec, bytes] = alloc<RadixUpdateRec>(kRecTypeRadixUpdate, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -550,7 +615,7 @@ void DbTxn::logMetricInit(
     rec->retention = retention;
     rec->interval = interval;
     memcpy(rec->name, name.data(), extra);
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -562,13 +627,13 @@ void DbTxn::logMetricUpdate(
     auto [rec, bytes] = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
     rec->retention = retention;
     rec->interval = interval;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logMetricClearSamples(uint32_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeMetricClearSamples, pgno);
-    m_log.log(rec, bytes);
+    log(rec, bytes);
 }
 
 //===========================================================================
@@ -584,7 +649,7 @@ void DbTxn::logMetricUpdateSamples(
     auto [rec, bytes] = alloc<MetricUpdateSamplesRec>(type, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -598,7 +663,7 @@ void DbTxn::logSampleInit(
     rec->id = id;
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -616,12 +681,12 @@ void DbTxn::logSampleUpdate(
     rec->firstSample = (uint16_t) firstSample;
     rec->lastSample = (uint16_t) lastSample;
     rec->value = value;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::logSampleUpdateTime(uint32_t pgno, TimePoint pageTime) {
     auto [rec, bytes] = alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
-    m_log.log(&rec->hdr, bytes);
+    log(&rec->hdr, bytes);
 }

@@ -35,7 +35,7 @@ const unsigned kWorkFileSig[] = {
     0xa6e6fd51,
     0x4a443864,
     0x8b4302ae,
-    0x84b2074b
+    0x84b2074b,
 };
 
 const uint32_t kPageTypeZero = 'wZ';

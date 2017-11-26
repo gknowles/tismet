@@ -39,6 +39,7 @@ static int internalTest() {
     const char dat[] = "test";
     fileRemove("test.tsd");
     fileRemove("test.tsw");
+    fileRemove("test.tsl");
     auto h = dbOpen(dat, 128);
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
