@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dblogrec.cpp - tismet db
+// dblogcodec.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -40,6 +40,7 @@ enum DbLogRecType : uint8_t {
                                 //   [first, last) = NANs, last = value
     kRecTypeSampleUpdateLast,   // [sample] first, last, value
                                 //   [first, last) = NANs, last = value
+                                //   lastPos = last
     kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
 };
 
