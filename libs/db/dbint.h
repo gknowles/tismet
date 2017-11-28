@@ -211,6 +211,9 @@ private:
     uint16_t m_lastLocalTxn{0};
     uint64_t m_lastLsn{0};          // last assigned
     uint64_t m_checkpointLsn{0};    // last (perhaps unfinished) checkpoint
+
+    // Used to track non-consecutive write completions
+    std::vector<std::pair<uint64_t, uint64_t>> m_stableLsns;
     uint64_t m_stableLsn{0};        // last known durably saved
 
     Dim::UnsignedSet m_freePages;

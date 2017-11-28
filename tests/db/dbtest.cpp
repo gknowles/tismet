@@ -151,6 +151,10 @@ static int internalTest() {
 
     dbClose(h);
 
+    h = dbOpen(dat);
+    EXPECT(h);
+    dbClose(h);
+
     return EX_OK;
 }
 

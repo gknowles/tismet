@@ -53,6 +53,9 @@ enum PageType {
     kPageTypeFree = 'F',
 };
 
+#pragma pack(push)
+#pragma pack(1)
+
 struct PageHeader {
     PageType type;
     uint32_t pgno;
@@ -67,7 +70,19 @@ struct ZeroPage {
     unsigned pageSize;
 };
 
+#pragma pack(pop)
+
 } // namespace
+
+
+/****************************************************************************
+*
+*   Variables
+*
+***/
+
+static auto & s_perfWrites = uperf("log writes (total)");
+static auto & s_perfReorderedWrites = uperf("log writes (out of order)");
 
 
 /****************************************************************************
@@ -129,6 +144,7 @@ bool DbLog::open(string_view logfile) {
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
         fileWriteWait(m_flog, 0, &zp, sizeof(zp));
+        s_perfWrites += 1;
         m_numPages = 1;
         m_lastLsn = 0;
         m_lastLocalTxn = 0;
@@ -172,6 +188,7 @@ void DbLog::close() {
                 auto offset = lp->pgno * m_pageSize;
                 auto bytes = m_bufPos;
                 fileWriteWait(m_flog, offset, lp, bytes);
+                s_perfWrites += 1;
                 break;
             }
         }
@@ -210,7 +227,7 @@ bool DbLog::loadPages() {
     auto rlast = adjacent_find(
         m_pages.rbegin(),
         m_pages.rend(),
-        [](auto & a, auto & b){ return a.firstLsn != b.lastLsn; }
+        [](auto & a, auto & b){ return a.firstLsn - 1 != b.lastLsn; }
     );
     auto base = rlast.base();
     for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
@@ -222,7 +239,10 @@ bool DbLog::loadPages() {
 bool DbLog::recover() {
     if (m_pages.empty())
         return true;
-    return false;
+
+    m_stableLsn = m_pages.back().lastLsn;
+    m_lastLsn = m_stableLsn;
+    return true;
 }
 
 //===========================================================================
@@ -258,7 +278,7 @@ Duration DbLog::onTimer(TimePoint now) {
     memcpy(nlp, lp, bytes);
 
     lk.unlock();
-    fileWrite(this, m_flog, offset, nlp, bytes);
+    fileWrite(this, m_flog, offset, nlp, bytes, taskComputeQueue());
     return kTimerInfinite;
 }
 
@@ -269,11 +289,34 @@ void DbLog::onFileWrite(
     int64_t offset,
     FileHandle f
 ) {
+    s_perfWrites += 1;
     auto * lp = (PageHeader *) data.data();
     unique_lock<mutex> lk{m_bufMut};
     if (data.size() == m_pageSize) {
-        auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
+        if (lp->firstLsn == m_stableLsn + 1) {
+            m_stableLsn = lp->lastLsn;
+            if (!m_stableLsns.empty()) {
+                auto i = m_stableLsns.begin();
+                for (; i != m_stableLsns.end(); ++i) {
+                    if (i->first != m_stableLsn + 1)
+                        break;
+                    m_stableLsn = i->second;
+                }
+                m_stableLsns.erase(m_stableLsns.begin(), i);
+            }
+        } else {
+            s_perfReorderedWrites += 1;
+            auto lsns = make_pair(lp->firstLsn, lp->lastLsn);
+            auto i = lower_bound(
+                m_stableLsns.begin(),
+                m_stableLsns.end(),
+                lsns
+            );
+            m_stableLsns.insert(i, lsns);
+        }
+
         m_emptyBufs += 1;
+        auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
         m_bufModes[ibuf] = kEmpty;
         lp->type = kPageTypeFree;
         lk.unlock();
