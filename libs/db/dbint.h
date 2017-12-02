@@ -96,18 +96,19 @@ public:
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
 
-    void lsnCommitted(uint64_t lsn);
-
-    // TODO: remove!
-    void writePage(const DbPageHeader * hdr);
+    void checkpoint(uint64_t lsn);
 
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
     bool openData(std::string_view datafile);
+    void writePage(const DbPageHeader * hdr);
+
+    mutable std::mutex m_workMut;
 
     // One entry for every data page, may point to either a data or work view
     std::vector<void *> m_pages;
     size_t m_pageSize{0};
+    uint64_t m_checkpointLsn{0};
 
     DbWriteView m_vdata;
     Dim::FileHandle m_fdata;
@@ -127,9 +128,14 @@ private:
 enum DbLogRecType : uint8_t;
 class DbData;
 
-class DbLog : Dim::ITimerNotify, Dim::IFileWriteNotify {
+class DbLog
+    : Dim::ITimerNotify
+    , Dim::IFileWriteNotify
+    , Dim::ITaskNotify
+{
 public:
-    enum BufferMode : int;
+    enum class Buffer : int;
+    enum class Checkpoint : int;
 
     struct Record;
     static size_t size(const Record * log);
@@ -158,6 +164,7 @@ public:
     // Returns transaction id.
     uint64_t beginTxn();
     void commit(uint64_t txn);
+    void checkpoint();
 
     Record * alloc(
         uint64_t txn,
@@ -177,6 +184,7 @@ private:
         int64_t offset,
         Dim::FileHandle f
     ) override;
+    void onTask() override;
 
     bool loadPages();
     bool recover();
@@ -192,6 +200,8 @@ private:
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
+    void updateStableLsn_LK(uint64_t first, uint64_t last);
+    void flushWriteBuffer_UNLK();
 
     enum ApplyMode {
         kApplyAnalyze,
@@ -208,22 +218,29 @@ private:
     DbData & m_data;
     DbPage & m_page;
     Dim::FileHandle m_flog;
+
+    // last assigned
     uint16_t m_lastLocalTxn{0};
-    uint64_t m_lastLsn{0};          // last assigned
-    uint64_t m_checkpointLsn{0};    // last (perhaps unfinished) checkpoint
+    uint64_t m_lastLsn{0};
 
     // Used to track non-consecutive write completions
     std::vector<std::pair<uint64_t, uint64_t>> m_stableLsns;
-    uint64_t m_stableLsn{0};        // last known durably saved
+    uint64_t m_stableLsn{0}; // last known durably saved
 
     Dim::UnsignedSet m_freePages;
     std::deque<PageInfo> m_pages;
     size_t m_numPages{0};
     size_t m_pageSize{0};
 
+    Checkpoint m_phase{};
+    uint64_t m_checkpointLsn{0}; // last started (perhaps unfinished) checkpoint
+    unsigned m_curTxns{0}; // txns running in current epoch
+    unsigned m_oldTxns{0}; // txns still running in old epoch
+    uint64_t m_oldCommitLsn{0}; // LSN of last txn committed in old epoch
+
     std::mutex m_bufMut;
     std::condition_variable m_bufAvailCv;
-    std::vector<BufferMode> m_bufModes;
+    std::vector<Buffer> m_bufStates;
     std::unique_ptr<char[]> m_buffers;
     unsigned m_numBufs{0};
     unsigned m_emptyBufs{0};

@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-constexpr auto kDirtyWriteBufferTimeout = Duration::max(); // kTimerInfinite;
+constexpr auto kDirtyWriteBufferTimeout = 500ms;
 
 const unsigned kLogWriteBuffers = 2;
 static_assert(kLogWriteBuffers > 1);
@@ -30,12 +30,20 @@ static_assert(kMaxLogWrites < kLogWriteBuffers);
 *
 ***/
 
-enum DbLog::BufferMode : int {
-    kEmpty,
-    kDataDirty,
-    kDataWriting,
-    kDataClean,
-    kFullWriting,
+enum class DbLog::Buffer : int {
+    Empty,
+    PartialDirty,
+    PartialWriting,
+    PartialClean,
+    FullWriting,
+};
+
+enum class DbLog::Checkpoint : int {
+    Complete,
+    WaitForTxns,
+    WaitForStableCommits,
+    WaitForPageFlush,
+    TruncateLogs,
 };
 
 namespace {
@@ -83,13 +91,10 @@ struct ZeroPage {
 
 static auto & s_perfWrites = uperf("log writes (total)");
 static auto & s_perfReorderedWrites = uperf("log writes (out of order)");
-
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
+static auto & s_perfCurTxns = uperf("log transactions (current)");
+static auto & s_perfOldTxns = uperf("log transactions (old)");
+static auto & s_perfCps = uperf("checkpoints (total)");
+static auto & s_perfCurCps = uperf("checkpoints (current)");
 
 
 /****************************************************************************
@@ -119,7 +124,7 @@ char * DbLog::bufPtr(size_t ibuf) {
 bool DbLog::open(string_view logfile) {
     m_pageSize = 2 * m_page.pageSize();
     m_numBufs = kLogWriteBuffers;
-    m_bufModes.resize(m_numBufs, kEmpty);
+    m_bufStates.resize(m_numBufs, Buffer::Empty);
     m_emptyBufs = m_numBufs;
     m_buffers.reset(new char[m_numBufs * m_pageSize]);
     memset(m_buffers.get(), 0, m_numBufs * m_pageSize);
@@ -148,8 +153,8 @@ bool DbLog::open(string_view logfile) {
         m_numPages = 1;
         m_lastLsn = 0;
         m_lastLocalTxn = 0;
-        m_checkpointLsn = logCheckpointStart();
-        logCheckpointEnd(m_checkpointLsn);
+        auto cpLsn = logCheckpointStart();
+        logCheckpointEnd(cpLsn);
         return true;
     }
 
@@ -172,28 +177,36 @@ bool DbLog::open(string_view logfile) {
 
 //===========================================================================
 void DbLog::close() {
+    checkpoint();
     timerUpdate(this, kTimerInfinite);
-    unique_lock<mutex> lk{m_bufMut};
+    onTimer(Clock::now());
+    m_bufMut.lock();
     for (;;) {
-        if (m_emptyBufs == m_numBufs)
-            break;
-        auto bm = m_bufModes[m_curBuf];
-        if (m_emptyBufs == m_numBufs - 1) {
-            if (bm == kDataClean)
+        if (m_phase == Checkpoint::Complete) {
+            if (m_emptyBufs == m_numBufs)
                 break;
-            if (bm == kDataDirty) {
-                auto * lp = (PageHeader *) bufPtr(m_curBuf);
-                lp->lastLsn = m_lastLsn;
-                lp->lastLsnPos = (uint16_t) m_logPos;
-                auto offset = lp->pgno * m_pageSize;
-                auto bytes = m_bufPos;
-                fileWriteWait(m_flog, offset, lp, bytes);
-                s_perfWrites += 1;
-                break;
+            auto bst = m_bufStates[m_curBuf];
+            if (m_emptyBufs == m_numBufs - 1) {
+                if (bst == Buffer::PartialClean)
+                    break;
+                if (bst == Buffer::PartialDirty) {
+                    auto * lp = (PageHeader *) bufPtr(m_curBuf);
+                    lp->lastLsn = m_lastLsn;
+                    lp->lastLsnPos = (uint16_t) m_logPos;
+                    auto offset = lp->pgno * m_pageSize;
+                    auto bytes = m_bufPos;
+                    fileWriteWait(m_flog, offset, lp, bytes);
+                    s_perfWrites += 1;
+                    break;
+                }
             }
         }
+        flushWriteBuffer_UNLK();
+        unique_lock<mutex> lk{m_bufMut};
         m_bufAvailCv.wait(lk);
+        lk.release();
     }
+    m_bufMut.unlock();
     fileClose(m_flog);
 }
 
@@ -251,22 +264,52 @@ uint64_t DbLog::beginTxn() {
         if (++m_lastLocalTxn)
             break;
     }
+    m_curTxns += 1;
+    s_perfCurTxns += 1;
     return logBeginTxn(m_lastLocalTxn);
 }
 
 //===========================================================================
 void DbLog::commit(uint64_t txn) {
     logCommit(txn);
+    if (getLsn(txn) >= m_checkpointLsn) {
+        assert(m_curTxns);
+        m_curTxns -= 1;
+        s_perfCurTxns -= 1;
+        return;
+    }
+
+    assert(m_phase == Checkpoint::WaitForTxns);
+    assert(m_oldTxns);
+    m_oldCommitLsn = m_lastLsn;
+    if (--m_oldTxns == 0)
+        m_phase = Checkpoint::WaitForStableCommits;
+    s_perfOldTxns -= 1;
 }
 
 //===========================================================================
-Duration DbLog::onTimer(TimePoint now) {
-    unique_lock<mutex> lk{m_bufMut};
-    auto * lp = (PageHeader *) bufPtr(m_curBuf);
-    if (m_bufModes[m_curBuf] != kDataDirty)
-        return kTimerInfinite;
+void DbLog::checkpoint() {
+    assert(m_phase == Checkpoint::Complete);
+    m_checkpointLsn = logCheckpointStart();
+    m_phase = Checkpoint::WaitForTxns;
+    m_oldTxns = m_curTxns;
+    m_curTxns = 0;
+    s_perfCurTxns -= m_oldTxns;
+    s_perfOldTxns += m_oldTxns;
+    s_perfCps += 1;
+    s_perfCurCps += 1;
+    if (m_oldTxns == 0)
+        m_phase = Checkpoint::WaitForStableCommits;
+}
 
-    m_bufModes[m_curBuf] = kDataWriting;
+//===========================================================================
+void DbLog::flushWriteBuffer_UNLK() {
+    unique_lock<mutex> lk{m_bufMut, adopt_lock};
+    auto * lp = (PageHeader *) bufPtr(m_curBuf);
+    if (m_bufStates[m_curBuf] != Buffer::PartialDirty)
+        return;
+
+    m_bufStates[m_curBuf] = Buffer::PartialWriting;
     lp->lastLsn = m_lastLsn;
     lp->lastLsnPos = (uint16_t) m_logPos;
     auto offset = lp->pgno * m_pageSize;
@@ -279,7 +322,54 @@ Duration DbLog::onTimer(TimePoint now) {
 
     lk.unlock();
     fileWrite(this, m_flog, offset, nlp, bytes, taskComputeQueue());
+}
+
+//===========================================================================
+Duration DbLog::onTimer(TimePoint now) {
+    m_bufMut.lock();
+    flushWriteBuffer_UNLK();
     return kTimerInfinite;
+}
+
+//===========================================================================
+void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
+    if (first != m_stableLsn + 1) {
+        s_perfReorderedWrites += 1;
+        auto lsns = make_pair(first, last);
+        auto i = lower_bound(
+            m_stableLsns.begin(),
+            m_stableLsns.end(),
+            lsns
+        );
+        m_stableLsns.insert(i, lsns);
+        return;
+    }
+
+    m_stableLsn = last;
+    if (!m_stableLsns.empty()) {
+        auto i = m_stableLsns.begin();
+        for (; i != m_stableLsns.end(); ++i) {
+            if (i->first != m_stableLsn + 1)
+                break;
+            m_stableLsn = i->second;
+        }
+        m_stableLsns.erase(m_stableLsns.begin(), i);
+    }
+
+    if (m_phase == Checkpoint::WaitForStableCommits
+        && m_stableLsn >= m_oldCommitLsn
+    ) {
+        m_phase = Checkpoint::WaitForPageFlush;
+        taskPushCompute(*this);
+    }
+}
+
+//===========================================================================
+void DbLog::onTask() {
+    m_page.flush();
+    logCheckpointEnd(m_checkpointLsn);
+    m_phase = Checkpoint::Complete;
+    m_bufAvailCv.notify_one();
 }
 
 //===========================================================================
@@ -292,32 +382,11 @@ void DbLog::onFileWrite(
     s_perfWrites += 1;
     auto * lp = (PageHeader *) data.data();
     unique_lock<mutex> lk{m_bufMut};
+    updateStableLsn_LK(lp->firstLsn, lp->lastLsn);
     if (data.size() == m_pageSize) {
-        if (lp->firstLsn == m_stableLsn + 1) {
-            m_stableLsn = lp->lastLsn;
-            if (!m_stableLsns.empty()) {
-                auto i = m_stableLsns.begin();
-                for (; i != m_stableLsns.end(); ++i) {
-                    if (i->first != m_stableLsn + 1)
-                        break;
-                    m_stableLsn = i->second;
-                }
-                m_stableLsns.erase(m_stableLsns.begin(), i);
-            }
-        } else {
-            s_perfReorderedWrites += 1;
-            auto lsns = make_pair(lp->firstLsn, lp->lastLsn);
-            auto i = lower_bound(
-                m_stableLsns.begin(),
-                m_stableLsns.end(),
-                lsns
-            );
-            m_stableLsns.insert(i, lsns);
-        }
-
         m_emptyBufs += 1;
         auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
-        m_bufModes[ibuf] = kEmpty;
+        m_bufStates[ibuf] = Buffer::Empty;
         lp->type = kPageTypeFree;
         lk.unlock();
         m_bufAvailCv.notify_one();
@@ -325,20 +394,21 @@ void DbLog::onFileWrite(
     }
 
     // it's a partial from onTimer
-    auto * olp = *(PageHeader **) (data.data() - sizeof(PageHeader *));
-    auto ibuf = (m_buffers.get() - (char *) olp) / m_pageSize;
-    if (m_bufModes[ibuf] == kDataWriting) {
+    auto buf = data.data() - sizeof(PageHeader *);
+    auto * olp = *(PageHeader **) buf;
+    auto ibuf = ((char *) olp - m_buffers.get()) / m_pageSize;
+    if (m_bufStates[ibuf] == Buffer::PartialWriting) {
         if (olp->lastLsn == lp->lastLsn) {
-            m_bufModes[ibuf] = kDataClean;
+            m_bufStates[ibuf] = Buffer::PartialClean;
             m_bufAvailCv.notify_one();
         } else {
-            m_bufModes[ibuf] = kDataDirty;
+            m_bufStates[ibuf] = Buffer::PartialDirty;
             timerUpdate(this, kDirtyWriteBufferTimeout);
         }
-    } else if (m_bufModes[ibuf] == kFullWriting) {
+    } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
         fileWrite(this, m_flog, offset, olp, m_pageSize, taskComputeQueue());
     }
-    delete[] data.data();
+    delete[] buf;
 }
 
 //===========================================================================
@@ -351,7 +421,7 @@ void DbLog::prepareBuffer_LK(
     for (;;) {
         if (++m_curBuf == m_numBufs)
             m_curBuf = 0;
-        if (m_bufModes[m_curBuf] == kEmpty)
+        if (m_bufStates[m_curBuf] == Buffer::Empty)
             break;
     }
 
@@ -367,7 +437,7 @@ void DbLog::prepareBuffer_LK(
     lp->lastLsn = 0;
     lp->lastLsnPos = 0;
 
-    m_bufModes[m_curBuf] = kDataDirty;
+    m_bufStates[m_curBuf] = Buffer::PartialDirty;
     m_emptyBufs -= 1;
     memcpy(
         (char *) lp + sizeof(PageHeader),
@@ -406,13 +476,13 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
     m_bufPos += bytes;
 
     if (m_bufPos != m_pageSize) {
-        if (m_bufModes[m_curBuf] == kDataClean) {
-            m_bufModes[m_curBuf] = kDataDirty;
+        if (m_bufStates[m_curBuf] == Buffer::PartialClean) {
+            m_bufStates[m_curBuf] = Buffer::PartialDirty;
             timerUpdate(this, kDirtyWriteBufferTimeout);
         }
     } else {
-        bool writeInProgress = m_bufModes[m_curBuf] == kDataWriting;
-        m_bufModes[m_curBuf] = kFullWriting;
+        bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
+        m_bufStates[m_curBuf] = Buffer::FullWriting;
         auto * lp = (PageHeader *) bufPtr(m_curBuf);
         lp->lastLsn = m_lastLsn;
         lp->lastLsnPos = (uint16_t) m_logPos;
@@ -431,14 +501,8 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
 void DbLog::applyRedo(const Record * log) {
     auto pgno = getPgno(log);
     auto lsn = getLsn(log);
-    auto vptr = make_unique<char[]>(m_page.pageSize());
-    auto ptr = new(vptr.get()) DbPageHeader;
-    auto rptr = m_page.rptr(lsn, pgno);
-    memcpy(ptr, rptr, m_page.pageSize());
-    ptr->pgno = pgno;
-    ptr->lsn = lsn;
+    auto ptr = m_page.wptr(lsn, pgno);
     applyRedo(ptr, log);
-    m_page.writePage(ptr);
 }
 
 //===========================================================================

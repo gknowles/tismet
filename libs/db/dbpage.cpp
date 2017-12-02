@@ -39,6 +39,7 @@ const unsigned kWorkFileSig[] = {
 };
 
 const uint32_t kPageTypeZero = 'wZ';
+const uint32_t kPageTypeFree = 'F';
 
 struct ZeroPage {
     DbPageHeader hdr;
@@ -155,14 +156,39 @@ void DbPage::close() {
     m_vwork.close();
     fileClose(m_fwork);
     m_freeWorkPages.clear();
+    m_workPages = 0;
 }
 
 //===========================================================================
 void DbPage::flush() {
+    uint32_t pgno = 1;
+    unique_lock<mutex> lk{m_workMut};
+    for (;; ++pgno) {
+        if (auto i = m_freeWorkPages.find(pgno); i) {
+            i = m_freeWorkPages.lastContiguous(i);
+            pgno = *i + 1;
+        }
+        if (pgno >= m_workPages)
+            break;
+        lk.unlock();
+        auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(pgno));
+        if (m_checkpointLsn < DbLog::getLsn(hdr->lsn)) {
+            lk.lock();
+            continue;
+        }
+        writePage(hdr);
+        lk.lock();
+        hdr->type = (DbPageType) kPageTypeFree;
+        hdr->pgno = numeric_limits<decltype(hdr->pgno)>::max();
+        m_freeWorkPages.insert(pgno);
+        if (m_pages[pgno] == hdr)
+            m_pages[pgno] = nullptr;
+    }
 }
 
 //===========================================================================
 void DbPage::growToFit(uint32_t pgno) {
+    unique_lock<mutex> lk{m_workMut};
     if (pgno < m_pages.size())
         return;
     assert(pgno == m_pages.size());
@@ -171,7 +197,13 @@ void DbPage::growToFit(uint32_t pgno) {
 }
 
 //===========================================================================
+void DbPage::checkpoint(uint64_t lsn) {
+    m_checkpointLsn = lsn;
+}
+
+//===========================================================================
 const void * DbPage::rptr(uint64_t txn, uint32_t pgno) const {
+    unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
     auto ptr = const_cast<const void *>(m_pages[pgno]);
     if (!ptr)
@@ -181,10 +213,22 @@ const void * DbPage::rptr(uint64_t txn, uint32_t pgno) const {
 
 //===========================================================================
 void * DbPage::wptr(uint64_t txn, uint32_t pgno) {
+    unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
     auto ptr = m_pages[pgno];
-    if (!ptr)
-        ptr = m_vdata.wptr(pgno);
+    if (!ptr) {
+        auto src = m_vdata.rptr(pgno);
+        auto wpno = (uint32_t) 0;
+        if (m_freeWorkPages.empty()) {
+            wpno = (uint32_t) m_workPages++;
+            m_vwork.growToFit(wpno);
+        } else {
+            wpno = m_freeWorkPages.pop_front();
+        }
+        ptr = m_vwork.wptr(wpno);
+        m_pages[pgno] = ptr;
+        memcpy(ptr, src, m_pageSize);
+    }
     auto hdr = (DbPageHeader *) ptr;
     hdr->pgno = pgno;
     hdr->lsn = txn;
@@ -193,5 +237,6 @@ void * DbPage::wptr(uint64_t txn, uint32_t pgno) {
 
 //===========================================================================
 void DbPage::writePage(const DbPageHeader * hdr) {
+    assert(hdr->pgno != (uint32_t) -1);
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }

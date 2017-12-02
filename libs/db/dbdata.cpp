@@ -187,8 +187,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
 
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
-    if (!zp->hdr.type)
+    if (!zp->hdr.type) {
         txn.logZeroInit(kZeroPageNum);
+        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
+    }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
         logMsgError() << "Bad signature in " << name;
@@ -921,6 +923,7 @@ bool DbData::radixInsert(
     uint32_t value
 ) {
     auto hdr = txn.viewPage<DbPageHeader>(root);
+    auto id = hdr->id;
     auto rd = radixData(hdr);
     DbRadix & cvt = (hdr->type == kPageTypeMetric)
         ? m_rdMetric
@@ -933,29 +936,29 @@ bool DbData::radixInsert(
         auto pgno = allocPgno(txn);
         txn.logRadixInit(
             pgno,
-            hdr->id,
+            id,
             rd->height,
             rd->pages,
             rd->pages + rd->numPages
         );
-        txn.logRadixPromote(hdr->pgno, pgno);
+        txn.logRadixPromote(root, pgno);
     }
     int * d = digits;
     while (count) {
         int pos = (rd->height > count) ? 0 : *d;
-        if (!rd->pages[pos]) {
-            auto pgno = allocPgno(txn);
+        auto pgno = rd->pages[pos];
+        if (!pgno) {
+            pgno = allocPgno(txn);
             txn.logRadixInit(
                 pgno,
-                hdr->id,
+                id,
                 rd->height - 1,
                 nullptr,
                 nullptr
             );
             txn.logRadixUpdate(hdr->pgno, pos, pgno);
-            assert(pgno && pgno == rd->pages[pos]);
         }
-        hdr = txn.viewPage<DbPageHeader>(rd->pages[pos]);
+        hdr = txn.viewPage<DbPageHeader>(pgno);
         rd = radixData(hdr);
         d += 1;
         count -= 1;
@@ -1157,8 +1160,7 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
-    auto pgno = *m_freePages.lowerBound(0);
-    m_freePages.erase(pgno);
+    auto pgno = m_freePages.pop_front();
 
     auto segPage = segmentPage(pgno, m_pageSize).first;
     txn.logSegmentUpdate(segPage, pgno, false);
