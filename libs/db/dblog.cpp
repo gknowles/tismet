@@ -501,7 +501,15 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
 void DbLog::applyRedo(const Record * log) {
     auto pgno = getPgno(log);
     auto lsn = getLsn(log);
-    auto ptr = m_page.wptr(lsn, pgno);
+    auto ptr = (void *) nullptr;
+    if (interleaveSafe(log)) {
+        void * newPage = nullptr;
+        ptr = m_page.wptr(lsn, pgno, &newPage);
+        if (newPage)
+            applyRedo(newPage, log);
+    } else {
+        ptr = m_page.wptr(lsn, pgno, nullptr);
+    }
     applyRedo(ptr, log);
 }
 

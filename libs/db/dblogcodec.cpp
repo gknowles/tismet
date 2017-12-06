@@ -167,10 +167,10 @@ struct SampleUpdateTimeRec {
 
 //===========================================================================
 // static
-size_t DbLog::size(const DbLog::Record * log) {
+size_t DbLog::size(const Record * log) {
     switch (log->type) {
     case kRecTypeCheckpointStart:
-        return sizeof(DbLog::Record);
+        return sizeof(Record);
     case kRecTypeCheckpointEnd:
         return sizeof(CheckpointEndRec);
     case kRecTypeTxnBegin:
@@ -178,7 +178,7 @@ size_t DbLog::size(const DbLog::Record * log) {
         return sizeof(TransactionRec);
     case kRecTypeZeroInit:
     case kRecTypePageFree:
-        return sizeof(DbLog::Record);
+        return sizeof(Record);
     case kRecTypeSegmentAlloc:
     case kRecTypeSegmentFree:
         return sizeof(SegmentUpdateRec);
@@ -203,7 +203,7 @@ size_t DbLog::size(const DbLog::Record * log) {
     case kRecTypeMetricUpdate:
         return sizeof(MetricUpdateRec);
     case kRecTypeMetricClearSamples:
-        return sizeof(DbLog::Record);
+        return sizeof(Record);
     case kRecTypeMetricUpdateLast:
     case kRecTypeMetricUpdateLastAndIndex:
         return sizeof(MetricUpdateSamplesRec);
@@ -222,13 +222,25 @@ size_t DbLog::size(const DbLog::Record * log) {
 
 //===========================================================================
 // static
-uint32_t DbLog::getPgno(const DbLog::Record * log) {
+bool DbLog::interleaveSafe(const Record * log) {
+    switch (log->type) {
+    case kRecTypeSegmentAlloc:
+    case kRecTypeSegmentFree:
+        return true;
+    default:
+        return false;
+    }
+}
+
+//===========================================================================
+// static
+uint32_t DbLog::getPgno(const Record * log) {
     return log->pgno;
 }
 
 //===========================================================================
 // static
-uint64_t DbLog::getLsn(const DbLog::Record * log) {
+uint64_t DbLog::getLsn(const Record * log) {
     return log->logPos.u.lsn;
 }
 

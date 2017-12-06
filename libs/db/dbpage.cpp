@@ -184,6 +184,7 @@ void DbPage::flush() {
         if (m_pages[pgno] == hdr)
             m_pages[pgno] = nullptr;
     }
+    m_oldPages.clear();
 }
 
 //===========================================================================
@@ -202,37 +203,91 @@ void DbPage::checkpoint(uint64_t lsn) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(uint64_t txn, uint32_t pgno) const {
+const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
-    auto ptr = const_cast<const void *>(m_pages[pgno]);
-    if (!ptr)
-        ptr = m_vdata.rptr(pgno);
-    return ptr;
+    if (auto ptr = m_pages[pgno])
+        return ptr;
+
+    return m_vdata.rptr(pgno);
 }
 
 //===========================================================================
-void * DbPage::wptr(uint64_t txn, uint32_t pgno) {
+DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
+    auto wpno = (uint32_t) 0;
+    if (m_freeWorkPages.empty()) {
+        wpno = (uint32_t) m_workPages++;
+        m_vwork.growToFit(wpno);
+    } else {
+        wpno = m_freeWorkPages.pop_front();
+    }
+    void * ptr = m_vwork.wptr(wpno);
+    memcpy(ptr, hdr, m_pageSize);
+    return (DbPageHeader *) ptr;
+}
+
+//===========================================================================
+void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
+    if (newPage)
+        *newPage = nullptr;
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
-    auto ptr = m_pages[pgno];
-    if (!ptr) {
-        auto src = m_vdata.rptr(pgno);
-        auto wpno = (uint32_t) 0;
-        if (m_freeWorkPages.empty()) {
-            wpno = (uint32_t) m_workPages++;
-            m_vwork.growToFit(wpno);
+    auto hdr = (DbPageHeader *) m_pages[pgno];
+    if (!hdr) {
+        // create new dirty page from clean page
+        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        hdr = dupPage_LK(src);
+        m_pages[pgno] = hdr;
+    } else {
+        if (DbLog::getLsn(lsn) >= m_checkpointLsn) {
+            // for new epoch
+            if (DbLog::getLsn(hdr->lsn) >= m_checkpointLsn) {
+                // dirty page from current epoch
+                //  - use it
+            } else {
+                // dirty page from old epoch
+                //  - save reference to old dirty page
+                //  - create new dirty page from old dirty page
+                if (!m_oldPages.insert({pgno, hdr}).second) {
+                    logMsgCrash() << "Multiple dirty replacements of page #"
+                        << pgno;
+                }
+                hdr = dupPage_LK(hdr);
+                m_pages[hdr->pgno] = hdr;
+            }
         } else {
-            wpno = m_freeWorkPages.pop_front();
+            // for old epoch
+            if (DbLog::getLsn(hdr->lsn) >= m_checkpointLsn) {
+                // dirty page from future epoch
+                //  - interleaving updates allowed?
+                //      - include in output, create and use old dirty page
+                //  - interleaving not allowed?
+                //      - crash
+                if (!newPage) {
+                    logMsgCrash()
+                        << "Transactions with interleaving updates on page #"
+                        << pgno;
+                }
+                *newPage = hdr;
+                // find or create old dirty page
+                if (auto i = m_oldPages.find(pgno); i != m_oldPages.end()) {
+                    hdr = i->second;
+                } else {
+                    // no existing old dirty page?
+                    //  - create old dirty page from clean page
+                    auto src = (const DbPageHeader *) m_vdata.rptr(pgno);
+                    hdr = dupPage_LK(src);
+                    m_oldPages[pgno] = hdr;
+                }
+            } else {
+                // dirty page from current epoch
+                //  - use it
+            }
         }
-        ptr = m_vwork.wptr(wpno);
-        m_pages[pgno] = ptr;
-        memcpy(ptr, src, m_pageSize);
     }
-    auto hdr = (DbPageHeader *) ptr;
     hdr->pgno = pgno;
-    hdr->lsn = txn;
-    return ptr;
+    hdr->lsn = lsn;
+    return hdr;
 }
 
 //===========================================================================

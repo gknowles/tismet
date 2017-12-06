@@ -91,7 +91,7 @@ public:
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint64_t txn, uint32_t pgno) const;
-    void * wptr(uint64_t txn, uint32_t pgno);
+    void * wptr(uint64_t lsn, uint32_t pgno, void ** newPage);
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
@@ -102,11 +102,13 @@ private:
     bool openWork(std::string_view workfile, size_t pageSize);
     bool openData(std::string_view datafile);
     void writePage(const DbPageHeader * hdr);
+    DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
     mutable std::mutex m_workMut;
 
     // One entry for every data page, may point to either a data or work view
-    std::vector<void *> m_pages;
+    std::vector<DbPageHeader *> m_pages;
+    std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
     size_t m_pageSize{0};
     uint64_t m_checkpointLsn{0};
 
@@ -139,6 +141,7 @@ public:
 
     struct Record;
     static size_t size(const Record * log);
+    static bool interleaveSafe(const Record * log);
     static uint32_t getPgno(const Record * log);
     static uint64_t getLsn(const Record * log);
     static uint16_t getLocalTxn(const Record * log);
@@ -325,7 +328,8 @@ private:
 //===========================================================================
 template<typename T>
 const T * DbTxn::viewPage(uint32_t pgno) const {
-    auto ptr = static_cast<const T *>(m_page.rptr(m_txn, pgno));
+    auto lsn = DbLog::getLsn(m_txn);
+    auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
@@ -338,7 +342,8 @@ const T * DbTxn::viewPage(uint32_t pgno) const {
 //===========================================================================
 template<typename T>
 const T * DbTxn::editPage(uint32_t pgno) {
-    auto ptr = static_cast<const T *>(m_page.wptr(m_txn, pgno));
+    auto lsn = DbLog::getLsn(m_txn);
+    auto ptr = static_cast<const T *>(m_page.wptr(lsn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(offsetof(T, hdr) == 0);
