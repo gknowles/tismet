@@ -46,6 +46,12 @@ enum class DbLog::Checkpoint : int {
     TruncateLogs,
 };
 
+struct DbLog::AnalyzeData {
+    set<uint64_t> incompleteTxns;
+    uint64_t stableCheckpointStart{0};
+    uint64_t volatileCheckpointStart{0};
+};
+
 namespace {
 
 const unsigned kLogFileSig[] = {
@@ -67,9 +73,10 @@ enum PageType {
 struct PageHeader {
     PageType type;
     uint32_t pgno;
-    uint64_t firstLsn; // first lsn started on page
-    uint64_t lastLsn; // last lsn started on page
-    uint16_t lastLsnPos; // position on page of start of last lsn
+    uint64_t firstLsn; // LSN of first record started on page
+    uint16_t numLogs; // number of log records started on page
+    uint16_t firstPos; // position of first log started on page
+    uint16_t lastPos; // position of last log record started on page
 };
 
 struct ZeroPage {
@@ -191,8 +198,8 @@ void DbLog::close() {
                     break;
                 if (bst == Buffer::PartialDirty) {
                     auto * lp = (PageHeader *) bufPtr(m_curBuf);
-                    lp->lastLsn = m_lastLsn;
-                    lp->lastLsnPos = (uint16_t) m_logPos;
+                    lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
+                    lp->lastPos = (uint16_t) m_logPos;
                     auto offset = lp->pgno * m_pageSize;
                     auto bytes = m_bufPos;
                     fileWriteWait(m_flog, offset, lp, bytes);
@@ -211,8 +218,10 @@ void DbLog::close() {
 }
 
 //===========================================================================
+// create array of references to last contiguous set of log pages
 bool DbLog::loadPages() {
     PageHeader hdr;
+    // load info for each page
     for (uint32_t i = 1; i < m_numPages; ++i) {
         fileReadWait(&hdr, sizeof(hdr), m_flog, i * m_pageSize);
         if (!hdr.type) {
@@ -221,7 +230,7 @@ bool DbLog::loadPages() {
             auto & pi = m_pages.emplace_back();
             pi.pgno = hdr.pgno;
             pi.firstLsn = hdr.firstLsn;
-            pi.lastLsn = hdr.lastLsn;
+            pi.numLogs = hdr.numLogs;
         } else {
             logMsgError() << "Invalid page type(" << hdr.type << ") on page #"
                 << i << " of " << filePath(m_flog);
@@ -231,6 +240,8 @@ bool DbLog::loadPages() {
     if (m_pages.empty())
         return true;
 
+    // Sort and remove all pages that are not contiguously connected with the
+    // last page.
     auto first = m_pages.begin();
     sort(
         first,
@@ -240,7 +251,7 @@ bool DbLog::loadPages() {
     auto rlast = adjacent_find(
         m_pages.rbegin(),
         m_pages.rend(),
-        [](auto & a, auto & b){ return a.firstLsn - 1 != b.lastLsn; }
+        [](auto & a, auto & b){ return a.firstLsn != b.firstLsn + b.numLogs; }
     );
     auto base = rlast.base();
     for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
@@ -249,13 +260,82 @@ bool DbLog::loadPages() {
 }
 
 //===========================================================================
+void DbLog::applyAll(AnalyzeData * data) {
+    auto buf = make_unique<char[]>(2 * m_pageSize);
+    auto buf2 = make_unique<char[]>(2 * m_pageSize);
+    int bytesBefore{0};
+    int logPos{0};
+    auto log = (Record *) nullptr;
+
+    for (auto & pi : m_pages) {
+        fileReadWait(buf2.get(), m_pageSize, m_flog, pi.pgno * m_pageSize);
+        auto hdr = (PageHeader *) buf2.get();
+        logPos = hdr->firstPos;
+        if (bytesBefore) {
+            auto bytesAfter = hdr->firstPos - sizeof(*hdr);
+            memcpy(
+                buf.get() + m_pageSize,
+                buf2.get() + sizeof(*hdr),
+                bytesAfter
+            );
+            log = (Record *) (buf.get() + m_pageSize - bytesBefore);
+            assert(size(log) == bytesBefore + bytesAfter);
+            apply(log, data);
+        }
+        swap(buf, buf2);
+        while (logPos < hdr->lastPos) {
+            log = (Record *) (buf.get() + logPos);
+            apply(log, data);
+            logPos += size(log);
+        }
+        assert(logPos == hdr->lastPos);
+        bytesBefore = (int) (m_pageSize - logPos);
+    }
+    log = (Record *) (buf.get() + logPos);
+    assert(logPos + size(log) <= m_pageSize);
+    apply(log, data);
+    logPos += size(log);
+
+    if (data && logPos < m_pageSize) {
+        memcpy(m_buffers.get(), buf.get(), logPos);
+        m_bufPos = m_logPos = logPos;
+        m_bufStates[m_curBuf] = Buffer::PartialClean;
+        m_emptyBufs -= 1;
+    }
+}
+
+//===========================================================================
 bool DbLog::recover() {
     if (m_pages.empty())
         return true;
 
-    m_stableLsn = m_pages.back().lastLsn;
+    AnalyzeData data;
+    applyAll(&data);
+
+    auto & back = m_pages.back();
+    m_stableLsn = back.firstLsn + back.numLogs - 1;
     m_lastLsn = m_stableLsn;
     return true;
+}
+
+//===========================================================================
+void DbLog::applyCheckpointStart(AnalyzeData & data, uint64_t lsn) {
+}
+
+//===========================================================================
+void DbLog::applyCheckpointEnd(
+    AnalyzeData & data,
+    uint64_t lsn,
+    uint64_t startLsn
+) {
+}
+
+//===========================================================================
+void DbLog::applyBeginTxn(AnalyzeData & data, uint16_t txn) {
+}
+
+//===========================================================================
+void DbLog::applyCommit(AnalyzeData & data, uint16_t txn) {
 }
 
 //===========================================================================
@@ -291,6 +371,7 @@ void DbLog::commit(uint64_t txn) {
 void DbLog::checkpoint() {
     assert(m_phase == Checkpoint::Complete);
     m_checkpointLsn = logCheckpointStart();
+    m_page.checkpoint(m_checkpointLsn);
     m_phase = Checkpoint::WaitForTxns;
     m_oldTxns = m_curTxns;
     m_curTxns = 0;
@@ -310,8 +391,8 @@ void DbLog::flushWriteBuffer_UNLK() {
         return;
 
     m_bufStates[m_curBuf] = Buffer::PartialWriting;
-    lp->lastLsn = m_lastLsn;
-    lp->lastLsnPos = (uint16_t) m_logPos;
+    lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
+    lp->lastPos = (uint16_t) m_logPos;
     auto offset = lp->pgno * m_pageSize;
     auto bytes = m_bufPos;
 
@@ -333,7 +414,9 @@ Duration DbLog::onTimer(TimePoint now) {
 
 //===========================================================================
 void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
-    if (first != m_stableLsn + 1) {
+    if (last <= m_stableLsn)
+        return;
+    if (first > m_stableLsn + 1) {
         s_perfReorderedWrites += 1;
         auto lsns = make_pair(first, last);
         auto i = lower_bound(
@@ -349,9 +432,10 @@ void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
     if (!m_stableLsns.empty()) {
         auto i = m_stableLsns.begin();
         for (; i != m_stableLsns.end(); ++i) {
-            if (i->first != m_stableLsn + 1)
+            if (i->first > m_stableLsn + 1)
                 break;
-            m_stableLsn = i->second;
+            if (i->second > m_stableLsn)
+                m_stableLsn = i->second;
         }
         m_stableLsns.erase(m_stableLsns.begin(), i);
     }
@@ -366,6 +450,7 @@ void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
 
 //===========================================================================
 void DbLog::onTask() {
+    assert(m_phase == Checkpoint::WaitForPageFlush);
     m_page.flush();
     logCheckpointEnd(m_checkpointLsn);
     m_phase = Checkpoint::Complete;
@@ -382,7 +467,7 @@ void DbLog::onFileWrite(
     s_perfWrites += 1;
     auto * lp = (PageHeader *) data.data();
     unique_lock<mutex> lk{m_bufMut};
-    updateStableLsn_LK(lp->firstLsn, lp->lastLsn);
+    updateStableLsn_LK(lp->firstLsn, lp->firstLsn + lp->numLogs - 1);
     if (data.size() == m_pageSize) {
         m_emptyBufs += 1;
         auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
@@ -393,12 +478,12 @@ void DbLog::onFileWrite(
         return;
     }
 
-    // it's a partial from onTimer
+    // it's a partial
     auto buf = data.data() - sizeof(PageHeader *);
     auto * olp = *(PageHeader **) buf;
     auto ibuf = ((char *) olp - m_buffers.get()) / m_pageSize;
     if (m_bufStates[ibuf] == Buffer::PartialWriting) {
-        if (olp->lastLsn == lp->lastLsn) {
+        if (olp->numLogs == lp->numLogs) {
             m_bufStates[ibuf] = Buffer::PartialClean;
             m_bufAvailCv.notify_one();
         } else {
@@ -413,7 +498,7 @@ void DbLog::onFileWrite(
 
 //===========================================================================
 void DbLog::prepareBuffer_LK(
-    const void * log,
+    const Record * log,
     size_t bytesOnOldPage,
     size_t bytesOnNewPage
 ) {
@@ -433,9 +518,15 @@ void DbLog::prepareBuffer_LK(
     } else {
         lp->pgno = (uint32_t) m_numPages++;
     }
-    lp->firstLsn = m_lastLsn + (bool) bytesOnOldPage;
-    lp->lastLsn = 0;
-    lp->lastLsnPos = 0;
+    if (bytesOnOldPage) {
+        lp->firstLsn = m_lastLsn + 1;
+        lp->firstPos = (uint16_t) (sizeof(PageHeader) + bytesOnNewPage);
+    } else {
+        lp->firstLsn = m_lastLsn;
+        lp->firstPos = (uint16_t) sizeof(PageHeader);
+    }
+    lp->numLogs = 0;
+    lp->lastPos = 0;
 
     m_bufStates[m_curBuf] = Buffer::PartialDirty;
     m_emptyBufs -= 1;
@@ -445,7 +536,7 @@ void DbLog::prepareBuffer_LK(
         bytesOnNewPage
     );
     m_logPos = (uint16_t) -(int)bytesOnOldPage;
-    m_bufPos = sizeof(PageHeader) + bytesOnNewPage;
+    m_bufPos = lp->firstPos;
 
     timerUpdate(this, kDirtyWriteBufferTimeout);
 }
@@ -476,7 +567,9 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
     m_bufPos += bytes;
 
     if (m_bufPos != m_pageSize) {
-        if (m_bufStates[m_curBuf] == Buffer::PartialClean) {
+        if (m_bufStates[m_curBuf] == Buffer::PartialClean
+            || m_bufStates[m_curBuf] == Buffer::Empty
+        ) {
             m_bufStates[m_curBuf] = Buffer::PartialDirty;
             timerUpdate(this, kDirtyWriteBufferTimeout);
         }
@@ -484,8 +577,8 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
         bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
         m_bufStates[m_curBuf] = Buffer::FullWriting;
         auto * lp = (PageHeader *) bufPtr(m_curBuf);
-        lp->lastLsn = m_lastLsn;
-        lp->lastLsnPos = (uint16_t) m_logPos;
+        lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
+        lp->lastPos = (uint16_t) m_logPos;
         auto offset = lp->pgno * m_pageSize;
 
         if (overflow)
@@ -511,22 +604,6 @@ void DbLog::applyRedo(const Record * log) {
         ptr = m_page.wptr(lsn, pgno, nullptr);
     }
     applyRedo(ptr, log);
-}
-
-//===========================================================================
-void DbLog::applyCheckpointStart(uint64_t lsn) {
-}
-
-//===========================================================================
-void DbLog::applyCheckpointEnd(uint64_t lsn, uint64_t startLsn) {
-}
-
-//===========================================================================
-void DbLog::applyBeginTxn(uint16_t txn) {
-}
-
-//===========================================================================
-void DbLog::applyCommit(uint16_t txn) {
 }
 
 

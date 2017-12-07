@@ -140,7 +140,7 @@ public:
     enum class Checkpoint : int;
 
     struct Record;
-    static size_t size(const Record * log);
+    static uint16_t size(const Record * log);
     static bool interleaveSafe(const Record * log);
     static uint32_t getPgno(const Record * log);
     static uint64_t getLsn(const Record * log);
@@ -154,7 +154,7 @@ public:
     struct PageInfo {
         uint32_t pgno;
         uint64_t firstLsn;
-        uint64_t lastLsn;
+        uint16_t numLogs;
     };
 
 public:
@@ -199,24 +199,22 @@ private:
 
     void log(Record * log, size_t bytes, bool setLsn);
     void prepareBuffer_LK(
-        const void * log,
+        const Record * log,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
     void updateStableLsn_LK(uint64_t first, uint64_t last);
     void flushWriteBuffer_UNLK();
 
-    enum ApplyMode {
-        kApplyAnalyze,
-        kApplyRedo,
-    };
-    void apply(const Record * log, ApplyMode mode);
+    struct AnalyzeData;
+    void applyAll(AnalyzeData * data);
+    void apply(const Record * log, AnalyzeData * data = nullptr);
     void applyRedo(const Record * log);
-    void applyRedo(void * ptr, const Record * log);
-    void applyCheckpointStart(uint64_t lsn);
-    void applyCheckpointEnd(uint64_t lsn, uint64_t startLsn);
-    void applyBeginTxn(uint16_t txn);
-    void applyCommit(uint16_t txn);
+    void applyRedo(void * page, const Record * log);
+    void applyCheckpointStart(AnalyzeData & data, uint64_t lsn);
+    void applyCheckpointEnd(AnalyzeData & data, uint64_t lsn, uint64_t startLsn);
+    void applyBeginTxn(AnalyzeData & data, uint16_t txn);
+    void applyCommit(AnalyzeData & data, uint16_t txn);
 
     DbData & m_data;
     DbPage & m_page;
@@ -258,7 +256,6 @@ public:
     ~DbTxn();
 
     template<typename T> const T * viewPage(uint32_t pgno) const;
-    template<typename T> const T * editPage(uint32_t pgno);
     size_t pageSize() const { return m_page.pageSize(); }
     size_t numPages() const { return m_page.size(); }
     void growToFit(uint32_t pgno) { m_page.growToFit(pgno); }
@@ -334,19 +331,6 @@ const T * DbTxn::viewPage(uint32_t pgno) const {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(intptr_t(ptr) == intptr_t(&ptr->hdr));
-        assert(ptr->hdr.type == ptr->type);
-    }
-    return ptr;
-}
-
-//===========================================================================
-template<typename T>
-const T * DbTxn::editPage(uint32_t pgno) {
-    auto lsn = DbLog::getLsn(m_txn);
-    auto ptr = static_cast<const T *>(m_page.wptr(lsn, pgno));
-    if constexpr (!std::is_same_v<T, DbPageHeader>) {
-        assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
-        assert(offsetof(T, hdr) == 0);
         assert(ptr->hdr.type == ptr->type);
     }
     return ptr;

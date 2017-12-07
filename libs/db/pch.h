@@ -24,6 +24,8 @@
 #include <cstddef>
 #include <deque>
 #include <mutex>
+#include <set>
+#include <unordered_map>
 
 // Platform headers
 // External library internal headers

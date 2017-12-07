@@ -172,7 +172,7 @@ void DbPage::flush() {
             break;
         lk.unlock();
         auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(pgno));
-        if (m_checkpointLsn < DbLog::getLsn(hdr->lsn)) {
+        if (m_checkpointLsn < hdr->lsn) {
             lk.lock();
             continue;
         }
@@ -206,8 +206,8 @@ void DbPage::checkpoint(uint64_t lsn) {
 const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
-    if (auto ptr = m_pages[pgno])
-        return ptr;
+    if (auto hdr = m_pages[pgno])
+        return hdr;
 
     return m_vdata.rptr(pgno);
 }
@@ -228,6 +228,7 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 
 //===========================================================================
 void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
+    assert(lsn);
     if (newPage)
         *newPage = nullptr;
     unique_lock<mutex> lk{m_workMut};
@@ -239,9 +240,9 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
         hdr = dupPage_LK(src);
         m_pages[pgno] = hdr;
     } else {
-        if (DbLog::getLsn(lsn) >= m_checkpointLsn) {
+        if (lsn >= m_checkpointLsn) {
             // for new epoch
-            if (DbLog::getLsn(hdr->lsn) >= m_checkpointLsn) {
+            if (hdr->lsn >= m_checkpointLsn) {
                 // dirty page from current epoch
                 //  - use it
             } else {
@@ -257,7 +258,7 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
             }
         } else {
             // for old epoch
-            if (DbLog::getLsn(hdr->lsn) >= m_checkpointLsn) {
+            if (hdr->lsn >= m_checkpointLsn) {
                 // dirty page from future epoch
                 //  - interleaving updates allowed?
                 //      - include in output, create and use old dirty page

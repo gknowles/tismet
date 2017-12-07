@@ -167,7 +167,7 @@ struct SampleUpdateTimeRec {
 
 //===========================================================================
 // static
-size_t DbLog::size(const Record * log) {
+uint16_t DbLog::size(const Record * log) {
     switch (log->type) {
     case kRecTypeCheckpointStart:
         return sizeof(Record);
@@ -198,7 +198,7 @@ size_t DbLog::size(const Record * log) {
     case kRecTypeMetricInit: {
         auto rec = reinterpret_cast<const MetricInitRec *>(log);
         return offsetof(MetricInitRec, name)
-            + strlen(rec->name) + 1;
+            + (uint16_t) strlen(rec->name) + 1;
     }
     case kRecTypeMetricUpdate:
         return sizeof(MetricUpdateRec);
@@ -308,7 +308,7 @@ uint64_t DbLog::logBeginTxn(uint16_t localTxn) {
     rec.type = kRecTypeTxnBegin;
     rec.localTxn = localTxn;
     log((Record *) &rec, sizeof(rec), false);
-    return getTxn(m_lastLsn, m_lastLocalTxn);
+    return getTxn(m_lastLsn, localTxn);
 }
 
 //===========================================================================
@@ -326,63 +326,63 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     rec->logPos.u.lsn = 0;
     rec->logPos.u.localTxn = getLocalTxn(txn);
     log(rec, bytes, true);
-    apply(rec, kApplyRedo);
+    apply(rec, nullptr);
 }
 
 //===========================================================================
-void DbLog::apply(const Record * log, ApplyMode mode) {
+void DbLog::apply(const Record * log, AnalyzeData * data) {
     switch (log->type) {
     case kRecTypeCheckpointStart:
-        if (mode == kApplyAnalyze)
-            applyCheckpointStart(log->logPos.u.lsn);
+        if (data)
+            applyCheckpointStart(*data, log->logPos.u.lsn);
         break;
     case kRecTypeCheckpointEnd:
-        if (mode == kApplyAnalyze) {
+        if (data) {
             auto rec = reinterpret_cast<const CheckpointEndRec *>(log);
-            applyCheckpointEnd(rec->hdr.logPos.u.lsn, rec->startLsn);
+            applyCheckpointEnd(*data, rec->hdr.logPos.u.lsn, rec->startLsn);
         }
         break;
     case kRecTypeTxnBegin:
-        if (mode == kApplyAnalyze) {
+        if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyBeginTxn(rec->localTxn);
+            applyBeginTxn(*data, rec->localTxn);
         }
         break;
     case kRecTypeTxnCommit:
-        if (mode == kApplyAnalyze) {
+        if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyCommit(rec->localTxn);
+            applyCommit(*data, rec->localTxn);
         }
         break;
     default:
-        if (mode == kApplyRedo)
+        if (!data)
             applyRedo(log);
         break;
     }
 }
 
 //===========================================================================
-void DbLog::applyRedo(void * hdr, const Record * log) {
+void DbLog::applyRedo(void * page, const Record * log) {
     switch (log->type) {
     default:
         logMsgCrash() << "unknown log record type, " << log->type;
         return;
     case kRecTypeZeroInit:
-        return m_data.applyZeroInit(hdr);
+        return m_data.applyZeroInit(page);
     case kRecTypePageFree:
-        return m_data.applyPageFree(hdr);
+        return m_data.applyPageFree(page);
     case kRecTypeSegmentAlloc: {
         auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data.applySegmentUpdate(hdr, rec->refPage, false);
+        return m_data.applySegmentUpdate(page, rec->refPage, false);
     }
     case kRecTypeSegmentFree: {
         auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data.applySegmentUpdate(hdr, rec->refPage, true);
+        return m_data.applySegmentUpdate(page, rec->refPage, true);
     }
     case kRecTypeRadixInit: {
         auto rec = reinterpret_cast<const RadixInitRec *>(log);
         return m_data.applyRadixInit(
-            hdr,
+            page,
             rec->id,
             rec->height,
             nullptr,
@@ -392,7 +392,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeRadixInitList: {
         auto rec = reinterpret_cast<const RadixInitListRec *>(log);
         return m_data.applyRadixInit(
-            hdr,
+            page,
             rec->id,
             rec->height,
             rec->pages,
@@ -401,21 +401,21 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     }
     case kRecTypeRadixErase: {
         auto rec = reinterpret_cast<const RadixEraseRec *>(log);
-        return m_data.applyRadixErase(hdr, rec->firstPos, rec->lastPos);
+        return m_data.applyRadixErase(page, rec->firstPos, rec->lastPos);
     }
     case kRecTypeRadixPromote: {
         auto rec = reinterpret_cast<const RadixPromoteRec *>(log);
-        return m_data.applyRadixPromote(hdr, rec->refPage);
+        return m_data.applyRadixPromote(page, rec->refPage);
     }
     case kRecTypeRadixUpdate: {
         auto rec = reinterpret_cast<const RadixUpdateRec *>(log);
-        return m_data.applyRadixUpdate(hdr, rec->refPos, rec->refPage);
+        return m_data.applyRadixUpdate(page, rec->refPos, rec->refPage);
     }
 
     case kRecTypeMetricInit: {
         auto rec = reinterpret_cast<const MetricInitRec *>(log);
         return m_data.applyMetricInit(
-            hdr,
+            page,
             rec->id,
             rec->name,
             rec->retention,
@@ -425,17 +425,17 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeMetricUpdate: {
         auto rec = reinterpret_cast<const MetricUpdateRec *>(log);
         return m_data.applyMetricUpdate(
-            hdr,
+            page,
             rec->retention,
             rec->interval
         );
     }
     case kRecTypeMetricClearSamples:
-        return m_data.applyMetricClearSamples(hdr);
+        return m_data.applyMetricClearSamples(page);
     case kRecTypeMetricUpdateLast: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
         return m_data.applyMetricUpdateSamples(
-            hdr,
+            page,
             rec->refPos,
             rec->refPage,
             false
@@ -444,7 +444,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeMetricUpdateLastAndIndex: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
         return m_data.applyMetricUpdateSamples(
-            hdr,
+            page,
             rec->refPos,
             rec->refPage,
             true
@@ -454,7 +454,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeSampleInit: {
         auto rec = reinterpret_cast<const SampleInitRec *>(log);
         return m_data.applySampleInit(
-            hdr,
+            page,
             rec->id,
             rec->pageTime,
             rec->lastSample
@@ -463,7 +463,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeSampleUpdate: {
         auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
         return m_data.applySampleUpdate(
-            hdr,
+            page,
             rec->firstSample,
             rec->lastSample,
             rec->value,
@@ -473,7 +473,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     case kRecTypeSampleUpdateLast: {
         auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
         return m_data.applySampleUpdate(
-            hdr,
+            page,
             rec->firstSample,
             rec->lastSample,
             rec->value,
@@ -482,7 +482,7 @@ void DbLog::applyRedo(void * hdr, const Record * log) {
     }
     case kRecTypeSampleUpdateTime: {
         auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(log);
-        return m_data.applySampleUpdateTime(hdr, rec->pageTime);
+        return m_data.applySampleUpdateTime(page, rec->pageTime);
     }
 
     } // end case
