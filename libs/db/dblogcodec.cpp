@@ -50,16 +50,18 @@ enum DbLogRecType : uint8_t {
 struct DbLog::Record {
     DbLogRecType type;
     uint32_t pgno;
-    union {
-        uint64_t txn;
-        struct {
-            uint64_t localTxn : 16;
-            uint64_t lsn : 48;
-        } u;
-    } logPos;
+    uint16_t localTxn;
 };
 
 namespace {
+
+union LogPos {
+    uint64_t txn;
+    struct {
+        uint64_t localTxn : 16;
+        uint64_t lsn : 48;
+    } u;
+};
 
 //---------------------------------------------------------------------------
 // Checkpoint
@@ -240,46 +242,39 @@ uint32_t DbLog::getPgno(const Record * log) {
 
 //===========================================================================
 // static
-uint64_t DbLog::getLsn(const Record * log) {
-    return log->logPos.u.lsn;
-}
-
-//===========================================================================
-// static
 uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
-    return log->logPos.u.localTxn;
+    return log->localTxn;
 }
 
 //===========================================================================
 // static
 uint64_t DbLog::getLsn(uint64_t logPos) {
-    Record tmp;
-    tmp.logPos.txn = logPos;
-    return tmp.logPos.u.lsn;
+    LogPos tmp;
+    tmp.txn = logPos;
+    return tmp.u.lsn;
 }
 
 //===========================================================================
 // static
 uint16_t DbLog::getLocalTxn(uint64_t logPos) {
-    Record tmp;
-    tmp.logPos.txn = logPos;
-    return tmp.logPos.u.localTxn;
+    LogPos tmp;
+    tmp.txn = logPos;
+    return tmp.u.localTxn;
 }
 
 //===========================================================================
 // static
 uint64_t DbLog::getTxn(uint64_t lsn, uint16_t localTxn) {
-    Record tmp;
-    tmp.logPos.u.lsn = lsn;
-    tmp.logPos.u.localTxn = localTxn;
-    return tmp.logPos.txn;
+    LogPos tmp;
+    tmp.u.lsn = lsn;
+    tmp.u.localTxn = localTxn;
+    return tmp.txn;
 }
 
 //===========================================================================
 // static
-void DbLog::setLogPos(DbLog::Record * log, uint64_t lsn, uint16_t localTxn) {
-    log->logPos.u.lsn = lsn;
-    log->logPos.u.localTxn = localTxn;
+void DbLog::setLocalTxn(DbLog::Record * log, uint16_t localTxn) {
+    log->localTxn = localTxn;
 }
 
 //===========================================================================
@@ -287,9 +282,8 @@ uint64_t DbLog::logCheckpointStart() {
     Record rec;
     rec.type = kRecTypeCheckpointStart;
     rec.pgno = 0;
-    rec.logPos = {};
-    log(&rec, sizeof(rec), true);
-    return rec.logPos.u.lsn;
+    rec.localTxn = 0;
+    return log(&rec, sizeof(rec));
 }
 
 //===========================================================================
@@ -297,9 +291,9 @@ void DbLog::logCheckpointEnd(uint64_t startLsn) {
     CheckpointEndRec rec;
     rec.hdr.type = kRecTypeCheckpointEnd;
     rec.hdr.pgno = 0;
-    rec.hdr.logPos = {};
+    rec.hdr.localTxn = 0;
     rec.startLsn = startLsn;
-    log((Record *) &rec, sizeof(rec), true);
+    log((Record *) &rec, sizeof(rec));
 }
 
 //===========================================================================
@@ -307,8 +301,8 @@ uint64_t DbLog::logBeginTxn(uint16_t localTxn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnBegin;
     rec.localTxn = localTxn;
-    log((Record *) &rec, sizeof(rec), false);
-    return getTxn(m_lastLsn, localTxn);
+    auto lsn = log((Record *) &rec, sizeof(rec));
+    return getTxn(lsn, localTxn);
 }
 
 //===========================================================================
@@ -316,47 +310,46 @@ void DbLog::logCommit(uint64_t txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
-    log((Record *) &rec, sizeof(rec), false);
+    log((Record *) &rec, sizeof(rec));
 }
 
 //===========================================================================
 void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     assert(txn);
     assert(bytes >= sizeof(DbLog::Record));
-    rec->logPos.u.lsn = 0;
-    rec->logPos.u.localTxn = getLocalTxn(txn);
-    log(rec, bytes, true);
-    apply(rec, nullptr);
+    rec->localTxn = getLocalTxn(txn);
+    auto lsn = log(rec, bytes);
+    apply(lsn, rec, nullptr);
 }
 
 //===========================================================================
-void DbLog::apply(const Record * log, AnalyzeData * data) {
+void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
     switch (log->type) {
     case kRecTypeCheckpointStart:
         if (data)
-            applyCheckpointStart(*data, log->logPos.u.lsn);
+            applyCheckpointStart(*data, lsn);
         break;
     case kRecTypeCheckpointEnd:
         if (data) {
             auto rec = reinterpret_cast<const CheckpointEndRec *>(log);
-            applyCheckpointEnd(*data, rec->hdr.logPos.u.lsn, rec->startLsn);
+            applyCheckpointEnd(*data, lsn, rec->startLsn);
         }
         break;
     case kRecTypeTxnBegin:
         if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyBeginTxn(*data, rec->localTxn);
+            applyBeginTxn(*data, lsn, rec->localTxn);
         }
         break;
     case kRecTypeTxnCommit:
         if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyCommit(*data, rec->localTxn);
+            applyCommit(*data, lsn, rec->localTxn);
         }
         break;
     default:
         if (!data)
-            applyRedo(log);
+            applyRedo(lsn, log);
         break;
     }
 }
@@ -507,9 +500,9 @@ pair<T *, size_t> DbTxn::alloc(
         m_txn = m_log.beginTxn();
     m_buffer.resize(bytes);
     auto * lr = (DbLog::Record *) m_buffer.data();
-    lr->logPos.txn = 0;
     lr->type = type;
     lr->pgno = pgno;
+    lr->localTxn = 0;
     return {(T *) m_buffer.data(), bytes};
 }
 

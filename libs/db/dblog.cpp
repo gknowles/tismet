@@ -218,7 +218,7 @@ void DbLog::close() {
 }
 
 //===========================================================================
-// create array of references to last contiguous set of log pages
+// Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
     PageHeader hdr;
     // load info for each page
@@ -265,12 +265,12 @@ void DbLog::applyAll(AnalyzeData * data) {
     auto buf2 = make_unique<char[]>(2 * m_pageSize);
     int bytesBefore{0};
     int logPos{0};
+    auto lsn = uint64_t{0};
     auto log = (Record *) nullptr;
 
     for (auto & pi : m_pages) {
         fileReadWait(buf2.get(), m_pageSize, m_flog, pi.pgno * m_pageSize);
         auto hdr = (PageHeader *) buf2.get();
-        logPos = hdr->firstPos;
         if (bytesBefore) {
             auto bytesAfter = hdr->firstPos - sizeof(*hdr);
             memcpy(
@@ -280,22 +280,28 @@ void DbLog::applyAll(AnalyzeData * data) {
             );
             log = (Record *) (buf.get() + m_pageSize - bytesBefore);
             assert(size(log) == bytesBefore + bytesAfter);
-            apply(log, data);
+            apply(hdr->firstLsn - 1, log, data);
         }
         swap(buf, buf2);
+
+        logPos = hdr->firstPos;
+        lsn = hdr->firstLsn;
         while (logPos < hdr->lastPos) {
             log = (Record *) (buf.get() + logPos);
-            apply(log, data);
+            apply(lsn, log, data);
             logPos += size(log);
+            lsn += 1;
         }
         assert(logPos == hdr->lastPos);
         bytesBefore = (int) (m_pageSize - logPos);
     }
     log = (Record *) (buf.get() + logPos);
     assert(logPos + size(log) <= m_pageSize);
-    apply(log, data);
+    apply(lsn, log, data);
     logPos += size(log);
 
+    // Initialize log write buffers with last buffer (if partial) found
+    // during analyze.
     if (data && logPos < m_pageSize) {
         memcpy(m_buffers.get(), buf.get(), logPos);
         m_bufPos = m_logPos = logPos;
@@ -331,11 +337,15 @@ void DbLog::applyCheckpointEnd(
 }
 
 //===========================================================================
-void DbLog::applyBeginTxn(AnalyzeData & data, uint16_t txn) {
+void DbLog::applyBeginTxn(
+    AnalyzeData & data,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
 }
 
 //===========================================================================
-void DbLog::applyCommit(AnalyzeData & data, uint16_t txn) {
+void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
 }
 
 //===========================================================================
@@ -535,26 +545,26 @@ void DbLog::prepareBuffer_LK(
         (const char *) log + bytesOnOldPage,
         bytesOnNewPage
     );
-    m_logPos = (uint16_t) -(int)bytesOnOldPage;
+    m_logPos = lp->firstPos;
     m_bufPos = lp->firstPos;
 
     timerUpdate(this, kDirtyWriteBufferTimeout);
 }
 
 //===========================================================================
-void DbLog::log(Record * log, size_t bytes, bool setLsn) {
+uint64_t DbLog::log(Record * log, size_t bytes) {
     assert(bytes < m_pageSize - sizeof(PageHeader));
     assert(bytes == size(log));
 
     unique_lock<mutex> lk{m_bufMut};
     while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
         m_bufAvailCv.wait(lk);
-    m_lastLsn += 1;
-    if (setLsn)
-        setLogPos(log, m_lastLsn, getLocalTxn(log));
+    auto lsn = ++m_lastLsn;
 
-    if (m_bufPos == m_pageSize)
-        return prepareBuffer_LK(log, 0, bytes);
+    if (m_bufPos == m_pageSize) {
+        prepareBuffer_LK(log, 0, bytes);
+        return lsn;
+    }
 
     size_t overflow = 0;
     if (auto avail = m_pageSize - m_bufPos; bytes > avail) {
@@ -588,12 +598,12 @@ void DbLog::log(Record * log, size_t bytes, bool setLsn) {
         if (!writeInProgress)
             fileWrite(this, m_flog, offset, lp, m_pageSize, taskComputeQueue());
     }
+    return lsn;
 }
 
 //===========================================================================
-void DbLog::applyRedo(const Record * log) {
+void DbLog::applyRedo(uint64_t lsn, const Record * log) {
     auto pgno = getPgno(log);
-    auto lsn = getLsn(log);
     auto ptr = (void *) nullptr;
     if (interleaveSafe(log)) {
         void * newPage = nullptr;

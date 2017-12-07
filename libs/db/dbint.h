@@ -143,9 +143,8 @@ public:
     static uint16_t size(const Record * log);
     static bool interleaveSafe(const Record * log);
     static uint32_t getPgno(const Record * log);
-    static uint64_t getLsn(const Record * log);
     static uint16_t getLocalTxn(const Record * log);
-    static void setLogPos(Record * log, uint64_t lsn, uint16_t localTxn);
+    static void setLocalTxn(Record * log, uint16_t localTxn);
 
     static uint64_t getLsn(uint64_t logPos);
     static uint16_t getLocalTxn(uint64_t logPos);
@@ -197,7 +196,9 @@ private:
     uint64_t logBeginTxn(uint16_t localTxn);
     void logCommit(uint64_t txn);
 
-    void log(Record * log, size_t bytes, bool setLsn);
+    // returns LSN
+    uint64_t log(Record * log, size_t bytes);
+
     void prepareBuffer_LK(
         const Record * log,
         size_t bytesOnOldPage,
@@ -208,13 +209,13 @@ private:
 
     struct AnalyzeData;
     void applyAll(AnalyzeData * data);
-    void apply(const Record * log, AnalyzeData * data = nullptr);
-    void applyRedo(const Record * log);
+    void apply(uint64_t lsn, const Record * log, AnalyzeData * data = nullptr);
+    void applyRedo(uint64_t lsn, const Record * log);
     void applyRedo(void * page, const Record * log);
     void applyCheckpointStart(AnalyzeData & data, uint64_t lsn);
     void applyCheckpointEnd(AnalyzeData & data, uint64_t lsn, uint64_t startLsn);
-    void applyBeginTxn(AnalyzeData & data, uint16_t txn);
-    void applyCommit(AnalyzeData & data, uint16_t txn);
+    void applyBeginTxn(AnalyzeData & data, uint64_t lsn, uint16_t txn);
+    void applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t txn);
 
     DbData & m_data;
     DbPage & m_page;
