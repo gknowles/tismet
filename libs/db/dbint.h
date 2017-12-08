@@ -97,6 +97,7 @@ public:
     size_t size() const { return m_pages.size(); }
 
     void checkpoint(uint64_t lsn);
+    void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
@@ -191,8 +192,8 @@ private:
     bool loadPages();
     bool recover();
 
-    uint64_t logCheckpointStart();
-    void logCheckpointEnd(uint64_t startLsn);
+    uint64_t logBeginCheckpoint();
+    void logCommitCheckpoint(uint64_t startLsn);
     uint64_t logBeginTxn(uint16_t localTxn);
     void logCommit(uint64_t txn);
 
@@ -208,12 +209,13 @@ private:
     void flushWriteBuffer_UNLK();
 
     struct AnalyzeData;
-    void applyAll(AnalyzeData * data);
+    void applyAll(AnalyzeData & data);
     void apply(uint64_t lsn, const Record * log, AnalyzeData * data = nullptr);
-    void applyRedo(uint64_t lsn, const Record * log);
-    void applyRedo(void * page, const Record * log);
-    void applyCheckpointStart(AnalyzeData & data, uint64_t lsn);
-    void applyCheckpointEnd(AnalyzeData & data, uint64_t lsn, uint64_t startLsn);
+    void applyUpdate(uint64_t lsn, const Record * log);
+    void applyUpdate(void * page, const Record * log);
+    void applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log);
+    void applyBeginCheckpoint(AnalyzeData & data, uint64_t lsn);
+    void applyCommitCheckpoint(AnalyzeData & data, uint64_t lsn, uint64_t startLsn);
     void applyBeginTxn(AnalyzeData & data, uint64_t lsn, uint16_t txn);
     void applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t txn);
 

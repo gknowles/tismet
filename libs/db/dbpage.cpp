@@ -203,6 +203,29 @@ void DbPage::checkpoint(uint64_t lsn) {
 }
 
 //===========================================================================
+void * DbPage::wptrRedo(uint64_t lsn, uint32_t pgno) {
+    if (pgno >= m_pages.size()) {
+        m_vdata.growToFit(pgno);
+        m_pages.resize(pgno + 1);
+    }
+    auto hdr = m_pages[pgno];
+    if (!hdr) {
+        // create new dirty page from clean page
+        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        if (lsn <= src->lsn)
+            return nullptr;
+        hdr = dupPage_LK(src);
+        m_pages[pgno] = hdr;
+    } else {
+        if (lsn <= hdr->lsn)
+            return nullptr;
+    }
+    hdr->pgno = pgno;
+    hdr->lsn = lsn;
+    return hdr;
+}
+
+//===========================================================================
 const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
@@ -233,7 +256,7 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
         *newPage = nullptr;
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
-    auto hdr = (DbPageHeader *) m_pages[pgno];
+    auto hdr = m_pages[pgno];
     if (!hdr) {
         // create new dirty page from clean page
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));

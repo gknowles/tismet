@@ -47,9 +47,13 @@ enum class DbLog::Checkpoint : int {
 };
 
 struct DbLog::AnalyzeData {
-    set<uint64_t> incompleteTxns;
-    uint64_t stableCheckpointStart{0};
-    uint64_t volatileCheckpointStart{0};
+    bool analyze{true};
+    unordered_map<uint16_t, uint64_t> txns;
+    vector<uint64_t> incompleteTxnLsns;
+    uint64_t stableCheckpoint{0};
+    uint64_t volatileCheckpoint{0};
+
+    UnsignedSet activeTxns;
 };
 
 namespace {
@@ -160,8 +164,8 @@ bool DbLog::open(string_view logfile) {
         m_numPages = 1;
         m_lastLsn = 0;
         m_lastLocalTxn = 0;
-        auto cpLsn = logCheckpointStart();
-        logCheckpointEnd(cpLsn);
+        auto cpLsn = logBeginCheckpoint();
+        logCommitCheckpoint(cpLsn);
         return true;
     }
 
@@ -260,7 +264,7 @@ bool DbLog::loadPages() {
 }
 
 //===========================================================================
-void DbLog::applyAll(AnalyzeData * data) {
+void DbLog::applyAll(AnalyzeData & data) {
     auto buf = make_unique<char[]>(2 * m_pageSize);
     auto buf2 = make_unique<char[]>(2 * m_pageSize);
     int bytesBefore{0};
@@ -280,7 +284,7 @@ void DbLog::applyAll(AnalyzeData * data) {
             );
             log = (Record *) (buf.get() + m_pageSize - bytesBefore);
             assert(size(log) == bytesBefore + bytesAfter);
-            apply(hdr->firstLsn - 1, log, data);
+            apply(hdr->firstLsn - 1, log, &data);
         }
         swap(buf, buf2);
 
@@ -288,7 +292,7 @@ void DbLog::applyAll(AnalyzeData * data) {
         lsn = hdr->firstLsn;
         while (logPos < hdr->lastPos) {
             log = (Record *) (buf.get() + logPos);
-            apply(lsn, log, data);
+            apply(lsn, log, &data);
             logPos += size(log);
             lsn += 1;
         }
@@ -297,12 +301,12 @@ void DbLog::applyAll(AnalyzeData * data) {
     }
     log = (Record *) (buf.get() + logPos);
     assert(logPos + size(log) <= m_pageSize);
-    apply(lsn, log, data);
+    apply(lsn, log, &data);
     logPos += size(log);
 
     // Initialize log write buffers with last buffer (if partial) found
     // during analyze.
-    if (data && logPos < m_pageSize) {
+    if (data.analyze && logPos < m_pageSize) {
         memcpy(m_buffers.get(), buf.get(), logPos);
         m_bufPos = m_logPos = logPos;
         m_bufStates[m_curBuf] = Buffer::PartialClean;
@@ -316,7 +320,22 @@ bool DbLog::recover() {
         return true;
 
     AnalyzeData data;
-    applyAll(&data);
+    applyAll(data);
+    if (!data.stableCheckpoint)
+        logMsgCrash() << "Invalid tsl file, no checkpoint found";
+
+    for (auto && kv : data.txns) {
+        data.incompleteTxnLsns.push_back(kv.second);
+    }
+    sort(
+        data.incompleteTxnLsns.begin(),
+        data.incompleteTxnLsns.end(),
+        [](auto & a, auto & b) { return a > b; }
+    );
+    data.analyze = false;
+    applyAll(data);
+    assert(data.incompleteTxnLsns.empty());
+    assert(data.activeTxns.empty());
 
     auto & back = m_pages.back();
     m_stableLsn = back.firstLsn + back.numLogs - 1;
@@ -325,15 +344,19 @@ bool DbLog::recover() {
 }
 
 //===========================================================================
-void DbLog::applyCheckpointStart(AnalyzeData & data, uint64_t lsn) {
+void DbLog::applyBeginCheckpoint(AnalyzeData & data, uint64_t lsn) {
+    if (data.analyze)
+        data.volatileCheckpoint = lsn;
 }
 
 //===========================================================================
-void DbLog::applyCheckpointEnd(
+void DbLog::applyCommitCheckpoint(
     AnalyzeData & data,
     uint64_t lsn,
     uint64_t startLsn
 ) {
+    if (data.analyze && startLsn == data.volatileCheckpoint)
+        data.stableCheckpoint = startLsn;
 }
 
 //===========================================================================
@@ -342,10 +365,46 @@ void DbLog::applyBeginTxn(
     uint64_t lsn,
     uint16_t localTxn
 ) {
+    if (data.analyze) {
+        auto & txnLsn = data.txns[localTxn];
+        if (txnLsn)
+            data.incompleteTxnLsns.push_back(txnLsn);
+        txnLsn = lsn;
+        return;
+    }
+
+    // redo
+    if (lsn < data.stableCheckpoint)
+        return;
+    if (!data.incompleteTxnLsns.empty()
+        && lsn == data.incompleteTxnLsns.back()
+    ) {
+        data.incompleteTxnLsns.pop_back();
+        return;
+    }
+    data.activeTxns.insert(localTxn);
 }
 
 //===========================================================================
 void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
+    if (data.analyze) {
+        data.txns.erase(localTxn);
+    } else {
+        data.activeTxns.erase(localTxn);
+    }
+}
+
+//===========================================================================
+void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
+    if (data.analyze)
+        return;
+
+    if (!data.activeTxns.count(getLocalTxn(log)))
+        return;
+
+    auto pgno = getPgno(log);
+    if (auto ptr = m_page.wptrRedo(lsn, pgno))
+        applyUpdate(ptr, log);
 }
 
 //===========================================================================
@@ -380,7 +439,7 @@ void DbLog::commit(uint64_t txn) {
 //===========================================================================
 void DbLog::checkpoint() {
     assert(m_phase == Checkpoint::Complete);
-    m_checkpointLsn = logCheckpointStart();
+    m_checkpointLsn = logBeginCheckpoint();
     m_page.checkpoint(m_checkpointLsn);
     m_phase = Checkpoint::WaitForTxns;
     m_oldTxns = m_curTxns;
@@ -462,7 +521,7 @@ void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
 void DbLog::onTask() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
     m_page.flush();
-    logCheckpointEnd(m_checkpointLsn);
+    logCommitCheckpoint(m_checkpointLsn);
     m_phase = Checkpoint::Complete;
     m_bufAvailCv.notify_one();
 }
@@ -546,7 +605,7 @@ void DbLog::prepareBuffer_LK(
         bytesOnNewPage
     );
     m_logPos = lp->firstPos;
-    m_bufPos = lp->firstPos;
+    m_bufPos = sizeof(PageHeader) + bytesOnNewPage;
 
     timerUpdate(this, kDirtyWriteBufferTimeout);
 }
@@ -602,18 +661,18 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
 }
 
 //===========================================================================
-void DbLog::applyRedo(uint64_t lsn, const Record * log) {
+void DbLog::applyUpdate(uint64_t lsn, const Record * log) {
     auto pgno = getPgno(log);
     auto ptr = (void *) nullptr;
     if (interleaveSafe(log)) {
         void * newPage = nullptr;
         ptr = m_page.wptr(lsn, pgno, &newPage);
         if (newPage)
-            applyRedo(newPage, log);
+            applyUpdate(newPage, log);
     } else {
         ptr = m_page.wptr(lsn, pgno, nullptr);
     }
-    applyRedo(ptr, log);
+    applyUpdate(ptr, log);
 }
 
 
