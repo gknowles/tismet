@@ -205,7 +205,8 @@ private:
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
-    void updateStableLsn_LK(uint64_t first, uint64_t last);
+    void updatePages_LK(const PageInfo & pi);
+    void truncateLogs_LK();
     void flushWriteBuffer_UNLK();
 
     struct AnalyzeData;
@@ -252,6 +253,11 @@ private:
     size_t m_bufPos{0};
     size_t m_logPos{0};
 };
+
+//===========================================================================
+inline bool operator<(const DbLog::PageInfo & a, const DbLog::PageInfo & b) {
+    return a.firstLsn < b.firstLsn;
+}
 
 class DbTxn {
 public:

@@ -41,9 +41,9 @@ enum class DbLog::Buffer : int {
 enum class DbLog::Checkpoint : int {
     Complete,
     WaitForTxns,
-    WaitForStableCommits,
+    WaitForTxnCommits,
     WaitForPageFlush,
-    TruncateLogs,
+    WaitForCheckpointCommit,
 };
 
 struct DbLog::AnalyzeData {
@@ -179,8 +179,6 @@ bool DbLog::open(string_view logfile) {
         return false;
     }
     m_numPages = (len + m_pageSize - 1) / m_pageSize;
-    if (!loadPages())
-        return false;
     if (!recover())
         return false;
     return true;
@@ -191,33 +189,18 @@ void DbLog::close() {
     checkpoint();
     timerUpdate(this, kTimerInfinite);
     onTimer(Clock::now());
-    m_bufMut.lock();
+    unique_lock<mutex> lk{m_bufMut};
     for (;;) {
         if (m_phase == Checkpoint::Complete) {
             if (m_emptyBufs == m_numBufs)
                 break;
             auto bst = m_bufStates[m_curBuf];
-            if (m_emptyBufs == m_numBufs - 1) {
-                if (bst == Buffer::PartialClean)
-                    break;
-                if (bst == Buffer::PartialDirty) {
-                    auto * lp = (PageHeader *) bufPtr(m_curBuf);
-                    lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
-                    lp->lastPos = (uint16_t) m_logPos;
-                    auto offset = lp->pgno * m_pageSize;
-                    auto bytes = m_bufPos;
-                    fileWriteWait(m_flog, offset, lp, bytes);
-                    s_perfWrites += 1;
-                    break;
-                }
-            }
+            if (m_emptyBufs == m_numBufs - 1 && bst == Buffer::PartialClean)
+                break;
         }
-        flushWriteBuffer_UNLK();
-        unique_lock<mutex> lk{m_bufMut};
         m_bufAvailCv.wait(lk);
-        lk.release();
     }
-    m_bufMut.unlock();
+    lk.unlock();
     fileClose(m_flog);
 }
 
@@ -247,11 +230,7 @@ bool DbLog::loadPages() {
     // Sort and remove all pages that are not contiguously connected with the
     // last page.
     auto first = m_pages.begin();
-    sort(
-        first,
-        m_pages.end(),
-        [](auto & a, auto & b){ return a.firstLsn < b.firstLsn; }
-    );
+    sort(first, m_pages.end());
     auto rlast = adjacent_find(
         m_pages.rbegin(),
         m_pages.rend(),
@@ -316,9 +295,14 @@ void DbLog::applyAll(AnalyzeData & data) {
 
 //===========================================================================
 bool DbLog::recover() {
+    if (!loadPages())
+        return false;
     if (m_pages.empty())
         return true;
 
+    // Go through log entries looking for last committed checkpoint and the
+    // set of incomplete transactions (so we can avoid trying to redo them
+    // later).
     AnalyzeData data;
     applyAll(data);
     if (!data.stableCheckpoint)
@@ -332,6 +316,9 @@ bool DbLog::recover() {
         data.incompleteTxnLsns.end(),
         [](auto & a, auto & b) { return a > b; }
     );
+
+    // Go through log entries starting with the last committed checkpoint and
+    // redo all complete transactions found.
     data.analyze = false;
     applyAll(data);
     assert(data.incompleteTxnLsns.empty());
@@ -432,7 +419,7 @@ void DbLog::commit(uint64_t txn) {
     assert(m_oldTxns);
     m_oldCommitLsn = m_lastLsn;
     if (--m_oldTxns == 0)
-        m_phase = Checkpoint::WaitForStableCommits;
+        m_phase = Checkpoint::WaitForTxnCommits;
     s_perfOldTxns -= 1;
 }
 
@@ -449,7 +436,7 @@ void DbLog::checkpoint() {
     s_perfCps += 1;
     s_perfCurCps += 1;
     if (m_oldTxns == 0)
-        m_phase = Checkpoint::WaitForStableCommits;
+        m_phase = Checkpoint::WaitForTxnCommits;
 }
 
 //===========================================================================
@@ -482,38 +469,33 @@ Duration DbLog::onTimer(TimePoint now) {
 }
 
 //===========================================================================
-void DbLog::updateStableLsn_LK(uint64_t first, uint64_t last) {
-    if (last <= m_stableLsn)
-        return;
-    if (first > m_stableLsn + 1) {
-        s_perfReorderedWrites += 1;
-        auto lsns = make_pair(first, last);
-        auto i = lower_bound(
-            m_stableLsns.begin(),
-            m_stableLsns.end(),
-            lsns
-        );
-        m_stableLsns.insert(i, lsns);
-        return;
+void DbLog::updatePages_LK(const PageInfo & pi) {
+    auto i = lower_bound(m_pages.begin(), m_pages.end(), pi);
+    if (i != m_pages.end() && i->firstLsn == pi.firstLsn) {
+        *i = pi;
+    } else {
+        i = m_pages.insert(i, pi);
     }
 
-    m_stableLsn = last;
-    if (!m_stableLsns.empty()) {
-        auto i = m_stableLsns.begin();
-        for (; i != m_stableLsns.end(); ++i) {
-            if (i->first > m_stableLsn + 1)
-                break;
-            if (i->second > m_stableLsn)
-                m_stableLsn = i->second;
-        }
-        m_stableLsns.erase(m_stableLsns.begin(), i);
-    }
-
-    if (m_phase == Checkpoint::WaitForStableCommits
-        && m_stableLsn >= m_oldCommitLsn
+    auto last = i->firstLsn + i->numLogs - 1;
+    while (i->firstLsn <= m_stableLsn + 1
+        && last >= m_stableLsn + 1
     ) {
-        m_phase = Checkpoint::WaitForPageFlush;
-        taskPushCompute(*this);
+        m_stableLsn = last;
+        if (++i == m_pages.end())
+            break;
+        last = i->firstLsn + i->numLogs - 1;
+    }
+
+    if (m_stableLsn >= m_oldCommitLsn) {
+        if (m_phase == Checkpoint::WaitForTxnCommits) {
+            m_phase = Checkpoint::WaitForPageFlush;
+            taskPushCompute(*this);
+        } else if (m_phase == Checkpoint::WaitForCheckpointCommit) {
+            truncateLogs_LK();
+            m_phase = Checkpoint::Complete;
+            m_bufAvailCv.notify_one();
+        }
     }
 }
 
@@ -522,8 +504,24 @@ void DbLog::onTask() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
     m_page.flush();
     logCommitCheckpoint(m_checkpointLsn);
-    m_phase = Checkpoint::Complete;
-    m_bufAvailCv.notify_one();
+    m_oldCommitLsn = m_lastLsn;
+    m_phase = Checkpoint::WaitForCheckpointCommit;
+    timerUpdate(this, kTimerInfinite);
+    onTimer(Clock::now());
+}
+
+//===========================================================================
+void DbLog::truncateLogs_LK() {
+    auto lastTxn = m_pages.back().firstLsn;
+    for (;;) {
+        auto && pi = m_pages.front();
+        if (pi.firstLsn >= lastTxn)
+            break;
+        if (pi.firstLsn + pi.numLogs > m_checkpointLsn)
+            break;
+        m_freePages.insert(pi.pgno);
+        m_pages.pop_front();
+    }
 }
 
 //===========================================================================
@@ -535,8 +533,9 @@ void DbLog::onFileWrite(
 ) {
     s_perfWrites += 1;
     auto * lp = (PageHeader *) data.data();
+    PageInfo pi = { lp->pgno, lp->firstLsn, lp->numLogs };
     unique_lock<mutex> lk{m_bufMut};
-    updateStableLsn_LK(lp->firstLsn, lp->firstLsn + lp->numLogs - 1);
+    updatePages_LK(pi);
     if (data.size() == m_pageSize) {
         m_emptyBufs += 1;
         auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
