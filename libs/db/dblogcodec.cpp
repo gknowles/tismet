@@ -16,10 +16,10 @@ using namespace Dim;
 ***/
 
 enum DbLogRecType : uint8_t {
-    kRecTypeBeginCheckpoint,    //
-    kRecTypeCommitCheckpoint,      // startLsn
-    kRecTypeTxnBegin,           // N/A
-    kRecTypeTxnCommit,          // N/A
+    kRecTypeBeginCheckpoint,    // [N/A]
+    kRecTypeCommitCheckpoint,   // [N/A] startLsn
+    kRecTypeTxnBegin,           // [N/A]
+    kRecTypeTxnCommit,          // [N/A]
 
     kRecTypeZeroInit,           // [master]
     kRecTypePageFree,           // [any]
@@ -65,8 +65,11 @@ union LogPos {
 
 //---------------------------------------------------------------------------
 // Checkpoint
-struct CheckpointEndRec {
-    DbLog::Record hdr;
+struct CheckpointBeginRec {
+    DbLogRecType type;
+};
+struct CheckpointCommitRec {
+    DbLogRecType type;
     uint64_t startLsn;
 };
 
@@ -172,9 +175,9 @@ struct SampleUpdateTimeRec {
 uint16_t DbLog::size(const Record * log) {
     switch (log->type) {
     case kRecTypeBeginCheckpoint:
-        return sizeof(Record);
+        return sizeof(CheckpointBeginRec);
     case kRecTypeCommitCheckpoint:
-        return sizeof(CheckpointEndRec);
+        return sizeof(CheckpointCommitRec);
     case kRecTypeTxnBegin:
     case kRecTypeTxnCommit:
         return sizeof(TransactionRec);
@@ -279,19 +282,15 @@ void DbLog::setLocalTxn(DbLog::Record * log, uint16_t localTxn) {
 
 //===========================================================================
 uint64_t DbLog::logBeginCheckpoint() {
-    Record rec;
+    CheckpointBeginRec rec;
     rec.type = kRecTypeBeginCheckpoint;
-    rec.pgno = 0;
-    rec.localTxn = 0;
-    return log(&rec, sizeof(rec));
+    return log((Record *) &rec, sizeof(rec));
 }
 
 //===========================================================================
 void DbLog::logCommitCheckpoint(uint64_t startLsn) {
-    CheckpointEndRec rec;
-    rec.hdr.type = kRecTypeCommitCheckpoint;
-    rec.hdr.pgno = 0;
-    rec.hdr.localTxn = 0;
+    CheckpointCommitRec rec;
+    rec.type = kRecTypeCommitCheckpoint;
     rec.startLsn = startLsn;
     log((Record *) &rec, sizeof(rec));
 }
@@ -331,7 +330,7 @@ void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
         break;
     case kRecTypeCommitCheckpoint:
         if (data) {
-            auto rec = reinterpret_cast<const CheckpointEndRec *>(log);
+            auto rec = reinterpret_cast<const CheckpointCommitRec *>(log);
             applyCommitCheckpoint(*data, lsn, rec->startLsn);
         }
         break;
