@@ -187,8 +187,7 @@ bool DbLog::open(string_view logfile) {
 //===========================================================================
 void DbLog::close() {
     checkpoint();
-    timerUpdate(this, kTimerInfinite);
-    onTimer(Clock::now());
+    flushWriteBuffer();
     unique_lock<mutex> lk{m_bufMut};
     for (;;) {
         if (m_phase == Checkpoint::Complete) {
@@ -440,8 +439,8 @@ void DbLog::checkpoint() {
 }
 
 //===========================================================================
-void DbLog::flushWriteBuffer_UNLK() {
-    unique_lock<mutex> lk{m_bufMut, adopt_lock};
+void DbLog::flushWriteBuffer() {
+    unique_lock<mutex> lk{m_bufMut};
     auto * lp = (PageHeader *) bufPtr(m_curBuf);
     if (m_bufStates[m_curBuf] != Buffer::PartialDirty)
         return;
@@ -463,8 +462,7 @@ void DbLog::flushWriteBuffer_UNLK() {
 
 //===========================================================================
 Duration DbLog::onTimer(TimePoint now) {
-    m_bufMut.lock();
-    flushWriteBuffer_UNLK();
+    flushWriteBuffer();
     return kTimerInfinite;
 }
 
@@ -506,8 +504,7 @@ void DbLog::onTask() {
     logCommitCheckpoint(m_checkpointLsn);
     m_oldCommitLsn = m_lastLsn;
     m_phase = Checkpoint::WaitForCheckpointCommit;
-    timerUpdate(this, kTimerInfinite);
-    onTimer(Clock::now());
+    flushWriteBuffer();
 }
 
 //===========================================================================

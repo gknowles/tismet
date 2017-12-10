@@ -207,7 +207,7 @@ private:
     );
     void updatePages_LK(const PageInfo & pi);
     void truncateLogs_LK();
-    void flushWriteBuffer_UNLK();
+    void flushWriteBuffer();
 
     struct AnalyzeData;
     void applyAll(AnalyzeData & data);
