@@ -23,6 +23,7 @@ public:
     ~DbBase();
 
     bool open(string_view name, size_t pageSize);
+    void configure(const DbConfig & conf);
     DbStats queryStats();
 
     bool insertMetric(uint32_t & out, const string & name);
@@ -142,6 +143,11 @@ bool DbBase::OnDbSample(
 ) {
     indexInsertMetric(id, string(name), true);
     return !appStopping();
+}
+
+//===========================================================================
+void DbBase::configure(const DbConfig & conf) {
+    m_page.configure(conf);
 }
 
 //===========================================================================
@@ -380,6 +386,13 @@ DbHandle dbOpen(string_view name, size_t pageSize) {
 //===========================================================================
 void dbClose(DbHandle h) {
     s_files.erase(h);
+}
+
+//===========================================================================
+void dbConfigure(DbHandle h, const DbConfig & conf) {
+    auto * db = s_files.find(h);
+    assert(db);
+    db->configure(conf);
 }
 
 //===========================================================================

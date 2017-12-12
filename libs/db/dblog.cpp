@@ -485,6 +485,7 @@ void DbLog::updatePages_LK(const PageInfo & pi) {
         last = i->firstLsn + i->numLogs - 1;
     }
 
+    m_page.stable(m_stableLsn);
     if (m_stableLsn >= m_oldCommitLsn) {
         if (m_phase == Checkpoint::WaitForTxnCommits) {
             m_phase = Checkpoint::WaitForPageFlush;
@@ -500,7 +501,7 @@ void DbLog::updatePages_LK(const PageInfo & pi) {
 //===========================================================================
 void DbLog::onTask() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
-    m_page.flush();
+    m_page.checkpointPages();
     logCommitCheckpoint(m_checkpointLsn);
     m_oldCommitLsn = m_lastLsn;
     m_phase = Checkpoint::WaitForCheckpointCommit;

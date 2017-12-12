@@ -22,6 +22,9 @@ static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
 const size_t kViewSize = 0x100'0000; // 16MiB
 const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
+const Duration kDefaultPageMaxAge = 30min;
+const Duration kDefaultPageScanInterval = 1min;
+
 
 /****************************************************************************
 *
@@ -55,6 +58,13 @@ struct ZeroPage {
 *   DbPage
 *
 ***/
+
+//===========================================================================
+DbPage::DbPage()
+    : m_pageMaxAge{kDefaultPageMaxAge}
+    , m_pageScanInterval{kDefaultPageScanInterval}
+    , m_flushTask([&]{ this->flushStalePages(); })
+{}
 
 //===========================================================================
 DbPage::~DbPage() {
@@ -113,6 +123,9 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
         logMsgError() << "Open view failed for " << workfile;
         return false;
     }
+
+    m_stableLsns.clear();
+    m_stableLsns.push_back(0);
     return true;
 }
 
@@ -148,7 +161,34 @@ bool DbPage::openData(string_view datafile) {
 }
 
 //===========================================================================
+void DbPage::configure(const DbConfig & conf) {
+    auto maxAge = conf.pageMaxAge.count() ? conf.pageMaxAge : m_pageMaxAge;
+    auto scanInterval = conf.pageScanInterval.count()
+        ? conf.pageScanInterval
+        : m_pageScanInterval;
+    if (maxAge < 1min) {
+        logMsgError() << "Max work page age must be at least 1 minute.";
+        return;
+    }
+    if (maxAge < scanInterval) {
+        logMsgError() << "Max work page age must be greater than scan "
+            "interval.";
+        return;
+    }
+    auto count = maxAge / scanInterval;
+    if (count > 1000) {
+        logMsgError() << "Work page scan interval must be at least 1/1000th "
+            "of the max age.";
+        return;
+    }
+    m_pageMaxAge = maxAge;
+    m_pageScanInterval = scanInterval;
+    queuePageScan();
+}
+
+//===========================================================================
 void DbPage::close() {
+    m_stableLsns.clear();
     m_pages.clear();
     m_pageSize = 0;
     m_vdata.close();
@@ -160,9 +200,96 @@ void DbPage::close() {
 }
 
 //===========================================================================
-void DbPage::flush() {
-    uint32_t pgno = 1;
+void DbPage::queuePageScan() {
+    auto now = Clock::now().time_since_epoch();
+    auto next = (now / m_pageScanInterval + 1) * m_pageScanInterval;
+    timerUpdate(this, next - now, true);
+}
+
+//===========================================================================
+Duration DbPage::onTimer(TimePoint now) {
+    size_t count = m_pageMaxAge / m_pageScanInterval;
+
+    {
+        unique_lock<mutex> lk{m_workMut};
+        if (m_flushLsn)
+            return kTimerInfinite;
+        m_stableLsns.push_back(0);
+        while (m_stableLsns.size() > count) {
+            m_flushLsn = m_stableLsns.front();
+            m_stableLsns.pop_front();
+        }
+    }
+
+    if (m_flushLsn) {
+        taskPushCompute(m_flushTask);
+    } else {
+        queuePageScan();
+    }
+    return kTimerInfinite;
+}
+
+//===========================================================================
+void DbPage::stable(uint64_t lsn) {
     unique_lock<mutex> lk{m_workMut};
+    m_stableLsns.back() = lsn;
+}
+
+//===========================================================================
+void DbPage::flushStalePages() {
+    uint32_t pgno = 1;
+    uint32_t freeMark = numeric_limits<decltype(pgno)>::max();
+    auto buf = make_unique<char[]>(m_pageSize);
+    auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
+    m_workMut.lock();
+    for (;; ++pgno) {
+        if (auto i = m_freeWorkPages.find(pgno); i) {
+            i = m_freeWorkPages.lastContiguous(i);
+            pgno = *i + 1;
+        }
+        bool done = (pgno >= m_workPages);
+        m_workMut.unlock();
+        if (appStopping())
+            break;
+        if (done) {
+            queuePageScan();
+            break;
+        }
+
+        auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(pgno));
+
+        m_workMut.lock();
+        if (m_flushLsn < hdr->lsn || hdr->pgno == freeMark) {
+            // stay locked
+            continue;
+        }
+        memcpy(tmpHdr, hdr, m_pageSize);
+        hdr->type = (DbPageType) kPageTypeFree;
+        hdr->pgno = freeMark;
+        m_freeWorkPages.insert(pgno);
+        if (m_pages[pgno] == hdr)
+            m_pages[pgno] = nullptr;
+        m_workMut.unlock();
+
+        writePageWait(tmpHdr);
+        m_workMut.lock();
+    }
+
+    m_flushLsn = 0;
+}
+
+//===========================================================================
+void DbPage::checkpoint(uint64_t lsn) {
+    m_checkpointLsn = lsn;
+}
+
+//===========================================================================
+void DbPage::checkpointPages() {
+    uint32_t pgno = 1;
+    uint32_t freeMark = numeric_limits<decltype(pgno)>::max();
+    auto buf = make_unique<char[]>(m_pageSize);
+    auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
+    m_workMut.lock();
     for (;; ++pgno) {
         if (auto i = m_freeWorkPages.find(pgno); i) {
             i = m_freeWorkPages.lastContiguous(i);
@@ -170,21 +297,28 @@ void DbPage::flush() {
         }
         if (pgno >= m_workPages)
             break;
-        lk.unlock();
+
+        m_workMut.unlock();
         auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(pgno));
-        if (m_checkpointLsn < hdr->lsn) {
-            lk.lock();
+        m_workMut.lock();
+
+        if (m_checkpointLsn < hdr->lsn || hdr->pgno == freeMark)
             continue;
+        memcpy(tmpHdr, hdr, m_pageSize);
+        if (m_oldPages.erase(pgno)) {
+            hdr->type = (DbPageType) kPageTypeFree;
+            hdr->pgno = freeMark;
+            m_freeWorkPages.insert(pgno);
+            assert(m_pages[pgno] != hdr);
         }
-        writePage(hdr);
-        lk.lock();
-        hdr->type = (DbPageType) kPageTypeFree;
-        hdr->pgno = numeric_limits<decltype(hdr->pgno)>::max();
-        m_freeWorkPages.insert(pgno);
-        if (m_pages[pgno] == hdr)
-            m_pages[pgno] = nullptr;
+
+        m_workMut.unlock();
+        writePageWait(tmpHdr);
+        m_workMut.lock();
     }
+
     m_oldPages.clear();
+    m_workMut.unlock();
 }
 
 //===========================================================================
@@ -195,11 +329,6 @@ void DbPage::growToFit(uint32_t pgno) {
     assert(pgno == m_pages.size());
     m_vdata.growToFit(pgno);
     m_pages.resize(pgno + 1);
-}
-
-//===========================================================================
-void DbPage::checkpoint(uint64_t lsn) {
-    m_checkpointLsn = lsn;
 }
 
 //===========================================================================
@@ -315,7 +444,7 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
 }
 
 //===========================================================================
-void DbPage::writePage(const DbPageHeader * hdr) {
+void DbPage::writePageWait(const DbPageHeader * hdr) {
     assert(hdr->pgno != (uint32_t) -1);
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }

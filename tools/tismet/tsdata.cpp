@@ -6,6 +6,7 @@
 #pragma hdrstop
 
 using namespace std;
+using namespace std::chrono;
 using namespace Dim;
 
 
@@ -16,6 +17,36 @@ using namespace Dim;
 ***/
 
 static DbHandle s_db;
+
+
+/****************************************************************************
+*
+*   app.xml monitor
+*
+***/
+
+namespace {
+
+class AppXmlNotify : public IConfigNotify {
+    void onConfigChange(const XDocument & doc) override;
+};
+
+} // namespace
+
+static AppXmlNotify s_appXml;
+
+//===========================================================================
+void AppXmlNotify::onConfigChange(const XDocument & doc) {
+    DbConfig conf;
+    conf.checkpointMaxData = configUnsigned(doc, "CheckpointMaxData");
+    conf.checkpointMaxInterval =
+        (seconds) configUnsigned(doc, "CheckpointMaxInterval");
+    conf.pageMaxAge = (seconds) configUnsigned(doc, "WorkMemoryMaxAge");
+    conf.pageScanInterval =
+        (seconds) configUnsigned(doc, "WorkMemoryScanInterval");
+    if (s_db)
+        dbConfigure(s_db, conf);
+}
 
 
 /****************************************************************************
@@ -56,6 +87,7 @@ void tsDataInitialize() {
         logMsgError() << "Unable to open database, " << path;
         return appSignalShutdown(EX_DATAERR);
     }
+    configMonitor("app.xml", &s_appXml);
 }
 
 //===========================================================================

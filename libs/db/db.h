@@ -20,6 +20,16 @@ DbHandle dbOpen(std::string_view name, size_t pageSize = 0);
 
 void dbClose(DbHandle h);
 
+// Setting a parameter to zero causes that specific parameter to be unchanged.
+struct DbConfig {
+    Dim::Duration pageMaxAge;
+    Dim::Duration pageScanInterval;
+
+    Dim::Duration checkpointMaxInterval;
+    size_t checkpointMaxData;
+};
+void dbConfigure(DbHandle h, const DbConfig & conf);
+
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;

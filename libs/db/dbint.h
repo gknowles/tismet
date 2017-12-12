@@ -77,8 +77,9 @@ struct DbPageHeader {
     uint64_t lsn;
 };
 
-class DbPage {
+class DbPage : Dim::ITimerNotify {
 public:
+    DbPage();
     ~DbPage();
 
     bool open(
@@ -86,8 +87,9 @@ public:
         std::string_view workfile,
         size_t pageSize
     );
+    void configure(const DbConfig & conf);
     void close();
-    void flush();
+    void checkpointPages();
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint64_t txn, uint32_t pgno) const;
@@ -97,21 +99,33 @@ public:
     size_t size() const { return m_pages.size(); }
 
     void checkpoint(uint64_t lsn);
+    void stable(uint64_t lsn);
     void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
     bool openData(std::string_view datafile);
-    void writePage(const DbPageHeader * hdr);
+    void writePageWait(const DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
+
+    void queuePageScan();
+    Dim::Duration onTimer(Dim::TimePoint now) override;
+    void flushStalePages();
 
     mutable std::mutex m_workMut;
 
     // One entry for every data page, may point to either a data or work view
     std::vector<DbPageHeader *> m_pages;
     std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
+
     size_t m_pageSize{0};
     uint64_t m_checkpointLsn{0};
+
+    Dim::Duration m_pageMaxAge;
+    Dim::Duration m_pageScanInterval;
+    std::deque<uint64_t> m_stableLsns;
+    uint64_t m_flushLsn{0};
+    Dim::TaskProxy m_flushTask;
 
     DbWriteView m_vdata;
     Dim::FileHandle m_fdata;
