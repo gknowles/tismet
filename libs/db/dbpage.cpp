@@ -236,6 +236,11 @@ void DbPage::stable(uint64_t lsn) {
 }
 
 //===========================================================================
+void DbPage::enablePageScan(bool enable) {
+    m_pageScanEnabled = enable;
+}
+
+//===========================================================================
 void DbPage::flushStalePages() {
     uint32_t pgno = 1;
     uint32_t freeMark = numeric_limits<decltype(pgno)>::max();
@@ -249,7 +254,7 @@ void DbPage::flushStalePages() {
         }
         bool done = (pgno >= m_workPages);
         m_workMut.unlock();
-        if (appStopping())
+        if (!m_pageScanEnabled)
             break;
         if (done) {
             queuePageScan();

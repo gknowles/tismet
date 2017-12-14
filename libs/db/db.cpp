@@ -148,6 +148,7 @@ bool DbBase::OnDbSample(
 //===========================================================================
 void DbBase::configure(const DbConfig & conf) {
     m_page.configure(conf);
+    m_log.configure(conf);
 }
 
 //===========================================================================

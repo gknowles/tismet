@@ -87,8 +87,8 @@ public:
         std::string_view workfile,
         size_t pageSize
     );
-    void configure(const DbConfig & conf);
     void close();
+    void configure(const DbConfig & conf);
     void checkpointPages();
     void growToFit(uint32_t pgno);
 
@@ -100,6 +100,7 @@ public:
 
     void checkpoint(uint64_t lsn);
     void stable(uint64_t lsn);
+    void enablePageScan(bool enable);
     void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
 private:
@@ -121,6 +122,7 @@ private:
     size_t m_pageSize{0};
     uint64_t m_checkpointLsn{0};
 
+    bool m_pageScanEnabled{true};
     Dim::Duration m_pageMaxAge;
     Dim::Duration m_pageScanInterval;
     std::deque<uint64_t> m_stableLsns;
@@ -145,11 +147,7 @@ private:
 enum DbLogRecType : uint8_t;
 class DbData;
 
-class DbLog
-    : Dim::ITimerNotify
-    , Dim::IFileWriteNotify
-    , Dim::ITaskNotify
-{
+class DbLog : Dim::IFileWriteNotify {
 public:
     enum class Buffer : int;
     enum class Checkpoint : int;
@@ -177,8 +175,9 @@ public:
 
     bool open(std::string_view file);
     void close();
+    void configure(const DbConfig & conf);
 
-    // Returns transaction id.
+    // Returns transaction id (localTxn + LSN)
     uint64_t beginTxn();
     void commit(uint64_t txn);
     void checkpoint();
@@ -194,14 +193,12 @@ public:
 private:
     char * bufPtr(size_t ibuf);
 
-    Dim::Duration onTimer(Dim::TimePoint now) override;
     void onFileWrite(
         int written,
         std::string_view data,
         int64_t offset,
         Dim::FileHandle f
     ) override;
-    void onTask() override;
 
     bool loadPages();
     bool recover();
@@ -220,7 +217,9 @@ private:
         size_t bytesOnNewPage
     );
     void updatePages_LK(const PageInfo & pi);
+    void checkpointPages();
     void truncateLogs_LK();
+    void completeCheckpoint_LK();
     void flushWriteBuffer();
 
     struct AnalyzeData;
@@ -230,20 +229,23 @@ private:
     void applyUpdate(void * page, const Record * log);
     void applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log);
     void applyBeginCheckpoint(AnalyzeData & data, uint64_t lsn);
-    void applyCommitCheckpoint(AnalyzeData & data, uint64_t lsn, uint64_t startLsn);
+    void applyCommitCheckpoint(
+        AnalyzeData & data,
+        uint64_t lsn,
+        uint64_t startLsn
+    );
     void applyBeginTxn(AnalyzeData & data, uint64_t lsn, uint16_t txn);
     void applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t txn);
 
     DbData & m_data;
     DbPage & m_page;
     Dim::FileHandle m_flog;
+    bool m_closing{false};
 
     // last assigned
     uint16_t m_lastLocalTxn{0};
     uint64_t m_lastLsn{0};
 
-    // Used to track non-consecutive write completions
-    std::vector<std::pair<uint64_t, uint64_t>> m_stableLsns;
     uint64_t m_stableLsn{0}; // last known durably saved
 
     Dim::UnsignedSet m_freePages;
@@ -251,12 +253,22 @@ private:
     size_t m_numPages{0};
     size_t m_pageSize{0};
 
+    size_t m_maxCheckpointData{0};
+    size_t m_checkpointData{0};
+    Dim::Duration m_maxCheckpointInterval;
+    Dim::TimerProxy m_checkpointTimer;
+    Dim::TaskProxy m_checkpointPagesTask;
     Checkpoint m_phase{};
-    uint64_t m_checkpointLsn{0}; // last started (perhaps unfinished) checkpoint
+
+    // last started (perhaps unfinished) checkpoint
+    Dim::TimePoint m_checkpointStart;
+    uint64_t m_checkpointLsn{0};
+
     unsigned m_curTxns{0}; // txns running in current epoch
     unsigned m_oldTxns{0}; // txns still running in old epoch
     uint64_t m_oldCommitLsn{0}; // LSN of last txn committed in old epoch
 
+    Dim::TimerProxy m_flushTimer;
     std::mutex m_bufMut;
     std::condition_variable m_bufAvailCv;
     std::vector<Buffer> m_bufStates;
@@ -505,14 +517,12 @@ private:
     bool radixFind(DbTxn & txn, uint32_t * out, uint32_t root, size_t pos);
 
     size_t samplesPerPage() const;
-    std::unique_ptr<SamplePage> allocSamplePage(
+    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id);
+    MetricPosition & loadMetricPos(
         DbTxn & txn,
         uint32_t id,
-        Dim::TimePoint time,
-        uint16_t lastSample
+        Dim::TimePoint time
     );
-    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id);
-    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id, Dim::TimePoint time);
     bool findSamplePage(
         DbTxn & txn,
         uint32_t * pgno,

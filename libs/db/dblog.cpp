@@ -23,6 +23,9 @@ static_assert(kLogWriteBuffers > 1);
 const unsigned kMaxLogWrites = 1;
 static_assert(kMaxLogWrites < kLogWriteBuffers);
 
+const unsigned kDefaultMaxCheckpointData = 1'048'576; // 1 MiB
+const Duration kDefaultMaxCheckpointInterval = 1h;
+
 
 /****************************************************************************
 *
@@ -118,6 +121,11 @@ static auto & s_perfCurCps = uperf("checkpoints (current)");
 DbLog::DbLog(DbData & data, DbPage & work)
     : m_data(data)
     , m_page(work)
+    , m_maxCheckpointData{kDefaultMaxCheckpointData}
+    , m_maxCheckpointInterval{kDefaultMaxCheckpointInterval}
+    , m_checkpointTimer([&](auto){ checkpoint(); return kTimerInfinite; })
+    , m_checkpointPagesTask([&]{ checkpointPages(); })
+    , m_flushTimer([&](auto){ flushWriteBuffer(); return kTimerInfinite; })
 {}
 
 //===========================================================================
@@ -186,6 +194,8 @@ bool DbLog::open(string_view logfile) {
 
 //===========================================================================
 void DbLog::close() {
+    m_closing = true;
+    m_page.enablePageScan(false);
     checkpoint();
     flushWriteBuffer();
     unique_lock<mutex> lk{m_bufMut};
@@ -201,6 +211,26 @@ void DbLog::close() {
     }
     lk.unlock();
     fileClose(m_flog);
+}
+
+//===========================================================================
+void DbLog::configure(const DbConfig & conf) {
+    auto maxData = conf.checkpointMaxData
+        ? conf.checkpointMaxData
+        : m_maxCheckpointData;
+    auto maxInterval = conf.checkpointMaxInterval.count()
+        ? conf.checkpointMaxInterval
+        : m_maxCheckpointInterval;
+    if (maxData < m_pageSize) {
+        logMsgError() << "Max data before checkpoint must be at least "
+            "page size (" << m_pageSize << ")";
+        maxData = m_pageSize;
+    }
+    maxInterval = ceil<chrono::minutes>(maxInterval);
+
+    m_maxCheckpointData = maxData;
+    m_maxCheckpointInterval = maxInterval;
+    timerUpdate(&m_checkpointTimer, maxInterval, true);
 }
 
 //===========================================================================
@@ -424,9 +454,12 @@ void DbLog::commit(uint64_t txn) {
 
 //===========================================================================
 void DbLog::checkpoint() {
-    assert(m_phase == Checkpoint::Complete);
+    if (m_phase != Checkpoint::Complete)
+        return;
+    m_checkpointStart = Clock::now();
     m_checkpointLsn = logBeginCheckpoint();
     m_page.checkpoint(m_checkpointLsn);
+    m_checkpointData = 0;
     m_phase = Checkpoint::WaitForTxns;
     m_oldTxns = m_curTxns;
     m_curTxns = 0;
@@ -461,12 +494,6 @@ void DbLog::flushWriteBuffer() {
 }
 
 //===========================================================================
-Duration DbLog::onTimer(TimePoint now) {
-    flushWriteBuffer();
-    return kTimerInfinite;
-}
-
-//===========================================================================
 void DbLog::updatePages_LK(const PageInfo & pi) {
     auto i = lower_bound(m_pages.begin(), m_pages.end(), pi);
     if (i != m_pages.end() && i->firstLsn == pi.firstLsn) {
@@ -489,23 +516,37 @@ void DbLog::updatePages_LK(const PageInfo & pi) {
     if (m_stableLsn >= m_oldCommitLsn) {
         if (m_phase == Checkpoint::WaitForTxnCommits) {
             m_phase = Checkpoint::WaitForPageFlush;
-            taskPushCompute(*this);
+            taskPushCompute(m_checkpointPagesTask);
         } else if (m_phase == Checkpoint::WaitForCheckpointCommit) {
             truncateLogs_LK();
-            m_phase = Checkpoint::Complete;
-            m_bufAvailCv.notify_one();
+            completeCheckpoint_LK();
         }
     }
 }
 
 //===========================================================================
-void DbLog::onTask() {
+void DbLog::checkpointPages() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
     m_page.checkpointPages();
     logCommitCheckpoint(m_checkpointLsn);
     m_oldCommitLsn = m_lastLsn;
     m_phase = Checkpoint::WaitForCheckpointCommit;
     flushWriteBuffer();
+}
+
+//===========================================================================
+void DbLog::completeCheckpoint_LK() {
+    m_phase = Checkpoint::Complete;
+    if (!m_closing) {
+        Duration wait = 0ms;
+        auto elapsed = Clock::now() - m_checkpointStart;
+        if (elapsed < m_maxCheckpointInterval)
+            wait = m_maxCheckpointInterval - elapsed;
+        if (m_checkpointData >= m_maxCheckpointData)
+            wait = 0ms;
+        timerUpdate(&m_checkpointTimer, wait);
+    }
+    m_bufAvailCv.notify_one();
 }
 
 //===========================================================================
@@ -539,8 +580,12 @@ void DbLog::onFileWrite(
         auto ibuf = (data.data() - m_buffers.get()) / m_pageSize;
         m_bufStates[ibuf] = Buffer::Empty;
         lp->type = kPageTypeFree;
+        m_checkpointData += m_pageSize;
+        bool needCheckpoint = m_checkpointData >= m_maxCheckpointData;
         lk.unlock();
         m_bufAvailCv.notify_one();
+        if (needCheckpoint)
+            timerUpdate(&m_checkpointTimer, 0ms);
         return;
     }
 
@@ -554,7 +599,7 @@ void DbLog::onFileWrite(
             m_bufAvailCv.notify_one();
         } else {
             m_bufStates[ibuf] = Buffer::PartialDirty;
-            timerUpdate(this, kDirtyWriteBufferTimeout);
+            timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
     } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
         fileWrite(this, m_flog, offset, olp, m_pageSize, taskComputeQueue());
@@ -604,7 +649,7 @@ void DbLog::prepareBuffer_LK(
     m_logPos = lp->firstPos;
     m_bufPos = sizeof(PageHeader) + bytesOnNewPage;
 
-    timerUpdate(this, kDirtyWriteBufferTimeout);
+    timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
 }
 
 //===========================================================================
@@ -637,7 +682,7 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
             || m_bufStates[m_curBuf] == Buffer::Empty
         ) {
             m_bufStates[m_curBuf] = Buffer::PartialDirty;
-            timerUpdate(this, kDirtyWriteBufferTimeout);
+            timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
     } else {
         bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
