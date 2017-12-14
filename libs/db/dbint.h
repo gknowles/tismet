@@ -277,7 +277,6 @@ private:
     unsigned m_emptyBufs{0};
     unsigned m_curBuf{0};
     size_t m_bufPos{0};
-    size_t m_logPos{0};
 };
 
 //===========================================================================

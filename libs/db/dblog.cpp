@@ -83,7 +83,7 @@ struct PageHeader {
     uint64_t firstLsn; // LSN of first record started on page
     uint16_t numLogs; // number of log records started on page
     uint16_t firstPos; // position of first log started on page
-    uint16_t lastPos; // position of last log record started on page
+    uint16_t lastPos; // position after last log record ended on page
 };
 
 struct ZeroPage {
@@ -152,7 +152,6 @@ bool DbLog::open(string_view logfile) {
         auto * lp = (PageHeader *) bufPtr(i);
         lp->type = kPageTypeFree;
     }
-    m_logPos = m_pageSize;
     m_bufPos = m_pageSize;
 
     m_flog = fileOpen(
@@ -307,16 +306,12 @@ void DbLog::applyAll(AnalyzeData & data) {
         assert(logPos == hdr->lastPos);
         bytesBefore = (int) (m_pageSize - logPos);
     }
-    log = (Record *) (buf.get() + logPos);
-    assert(logPos + size(log) <= m_pageSize);
-    apply(lsn, log, &data);
-    logPos += size(log);
 
     // Initialize log write buffers with last buffer (if partial) found
     // during analyze.
     if (data.analyze && logPos < m_pageSize) {
         memcpy(m_buffers.get(), buf.get(), logPos);
-        m_bufPos = m_logPos = logPos;
+        m_bufPos = logPos;
         m_bufStates[m_curBuf] = Buffer::PartialClean;
         m_emptyBufs -= 1;
     }
@@ -480,7 +475,7 @@ void DbLog::flushWriteBuffer() {
 
     m_bufStates[m_curBuf] = Buffer::PartialWriting;
     lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
-    lp->lastPos = (uint16_t) m_logPos;
+    lp->lastPos = (uint16_t) m_bufPos;
     auto offset = lp->pgno * m_pageSize;
     auto bytes = m_bufPos;
 
@@ -646,7 +641,6 @@ void DbLog::prepareBuffer_LK(
         (const char *) log + bytesOnOldPage,
         bytesOnNewPage
     );
-    m_logPos = lp->firstPos;
     m_bufPos = sizeof(PageHeader) + bytesOnNewPage;
 
     timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
@@ -674,7 +668,6 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
     }
     auto base = bufPtr(m_curBuf) + m_bufPos;
     memcpy(base, log, bytes);
-    m_logPos = m_bufPos;
     m_bufPos += bytes;
 
     if (m_bufPos != m_pageSize) {
@@ -689,11 +682,13 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
         m_bufStates[m_curBuf] = Buffer::FullWriting;
         auto * lp = (PageHeader *) bufPtr(m_curBuf);
         lp->numLogs = (uint16_t) (m_lastLsn - lp->firstLsn + 1);
-        lp->lastPos = (uint16_t) m_logPos;
+        lp->lastPos = (uint16_t) m_bufPos;
         auto offset = lp->pgno * m_pageSize;
 
-        if (overflow)
+        if (overflow) {
+            lp->lastPos -= (uint16_t) bytes;
             prepareBuffer_LK(log, bytes, overflow);
+        }
 
         lk.unlock();
         if (!writeInProgress)
