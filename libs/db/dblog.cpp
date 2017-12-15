@@ -548,6 +548,7 @@ void DbLog::checkpointPages() {
 //===========================================================================
 void DbLog::completeCheckpoint_LK() {
     m_phase = Checkpoint::Complete;
+    s_perfCurCps -= 1;
     if (!m_closing) {
         Duration wait = 0ms;
         auto elapsed = Clock::now() - m_checkpointStart;
