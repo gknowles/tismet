@@ -332,6 +332,12 @@ bool DbLog::recover() {
     if (!data.stableCheckpoint)
         logMsgCrash() << "Invalid tsl file, no checkpoint found";
 
+    auto i = lower_bound(
+        data.incompleteTxnLsns.begin(),
+        data.incompleteTxnLsns.end(),
+        data.stableCheckpoint
+    );
+    data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
     for (auto && kv : data.txns) {
         data.incompleteTxnLsns.push_back(kv.second);
     }
