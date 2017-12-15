@@ -103,12 +103,14 @@ struct ZeroPage {
 *
 ***/
 
-static auto & s_perfWrites = uperf("log writes (total)");
-static auto & s_perfReorderedWrites = uperf("log writes (out of order)");
-static auto & s_perfCurTxns = uperf("log transactions (current)");
-static auto & s_perfOldTxns = uperf("log transactions (old)");
-static auto & s_perfCps = uperf("checkpoints (total)");
-static auto & s_perfCurCps = uperf("checkpoints (current)");
+static auto & s_perfWrites = uperf("wal writes (total)");
+static auto & s_perfReorderedWrites = uperf("wal writes (out of order)");
+static auto & s_perfCurTxns = uperf("db transactions (current)");
+static auto & s_perfOldTxns = uperf("db transactions (old)");
+static auto & s_perfCps = uperf("db checkpoints (total)");
+static auto & s_perfCurCps = uperf("db checkpoints (current)");
+static auto & s_perfPages = uperf("wal pages (total)");
+static auto & s_perfFreePages = uperf("wal pages (free)");
 
 
 /****************************************************************************
@@ -169,6 +171,7 @@ bool DbLog::open(string_view logfile) {
         fileWriteWait(m_flog, 0, &zp, sizeof(zp));
         s_perfWrites += 1;
         m_numPages = 1;
+        s_perfPages += (unsigned) m_numPages;
         m_lastLsn = 0;
         m_lastLocalTxn = 0;
         auto cpLsn = logBeginCheckpoint();
@@ -186,6 +189,7 @@ bool DbLog::open(string_view logfile) {
         return false;
     }
     m_numPages = (len + m_pageSize - 1) / m_pageSize;
+    s_perfPages += (unsigned) m_numPages;
     if (!recover())
         return false;
     return true;
@@ -209,6 +213,8 @@ void DbLog::close() {
         m_bufAvailCv.wait(lk);
     }
     lk.unlock();
+    s_perfPages -= (unsigned) m_numPages;
+    s_perfFreePages -= (unsigned) m_freePages.size();
     fileClose(m_flog);
 }
 
@@ -266,6 +272,7 @@ bool DbLog::loadPages() {
     );
     auto base = rlast.base();
     for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
+    s_perfFreePages += unsigned(base - first);
     m_pages.erase(first, base);
     return true;
 }
@@ -355,8 +362,11 @@ bool DbLog::recover() {
     assert(data.activeTxns.empty());
 
     auto & back = m_pages.back();
+    m_checkpointLsn = data.stableCheckpoint;
     m_stableLsn = back.firstLsn + back.numLogs - 1;
     m_lastLsn = m_stableLsn;
+
+    truncateLogs_LK();
     return true;
 }
 
@@ -553,6 +563,7 @@ void DbLog::completeCheckpoint_LK() {
 //===========================================================================
 void DbLog::truncateLogs_LK() {
     auto lastTxn = m_pages.back().firstLsn;
+    auto before = m_pages.size();
     for (;;) {
         auto && pi = m_pages.front();
         if (pi.firstLsn >= lastTxn)
@@ -562,6 +573,7 @@ void DbLog::truncateLogs_LK() {
         m_freePages.insert(pi.pgno);
         m_pages.pop_front();
     }
+    s_perfFreePages += (unsigned) (before - m_pages.size());
 }
 
 //===========================================================================
@@ -624,11 +636,12 @@ void DbLog::prepareBuffer_LK(
 
     auto * lp = (PageHeader *) bufPtr(m_curBuf);
     lp->type = kPageTypeLog;
-    if (auto i = m_freePages.find(0); i) {
-        lp->pgno = *i;
-        m_freePages.erase(i);
+    if (!m_freePages.empty()) {
+        lp->pgno = m_freePages.pop_front();
+        s_perfFreePages -= 1;
     } else {
         lp->pgno = (uint32_t) m_numPages++;
+        s_perfPages += 1;
     }
     if (bytesOnOldPage) {
         lp->firstLsn = m_lastLsn + 1;
