@@ -340,9 +340,9 @@ void DbPage::checkpointPages() {
 
     m_checkpointLsn = 0;
     m_workMut.unlock();
-    for (auto && [pgno, hdr] : m_oldPages) {
-        assert(m_pages[pgno] != hdr);
-        hdr->pgno = freePageMark;
+    for (auto && pgno_hdr : m_oldPages) {
+        assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
+        pgno_hdr.second->pgno = freePageMark;
     }
     m_workMut.lock();
     for (auto && kv : m_oldPages) {
