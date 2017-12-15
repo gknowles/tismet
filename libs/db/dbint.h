@@ -33,6 +33,8 @@ public:
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_viewSize; }
 
+    uint32_t pgno(const void * ptr) const;
+
 protected:
     using Pointer = std::conditional_t<Writable, char *, const char *>;
     static constexpr Dim::File::ViewMode kMode = Writable

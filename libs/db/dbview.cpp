@@ -132,6 +132,21 @@ auto DbFileView<Writable>::ptr(uint32_t pgno) const
     return nullptr;
 }
 
+//===========================================================================
+template<bool Writable>
+uint32_t DbFileView<Writable>::pgno(const void * vptr) const {
+    auto ptr = (const char *) vptr;
+    if (ptr >= m_view && ptr < m_view + m_firstViewSize)
+        return uint32_t((ptr - m_view) / m_pageSize);
+    auto num = m_firstViewSize / m_pageSize;
+    for (auto && v : m_views) {
+        if (ptr >= v && ptr < v + m_viewSize)
+            return uint32_t(num + (ptr - v) / m_pageSize);
+        num += m_viewSize / m_pageSize;
+    }
+    return numeric_limits<uint32_t>::max();
+}
+
 
 /****************************************************************************
 *
