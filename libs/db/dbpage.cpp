@@ -62,6 +62,7 @@ struct ZeroPage {
 
 static auto & s_perfPages = uperf("work pages (total)");
 static auto & s_perfFreePages = uperf("work pages (free)");
+static auto & s_perfDirtyPages = uperf("work pages (dirty)");
 
 
 /****************************************************************************
@@ -282,19 +283,27 @@ void DbPage::flushStalePages() {
             // stay locked
             continue;
         }
-        memcpy(tmpHdr, hdr, m_pageSize);
-        m_workMut.unlock();
-
-        writePageWait(tmpHdr);
-
-        m_workMut.lock();
-        if (tmpHdr->lsn == hdr->lsn) {
-            if (m_pages[hdr->pgno] == hdr)
-                m_pages[hdr->pgno] = nullptr;
-            hdr->pgno = freePageMark;
-            m_freeWorkPages.insert(wpno);
-            s_perfFreePages += 1;
+        if (hdr->flags & fDbPageDirty) {
+            memcpy(tmpHdr, hdr, m_pageSize);
+            m_workMut.unlock();
+            writePageWait(tmpHdr);
+            m_workMut.lock();
+            if (tmpHdr->lsn != hdr->lsn) {
+                // the page changed, so don't mark it free
+                // stay locked
+                continue;
+            }
         }
+
+        if (m_pages[hdr->pgno] == hdr)
+            m_pages[hdr->pgno] = nullptr;
+        if (hdr->flags & fDbPageDirty) {
+            hdr->flags &= ~fDbPageDirty;
+            s_perfDirtyPages -= 1;
+        }
+        hdr->pgno = freePageMark;
+        m_freeWorkPages.insert(wpno);
+        s_perfFreePages += 1;
     }
 
     m_flushLsn = 0;
@@ -323,9 +332,16 @@ void DbPage::checkpointPages() {
         auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(wpno));
         m_workMut.lock();
 
-        if (m_checkpointLsn < hdr->lsn || hdr->pgno == freePageMark)
+        if ((~hdr->flags & fDbPageDirty)
+            || m_checkpointLsn < hdr->lsn
+            || hdr->pgno == freePageMark
+        ) {
+            // stay locked
             continue;
+        }
         memcpy(tmpHdr, hdr, m_pageSize);
+        hdr->flags &= ~fDbPageDirty;
+        s_perfDirtyPages -= 1;
         if (m_oldPages.erase(hdr->pgno)) {
             assert(m_pages[hdr->pgno] != hdr);
             hdr->pgno = freePageMark;
@@ -382,6 +398,10 @@ void * DbPage::wptrRedo(uint64_t lsn, uint32_t pgno) {
         if (lsn <= hdr->lsn)
             return nullptr;
     }
+    if (~hdr->flags & fDbPageDirty) {
+        hdr->flags |= fDbPageDirty;
+        s_perfDirtyPages += 1;
+    }
     hdr->pgno = pgno;
     hdr->lsn = lsn;
     return hdr;
@@ -408,9 +428,10 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
         wpno = m_freeWorkPages.pop_front();
         s_perfFreePages -= 1;
     }
-    void * ptr = m_vwork.wptr(wpno);
+    auto ptr = (DbPageHeader *) m_vwork.wptr(wpno);
     memcpy(ptr, hdr, m_pageSize);
-    return (DbPageHeader *) ptr;
+    ptr->flags = 0;
+    return ptr;
 }
 
 //===========================================================================
@@ -474,13 +495,19 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
             }
         }
     }
+    if (~hdr->flags & fDbPageDirty) {
+        hdr->flags |= fDbPageDirty;
+        s_perfDirtyPages += 1;
+    }
     hdr->pgno = pgno;
     hdr->lsn = lsn;
     return hdr;
 }
 
 //===========================================================================
-void DbPage::writePageWait(const DbPageHeader * hdr) {
+void DbPage::writePageWait(DbPageHeader * hdr) {
     assert(hdr->pgno != (uint32_t) -1);
+    // TODO: update checksum
+    hdr->flags = 0;
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }

@@ -67,15 +67,20 @@ public:
 *
 ***/
 
-enum DbPageType : uint32_t;
+enum DbPageType : int32_t;
+
+enum DbPageFlags : uint32_t {
+    fDbPageDirty = 1,
+};
 
 struct DbPageHeader {
     DbPageType type;
     uint32_t pgno;
     uint32_t id;
-    uint32_t checksum;
-
-    // point at which page became dirty, 0 for clean pages
+    union {
+        uint32_t checksum;
+        uint32_t flags;
+    };
     uint64_t lsn;
 };
 
@@ -108,7 +113,7 @@ public:
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
     bool openData(std::string_view datafile);
-    void writePageWait(const DbPageHeader * hdr);
+    void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
     void queuePageScan();
@@ -146,7 +151,7 @@ private:
 *
 ***/
 
-enum DbLogRecType : uint8_t;
+enum DbLogRecType : int8_t;
 class DbData;
 
 class DbLog : Dim::IFileWriteNotify {

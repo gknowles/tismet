@@ -38,7 +38,7 @@ const unsigned kDataFileSig[] = {
     0xa33f3ba2,
 };
 
-enum DbPageType : uint32_t {
+enum DbPageType : int32_t {
     kPageTypeFree = 'F',
     kPageTypeZero = 'dZ',
     kPageTypeSegment = 'S',

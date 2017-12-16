@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-enum DbLogRecType : uint8_t {
+enum DbLogRecType : int8_t {
     kRecTypeBeginCheckpoint,    // [N/A]
     kRecTypeCommitCheckpoint,   // [N/A] startLsn
     kRecTypeTxnBegin,           // [N/A]
