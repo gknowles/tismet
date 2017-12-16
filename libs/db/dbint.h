@@ -339,6 +339,12 @@ public:
         Dim::TimePoint pageTime,
         size_t lastSample
     );
+    void logSampleUpdateTxn(
+        uint32_t pgno,
+        size_t pos,
+        float value,
+        bool updateLast
+    );
     void logSampleUpdate(
         uint32_t pgno,
         size_t firstSample,

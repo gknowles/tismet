@@ -570,7 +570,7 @@ void DbData::updateSample(
             } else {
                 s_perfChange += 1;
             }
-            txn.logSampleUpdate(spno, ent, ent, value, false);
+            txn.logSampleUpdateTxn(spno, ent, value, false);
         }
         return;
     }
@@ -605,13 +605,17 @@ void DbData::updateSample(
     if (time < endPageTime) {
         auto lastSample = (uint16_t) ((time - mi.pageFirstTime) / mi.interval);
         s_perfAdd += 1;
-        txn.logSampleUpdate(
-            mi.lastPage,
-            mi.pageLastSample + 1,
-            lastSample,
-            value,
-            true
-        );
+        if (lastSample == mi.pageLastSample + 1) {
+            txn.logSampleUpdateTxn(mi.lastPage, lastSample, value, true);
+        } else {
+            txn.logSampleUpdate(
+                mi.lastPage,
+                mi.pageLastSample + 1,
+                lastSample,
+                value,
+                true
+            );
+        }
         mi.pageLastSample = lastSample;
         return;
     }

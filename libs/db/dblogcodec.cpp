@@ -42,6 +42,9 @@ enum DbLogRecType : int8_t {
                                 //   [first, last) = NANs, last = value
                                 //   lastPos = last
     kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
+    kRecTypeSampleUpdateTxn,    // [sample] page, pos, value (non-standard)
+    kRecTypeSampleUpdateLastTxn,// [sample] page, pos, value (non-standard)
+                                //   lastPos = pos
 };
 
 #pragma pack(push)
@@ -148,6 +151,13 @@ struct SampleInitRec {
     TimePoint pageTime;
     uint16_t lastSample;
 };
+// Update single (with or without last) is also an implicit transaction
+struct SampleUpdateTransactionRec {
+    DbLogRecType type;
+    uint32_t pgno;
+    uint16_t pos;
+    float value;
+};
 struct SampleUpdateRec {
     DbLog::Record hdr;
     uint16_t firstSample;
@@ -214,6 +224,9 @@ uint16_t DbLog::size(const Record * log) {
         return sizeof(MetricUpdateSamplesRec);
     case kRecTypeSampleInit:
         return sizeof(SampleInitRec);
+    case kRecTypeSampleUpdateTxn:
+    case kRecTypeSampleUpdateLastTxn:
+        return sizeof(SampleUpdateTransactionRec);
     case kRecTypeSampleUpdate:
     case kRecTypeSampleUpdateLast:
         return sizeof(SampleUpdateRec);
@@ -240,13 +253,30 @@ bool DbLog::interleaveSafe(const Record * log) {
 //===========================================================================
 // static
 uint32_t DbLog::getPgno(const Record * log) {
-    return log->pgno;
+    assert(log->type > kRecTypeTxnCommit);
+    switch (log->type) {
+    case kRecTypeSampleUpdateTxn:
+    case kRecTypeSampleUpdateLastTxn:
+        return reinterpret_cast<const SampleUpdateTransactionRec *>(log)->pgno;
+    default:
+        return log->pgno;
+    }
 }
 
 //===========================================================================
 // static
 uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
-    return log->localTxn;
+    assert(log->type >= kRecTypeTxnBegin);
+    switch (log->type) {
+    case kRecTypeTxnBegin:
+    case kRecTypeTxnCommit:
+        return reinterpret_cast<const TransactionRec *>(log)->localTxn;
+    case kRecTypeSampleUpdateTxn:
+    case kRecTypeSampleUpdateLastTxn:
+        return 0;
+    default:
+        return log->localTxn;
+    }
 }
 
 //===========================================================================
@@ -314,9 +344,9 @@ void DbLog::logCommit(uint64_t txn) {
 
 //===========================================================================
 void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
-    assert(txn);
     assert(bytes >= sizeof(DbLog::Record));
-    rec->localTxn = getLocalTxn(txn);
+    if (txn)
+        rec->localTxn = getLocalTxn(txn);
     auto lsn = log(rec, bytes);
     apply(lsn, rec, nullptr);
 }
@@ -344,6 +374,16 @@ void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
         if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
             applyCommit(*data, lsn, rec->localTxn);
+        }
+        break;
+    case kRecTypeSampleUpdateTxn:
+    case kRecTypeSampleUpdateLastTxn:
+        if (data) {
+            applyBeginTxn(*data, lsn, 0);
+            applyRedo(*data, lsn, log);
+            applyCommit(*data, lsn, 0);
+        } else {
+            applyUpdate(lsn, log);
         }
         break;
     default:
@@ -453,6 +493,26 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             rec->id,
             rec->pageTime,
             rec->lastSample
+        );
+    }
+    case kRecTypeSampleUpdateTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateTransactionRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateLastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateTransactionRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
         );
     }
     case kRecTypeSampleUpdate: {
@@ -672,6 +732,31 @@ void DbTxn::logSampleInit(
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
     log(&rec->hdr, bytes);
+}
+
+//===========================================================================
+// This one is not like the others, it represents a transaction with just
+// a single value update.
+void DbTxn::logSampleUpdateTxn(
+    uint32_t pgno,
+    size_t pos,
+    float value,
+    bool updateLast
+) {
+    if (m_txn)
+        return logSampleUpdate(pgno, pos, pos, value, updateLast);
+
+    auto type = updateLast
+        ? kRecTypeSampleUpdateLastTxn
+        : kRecTypeSampleUpdateTxn;
+    SampleUpdateTransactionRec tmp;
+    auto rec = &tmp;
+    assert(pos <= numeric_limits<decltype(rec->pos)>::max());
+    rec->type = type;
+    rec->pgno = pgno;
+    rec->pos = (uint16_t) pos;
+    rec->value = value;
+    m_log.logAndApply(0, (DbLog::Record *) rec, sizeof(tmp));
 }
 
 //===========================================================================
