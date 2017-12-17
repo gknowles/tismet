@@ -7,6 +7,6 @@
 
   <WorkMemoryMaxAge value="1800; 30min"/>
   <WorkMemoryScanInterval value="60; 1min"/>
-  <CheckpointMaxData value="1048576; 1MiB"/>
+  <CheckpointMaxData value="1073741824; 1GiB"/>
   <CheckpointMaxInterval value="3600; 1h"/>
 </App>
