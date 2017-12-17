@@ -254,8 +254,9 @@ void DbPage::stable(uint64_t lsn) {
 }
 
 //===========================================================================
-void DbPage::enablePageScan(bool enable) {
-    m_pageScanEnabled = enable;
+bool DbPage::enablePageScan(bool enable) {
+    swap(m_pageScanEnabled, enable);
+    return enable;
 }
 
 //===========================================================================

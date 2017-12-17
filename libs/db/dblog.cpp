@@ -538,7 +538,9 @@ void DbLog::updatePages_LK(const PageInfo & pi) {
 //===========================================================================
 void DbLog::checkpointPages() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
+    bool wasEnabled = m_page.enablePageScan(false);
     m_page.checkpointPages();
+    m_page.enablePageScan(wasEnabled);
     logCommitCheckpoint(m_checkpointLsn);
     m_oldCommitLsn = m_lastLsn;
     m_phase = Checkpoint::WaitForCheckpointCommit;

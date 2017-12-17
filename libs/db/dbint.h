@@ -107,8 +107,10 @@ public:
 
     void checkpoint(uint64_t lsn);
     void stable(uint64_t lsn);
-    void enablePageScan(bool enable);
     void * wptrRedo(uint64_t lsn, uint32_t pgno);
+
+    // true if page scan previously enabled
+    bool enablePageScan(bool enable);
 
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
