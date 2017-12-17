@@ -106,7 +106,7 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
     m_fwork = fileOpen(
         workfile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking
+            | File::fBlocking | File::fRandom
     );
     if (!m_fwork)
         return false;
@@ -149,7 +149,7 @@ bool DbPage::openData(string_view datafile) {
     m_fdata = fileOpen(
         datafile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking
+            | File::fBlocking | File::fRandom
     );
     if (!m_fdata)
         return false;
