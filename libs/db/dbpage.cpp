@@ -105,7 +105,8 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
 
     m_fwork = fileOpen(
         workfile,
-        File::fCreat | File::fReadWrite | File::fDenyWrite | File::fBlocking
+        File::fCreat | File::fReadWrite | File::fDenyWrite
+            | File::fBlocking
     );
     if (!m_fwork)
         return false;
@@ -147,7 +148,8 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
 bool DbPage::openData(string_view datafile) {
     m_fdata = fileOpen(
         datafile,
-        File::fCreat | File::fReadWrite | File::fDenyWrite | File::fBlocking
+        File::fCreat | File::fReadWrite | File::fDenyWrite
+            | File::fBlocking
     );
     if (!m_fdata)
         return false;
@@ -447,6 +449,9 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
         hdr = dupPage_LK(src);
         m_pages[pgno] = hdr;
+    } else if (~hdr->flags & fDbPageDirty) {
+        // clean page in work memory
+        //  - use it
     } else {
         assert(pgno == hdr->pgno);
         if (lsn >= m_checkpointLsn) {
