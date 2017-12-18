@@ -25,7 +25,7 @@ const size_t kDefaultFirstViewSize = 2 * kViewSize;
 const Duration kDefaultPageMaxAge = 30min;
 const Duration kDefaultPageScanInterval = 1min;
 
-const uint32_t freePageMark = numeric_limits<uint32_t>::max();
+const uint32_t kFreePageMark = numeric_limits<uint32_t>::max();
 
 
 /****************************************************************************
@@ -282,7 +282,7 @@ void DbPage::flushStalePages() {
         auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(wpno));
 
         m_workMut.lock();
-        if (m_flushLsn < hdr->lsn || hdr->pgno == freePageMark) {
+        if (m_flushLsn < hdr->lsn || hdr->pgno == kFreePageMark) {
             // stay locked
             continue;
         }
@@ -304,7 +304,7 @@ void DbPage::flushStalePages() {
             hdr->flags &= ~fDbPageDirty;
             s_perfDirtyPages -= 1;
         }
-        hdr->pgno = freePageMark;
+        hdr->pgno = kFreePageMark;
         m_freeWorkPages.insert(wpno);
         s_perfFreePages += 1;
     }
@@ -337,7 +337,7 @@ void DbPage::checkpointPages() {
 
         if ((~hdr->flags & fDbPageDirty)
             || m_checkpointLsn < hdr->lsn
-            || hdr->pgno == freePageMark
+            || hdr->pgno == kFreePageMark
         ) {
             // stay locked
             continue;
@@ -347,7 +347,7 @@ void DbPage::checkpointPages() {
         s_perfDirtyPages -= 1;
         if (m_oldPages.erase(hdr->pgno)) {
             assert(m_pages[hdr->pgno] != hdr);
-            hdr->pgno = freePageMark;
+            hdr->pgno = kFreePageMark;
             m_freeWorkPages.insert(wpno);
             s_perfFreePages += 1;
         }
@@ -361,7 +361,7 @@ void DbPage::checkpointPages() {
     m_workMut.unlock();
     for (auto && pgno_hdr : m_oldPages) {
         assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
-        pgno_hdr.second->pgno = freePageMark;
+        pgno_hdr.second->pgno = kFreePageMark;
     }
     m_workMut.lock();
     for (auto && kv : m_oldPages) {
