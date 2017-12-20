@@ -96,7 +96,6 @@ public:
     );
     void close();
     void configure(const DbConfig & conf);
-    void checkpointPages();
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint64_t txn, uint32_t pgno) const;
@@ -105,7 +104,8 @@ public:
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
 
-    void checkpoint(uint64_t lsn);
+    uint64_t checkpointPages(); // returns LSN required to be stable
+    uint64_t checkpointStablePages(); // returns start of checkpoint LSN
     void stable(uint64_t lsn);
     void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
@@ -135,6 +135,7 @@ private:
     Dim::Duration m_pageMaxAge;
     Dim::Duration m_pageScanInterval;
     std::deque<uint64_t> m_stableLsns;
+    uint64_t m_stableLsn{0};
     uint64_t m_flushLsn{0};
     Dim::TaskProxy m_flushTask;
 
@@ -176,6 +177,12 @@ public:
         uint32_t pgno;
         uint64_t firstLsn;
         uint16_t numLogs;
+
+        unsigned beginTxns;
+        std::vector<std::pair<
+            uint64_t,   // firstLsn of page
+            unsigned    // number of txns from that page committed
+        >> commitTxns;
     };
 
 public:
@@ -198,6 +205,11 @@ public:
         size_t bytes
     );
     void logAndApply(uint64_t txn, Record * log, size_t bytes);
+    void queueTask(
+        Dim::ITaskNotify * task,
+        uint64_t waitTxn,
+        Dim::TaskQueueHandle hq = {} // defaults to compute queue
+    );
 
 private:
     char * bufPtr(size_t ibuf);
@@ -212,7 +224,6 @@ private:
     bool loadPages();
     bool recover();
 
-    uint64_t logBeginCheckpoint();
     void logCommitCheckpoint(uint64_t startLsn);
     uint64_t logBeginTxn(uint16_t localTxn);
     void logCommit(uint64_t txn);
@@ -225,10 +236,11 @@ private:
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
-    void updatePages_LK(const PageInfo & pi);
+    void updatePages_LK(const PageInfo & pi, bool partialWrite);
     void checkpointPages();
+    void checkpointStablePages();
     void truncateLogs_LK();
-    void completeCheckpoint_LK();
+    void checkpointStableCommit();
     void flushWriteBuffer();
 
     struct AnalyzeData;
@@ -237,7 +249,6 @@ private:
     void applyUpdate(uint64_t lsn, const Record * log);
     void applyUpdate(void * page, const Record * log);
     void applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log);
-    void applyBeginCheckpoint(AnalyzeData & data, uint64_t lsn);
     void applyCommitCheckpoint(
         AnalyzeData & data,
         uint64_t lsn,
@@ -255,8 +266,6 @@ private:
     uint16_t m_lastLocalTxn{0};
     uint64_t m_lastLsn{0};
 
-    uint64_t m_stableLsn{0}; // last known durably saved
-
     Dim::UnsignedSet m_freePages;
     std::deque<PageInfo> m_pages;
     size_t m_numPages{0};
@@ -267,15 +276,30 @@ private:
     Dim::Duration m_maxCheckpointInterval;
     Dim::TimerProxy m_checkpointTimer;
     Dim::TaskProxy m_checkpointPagesTask;
+    Dim::TaskProxy m_checkpointStablePagesTask;
+    Dim::TaskProxy m_checkpointStableCommitTask;
     Checkpoint m_phase{};
 
     // last started (perhaps unfinished) checkpoint
     Dim::TimePoint m_checkpointStart;
     uint64_t m_checkpointLsn{0};
 
-    unsigned m_curTxns{0}; // txns running in current epoch
-    unsigned m_oldTxns{0}; // txns still running in old epoch
-    uint64_t m_oldCommitLsn{0}; // LSN of last txn committed in old epoch
+    // last known durably saved
+    uint64_t m_stableTxn{0};
+
+    struct TaskInfo {
+        Dim::ITaskNotify * notify;
+        uint64_t waitTxn;
+        Dim::TaskQueueHandle hq;
+
+        bool operator<(const TaskInfo & right) const;
+        bool operator>(const TaskInfo & right) const;
+    };
+    std::priority_queue<
+        TaskInfo,
+        std::vector<TaskInfo>,
+        std::greater<TaskInfo>
+    > m_tasks;
 
     Dim::TimerProxy m_flushTimer;
     std::mutex m_bufMut;

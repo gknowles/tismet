@@ -80,7 +80,7 @@ private:
 
     DbPage m_page;
     DbData m_data;
-    DbLog m_log;
+    DbLog m_log; // MUST be last! (and destroyed first)
 };
 
 } // namespace

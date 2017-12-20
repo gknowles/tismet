@@ -251,6 +251,7 @@ Duration DbPage::onTimer(TimePoint now) {
 void DbPage::stable(uint64_t lsn) {
     unique_lock<mutex> lk{m_workMut};
     m_stableLsns.back() = lsn;
+    m_stableLsn = lsn;
 }
 
 //===========================================================================
@@ -313,15 +314,14 @@ void DbPage::flushStalePages() {
 }
 
 //===========================================================================
-void DbPage::checkpoint(uint64_t lsn) {
-    m_checkpointLsn = lsn;
-}
-
-//===========================================================================
-void DbPage::checkpointPages() {
+// returns LSN required to be stable
+uint64_t DbPage::checkpointPages() {
+    assert(m_oldPages.empty());
     uint32_t wpno = 1;
     auto buf = make_unique<char[]>(m_pageSize);
     auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
+    m_checkpointLsn = numeric_limits<uint64_t>::max();
+    uint64_t lastLsn = 0;
     m_workMut.lock();
     for (;; ++wpno) {
         if (auto i = m_freeWorkPages.find(wpno); i) {
@@ -335,42 +335,53 @@ void DbPage::checkpointPages() {
         auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(wpno));
         m_workMut.lock();
 
-        if ((~hdr->flags & fDbPageDirty)
-            || m_checkpointLsn < hdr->lsn
-            || hdr->pgno == kFreePageMark
-        ) {
+        if ((~hdr->flags & fDbPageDirty) || hdr->pgno == kFreePageMark) {
             // stay locked
             continue;
         }
-        memcpy(tmpHdr, hdr, m_pageSize);
         hdr->flags &= ~fDbPageDirty;
         s_perfDirtyPages -= 1;
-        if (m_oldPages.erase(hdr->pgno)) {
-            assert(m_pages[hdr->pgno] != hdr);
-            hdr->pgno = kFreePageMark;
-            m_freeWorkPages.insert(wpno);
-            s_perfFreePages += 1;
+        if (hdr->lsn < m_checkpointLsn)
+            m_checkpointLsn = hdr->lsn;
+        if (hdr->lsn > lastLsn)
+            lastLsn = hdr->lsn;
+
+        if (hdr->lsn > m_stableLsn) {
+            hdr = dupPage_LK(hdr);
+            m_oldPages[hdr->pgno] = hdr;
+            // stay locked
+            continue;
         }
+
+        memcpy(tmpHdr, hdr, m_pageSize);
 
         m_workMut.unlock();
         writePageWait(tmpHdr);
         m_workMut.lock();
     }
-
-    m_checkpointLsn = 0;
+    if (m_checkpointLsn == numeric_limits<uint64_t>::max())
+        m_checkpointLsn = m_stableLsn;
     m_workMut.unlock();
+    return lastLsn;
+}
+
+//===========================================================================
+// returns start of checkpoint LSN
+uint64_t DbPage::checkpointStablePages() {
     for (auto && pgno_hdr : m_oldPages) {
-        assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
+        writePageWait(pgno_hdr.second);
         pgno_hdr.second->pgno = kFreePageMark;
     }
-    m_workMut.lock();
-    for (auto && kv : m_oldPages) {
-        auto wpno = m_vwork.pgno(kv.second);
+
+    unique_lock<mutex> lk{m_workMut};
+    for (auto && pgno_hdr : m_oldPages) {
+        assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
+        auto wpno = m_vwork.pgno(pgno_hdr.second);
         m_freeWorkPages.insert(wpno);
         s_perfFreePages += 1;
     }
     m_oldPages.clear();
-    m_workMut.unlock();
+    return m_checkpointLsn;
 }
 
 //===========================================================================
@@ -450,56 +461,6 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
         hdr = dupPage_LK(src);
         m_pages[pgno] = hdr;
-    } else if (~hdr->flags & fDbPageDirty) {
-        // clean page in work memory
-        //  - use it
-    } else {
-        assert(pgno == hdr->pgno);
-        if (lsn >= m_checkpointLsn) {
-            // for new epoch
-            if (hdr->lsn >= m_checkpointLsn) {
-                // dirty page from current epoch
-                //  - use it
-            } else {
-                // dirty page from old epoch
-                //  - save reference to old dirty page
-                //  - create new dirty page from old dirty page
-                if (!m_oldPages.insert({pgno, hdr}).second) {
-                    logMsgCrash() << "Multiple dirty replacements of page #"
-                        << pgno;
-                }
-                hdr = dupPage_LK(hdr);
-                m_pages[pgno] = hdr;
-            }
-        } else {
-            // for old epoch
-            if (hdr->lsn >= m_checkpointLsn) {
-                // dirty page from future epoch
-                //  - interleaving updates allowed?
-                //      - include in output, create and use old dirty page
-                //  - interleaving not allowed?
-                //      - crash
-                if (!newPage) {
-                    logMsgCrash()
-                        << "Transactions with interleaving updates on page #"
-                        << pgno;
-                }
-                *newPage = hdr;
-                // find or create old dirty page
-                if (auto i = m_oldPages.find(pgno); i != m_oldPages.end()) {
-                    hdr = i->second;
-                } else {
-                    // no existing old dirty page?
-                    //  - create old dirty page from clean page
-                    auto src = (const DbPageHeader *) m_vdata.rptr(pgno);
-                    hdr = dupPage_LK(src);
-                    m_oldPages[pgno] = hdr;
-                }
-            } else {
-                // dirty page from current epoch
-                //  - use it
-            }
-        }
     }
     if (~hdr->flags & fDbPageDirty) {
         hdr->flags |= fDbPageDirty;

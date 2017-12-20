@@ -16,8 +16,7 @@ using namespace Dim;
 ***/
 
 enum DbLogRecType : int8_t {
-    kRecTypeBeginCheckpoint,    // [N/A]
-    kRecTypeCommitCheckpoint,   // [N/A] startLsn
+    kRecTypeCommitCheckpoint =1,// [N/A] startLsn
     kRecTypeTxnBegin,           // [N/A]
     kRecTypeTxnCommit,          // [N/A]
 
@@ -68,9 +67,6 @@ union LogPos {
 
 //---------------------------------------------------------------------------
 // Checkpoint
-struct CheckpointBeginRec {
-    DbLogRecType type;
-};
 struct CheckpointCommitRec {
     DbLogRecType type;
     uint64_t startLsn;
@@ -184,8 +180,6 @@ struct SampleUpdateTimeRec {
 // static
 uint16_t DbLog::size(const Record * log) {
     switch (log->type) {
-    case kRecTypeBeginCheckpoint:
-        return sizeof(CheckpointBeginRec);
     case kRecTypeCommitCheckpoint:
         return sizeof(CheckpointCommitRec);
     case kRecTypeTxnBegin:
@@ -311,13 +305,6 @@ void DbLog::setLocalTxn(DbLog::Record * log, uint16_t localTxn) {
 }
 
 //===========================================================================
-uint64_t DbLog::logBeginCheckpoint() {
-    CheckpointBeginRec rec;
-    rec.type = kRecTypeBeginCheckpoint;
-    return log((Record *) &rec, sizeof(rec));
-}
-
-//===========================================================================
 void DbLog::logCommitCheckpoint(uint64_t startLsn) {
     CheckpointCommitRec rec;
     rec.type = kRecTypeCommitCheckpoint;
@@ -354,10 +341,6 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
 //===========================================================================
 void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
     switch (log->type) {
-    case kRecTypeBeginCheckpoint:
-        if (data)
-            applyBeginCheckpoint(*data, lsn);
-        break;
     case kRecTypeCommitCheckpoint:
         if (data) {
             auto rec = reinterpret_cast<const CheckpointCommitRec *>(log);
@@ -379,9 +362,7 @@ void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
     case kRecTypeSampleUpdateTxn:
     case kRecTypeSampleUpdateLastTxn:
         if (data) {
-            applyBeginTxn(*data, lsn, 0);
             applyRedo(*data, lsn, log);
-            applyCommit(*data, lsn, 0);
         } else {
             applyUpdate(lsn, log);
         }

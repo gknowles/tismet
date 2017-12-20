@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <queue>
 #include <set>
 #include <unordered_map>
 
