@@ -41,6 +41,10 @@ static int internalTest() {
     fileRemove("test.tsw");
     fileRemove("test.tsl");
     auto h = dbOpen(dat, 128);
+    EXPECT(h && "Failure to create database");
+    if (!h)
+        return EX_IOERR;
+
     auto stats = dbQueryStats(h);
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
