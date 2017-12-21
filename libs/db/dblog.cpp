@@ -674,6 +674,9 @@ void DbLog::onFileWrite(
     int64_t offset,
     FileHandle f
 ) {
+    if (written != data.size())
+        logMsgCrash() << "Write to .tsl failed, " << errno << ", " << _doserrno;
+
     s_perfWrites += 1;
     auto * lp = (PageHeader *) data.data();
     PageInfo pi = { lp->pgno, lp->firstLsn, lp->numLogs };

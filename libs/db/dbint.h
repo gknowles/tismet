@@ -198,12 +198,6 @@ public:
     void commit(uint64_t txn);
     void checkpoint();
 
-    Record * alloc(
-        uint64_t txn,
-        DbLogRecType type,
-        uint32_t pgno,
-        size_t bytes
-    );
     void logAndApply(uint64_t txn, Record * log, size_t bytes);
     void queueTask(
         Dim::ITaskNotify * task,
