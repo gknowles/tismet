@@ -99,13 +99,13 @@ struct ZeroPage {
 *
 ***/
 
-static auto & s_perfWrites = uperf("wal writes (total)");
-static auto & s_perfReorderedWrites = uperf("wal writes (out of order)");
-static auto & s_perfCurTxns = uperf("db transactions (current)");
 static auto & s_perfCps = uperf("db checkpoints (total)");
 static auto & s_perfCurCps = uperf("db checkpoints (current)");
-static auto & s_perfPages = uperf("wal pages (total)");
-static auto & s_perfFreePages = uperf("wal pages (free)");
+static auto & s_perfCurTxns = uperf("db transactions (current)");
+static auto & s_perfPages = uperf("db wal pages (total)");
+static auto & s_perfFreePages = uperf("db wal pages (free)");
+static auto & s_perfWrites = uperf("db wal writes (total)");
+static auto & s_perfReorderedWrites = uperf("db wal writes (out of order)");
 
 
 /****************************************************************************

@@ -122,12 +122,12 @@ struct DbData::SamplePage {
 *
 ***/
 
-static auto & s_perfCount = uperf("metrics (total)");
+static auto & s_perfCount = uperf("db metrics (total)");
 
-static auto & s_perfOld = uperf("samples ignored (old)");
-static auto & s_perfDup = uperf("samples ignored (same)");
-static auto & s_perfChange = uperf("samples changed");
-static auto & s_perfAdd = uperf("samples added");
+static auto & s_perfOld = uperf("db samples ignored (old)");
+static auto & s_perfDup = uperf("db samples ignored (same)");
+static auto & s_perfChange = uperf("db samples changed");
+static auto & s_perfAdd = uperf("db samples added");
 
 
 /****************************************************************************

@@ -94,8 +94,8 @@ private:
 
 static HandleMap<DbHandle, DbBase> s_files;
 
-static auto & s_perfCreated = uperf("metrics created");
-static auto & s_perfDeleted = uperf("metrics deleted");
+static auto & s_perfCreated = uperf("db metrics created");
+static auto & s_perfDeleted = uperf("db metrics deleted");
 
 
 /****************************************************************************
