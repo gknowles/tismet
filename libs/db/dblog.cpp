@@ -636,8 +636,10 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     if (partialWrite)
         i->commitTxns.emplace_back(pi.firstLsn, 0);
 
-    if (base->firstLsn > m_stableTxn + 1)
+    if (base->firstLsn > m_stableTxn + 1) {
+        s_perfReorderedWrites += 1;
         return;
+    }
 
     uint64_t last = 0;
     for (i = base; i != m_pages.end(); ++i) {
