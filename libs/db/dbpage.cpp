@@ -108,7 +108,7 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
     m_fwork = fileOpen(
         workfile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking | File::fRandom
+            | File::fBlocking | File::fRandom | File::fTemp
     );
     if (!m_fwork)
         return false;
