@@ -108,7 +108,7 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
     m_fwork = fileOpen(
         workfile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking | File::fRandom | File::fTemp
+            | File::fBlocking | File::fRandom
     );
     if (!m_fwork)
         return false;
@@ -132,7 +132,7 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
         logMsgError() << "Invalid page size in " << workfile;
         return false;
     }
-    m_workPages = len / pageSize;
+    m_workPages = len / m_pageSize;
     s_perfPages += (unsigned) m_workPages;
     m_freeWorkPages.insert(1, (unsigned) m_workPages - 1);
     s_perfFreePages += (unsigned) m_workPages - 1;
@@ -208,14 +208,15 @@ void DbPage::configure(const DbConfig & conf) {
 void DbPage::close() {
     m_stableLsns.clear();
     m_pages.clear();
-    m_pageSize = 0;
     m_vdata.close();
     fileClose(m_fdata);
     m_vwork.close();
+    fileResize(m_fwork, m_pageSize);
     fileClose(m_fwork);
     s_perfPages -= (unsigned) m_workPages;
     s_perfFreePages -= (unsigned) m_freeWorkPages.size();
     m_freeWorkPages.clear();
+    m_pageSize = 0;
     m_workPages = 0;
 }
 
