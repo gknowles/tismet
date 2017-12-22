@@ -44,6 +44,7 @@ enum class DbLog::Checkpoint : int {
     WaitForTxnCommits,
     WaitForStablePageFlush,
     WaitForCheckpointCommit,
+    WaitForTruncateCommit,
 };
 
 struct DbLog::AnalyzeData {
@@ -266,6 +267,9 @@ bool DbLog::loadPages() {
             pi.pgno = hdr.pgno;
             pi.firstLsn = hdr.firstLsn;
             pi.numLogs = hdr.numLogs;
+        } else if (hdr.type == kPageTypeFree) {
+            m_freePages.insert(hdr.pgno);
+            s_perfFreePages += 1;
         } else {
             logMsgError() << "Invalid page type(" << hdr.type << ") on page #"
                 << i << " of " << filePath(m_flog);
@@ -284,10 +288,12 @@ bool DbLog::loadPages() {
         m_pages.rend(),
         [](auto & a, auto & b){ return a.firstLsn != b.firstLsn + b.numLogs; }
     );
-    auto base = rlast.base();
-    for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
-    s_perfFreePages += unsigned(base - first);
-    m_pages.erase(first, base);
+    if (rlast != m_pages.rend()) {
+        auto base = rlast.base() - 1;
+        for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
+        s_perfFreePages += unsigned(base - first);
+        m_pages.erase(first, base);
+    }
     return true;
 }
 
@@ -357,6 +363,7 @@ bool DbLog::recover() {
     applyAll(data);
     if (!data.checkpoint)
         logMsgCrash() << "Invalid .tsl file, no checkpoint found";
+    m_checkpointLsn = data.checkpoint;
 
     auto i = lower_bound(
         data.incompleteTxnLsns.begin(),
@@ -372,9 +379,6 @@ bool DbLog::recover() {
         data.incompleteTxnLsns.end(),
         [](auto & a, auto & b) { return a > b; }
     );
-
-    m_checkpointLsn = data.checkpoint;
-    truncateLogs_LK();
 
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
@@ -547,9 +551,45 @@ void DbLog::checkpointStablePages() {
 void DbLog::checkpointStableCommit() {
     assert(m_phase == Checkpoint::WaitForCheckpointCommit);
 
-    unique_lock<mutex> lk{m_bufMut};
-    truncateLogs_LK();
+    auto lastPgno = uint32_t{0};
+    {
+        unique_lock<mutex> lk{m_bufMut};
+        auto lastTxn = m_pages.back().firstLsn;
+        auto before = m_pages.size();
+        for (;;) {
+            auto && pi = m_pages.front();
+            if (pi.firstLsn >= lastTxn)
+                break;
+            if (pi.firstLsn + pi.numLogs > m_checkpointLsn)
+                break;
+            if (lastPgno)
+                m_freePages.insert(lastPgno);
+            lastPgno = pi.pgno;
+            m_pages.pop_front();
+        }
+        s_perfFreePages += (unsigned) (before - m_pages.size() - (bool) lastPgno);
+    }
 
+    m_phase = Checkpoint::WaitForTruncateCommit;
+    if (!lastPgno) {
+        checkpointTruncateCommit();
+    } else {
+        static PageHeader hdr = { kPageTypeFree };
+        hdr.pgno = lastPgno;
+        fileWrite(
+            this,
+            m_flog,
+            lastPgno * m_pageSize,
+            &hdr,
+            offsetof(PageHeader, pgno) + sizeof(hdr.pgno),
+            taskComputeQueue()
+        );
+    }
+}
+
+//===========================================================================
+void DbLog::checkpointTruncateCommit() {
+    assert(m_phase == Checkpoint::WaitForTruncateCommit);
     m_phase = Checkpoint::Complete;
     s_perfCurCps -= 1;
     if (!m_closing) {
@@ -562,22 +602,6 @@ void DbLog::checkpointStableCommit() {
         timerUpdate(&m_checkpointTimer, wait);
     }
     m_bufAvailCv.notify_one();
-}
-
-//===========================================================================
-void DbLog::truncateLogs_LK() {
-    auto lastTxn = m_pages.back().firstLsn;
-    auto before = m_pages.size();
-    for (;;) {
-        auto && pi = m_pages.front();
-        if (pi.firstLsn >= lastTxn)
-            break;
-        if (pi.firstLsn + pi.numLogs > m_checkpointLsn)
-            break;
-        m_freePages.insert(pi.pgno);
-        m_pages.pop_front();
-    }
-    s_perfFreePages += (unsigned) (before - m_pages.size());
 }
 
 //===========================================================================
@@ -681,6 +705,14 @@ void DbLog::onFileWrite(
     auto * lp = (PageHeader *) data.data();
     PageInfo pi = { lp->pgno, lp->firstLsn, lp->numLogs };
     unique_lock<mutex> lk{m_bufMut};
+    if (lp->type == kPageTypeFree) {
+        m_freePages.insert(lp->pgno);
+        s_perfFreePages += 1;
+        lk.unlock();
+        checkpointTruncateCommit();
+        return;
+    }
+
     bool partialWrite = (data.size() < m_pageSize);
     updatePages_LK(pi, partialWrite);
     if (!partialWrite) {

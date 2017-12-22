@@ -233,8 +233,8 @@ private:
     void updatePages_LK(const PageInfo & pi, bool partialWrite);
     void checkpointPages();
     void checkpointStablePages();
-    void truncateLogs_LK();
     void checkpointStableCommit();
+    void checkpointTruncateCommit();
     void flushWriteBuffer();
 
     struct AnalyzeData;
