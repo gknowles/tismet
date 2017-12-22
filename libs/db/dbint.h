@@ -104,8 +104,8 @@ public:
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
 
-    uint64_t checkpointPages(); // returns LSN required to be stable
-    uint64_t checkpointStablePages(); // returns start of checkpoint LSN
+    void checkpointPages();
+    void checkpointStablePages();
     void stable(uint64_t lsn);
     void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
@@ -129,7 +129,6 @@ private:
     std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
 
     size_t m_pageSize{0};
-    uint64_t m_checkpointLsn{0};
 
     bool m_pageScanEnabled{true};
     Dim::Duration m_pageMaxAge;

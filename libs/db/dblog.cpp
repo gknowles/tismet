@@ -528,10 +528,11 @@ void DbLog::checkpoint() {
 //===========================================================================
 void DbLog::checkpointPages() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
-    auto waitLsn = m_page.checkpointPages();
+    m_checkpointLsn = m_lastLsn;
+    m_page.checkpointPages();
     m_phase = Checkpoint::WaitForTxnCommits;
-    if (waitLsn) {
-        queueTask(&m_checkpointStablePagesTask, waitLsn);
+    if (m_checkpointLsn > m_stableTxn) {
+        queueTask(&m_checkpointStablePagesTask, m_checkpointLsn);
     } else {
         checkpointStablePages();
     }
@@ -540,7 +541,7 @@ void DbLog::checkpointPages() {
 //===========================================================================
 void DbLog::checkpointStablePages() {
     assert(m_phase == Checkpoint::WaitForTxnCommits);
-    m_checkpointLsn = m_page.checkpointStablePages();
+    m_page.checkpointStablePages();
     logCommitCheckpoint(m_checkpointLsn);
     m_phase = Checkpoint::WaitForCheckpointCommit;
     queueTask(&m_checkpointStableCommitTask, m_lastLsn);

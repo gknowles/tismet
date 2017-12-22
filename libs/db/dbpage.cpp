@@ -320,14 +320,11 @@ void DbPage::flushStalePages() {
 }
 
 //===========================================================================
-// returns LSN required to be stable
-uint64_t DbPage::checkpointPages() {
+void DbPage::checkpointPages() {
     assert(m_oldPages.empty());
     uint32_t wpno = 1;
     auto buf = make_unique<char[]>(m_pageSize);
     auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
-    m_checkpointLsn = numeric_limits<uint64_t>::max();
-    uint64_t lastLsn = 0;
     m_workMut.lock();
     for (;; ++wpno) {
         if (auto i = m_freeWorkPages.find(wpno); i) {
@@ -347,10 +344,6 @@ uint64_t DbPage::checkpointPages() {
         }
         hdr->flags &= ~fDbPageDirty;
         s_perfDirtyPages -= 1;
-        if (hdr->lsn < m_checkpointLsn)
-            m_checkpointLsn = hdr->lsn;
-        if (hdr->lsn > lastLsn)
-            lastLsn = hdr->lsn;
 
         if (hdr->lsn > m_stableLsn) {
             hdr = dupPage_LK(hdr);
@@ -365,15 +358,11 @@ uint64_t DbPage::checkpointPages() {
         writePageWait(tmpHdr);
         m_workMut.lock();
     }
-    if (m_checkpointLsn == numeric_limits<uint64_t>::max())
-        m_checkpointLsn = m_stableLsn;
     m_workMut.unlock();
-    return lastLsn;
 }
 
 //===========================================================================
-// returns start of checkpoint LSN
-uint64_t DbPage::checkpointStablePages() {
+void DbPage::checkpointStablePages() {
     for (auto && pgno_hdr : m_oldPages) {
         writePageWait(pgno_hdr.second);
         pgno_hdr.second->pgno = kFreePageMark;
@@ -387,7 +376,6 @@ uint64_t DbPage::checkpointStablePages() {
         s_perfFreePages += 1;
     }
     m_oldPages.clear();
-    return m_checkpointLsn;
 }
 
 //===========================================================================
