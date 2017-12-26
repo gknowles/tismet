@@ -9,4 +9,10 @@
   <WorkMemoryScanInterval value="60; 1min"/>
   <CheckpointMaxData value="1000000000; 1GB"/>
   <CheckpointMaxInterval value="3600; 1h"/>
+
+  <Certificates>
+    <Store name="My" location="Current User">
+      <Certificate subjectKeyId="94a59279f9f79c638b8a33d67afa51c4cc23782d"/>
+    </Store>
+  </Certificates>
 </App>

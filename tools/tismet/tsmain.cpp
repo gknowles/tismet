@@ -42,10 +42,13 @@ static InitializeTask s_initTask;
 
 //===========================================================================
 void InitializeTask::onTask() {
+    winTlsInitialize();
+    appTlsInitialize();
     tsDataInitialize();
     if (!appStopping())
         tsCarbonInitialize();
     m_ready = true;
+    cout << "Server ready" << endl;
 }
 
 //===========================================================================
@@ -72,7 +75,7 @@ static void app(int argc, char * argv[]) {
     consoleCatchCtrlC();
     shutdownMonitor(&s_initTask);
     taskPushCompute(s_initTask);
-    cout << "Server started" << endl;
+    cout << "Server starting" << endl;
 }
 
 

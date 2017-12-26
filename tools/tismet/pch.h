@@ -11,6 +11,7 @@
 #include "core/core.h"
 #include "file/file.h"
 #include "net/net.h"
+#include "wintls/wintls.h"
 
 #include "carbon/carbon.h"
 #include "db/db.h"
