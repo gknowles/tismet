@@ -21,8 +21,6 @@
 # libs/db/dblog.cpp
 # libs/db/dblogcodec.cpp
 # libs/db/dbpage.cpp
-# libs/db/dbradix.cpp
-# libs/db/dbradix.h
 # libs/db/dbview.cpp
 # libs/db/pch.cpp
 # libs/db/pch.h
@@ -45,9 +43,6 @@
 # tests/query/pch.cpp
 # tests/query/pch.h
 # tests/query/querytest.cpp
-# tests/radix/pch.cpp
-# tests/radix/pch.h
-# tests/radix/radixtest.cpp
 # tools/tismet/intern.h
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h

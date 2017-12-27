@@ -171,11 +171,6 @@ DbData::~DbData () {
 //===========================================================================
 void DbData::openForApply(size_t pageSize) {
     m_pageSize = pageSize;
-
-    auto ipOff = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
-    m_rdIndex.init(m_pageSize, ipOff, ipOff);
-    auto mpOff = offsetof(MetricPage, rd) + offsetof(RadixData, pages);
-    m_rdMetric.init(m_pageSize, mpOff, ipOff);
 }
 
 //===========================================================================
@@ -348,7 +343,7 @@ void DbData::applyMetricInit(
     mp->retention = retention;
     mp->interval = interval;
     mp->rd.height = 0;
-    mp->rd.numPages = (uint16_t) m_rdMetric.rootEntries();
+    mp->rd.numPages = radixEntriesPerPage<MetricPage>();
 }
 
 //===========================================================================
@@ -876,6 +871,41 @@ static const DbData::RadixData * radixData(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
+template<typename T>
+uint16_t DbData::radixEntriesPerPage() const {
+    auto off = offsetof(T, rd) + offsetof(RadixData, pages);
+    return (uint16_t) (m_pageSize - off) / sizeof(uint32_t);
+}
+
+//===========================================================================
+size_t DbData::radixPageEntries(
+    int * out,
+    size_t outLen,
+    DbPageType rootType,
+    size_t pos
+) {
+    int * base = out;
+    size_t pents = radixEntriesPerPage<RadixPage>();
+    size_t rents;
+    if (rootType == kPageTypeMetric) {
+        rents = radixEntriesPerPage<MetricPage>();
+    } else {
+        assert(rootType == kPageTypeRadix);
+        rents = pents;
+    }
+
+    for (size_t i = 0;; ++i) {
+        assert(i < outLen);
+        *out++ = (int) (pos % pents);
+        if (pos < rents)
+            break;
+        pos /= pents;
+    }
+    reverse(base, out);
+    return out - base;
+}
+
+//===========================================================================
 void DbData::radixDestructPage(DbTxn & txn, uint32_t pgno) {
     auto rp = txn.viewPage<RadixPage>(pgno);
     radixDestruct(txn, rp->hdr);
@@ -929,12 +959,9 @@ bool DbData::radixInsert(
     auto hdr = txn.viewPage<DbPageHeader>(root);
     auto id = hdr->id;
     auto rd = radixData(hdr);
-    DbRadix & cvt = (hdr->type == kPageTypeMetric)
-        ? m_rdMetric
-        : m_rdIndex;
 
     int digits[10];
-    size_t count = cvt.convert(digits, size(digits), pos);
+    size_t count = radixPageEntries(digits, size(digits), hdr->type, pos);
     count -= 1;
     while (rd->height < count) {
         auto pgno = allocPgno(txn);
@@ -991,7 +1018,7 @@ void DbData::applyRadixInit(
     rp->hdr.type = rp->type;
     rp->hdr.id = id;
     rp->rd.height = height;
-    rp->rd.numPages = (uint16_t) m_rdIndex.rootEntries();
+    rp->rd.numPages = radixEntriesPerPage<RadixPage>();
     if (auto count = lastPgno - firstPgno) {
         assert(count <= rp->rd.numPages);
         memcpy(rp->rd.pages, firstPgno, count * sizeof(*firstPgno));
@@ -1038,12 +1065,9 @@ bool DbData::radixFind(
 ) {
     *hdr = txn.viewPage<DbPageHeader>(root);
     *rd = radixData(*hdr);
-    DbRadix & cvt = ((*hdr)->type == kPageTypeMetric)
-        ? m_rdMetric
-        : m_rdIndex;
 
     int digits[10];
-    size_t count = cvt.convert(digits, size(digits), pos);
+    size_t count = radixPageEntries(digits, size(digits), (*hdr)->type, pos);
     count -= 1;
     if ((*rd)->height < count) {
         // pos is beyond the limit that can be held in a tree this size, in

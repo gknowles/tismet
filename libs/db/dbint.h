@@ -524,6 +524,13 @@ private:
     uint32_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, uint32_t pgno);
 
+    template<typename T> uint16_t radixEntriesPerPage() const;
+    size_t radixPageEntries(
+        int * ents,
+        size_t maxEnts,
+        DbPageType rootType,
+        size_t pos
+    );
     void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
     void radixErase(
         DbTxn & txn,
@@ -563,9 +570,6 @@ private:
     );
 
     std::vector<MetricPosition> m_metricPos;
-
-    DbRadix m_rdIndex;
-    DbRadix m_rdMetric;
 
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
