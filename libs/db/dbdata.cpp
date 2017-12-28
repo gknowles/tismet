@@ -496,7 +496,7 @@ void DbData::updateSample(
     DbTxn & txn,
     uint32_t id,
     TimePoint time,
-    float value
+    double value
 ) {
     assert(time != TimePoint{});
 
@@ -691,7 +691,7 @@ void DbData::applySampleUpdate(
     void * ptr,
     size_t firstPos,
     size_t lastPos,
-    float value,
+    double value,
     bool updateLast
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
@@ -699,7 +699,7 @@ void DbData::applySampleUpdate(
     for (auto i = firstPos; i < lastPos; ++i)
         sp->samples[i] = NAN;
     if (!isnan(value))
-        sp->samples[lastPos] = value;
+        sp->samples[lastPos] = (float) value;
     if (updateLast)
         sp->pageLastSample = (uint16_t) lastPos;
 }

@@ -361,14 +361,14 @@ public:
     void logSampleUpdateTxn(
         uint32_t pgno,
         size_t pos,
-        float value,
+        double value,
         bool updateLast
     );
     void logSampleUpdate(
         uint32_t pgno,
         size_t firstSample,
         size_t lastSample,
-        float value,
+        double value,
         bool updateLast
     );
     void logSampleUpdateTime(uint32_t pgno, Dim::TimePoint pageTime);
@@ -455,7 +455,7 @@ public:
         DbTxn & txn,
         uint32_t id,
         Dim::TimePoint time,
-        float value
+        double value
     );
     size_t enumSamples(
         DbTxn & txn,
@@ -507,7 +507,7 @@ public:
         void * ptr,
         size_t firstPos,
         size_t lastPos,
-        float value,
+        double value,
         bool updateLast
     );
     void applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime);

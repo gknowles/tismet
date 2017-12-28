@@ -675,6 +675,13 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
         ) {
             break;
         }
+        if (!npi.numLogs) {
+            // The only page can have no logs on it is the very last page that
+            // timed out waiting for more logs with just the second half of the
+            // last log started on the previous page.
+            assert(i + 1 == m_pages.end());
+            continue;
+        }
         last = npi.firstLsn + npi.numLogs - 1;
     }
     if (!last)

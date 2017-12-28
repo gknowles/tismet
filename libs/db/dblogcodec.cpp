@@ -16,34 +16,49 @@ using namespace Dim;
 ***/
 
 enum DbLogRecType : int8_t {
-    kRecTypeCommitCheckpoint =1,// [N/A] startLsn
-    kRecTypeTxnBegin,           // [N/A]
-    kRecTypeTxnCommit,          // [N/A]
+    kRecTypeCommitCheckpoint    = 1,  // [N/A] startLsn
+    kRecTypeTxnBegin            = 2,  // [N/A]
+    kRecTypeTxnCommit           = 3,  // [N/A]
 
-    kRecTypeZeroInit,           // [master]
-    kRecTypePageFree,           // [any]
-    kRecTypeSegmentAlloc,       // [master/segment] refPage
-    kRecTypeSegmentFree,        // [master/segment] refPage
-    kRecTypeRadixInit,          // [radix] id, height
-    kRecTypeRadixInitList,      // [radix] id, height, page list
-    kRecTypeRadixErase,         // [metric/radix] firstPos, lastPos
-    kRecTypeRadixPromote,       // [radix] refPage
-    kRecTypeRadixUpdate,        // [radix] refPos, refPage
-    kRecTypeMetricInit,         // [metric] name, id, retention, interval
-    kRecTypeMetricUpdate,       // [metric] retention, interval
-    kRecTypeMetricClearSamples, // [metric] (clears index & last)
-    kRecTypeMetricUpdateLast,   // [metric] refPos, refPage
-    kRecTypeMetricUpdateLastAndIndex, // [metric] refPos, refPage
-    kRecTypeSampleInit,         // [sample] id, pageTime, lastPos
-    kRecTypeSampleUpdate,       // [sample] first, last, value
-                                //   [first, last) = NANs, last = value
-    kRecTypeSampleUpdateLast,   // [sample] first, last, value
-                                //   [first, last) = NANs, last = value
-                                //   lastPos = last
-    kRecTypeSampleUpdateTime,   // [sample] pageTime (pos=0, samples[0]=NAN)
-    kRecTypeSampleUpdateTxn,    // [sample] page, pos, value (non-standard)
-    kRecTypeSampleUpdateLastTxn,// [sample] page, pos, value (non-standard)
-                                //   lastPos = pos
+    kRecTypeZeroInit            = 4,  // [master]
+    kRecTypePageFree            = 5,  // [any]
+    kRecTypeSegmentAlloc        = 6,  // [master/segment] refPage
+    kRecTypeSegmentFree         = 7,  // [master/segment] refPage
+    kRecTypeRadixInit           = 8,  // [radix] id, height
+    kRecTypeRadixInitList       = 9,  // [radix] id, height, page list
+    kRecTypeRadixErase          = 10, // [metric/radix] firstPos, lastPos
+    kRecTypeRadixPromote        = 11, // [radix] refPage
+    kRecTypeRadixUpdate         = 12, // [radix] refPos, refPage
+    kRecTypeMetricInit          = 13, // [metric] name, id, retention, interval
+    kRecTypeMetricUpdate        = 14, // [metric] retention, interval
+    kRecTypeMetricClearSamples  = 15, // [metric] (clears index & last)
+    kRecTypeMetricUpdateLast    = 16, // [metric] refPos, refPage
+    kRecTypeMetricUpdateLastAndIndex = 17, // [metric] refPos, refPage
+    kRecTypeSampleInit          = 18, // [sample] id, pageTime, lastPos
+    kRecTypeSampleUpdate        = 19, // [sample] first, last, value
+                                      //    [first, last) = NANs, last = value
+    kRecTypeSampleUpdateLast    = 20, // [sample] first, last, value
+                                      //    [first, last) = NANs, last = value
+                                      //    lastPos = last
+    kRecTypeSampleUpdateTime    = 21, // [sample] pageTime
+                                      //    pos = 0, samples[0] = NAN
+
+    // [sample] page, pos, value (non-standard layout)
+    kRecTypeSampleUpdateFloat32Txn      = 22,
+    kRecTypeSampleUpdateFloat64Txn      = 24,
+    kRecTypeSampleUpdateInt8Txn         = 26,
+    kRecTypeSampleUpdateInt16Txn        = 28,
+    kRecTypeSampleUpdateInt32Txn        = 30,
+
+    // [sample] page, pos, value (non-standard layout)
+    //    lastPos = pos
+    kRecTypeSampleUpdateFloat32LastTxn  = 23,
+    kRecTypeSampleUpdateFloat64LastTxn  = 25,
+    kRecTypeSampleUpdateInt8LastTxn     = 27,
+    kRecTypeSampleUpdateInt16LastTxn    = 29,
+    kRecTypeSampleUpdateInt32LastTxn    = 31,
+
+    kRecType_NextAvailable = 32,
 };
 
 #pragma pack(push)
@@ -147,22 +162,47 @@ struct SampleInitRec {
     TimePoint pageTime;
     uint16_t lastSample;
 };
-// Update single (with or without last) is also an implicit transaction
-struct SampleUpdateTransactionRec {
+struct SampleUpdateRec {
+    DbLog::Record hdr;
+    uint16_t firstSample;
+    uint16_t lastSample;
+    double value;
+};
+struct SampleUpdateTimeRec {
+    DbLog::Record hdr;
+    TimePoint pageTime;
+};
+
+// Update (with or without last) is also an implicit transaction
+struct SampleUpdateFloat64TxnRec {
+    DbLogRecType type;
+    uint32_t pgno;
+    uint16_t pos;
+    double value;
+};
+struct SampleUpdateFloat32TxnRec {
     DbLogRecType type;
     uint32_t pgno;
     uint16_t pos;
     float value;
 };
-struct SampleUpdateRec {
-    DbLog::Record hdr;
-    uint16_t firstSample;
-    uint16_t lastSample;
-    float value;
+struct SampleUpdateInt32TxnRec {
+    DbLogRecType type;
+    uint32_t pgno;
+    uint16_t pos;
+    int32_t value;
 };
-struct SampleUpdateTimeRec {
-    DbLog::Record hdr;
-    TimePoint pageTime;
+struct SampleUpdateInt16TxnRec {
+    DbLogRecType type;
+    uint32_t pgno;
+    uint16_t pos;
+    int16_t value;
+};
+struct SampleUpdateInt8TxnRec {
+    DbLogRecType type;
+    uint32_t pgno;
+    uint16_t pos;
+    int8_t value;
 };
 
 } // namespace
@@ -218,14 +258,29 @@ uint16_t DbLog::size(const Record * log) {
         return sizeof(MetricUpdateSamplesRec);
     case kRecTypeSampleInit:
         return sizeof(SampleInitRec);
-    case kRecTypeSampleUpdateTxn:
-    case kRecTypeSampleUpdateLastTxn:
-        return sizeof(SampleUpdateTransactionRec);
+    case kRecTypeSampleUpdateFloat32Txn:
+    case kRecTypeSampleUpdateFloat32LastTxn:
+        return sizeof(SampleUpdateFloat32TxnRec);
+    case kRecTypeSampleUpdateFloat64Txn:
+    case kRecTypeSampleUpdateFloat64LastTxn:
+        return sizeof(SampleUpdateFloat64TxnRec);
+    case kRecTypeSampleUpdateInt8Txn:
+    case kRecTypeSampleUpdateInt8LastTxn:
+        return sizeof(SampleUpdateInt8TxnRec);
+    case kRecTypeSampleUpdateInt16Txn:
+    case kRecTypeSampleUpdateInt16LastTxn:
+        return sizeof(SampleUpdateInt16TxnRec);
+    case kRecTypeSampleUpdateInt32Txn:
+    case kRecTypeSampleUpdateInt32LastTxn:
+        return sizeof(SampleUpdateInt32TxnRec);
     case kRecTypeSampleUpdate:
     case kRecTypeSampleUpdateLast:
         return sizeof(SampleUpdateRec);
     case kRecTypeSampleUpdateTime:
         return sizeof(SampleUpdateTimeRec);
+    case kRecType_NextAvailable:
+        // only defined to suppress "not handled" warning
+        break;
     }
 
     logMsgCrash() << "Unknown log record type, " << log->type;
@@ -249,9 +304,17 @@ bool DbLog::interleaveSafe(const Record * log) {
 uint32_t DbLog::getPgno(const Record * log) {
     assert(log->type > kRecTypeTxnCommit);
     switch (log->type) {
-    case kRecTypeSampleUpdateTxn:
-    case kRecTypeSampleUpdateLastTxn:
-        return reinterpret_cast<const SampleUpdateTransactionRec *>(log)->pgno;
+    case kRecTypeSampleUpdateFloat32Txn:
+    case kRecTypeSampleUpdateFloat64Txn:
+    case kRecTypeSampleUpdateInt8Txn:
+    case kRecTypeSampleUpdateInt16Txn:
+    case kRecTypeSampleUpdateInt32Txn:
+    case kRecTypeSampleUpdateFloat32LastTxn:
+    case kRecTypeSampleUpdateFloat64LastTxn:
+    case kRecTypeSampleUpdateInt8LastTxn:
+    case kRecTypeSampleUpdateInt16LastTxn:
+    case kRecTypeSampleUpdateInt32LastTxn:
+        return reinterpret_cast<const SampleUpdateInt8TxnRec *>(log)->pgno;
     default:
         return log->pgno;
     }
@@ -265,8 +328,16 @@ uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
     case kRecTypeTxnBegin:
     case kRecTypeTxnCommit:
         return reinterpret_cast<const TransactionRec *>(log)->localTxn;
-    case kRecTypeSampleUpdateTxn:
-    case kRecTypeSampleUpdateLastTxn:
+    case kRecTypeSampleUpdateFloat32Txn:
+    case kRecTypeSampleUpdateFloat64Txn:
+    case kRecTypeSampleUpdateInt8Txn:
+    case kRecTypeSampleUpdateInt16Txn:
+    case kRecTypeSampleUpdateInt32Txn:
+    case kRecTypeSampleUpdateFloat32LastTxn:
+    case kRecTypeSampleUpdateFloat64LastTxn:
+    case kRecTypeSampleUpdateInt8LastTxn:
+    case kRecTypeSampleUpdateInt16LastTxn:
+    case kRecTypeSampleUpdateInt32LastTxn:
         return 0;
     default:
         return log->localTxn;
@@ -357,14 +428,6 @@ void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
         if (data) {
             auto rec = reinterpret_cast<const TransactionRec *>(log);
             applyCommit(*data, lsn, rec->localTxn);
-        }
-        break;
-    case kRecTypeSampleUpdateTxn:
-    case kRecTypeSampleUpdateLastTxn:
-        if (data) {
-            applyRedo(*data, lsn, log);
-        } else {
-            applyUpdate(lsn, log);
         }
         break;
     default:
@@ -476,26 +539,6 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             rec->lastSample
         );
     }
-    case kRecTypeSampleUpdateTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateTransactionRec *>(log);
-        return m_data.applySampleUpdate(
-            page,
-            rec->pos,
-            rec->pos,
-            rec->value,
-            false
-        );
-    }
-    case kRecTypeSampleUpdateLastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateTransactionRec *>(log);
-        return m_data.applySampleUpdate(
-            page,
-            rec->pos,
-            rec->pos,
-            rec->value,
-            true
-        );
-    }
     case kRecTypeSampleUpdate: {
         auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
         return m_data.applySampleUpdate(
@@ -519,6 +562,107 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     case kRecTypeSampleUpdateTime: {
         auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(log);
         return m_data.applySampleUpdateTime(page, rec->pageTime);
+    }
+
+    case kRecTypeSampleUpdateFloat32Txn: {
+        auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateFloat64Txn: {
+        auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateInt8Txn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateInt16Txn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateInt32Txn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            false
+        );
+    }
+    case kRecTypeSampleUpdateFloat32LastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
+        );
+    }
+    case kRecTypeSampleUpdateFloat64LastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
+        );
+    }
+    case kRecTypeSampleUpdateInt8LastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
+        );
+    }
+    case kRecTypeSampleUpdateInt16LastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
+        );
+    }
+    case kRecTypeSampleUpdateInt32LastTxn: {
+        auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
+        return m_data.applySampleUpdate(
+            page,
+            rec->pos,
+            rec->pos,
+            rec->value,
+            true
+        );
     }
 
     } // end case
@@ -721,23 +865,59 @@ void DbTxn::logSampleInit(
 void DbTxn::logSampleUpdateTxn(
     uint32_t pgno,
     size_t pos,
-    float value,
+    double value,
     bool updateLast
 ) {
     if (m_txn)
         return logSampleUpdate(pgno, pos, pos, value, updateLast);
 
-    auto type = updateLast
-        ? kRecTypeSampleUpdateLastTxn
-        : kRecTypeSampleUpdateTxn;
-    SampleUpdateTransactionRec tmp;
-    auto rec = &tmp;
-    assert(pos <= numeric_limits<decltype(rec->pos)>::max());
-    rec->type = type;
-    rec->pgno = pgno;
-    rec->pos = (uint16_t) pos;
-    rec->value = value;
-    m_log.logAndApply(0, (DbLog::Record *) rec, sizeof(tmp));
+    union {
+        SampleUpdateFloat32TxnRec f32;
+        SampleUpdateFloat64TxnRec f64;
+        SampleUpdateInt8TxnRec i8;
+        SampleUpdateInt16TxnRec i16;
+        SampleUpdateInt32TxnRec i32;
+    } tmp;
+    assert(pos <= numeric_limits<decltype(tmp.i8.pos)>::max());
+    size_t bytes{0};
+    tmp.i8.pgno = pgno;
+    tmp.i8.pos = (uint16_t) pos;
+    if (auto ival = (int32_t) value; ival != value) {
+        if (auto fval = (float) value; fval == value) {
+            tmp.f32.type = updateLast
+                ? kRecTypeSampleUpdateFloat32LastTxn
+                : kRecTypeSampleUpdateFloat32Txn;
+            tmp.f32.value = fval;
+            bytes = sizeof(tmp.f32);
+        } else {
+            tmp.f64.type = updateLast
+                ? kRecTypeSampleUpdateFloat64LastTxn
+                : kRecTypeSampleUpdateFloat64Txn;
+            tmp.f64.value = value;
+            bytes = sizeof(tmp.f64);
+        }
+    } else {
+        if ((int8_t) ival == ival) {
+            tmp.i8.type = updateLast
+                ? kRecTypeSampleUpdateInt8LastTxn
+                : kRecTypeSampleUpdateInt8Txn;
+            tmp.i8.value = (int8_t) ival;
+            bytes = sizeof(tmp.i8);
+        } else if ((int16_t) ival == ival) {
+            tmp.i16.type = updateLast
+                ? kRecTypeSampleUpdateInt16LastTxn
+                : kRecTypeSampleUpdateInt16Txn;
+            tmp.i16.value = (int16_t) ival;
+            bytes = sizeof(tmp.i16);
+        } else {
+            tmp.i32.type = updateLast
+                ? kRecTypeSampleUpdateInt32LastTxn
+                : kRecTypeSampleUpdateInt32Txn;
+            tmp.i32.value = ival;
+            bytes = sizeof(tmp.i32);
+        }
+    }
+    m_log.logAndApply(0, (DbLog::Record *) &tmp, bytes);
 }
 
 //===========================================================================
@@ -745,7 +925,7 @@ void DbTxn::logSampleUpdate(
     uint32_t pgno,
     size_t firstSample,
     size_t lastSample,
-    float value,
+    double value,
     bool updateLast
 ) {
     auto type = updateLast ? kRecTypeSampleUpdateLast : kRecTypeSampleUpdate;
