@@ -103,6 +103,7 @@ struct ZeroPage {
 static auto & s_perfCps = uperf("db checkpoints (total)");
 static auto & s_perfCurCps = uperf("db checkpoints (current)");
 static auto & s_perfCurTxns = uperf("db transactions (current)");
+static auto & s_perfVolatileTxns = uperf("db transactions (volatile)");
 static auto & s_perfPages = uperf("db wal pages (total)");
 static auto & s_perfFreePages = uperf("db wal pages (free)");
 static auto & s_perfWrites = uperf("db wal writes (total)");
@@ -460,6 +461,7 @@ uint64_t DbLog::beginTxn() {
             break;
     }
     s_perfCurTxns += 1;
+    s_perfVolatileTxns += 1;
 
     // Count the begin transaction on the page were its log record started.
     // This means the current page before logging (since logging can advance
@@ -483,6 +485,7 @@ void DbLog::commit(uint64_t txn) {
     // Log the commit first, so the commit transaction is counted on the page
     // it finished on.
     logCommit(txn);
+    s_perfCurTxns -= 1;
 
     auto lsn = getLsn(txn);
     auto & commitTxns = m_pages.back().commitTxns;
@@ -501,8 +504,6 @@ void DbLog::commit(uint64_t txn) {
         }
         assert(i != m_pages.begin());
     }
-
-    s_perfCurTxns -= 1;
 }
 
 //===========================================================================
@@ -654,8 +655,11 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     for (auto && lsn_txns : i->commitTxns) {
         base -= 1;
         assert(base->firstLsn == lsn_txns.first);
-        assert(base->beginTxns >= lsn_txns.second);
-        base->beginTxns -= lsn_txns.second;
+        if (lsn_txns.second) {
+            assert(base->beginTxns >= lsn_txns.second);
+            base->beginTxns -= lsn_txns.second;
+            s_perfVolatileTxns -= lsn_txns.second;
+        }
     }
     i->commitTxns.clear();
     if (partialWrite)
