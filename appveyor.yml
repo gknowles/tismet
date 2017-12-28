@@ -34,5 +34,4 @@ artifacts:
 test_script:
     - bin\carbon
     - bin\query
-    - bin\radix --test
     - bin\db
