@@ -31,6 +31,7 @@ struct CmdOpts {
     unsigned maxSecs;
     uint64_t maxSamples;
 
+    string prefix;
     unsigned metrics;
     unsigned intervalSecs;
     double minDelta;
@@ -155,11 +156,13 @@ MetricSource::MetricSource()
     StrFrom<unsigned> str{0};
     for (unsigned i = 0; i < s_opts.metrics; ++i) {
         auto & met = m_metrics[i];
-        for (auto && ch : str.set(i)) {
+        if (!s_opts.prefix.empty())
+            met.name += s_opts.prefix;
+        for (auto && ch : str.set(i))
             met.name += numerals[ch - '0'];
-        }
         // remove extra trailing dot
         met.name.pop_back();
+
         met.value = 0;
         met.time = s_opts.startTime;
     }
@@ -467,6 +470,8 @@ CmdOpts::CmdOpts() {
         .desc("Max samples to generate, 0 for unlimited");
 
     cli.group("Metrics to Generate").sortKey("3");
+    cli.opt(&prefix, "prefix", "test.")
+        .desc("Prefix to generated metric names");
     cli.opt(&metrics, "m metrics", 100)
         .range(1, numeric_limits<decltype(metrics)>::max())
         .desc("Number of metrics");
