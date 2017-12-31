@@ -23,6 +23,7 @@ enum QueryInfo::NodeType : int8_t {
     kPathSeg,
     kSegLiteral,
     kSegBlot,
+    kSegDoubleBlot,
     kSegCharChoice,
     kSegStrChoice,
     kNum,
@@ -38,7 +39,9 @@ struct QueryInfo::Node : Dim::ListBaseLink<> {
 };
 
 QueryInfo::Node * addPath(QueryInfo * qi);
+void endPath(QueryInfo * qi, QueryInfo::Node * node);
 QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * path);
+void endSeg(QueryInfo * qi, QueryInfo::Node * node);
 QueryInfo::Node * addSegLiteral(
     QueryInfo * qi,
     QueryInfo::Node * seg,

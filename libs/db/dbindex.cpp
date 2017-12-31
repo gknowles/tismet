@@ -1,0 +1,254 @@
+// Copyright Glen Knowles 2017.
+// Distributed under the Boost Software License, Version 1.0.
+//
+// dbindex.cpp - tismet db
+#include "pch.h"
+#pragma hdrstop
+
+using namespace std;
+using namespace Dim;
+
+
+/****************************************************************************
+*
+*   DbIndex
+*
+***/
+
+//===========================================================================
+void DbIndex::insert(uint32_t id, const string & name) {
+    if (!m_metricIds.insert({name, id}).second)
+        logMsgError() << "Metric multiply defined, " << name;
+    m_ids.uset.insert(id);
+    m_ids.count += 1;
+    vector<string_view> segs;
+    strSplit(segs, name, '.');
+    auto numSegs = segs.size();
+    if (m_lenIds.size() <= numSegs) {
+        m_lenIds.resize(numSegs + 1);
+        m_segIds.resize(numSegs);
+    }
+    m_lenIds[numSegs].uset.insert(id);
+    m_lenIds[numSegs].count += 1;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto & ids = m_segIds[i][string(segs[i])];
+        ids.uset.insert(id);
+        ids.count += 1;
+    }
+}
+
+//===========================================================================
+void DbIndex::erase(uint32_t id, const string & name) {
+    auto num [[maybe_unused]] = m_metricIds.erase(name);
+    assert(num == 1);
+    m_ids.uset.erase(id);
+    m_ids.count -= 1;
+    vector<string_view> segs;
+    strSplit(segs, name, '.');
+    auto numSegs = segs.size();
+    m_lenIds[numSegs].uset.erase(id);
+    m_lenIds[numSegs].count -= 1;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto key = string(segs[i]);
+        auto & ids = m_segIds[i][key];
+        ids.uset.erase(id);
+        if (--ids.count == 0)
+            m_segIds[i].erase(key);
+    }
+    numSegs = m_segIds.size();
+    for (; numSegs; --numSegs) {
+        if (!m_segIds[numSegs - 1].empty())
+            break;
+        assert(m_lenIds[numSegs].uset.empty());
+        m_lenIds.resize(numSegs);
+        m_segIds.resize(numSegs - 1);
+    }
+}
+
+//===========================================================================
+uint32_t DbIndex::nextId() const {
+    if (!m_ids.count) {
+        return 1;
+    } else {
+        auto ids = *m_ids.uset.ranges().begin();
+        return ids.first > 1 ? 1 : ids.second + 1;
+    }
+}
+
+//===========================================================================
+size_t DbIndex::size() const {
+    return m_ids.count;
+}
+
+//===========================================================================
+bool DbIndex::find(uint32_t & out, const string & name) const {
+    auto i = m_metricIds.find(name);
+    if (i == m_metricIds.end())
+        return false;
+    out = i->second;
+    return true;
+}
+
+//===========================================================================
+void DbIndex::find(
+    UnsignedSet & out,
+    QueryInfo::PathSegment * segs,
+    size_t numSegs,
+    size_t basePos,
+    const UnsignedSetWithCount * subset
+) const {
+    assert(numSegs);
+    assert(basePos + numSegs <= m_lenIds.size());
+    vector<const UnsignedSetWithCount*> usets(numSegs);
+    const UnsignedSetWithCount * fewest = subset;
+    int ifewest = -1;
+    auto pos = basePos;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        auto & seg = segs[i];
+        if (seg.type == QueryInfo::kExact) {
+            auto it = m_segIds[pos + i].find(string(seg.prefix));
+            if (it == m_segIds[pos + i].end()) {
+                out.clear();
+                return;
+            }
+            usets[i] = &it->second;
+            if (it->second.count < fewest->count) {
+                ifewest = i;
+                fewest = &it->second;
+            }
+        } else if (seg.type == QueryInfo::kDynamicAny) {
+            pos += seg.count - 1;
+            assert(pos + numSegs <= m_lenIds.size());
+        }
+    }
+    if (fewest) {
+        out = fewest->uset;
+        out.intersect(m_lenIds[pos + numSegs].uset);
+    } else {
+        out = m_lenIds[pos + numSegs].uset;
+    }
+    pos = basePos;
+    for (int i = 0; i < numSegs; ++i) {
+        if (i == ifewest)
+            continue;
+        if (auto usetw = usets[i]) {
+            out.intersect(usetw->uset);
+            if (out.empty())
+                return;
+            continue;
+        }
+        auto & seg = segs[i];
+        if (seg.type == QueryInfo::kAny)
+            continue;
+        if (seg.type == QueryInfo::kDynamicAny) {
+            pos += seg.count - 1;
+            continue;
+        }
+        assert(seg.type == QueryInfo::kCondition);
+        UnsignedSet found;
+        for (auto && kv : m_segIds[pos + i]) {
+            if (queryMatchSegment(seg.node, kv.first)) {
+                if (found.empty()) {
+                    found = kv.second.uset;
+                } else {
+                    found.insert(kv.second.uset);
+                }
+            }
+        }
+        out.intersect(move(found));
+        if (out.empty())
+            return;
+    }
+}
+
+//===========================================================================
+void DbIndex::find(UnsignedSet & out, string_view name) const {
+    if (name.empty()) {
+        out = m_ids.uset;
+        return;
+    }
+
+    QueryInfo qry;
+    bool result [[maybe_unused]] = queryParse(qry, name);
+    assert(result);
+    if (qry.type == QueryInfo::kExact) {
+        uint32_t id;
+        out.clear();
+        if (find(id, string(name)))
+            out.insert(id);
+        return;
+    }
+    if (qry.type == QueryInfo::kAny) {
+        out = m_ids.uset;
+        return;
+    }
+
+    vector<QueryInfo::PathSegment> segs;
+    queryPathSegments(segs, qry);
+    auto numSegs = segs.size();
+    vector<unsigned> dyns;
+    unsigned numStatic = 0;
+    for (unsigned i = 0; i < numSegs; ++i) {
+        if (segs[i].type == QueryInfo::kDynamicAny) {
+            dyns.push_back(i);
+        } else {
+            numStatic += 1;
+        }
+    }
+    if (numStatic > m_lenIds.size()) {
+        // query requires more segments than any metric has
+        out.clear();
+        return;
+    }
+
+    if (dyns.empty()) {
+        // The subset is the set of metrics that would match if all path
+        // segments match any. So if the query is completely static the subset
+        // is metrics with that number of segments.
+        return find(
+            out,
+            segs.data(),
+            numSegs,
+            0,
+            &m_lenIds[numSegs]
+        );
+    }
+
+    // There are dynamic segments, so the subset is all metrics with at least
+    // that number of segments, since metrics match when the initial segments
+    // match the prefix.
+    //
+    // For now, we don't prefilter in the dynamic case.
+    auto prefix = dyns[0];
+    find(out, segs.data(), prefix, 0, nullptr);
+
+    // If all statics are clustered at the front there's no need to try any
+    // other permutations.
+    if (numStatic == prefix)
+        return;
+
+    UnsignedSetWithCount subset;
+    swap(subset.uset, out);
+    subset.count = subset.uset.size();
+    auto segbase = segs.data() + prefix;
+    auto seglen = segs.size() - prefix;
+    unsigned numDyn = 0;
+    unsigned maxDyn = (unsigned) m_lenIds.size() - numStatic;
+    UnsignedSet found;
+    for (;;) {
+        find(found, segbase, seglen, prefix, &subset);
+        out.insert(found);
+        for (unsigned i = 0;;) {
+            auto & seg = segs[dyns[i]];
+            if (numDyn < maxDyn) {
+                seg.count += 1;
+                numDyn += 1;
+                break;
+            }
+            numDyn -= seg.count;
+            seg.count = 0;
+            if (++i == dyns.size())
+                return;
+        }
+    }
+}

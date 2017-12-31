@@ -2,8 +2,6 @@
 // Distributed under the Boost Software License, Version 1.0.
 //
 // query.h - tismet query
-//
-// Implemetation of graphite's carbon protocol for receiving metric data
 #pragma once
 
 #include "cppconf/cppconf.h"
@@ -22,21 +20,42 @@
 ***/
 
 struct QueryInfo {
-    enum QueryFlags : uint8_t {
-        fWild = 1,   // query has paths with wildcards
+    enum PathType {
+        // for both query infos and path segments
+        kExact,         // literal
+        kCondition,     // char choice, string choice, or embedded blot
+        kAny,           // can be any value
+
+        // only for path segments
+        kDynamicAny,   // matches zero or more segments of any value
+    };
+    enum MatchResult {
+        kNoMatch = 0,
+        kMatch = 1,
+
+        // matches this segment and also any number of following segments
+        kMatchRest = 2,
     };
 
     enum NodeType : int8_t;
     struct Node;
     struct PathSegment {
-        std::string_view prefix;
-        QueryFlags flags{};
+        union {
+            // for kExact and kCondition, prefix enforced by condition
+            std::string_view prefix;
+
+            // for kDynamicAny, segments spanned in current permutation
+            unsigned count;
+        };
+        PathType type{kExact};
         const Node * node{nullptr};
+
+        PathSegment() { prefix = {}; }
     };
 
     char * text{nullptr};   // normalized query string
     Node * node{nullptr};
-    QueryFlags flags{};
+    PathType type{kExact};
     Dim::TempHeap heap;
 };
 
@@ -51,7 +70,7 @@ void queryPathSegments(
     const QueryInfo & qry
 );
 // Use the node values returned by queryPathSegments()
-bool queryMatchSegment(
+QueryInfo::MatchResult queryMatchSegment(
     const QueryInfo::Node * node,
     std::string_view val
 );

@@ -46,6 +46,9 @@ static void parseTest(
 static void internalTest() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
+    EXPECT_PARSE("**", "**");
+    EXPECT_PARSE("**.**.*.**.a.*.**", "*.**.a.*.**");
+    EXPECT_PARSE("a**b.**c.**.d.***.e", "a*b.*c.**.d.*.e");
     EXPECT_PARSE("sum(sum(a))", "sum(sum(a))");
     EXPECT_PARSE("a[b]c[de]f", "abc[de]f");
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");

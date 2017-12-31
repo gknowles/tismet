@@ -17,6 +17,8 @@
 # libs/db/db.h
 # libs/db/dbdata.cpp
 # libs/db/dbdump.cpp
+# libs/db/dbindex.cpp
+# libs/db/dbindex.h
 # libs/db/dbint.h
 # libs/db/dblog.cpp
 # libs/db/dblogcodec.cpp

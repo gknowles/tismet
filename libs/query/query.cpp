@@ -40,6 +40,7 @@ struct SegLiteral : QueryInfo::Node {
     string_view val;
 };
 struct SegBlot : QueryInfo::Node {
+    int count{0};
 };
 struct SegCharChoice : QueryInfo::Node {
     static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
@@ -121,15 +122,18 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
     case QueryInfo::kSegBlot:
         out += '*';
         break;
+    case QueryInfo::kSegDoubleBlot:
+        out += "**";
+        break;
     case QueryInfo::kSegCharChoice:
         {
-        auto & vals = static_cast<const SegCharChoice &>(node).vals;
-        out += '[';
-        for (unsigned i = 0; i < 256; ++i) {
-            if (vals.test(i))
-                out += (unsigned char) i;
-        }
-        out += ']';
+            auto & vals = static_cast<const SegCharChoice &>(node).vals;
+            out += '[';
+            for (unsigned i = 0; i < 256; ++i) {
+                if (vals.test(i))
+                    out += (unsigned char) i;
+            }
+            out += ']';
         }
         break;
     case QueryInfo::kSegStrChoice:
@@ -188,6 +192,37 @@ QueryInfo::Node * addPath(QueryInfo * qi) {
 }
 
 //===========================================================================
+static void removeRedundantSegments(PathNode * path) {
+    if (path->segs.empty())
+        return;
+
+    // Double blot segments are redundant if they are separated by zero
+    // or more blot segments.
+    auto node = static_cast<PathSeg *>(path->segs.front());
+    while (auto next = static_cast<PathSeg *>(path->segs.next(node))) {
+        if (node->nodes.front()->type == QueryInfo::kSegDoubleBlot) {
+            while (next->nodes.size() == 1
+                && next->nodes.front()->type == QueryInfo::kSegBlot
+            ) {
+                next = static_cast<PathSeg *>(path->segs.next(next));
+                if (!next)
+                    return;
+            }
+            if (next->nodes.front()->type == QueryInfo::kSegDoubleBlot)
+                path->segs.unlink(node);
+        }
+        node = next;
+    }
+}
+
+//===========================================================================
+void endPath(QueryInfo * qi, QueryInfo::Node * node) {
+    assert(node->type == QueryInfo::kPath);
+    auto path = static_cast<PathNode *>(node);
+    removeRedundantSegments(path);
+}
+
+//===========================================================================
 QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type == QueryInfo::kPath);
     auto path = static_cast<PathNode *>(node);
@@ -195,6 +230,19 @@ QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * node) {
     auto seg = path->segs.back();
     seg->type = QueryInfo::kPathSeg;
     return seg;
+}
+
+//===========================================================================
+void endSeg(QueryInfo * qi, QueryInfo::Node * node) {
+    assert(node->type == QueryInfo::kPathSeg);
+    auto seg = static_cast<PathSeg *>(node);
+    if (seg->nodes.size() == 1
+        && seg->nodes.front()->type == QueryInfo::kSegBlot
+    ) {
+        auto sn = static_cast<SegBlot *>(seg->nodes.front());
+        if (sn->count == 2)
+            sn->type = QueryInfo::kSegDoubleBlot;
+    }
 }
 
 //===========================================================================
@@ -216,12 +264,16 @@ QueryInfo::Node * addSegLiteral(
 QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * node) {
     assert(node->type == QueryInfo::kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    if (!seg->nodes.empty() && seg->nodes.back()->type == QueryInfo::kSegBlot)
+    if (!seg->nodes.empty() && seg->nodes.back()->type == QueryInfo::kSegBlot) {
+        auto sn = static_cast<SegBlot *>(seg->nodes.back());
+        sn->count += 1;
         return nullptr;
-    qi->flags |= QueryInfo::fWild;
+    }
+    qi->type = QueryInfo::kCondition;
     seg->nodes.link(qi->heap.emplace<SegBlot>());
     auto sn = static_cast<SegBlot *>(seg->nodes.back());
     sn->type = QueryInfo::kSegBlot;
+    sn->count = 1;
     return sn;
 }
 
@@ -245,7 +297,7 @@ QueryInfo::Node * addSegChoices(
         }
     }
     auto seg = static_cast<PathSeg *>(node);
-    qi->flags |= QueryInfo::fWild;
+    qi->type = QueryInfo::kCondition;
     seg->nodes.link(qi->heap.emplace<SegCharChoice>());
     auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
     sn->type = QueryInfo::kSegCharChoice;
@@ -272,7 +324,7 @@ QueryInfo::Node * addSegChoice(
     assert(node->type == QueryInfo::kSegStrChoice);
     auto sn = static_cast<SegStrChoice *>(node);
     if (!sn->literals.empty())
-        qi->flags |= QueryInfo::fWild;
+        qi->type = QueryInfo::kCondition;
     sn->literals.link(qi->heap.emplace<SegLiteral>());
     auto sv = static_cast<SegLiteral *>(sn->literals.back());
     sv->type = QueryInfo::kSegLiteral;
@@ -349,16 +401,28 @@ bool queryParse(QueryInfo & qry, string_view src) {
         logParseError("Invalid query", "", parser.errpos(), src);
         return false;
     }
+    assert(qry.node);
 
     // normalize
     string text;
-    assert(qry.node);
     appendNode(text, *qry.node);
     qry = {};
     qry.text = qry.heap.strdup(text.c_str());
     parser = QueryParser{&qry};
     bool success [[maybe_unused]] = parser.parse(qry.text);
     assert(success);
+
+    // check if query is QueryInfo::kAny
+    if (qry.node->type == QueryInfo::kPath) {
+        auto path = static_cast<PathNode *>(qry.node);
+        if (path->segs.size() == 1) {
+            auto seg = static_cast<PathSeg *>(path->segs.front());
+            if (seg->nodes.front()->type == QueryInfo::kSegDoubleBlot) {
+                assert(qry.type == QueryInfo::kCondition);
+                qry.type = QueryInfo::kAny;
+            }
+        }
+    }
     return true;
 }
 
@@ -374,8 +438,22 @@ void queryPathSegments(
     for (auto && seg : path->segs) {
         QueryInfo::PathSegment si;
         auto & sn = static_cast<const PathSeg &>(seg);
-        if (sn.nodes.size() > 1)
-            si.flags |= QueryInfo::fWild;
+        if (sn.nodes.size() > 1) {
+            si.type = QueryInfo::kCondition;
+        } else {
+            assert(sn.nodes.size() == 1);
+            auto node = sn.nodes.front();
+            if (node->type == QueryInfo::kSegBlot) {
+                si.type = QueryInfo::kAny;
+            } else if (node->type == QueryInfo::kSegDoubleBlot) {
+                si.type = QueryInfo::kDynamicAny;
+                si.count = 0;
+            } else if (node->type == QueryInfo::kSegLiteral) {
+                si.type = QueryInfo::kExact;
+            } else {
+                si.type = QueryInfo::kCondition;
+            }
+        }
         si.node = &seg;
         auto lit = static_cast<const SegLiteral *>(sn.nodes.front());
         if (lit->type == QueryInfo::kSegLiteral)
@@ -385,28 +463,31 @@ void queryPathSegments(
 }
 
 //===========================================================================
-static bool matchSegment(
+static QueryInfo::MatchResult matchSegment(
     const List<QueryInfo::Node> & nodes,
     const QueryInfo::Node * node,
     string_view val
 ) {
     if (!node)
-        return val.empty();
+        return val.empty() ? QueryInfo::kMatch : QueryInfo::kNoMatch;
 
     switch (node->type) {
     case QueryInfo::kSegBlot:
         // TODO: early out of val.size() < minimum required length
         for (; !val.empty(); val.remove_prefix(1)) {
             if (matchSegment(nodes, nodes.next(node), val))
-                return true;
+                return QueryInfo::kMatch;
         }
         return matchSegment(nodes, nodes.next(node), val);
+
+    case QueryInfo::kSegDoubleBlot:
+        return QueryInfo::kMatchRest;
 
     case QueryInfo::kSegCharChoice:
         if (val.empty()
             || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
         ) {
-            return false;
+            return QueryInfo::kNoMatch;
         }
         return matchSegment(nodes, nodes.next(node), val.substr(1));
 
@@ -414,8 +495,9 @@ static bool matchSegment(
     {
         auto & lit = static_cast<const SegLiteral *>(node)->val;
         auto len = lit.size();
-        return lit == val.substr(0, len)
-            && matchSegment(nodes, nodes.next(node), val.substr(len));
+        if (lit != val.substr(0, len))
+            return QueryInfo::kNoMatch;
+        return matchSegment(nodes, nodes.next(node), val.substr(len));
     }
 
     case QueryInfo::kSegStrChoice:
@@ -425,18 +507,18 @@ static bool matchSegment(
             if (lit != val.substr(0, len))
                 continue;
             if (matchSegment(nodes, nodes.next(node), val.substr(len)))
-                return true;
+                return QueryInfo::kMatch;
         }
-        return false;
+        return QueryInfo::kNoMatch;
 
     default:
         assert(0 && "not a path segment node type");
-        return false;
+        return QueryInfo::kNoMatch;
     }
 }
 
 //===========================================================================
-bool queryMatchSegment(
+QueryInfo::MatchResult queryMatchSegment(
     const QueryInfo::Node * node,
     string_view val
 ) {

@@ -98,6 +98,7 @@ inline bool QueryParser::onPathStart (const char * ptr) {
 //===========================================================================
 inline bool QueryParser::onPathEnd (const char * eptr) {
     assert(m_nodes.back()->type == QueryInfo::kPath);
+    endPath(m_query, m_nodes.back());
     m_nodes.pop_back();
     return true;
 }
@@ -112,6 +113,7 @@ inline bool QueryParser::onPathSegStart (const char * ptr) {
 //===========================================================================
 inline bool QueryParser::onPathSegEnd (const char * eptr) {
     assert(m_nodes.back()->type == QueryInfo::kPathSeg);
+    endSeg(m_query, m_nodes.back());
     m_nodes.pop_back();
     return true;
 }
