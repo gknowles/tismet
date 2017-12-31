@@ -28,6 +28,8 @@ public:
     };
 
 public:
+    void clear();
+
     void insert(uint32_t id, const std::string & name);
     void erase(uint32_t id, const std::string & name);
 

@@ -16,6 +16,15 @@ using namespace Dim;
 ***/
 
 //===========================================================================
+void DbIndex::clear() {
+    m_metricIds.clear();
+    m_ids.uset.clear();
+    m_ids.count = 0;
+    m_lenIds.clear();
+    m_segIds.clear();
+}
+
+//===========================================================================
 void DbIndex::insert(uint32_t id, const string & name) {
     if (!m_metricIds.insert({name, id}).second)
         logMsgError() << "Metric multiply defined, " << name;
@@ -83,8 +92,10 @@ size_t DbIndex::size() const {
 //===========================================================================
 bool DbIndex::find(uint32_t & out, const string & name) const {
     auto i = m_metricIds.find(name);
-    if (i == m_metricIds.end())
+    if (i == m_metricIds.end()) {
+        out = 0;
         return false;
+    }
     out = i->second;
     return true;
 }
@@ -97,42 +108,50 @@ void DbIndex::find(
     size_t basePos,
     const UnsignedSetWithCount * subset
 ) const {
-    assert(numSegs);
-    assert(basePos + numSegs <= m_lenIds.size());
+    assert(basePos + numSegs < m_lenIds.size());
+    if (!numSegs) {
+        out.clear();
+        return;
+    }
     vector<const UnsignedSetWithCount*> usets(numSegs);
     const UnsignedSetWithCount * fewest = subset;
     int ifewest = -1;
-    auto pos = basePos;
-    for (unsigned i = 0; i < numSegs; ++i) {
+    int pos = (int) basePos;
+    for (int i = 0; i < numSegs; ++i) {
         auto & seg = segs[i];
         if (seg.type == QueryInfo::kExact) {
+            assert(pos + i < m_segIds.size());
             auto it = m_segIds[pos + i].find(string(seg.prefix));
             if (it == m_segIds[pos + i].end()) {
                 out.clear();
                 return;
             }
             usets[i] = &it->second;
-            if (it->second.count < fewest->count) {
+            if (!fewest || it->second.count < fewest->count) {
                 ifewest = i;
                 fewest = &it->second;
             }
         } else if (seg.type == QueryInfo::kDynamicAny) {
             pos += seg.count - 1;
-            assert(pos + numSegs <= m_lenIds.size());
         }
     }
     if (fewest) {
         out = fewest->uset;
-        out.intersect(m_lenIds[pos + numSegs].uset);
+        if (subset && fewest != subset)
+            out.intersect(subset->uset);
     } else {
-        out = m_lenIds[pos + numSegs].uset;
+        out.clear();
     }
-    pos = basePos;
+    pos = (int) basePos;
     for (int i = 0; i < numSegs; ++i) {
         if (i == ifewest)
             continue;
         if (auto usetw = usets[i]) {
-            out.intersect(usetw->uset);
+            if (out.empty()) {
+                out = usetw->uset;
+            } else {
+                out.intersect(usetw->uset);
+            }
             if (out.empty())
                 return;
             continue;
@@ -155,7 +174,11 @@ void DbIndex::find(
                 }
             }
         }
-        out.intersect(move(found));
+        if (out.empty()) {
+            out = move(found);
+        } else {
+            out.intersect(move(found));
+        }
         if (out.empty())
             return;
     }
@@ -195,7 +218,7 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
             numStatic += 1;
         }
     }
-    if (numStatic > m_lenIds.size()) {
+    if (numStatic >= m_lenIds.size()) {
         // query requires more segments than any metric has
         out.clear();
         return;
@@ -227,17 +250,26 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
     if (numStatic == prefix)
         return;
 
-    UnsignedSetWithCount subset;
-    swap(subset.uset, out);
-    subset.count = subset.uset.size();
+    UnsignedSetWithCount prefixIds;
+    out.swap(prefixIds.uset);
+    prefixIds.count = prefixIds.uset.size();
     auto segbase = segs.data() + prefix;
     auto seglen = segs.size() - prefix;
     unsigned numDyn = 0;
-    unsigned maxDyn = (unsigned) m_lenIds.size() - numStatic;
-    UnsignedSet found;
+    unsigned maxDyn = (unsigned) m_lenIds.size() - numStatic - 1;
+    UnsignedSetWithCount subsetw;
     for (;;) {
-        find(found, segbase, seglen, prefix, &subset);
-        out.insert(found);
+        auto & lens = m_lenIds[numStatic + numDyn];
+        auto ssptr = &lens;
+        if (prefix && prefixIds.count < lens.count)
+            ssptr = &prefixIds;
+
+        UnsignedSet found;
+        find(found, segbase, seglen, prefix, ssptr);
+        if (prefix)
+            found.intersect(ssptr == &lens ? prefixIds.uset : lens.uset);
+        out.insert(move(found));
+
         for (unsigned i = 0;;) {
             auto & seg = segs[dyns[i]];
             if (numDyn < maxDyn) {

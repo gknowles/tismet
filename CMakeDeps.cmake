@@ -42,6 +42,9 @@
 # tests/db/dbtest.cpp
 # tests/db/pch.cpp
 # tests/db/pch.h
+# tests/index/indextest.cpp
+# tests/index/pch.cpp
+# tests/index/pch.h
 # tests/query/pch.cpp
 # tests/query/pch.h
 # tests/query/querytest.cpp
