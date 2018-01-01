@@ -53,6 +53,8 @@ void dbFindMetrics(
     std::string_view wildcardName = {}  // empty name for all
 );
 
+const char * dbGetMetricName(DbHandle h, uint32_t id);
+
 // returns true if inserted, false if it already existed, sets out either way
 bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 

@@ -33,10 +33,13 @@ public:
     void insert(uint32_t id, const std::string & name);
     void erase(uint32_t id, const std::string & name);
 
-    bool find(uint32_t & out, const std::string & name) const;
-    void find(Dim::UnsignedSet & out, std::string_view name) const;
     uint32_t nextId() const;
     size_t size() const;
+
+    const char * name(uint32_t id) const;
+
+    bool find(uint32_t & out, const std::string & name) const;
+    void find(Dim::UnsignedSet & out, std::string_view name) const;
 
 private:
     void find(
@@ -47,6 +50,7 @@ private:
         const UnsignedSetWithCount * subset
     ) const;
 
+    std::vector<const char *> m_idNames;
     std::unordered_map<std::string, uint32_t> m_metricIds;
     UnsignedSetWithCount m_ids;
 

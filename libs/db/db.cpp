@@ -28,11 +28,13 @@ public:
 
     bool insertMetric(uint32_t & out, const string & name);
     void eraseMetric(uint32_t id);
-    bool getMetricInfo(MetricInfo & info, uint32_t id);
     void updateMetric(
         uint32_t id,
         const MetricInfo & info
     );
+
+    const char * getMetricName(uint32_t id) const;
+    bool getMetricInfo(MetricInfo & info, uint32_t id) const;
 
     bool findMetric(uint32_t & out, const string & name) const;
     void findMetrics(UnsignedSet & out, string_view name) const;
@@ -172,8 +174,14 @@ void DbBase::eraseMetric(uint32_t id) {
 }
 
 //===========================================================================
-bool DbBase::getMetricInfo(MetricInfo & info, uint32_t id) {
-    DbTxn txn{m_log, m_page};
+const char * DbBase::getMetricName(uint32_t id) const {
+    return m_index.name(id);
+}
+
+//===========================================================================
+bool DbBase::getMetricInfo(MetricInfo & info, uint32_t id) const {
+    auto self = const_cast<DbBase *>(this);
+    DbTxn txn{self->m_log, self->m_page};
     return m_data.getMetricInfo(txn, info, id);
 }
 
@@ -272,6 +280,13 @@ void dbFindMetrics(
     auto * db = s_files.find(h);
     assert(db);
     db->findMetrics(out, name);
+}
+
+//===========================================================================
+const char * dbGetMetricName(DbHandle h, uint32_t id) {
+    auto * db = s_files.find(h);
+    assert(db);
+    return db->getMetricName(id);
 }
 
 //===========================================================================

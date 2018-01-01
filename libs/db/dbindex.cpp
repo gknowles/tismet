@@ -26,8 +26,12 @@ void DbIndex::clear() {
 
 //===========================================================================
 void DbIndex::insert(uint32_t id, const string & name) {
-    if (!m_metricIds.insert({name, id}).second)
+    auto ib = m_metricIds.insert({name, id});
+    if (!ib.second)
         logMsgError() << "Metric multiply defined, " << name;
+    if (id >= m_idNames.size())
+        m_idNames.resize(id + 1);
+    m_idNames[id] = ib.first->first.c_str();
     m_ids.uset.insert(id);
     m_ids.count += 1;
     vector<string_view> segs;
@@ -50,6 +54,7 @@ void DbIndex::insert(uint32_t id, const string & name) {
 void DbIndex::erase(uint32_t id, const string & name) {
     auto num [[maybe_unused]] = m_metricIds.erase(name);
     assert(num == 1);
+    m_idNames[id] = nullptr;
     m_ids.uset.erase(id);
     m_ids.count -= 1;
     vector<string_view> segs;
@@ -87,6 +92,11 @@ uint32_t DbIndex::nextId() const {
 //===========================================================================
 size_t DbIndex::size() const {
     return m_ids.count;
+}
+
+//===========================================================================
+const char * DbIndex::name(uint32_t id) const {
+    return id < m_idNames.size() ? m_idNames[id] : nullptr;
 }
 
 //===========================================================================

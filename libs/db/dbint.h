@@ -444,12 +444,12 @@ public:
 
     void insertMetric(DbTxn & txn, uint32_t id, const std::string & name);
     bool eraseMetric(DbTxn & txn, std::string & name, uint32_t id);
-    bool getMetricInfo(DbTxn & txn, MetricInfo & info, uint32_t id);
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
         const MetricInfo & info
     );
+    bool getMetricInfo(const DbTxn & txn, MetricInfo & info, uint32_t id) const;
 
     void updateSample(
         DbTxn & txn,

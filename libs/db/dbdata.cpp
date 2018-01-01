@@ -358,19 +358,6 @@ bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
 }
 
 //===========================================================================
-bool DbData::getMetricInfo(DbTxn & txn, MetricInfo & info, uint32_t id) {
-    if (id >= m_metricPos.size()) {
-        info = {};
-        return false;
-    }
-    auto & mi = m_metricPos[id];
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    info.retention = mp->retention;
-    info.interval = mp->interval;
-    return true;
-}
-
-//===========================================================================
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
@@ -391,6 +378,23 @@ void DbData::updateMetric(
     mi.lastPage = 0;
     mi.pageFirstTime = {};
     mi.pageLastSample = 0;
+}
+
+//===========================================================================
+bool DbData::getMetricInfo(
+    const DbTxn & txn,
+    MetricInfo & info,
+    uint32_t id
+) const {
+    if (id >= m_metricPos.size()) {
+        info = {};
+        return false;
+    }
+    auto & mi = m_metricPos[id];
+    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    info.retention = mp->retention;
+    info.interval = mp->interval;
+    return true;
 }
 
 //===========================================================================
