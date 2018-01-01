@@ -7,6 +7,9 @@
 // Carbon
 void tsCarbonInitialize();
 
-// Main
+// Graphite
+void tsGraphiteInitialize();
+
+// Data
 void tsDataInitialize();
 DbHandle tsDataHandle();

@@ -45,8 +45,10 @@ void InitializeTask::onTask() {
     winTlsInitialize();
     appTlsInitialize();
     tsDataInitialize();
-    if (!appStopping())
+    if (!appStopping()) {
         tsCarbonInitialize();
+        tsGraphiteInitialize();
+    }
     m_ready = true;
     cout << "Server ready" << endl;
 }
