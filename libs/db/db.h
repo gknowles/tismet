@@ -61,6 +61,7 @@ bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct MetricInfo {
+    Dim::TimePoint first;
     Dim::Duration retention;
     Dim::Duration interval;
 };

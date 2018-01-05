@@ -392,6 +392,12 @@ bool DbData::getMetricInfo(
     }
     auto & mi = m_metricPos[id];
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    if (mi.pageFirstTime == TimePoint{}) {
+        info.first = {};
+    } else {
+        auto last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
+        info.first = last - mp->retention + mp->interval;
+    }
     info.retention = mp->retention;
     info.interval = mp->interval;
     return true;
