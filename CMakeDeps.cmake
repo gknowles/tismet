@@ -137,6 +137,10 @@
 # vendor/dimapp/libs/json/jsonbaseparse.h
 # vendor/dimapp/libs/json/pch.cpp
 # vendor/dimapp/libs/json/pch.h
+# vendor/dimapp/libs/msgpack/msgbuilder.cpp
+# vendor/dimapp/libs/msgpack/msgpack.h
+# vendor/dimapp/libs/msgpack/pch.cpp
+# vendor/dimapp/libs/msgpack/pch.h
 # vendor/dimapp/libs/net/address.cpp
 # vendor/dimapp/libs/net/address.h
 # vendor/dimapp/libs/net/appint.h
@@ -162,6 +166,9 @@
 # vendor/dimapp/libs/net/sockmgracc.cpp
 # vendor/dimapp/libs/net/sockmgrconn.cpp
 # vendor/dimapp/libs/net/sockmgrint.h
+# vendor/dimapp/libs/net/uri.abnf
+# vendor/dimapp/libs/net/url.cpp
+# vendor/dimapp/libs/net/url.h
 # vendor/dimapp/libs/tls/pch.cpp
 # vendor/dimapp/libs/tls/pch.h
 # vendor/dimapp/libs/tls/tls.cpp
@@ -170,11 +177,6 @@
 # vendor/dimapp/libs/tls/tlsmsg.cpp
 # vendor/dimapp/libs/tls/tlsrec.cpp
 # vendor/dimapp/libs/tls/tlsrec.h
-# vendor/dimapp/libs/uri/pch.cpp
-# vendor/dimapp/libs/uri/pch.h
-# vendor/dimapp/libs/uri/uri.abnf
-# vendor/dimapp/libs/uri/uriparse.cpp
-# vendor/dimapp/libs/uri/uriparse.h
 # vendor/dimapp/libs/win/appint.h
 # vendor/dimapp/libs/win/pch.cpp
 # vendor/dimapp/libs/win/pch.h

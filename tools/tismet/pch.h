@@ -11,6 +11,7 @@
 #include "core/core.h"
 #include "file/file.h"
 #include "json/json.h"
+#include "msgpack/msgpack.h"
 #include "net/net.h"
 #include "wintls/wintls.h"
 
