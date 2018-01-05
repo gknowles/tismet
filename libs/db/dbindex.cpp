@@ -202,8 +202,10 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
     }
 
     QueryInfo qry;
-    bool result [[maybe_unused]] = queryParse(qry, name);
-    assert(result);
+    if (!queryParse(qry, name)) {
+        out.clear();
+        return;
+    }
     if (qry.type == QueryInfo::kExact) {
         uint32_t id;
         out.clear();
