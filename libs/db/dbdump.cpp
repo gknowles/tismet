@@ -33,14 +33,17 @@ class DumpWriter : public IDbEnumNotify {
 public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    bool OnDbSample(
+    void OnDbEnum(
         uint32_t id,
         string_view name,
-        TimePoint time,
-        float val
+        TimePoint from,
+        TimePoint until,
+        Duration interval
     ) override;
+    bool OnDbSample(TimePoint time, float val) override;
 
 private:
+    string_view m_name;
     ostream & m_os;
     DbProgressInfo & m_info;
     string m_buf;
@@ -55,14 +58,20 @@ DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
 {}
 
 //===========================================================================
-bool DumpWriter::OnDbSample(
+void DumpWriter::OnDbEnum(
     uint32_t id,
     string_view name,
-    TimePoint time,
-    float val
+    TimePoint from,
+    TimePoint until,
+    Duration interval
 ) {
+    m_name = name;
+}
+
+//===========================================================================
+bool DumpWriter::OnDbSample(TimePoint time, float val) {
     m_buf.clear();
-    carbonWrite(m_buf, name, time, val);
+    carbonWrite(m_buf, m_name, time, val);
     m_os << m_buf;
     m_info.bytes += m_buf.size();
     m_info.samples += 1;

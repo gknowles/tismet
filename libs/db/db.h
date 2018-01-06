@@ -68,6 +68,7 @@ bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct MetricInfo {
+    std::string_view name;
     Dim::TimePoint first;
     Dim::Duration retention;
     Dim::Duration interval;
@@ -93,14 +94,17 @@ void dbUpdateSample(
 
 struct IDbEnumNotify {
     virtual ~IDbEnumNotify() {}
-    // Called for each matching sample, return false to abort the enum,
-    // otherwise it continues to the next sample.
-    virtual bool OnDbSample(
+    // Called once before any calls to OnDbSample
+    virtual void OnDbEnum(
         uint32_t id,
         std::string_view name,
-        Dim::TimePoint time,
-        float value
-    ) = 0;
+        Dim::TimePoint from,
+        Dim::TimePoint until,
+        Dim::Duration interval
+    ) {}
+    // Called for each matching sample, return false to abort the enum,
+    // otherwise it continues to the next sample.
+    virtual bool OnDbSample(Dim::TimePoint time, float value) { return false; }
 };
 size_t dbEnumSamples(
     IDbEnumNotify * notify,

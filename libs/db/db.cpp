@@ -51,11 +51,12 @@ public:
     );
 
     // Inherited via IDbEnumNotify
-    bool OnDbSample(
+    void OnDbEnum(
         uint32_t id,
-        std::string_view name,
-        Dim::TimePoint time,
-        float value
+        string_view vname,
+        TimePoint from,
+        TimePoint until,
+        Duration interval
     ) override;
 
 private:
@@ -119,16 +120,16 @@ bool DbBase::open(string_view name, size_t pageSize) {
 }
 
 //===========================================================================
-bool DbBase::OnDbSample(
+void DbBase::OnDbEnum(
     uint32_t id,
-    std::string_view vname,
-    Dim::TimePoint time,
-    float value
+    string_view vname,
+    TimePoint from,
+    TimePoint until,
+    Duration interval
 ) {
     auto name = string(vname);
     m_leaf.insert(id, name);
     m_branch.insertBranches(id, name);
-    return !appStopping();
 }
 
 //===========================================================================

@@ -268,8 +268,11 @@ bool DbData::loadMetrics (
 
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
-        if (notify && !notify->OnDbSample(mp->hdr.id, mp->name, {}, 0))
-            return false;
+        if (notify) {
+            notify->OnDbEnum(mp->hdr.id, mp->name, {}, {}, mp->interval);
+            if (appStopping())
+                return false;
+        }
 
         if (m_metricPos.size() <= mp->hdr.id)
             m_metricPos.resize(mp->hdr.id + 1);
@@ -364,6 +367,8 @@ void DbData::updateMetric(
     const MetricInfo & info
 ) {
     assert(id < m_metricPos.size());
+    assert(info.name.empty());
+    assert(!info.first);
     // TODO: validate interval and retention
 
     auto & mi = m_metricPos[id];
@@ -391,8 +396,13 @@ bool DbData::getMetricInfo(
         return false;
     }
     auto & mi = m_metricPos[id];
+    if (!mi.infoPage) {
+        info = {};
+        return false;
+    }
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    if (mi.pageFirstTime == TimePoint{}) {
+    info.name = mp->name;
+    if (!mi.pageFirstTime) {
         info.first = {};
     } else {
         auto last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
@@ -438,7 +448,7 @@ DbData::MetricPosition & DbData::loadMetricPos(DbTxn & txn, uint32_t id) {
     assert(mi.infoPage);
 
     // Update metric info from sample page if it has no page data.
-    if (mi.lastPage && mi.pageFirstTime == TimePoint{}) {
+    if (mi.lastPage && !mi.pageFirstTime) {
         auto sp = txn.viewPage<SamplePage>(mi.lastPage);
         mi.pageFirstTime = sp->pageFirstTime;
         mi.pageLastSample = sp->pageLastSample;
@@ -508,7 +518,7 @@ void DbData::updateSample(
     TimePoint time,
     double value
 ) {
-    assert(time != TimePoint{});
+    assert(time);
 
     // ensure all info about the last page is loaded, the expectation is that
     // almost all updates are to the last page.
@@ -781,20 +791,28 @@ size_t DbData::enumSamples(
     TimePoint last
 ) {
     auto & mi = loadMetricPos(txn, id);
+    assert(mi.infoPage);
+    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto name = string_view(mp->name);
 
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;
     last -= last.time_since_epoch() % mi.interval;
-    if (first > last)
+    if (first > last) {
+        if (notify)
+            notify->OnDbEnum(id, name, first, first, mi.interval);
         return 0;
+    }
 
     uint32_t spno;
     unsigned dppos;
     bool found = findSamplePage(txn, &spno, &dppos, id, first);
-    if (!found && first >= mi.pageFirstTime)
+    if (!found && first >= mi.pageFirstTime) {
+        if (notify)
+            notify->OnDbEnum(id, name, first, first, mi.interval);
         return 0;
+    }
 
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
     auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
     if (last > lastSampleTime)
         last = lastSampleTime;
@@ -802,13 +820,15 @@ size_t DbData::enumSamples(
     if (!found) {
         if (first < last)
             first = lastSampleTime - mp->retention + mi.interval;
-        if (first > last)
+        if (first > last) {
+            if (notify)
+                notify->OnDbEnum(id, name, first, first, mi.interval);
             return 0;
+        }
         found = findSamplePage(txn, &spno, &dppos, id, first);
         assert(found);
     }
 
-    auto name = string_view(mp->name);
     auto vpp = samplesPerPage();
     auto pageInterval = vpp * mi.interval;
     auto numSamples = mp->retention / mp->interval;
@@ -842,8 +862,16 @@ size_t DbData::enumSamples(
             for (; first <= lastPageTime; first += mi.interval, ++vpos) {
                 auto value = sp->samples[vpos];
                 if (!isnan(value)) {
-                    count += 1;
-                    if (!notify->OnDbSample(id, name, first, value))
+                    if (!count++) {
+                        notify->OnDbEnum(
+                            id,
+                            name,
+                            first,
+                            last + mi.interval,
+                            mi.interval
+                        );
+                    }
+                    if (!notify->OnDbSample(first, value))
                         return count;
                 }
             }
@@ -855,6 +883,8 @@ size_t DbData::enumSamples(
         dppos = (dppos + 1) % numPages;
         radixFind(txn, &spno, mi.infoPage, dppos);
     }
+    if (!count)
+        notify->OnDbEnum(id, name, first, first, mi.interval);
     return count;
 }
 
