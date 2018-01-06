@@ -437,7 +437,7 @@ void FileJob::onTask() {
 static bool genCmd(Cli & cli);
 
 // 2001-01-01 12:00:00 UTC
-constexpr TimePoint kDefaultStartTime{12'622'795'200s};
+constexpr TimePoint kDefaultStartTime{12'622'824'000s};
 
 //===========================================================================
 CmdOpts::CmdOpts() {
