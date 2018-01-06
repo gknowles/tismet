@@ -119,7 +119,7 @@ void DbIndex::find(
     const UnsignedSetWithCount * subset
 ) const {
     assert(basePos + numSegs < m_lenIds.size());
-    if (!numSegs) {
+    if (!numSegs || subset && subset->count == 0) {
         out.clear();
         return;
     }

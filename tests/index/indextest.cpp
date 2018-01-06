@@ -44,8 +44,8 @@ static void findTest(
     os << out;
     auto found = os.str();
     if (found != result) {
-        logMsgError() << "Line " << line << ": EXPECT("
-            << found << " == " << result << ") failed";
+        logMsgError() << "Line " << line << ": EXPECT('"
+            << found << "' == '" << result << "') failed";
     }
 }
 
@@ -59,6 +59,10 @@ static void internalTest() {
     index.insert(3, "a.m.y.z");
     index.insert(4, "a.b.m.y.z");
     EXPECT(index.size() == 4);
+
+    EXPECT_FIND("a*", "");
+    EXPECT_FIND("a*.z", "1");
+    EXPECT_FIND("a.b*", "");
 
     UnsignedSet ids;
     uint32_t id;
