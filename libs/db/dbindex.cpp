@@ -25,10 +25,27 @@ void DbIndex::clear() {
 }
 
 //===========================================================================
-void DbIndex::insert(uint32_t id, const string & name) {
-    auto ib = m_metricIds.insert({name, id});
-    if (!ib.second)
-        logMsgError() << "Metric multiply defined, " << name;
+void DbIndex::insertBranches(uint32_t id, string_view name) {
+    for (;;) {
+        auto pos = name.find_last_of('.');
+        if (pos == string_view::npos)
+            return;
+        name.remove_suffix(name.size() - pos);
+        insert(id, name, true);
+    }
+}
+
+//===========================================================================
+void DbIndex::insert(uint32_t id, string_view name, bool branch) {
+    auto ib = m_metricIds.insert({string{name}, {id, 1}});
+    if (!ib.second) {
+        if (branch) {
+            ib.first->second.second += 1;
+        } else {
+            logMsgCrash() << "Metric multiply defined, " << name;
+        }
+        return;
+    }
     if (id >= m_idNames.size())
         m_idNames.resize(id + 1);
     m_idNames[id] = ib.first->first.c_str();
@@ -51,9 +68,28 @@ void DbIndex::insert(uint32_t id, const string & name) {
 }
 
 //===========================================================================
-void DbIndex::erase(uint32_t id, const string & name) {
-    auto num [[maybe_unused]] = m_metricIds.erase(name);
-    assert(num == 1);
+void DbIndex::eraseBranches(uint32_t id, string_view name) {
+    for (;;) {
+        auto pos = name.find_last_of('.');
+        if (pos == string_view::npos)
+            return;
+        name.remove_suffix(name.size() - pos);
+        erase(id, name, true);
+    }
+}
+
+//===========================================================================
+void DbIndex::erase(uint32_t id, string_view vname, bool branch) {
+    string name{vname};
+    if (branch) {
+        auto i = m_metricIds.find(name);
+        if (--i->second.second)
+            return;
+        m_metricIds.erase(i);
+    } else {
+        auto num [[maybe_unused]] = m_metricIds.erase(name);
+        assert(num == 1);
+    }
     m_idNames[id] = nullptr;
     m_ids.uset.erase(id);
     m_ids.count -= 1;
@@ -106,7 +142,7 @@ bool DbIndex::find(uint32_t & out, const string & name) const {
         out = 0;
         return false;
     }
-    out = i->second;
+    out = i->second.first;
     return true;
 }
 

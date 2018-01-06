@@ -50,10 +50,17 @@ bool dbFindMetric(uint32_t & out, DbHandle h, std::string_view name);
 void dbFindMetrics(
     Dim::UnsignedSet & out,
     DbHandle h,
-    std::string_view wildcardName = {}  // empty name for all
+    std::string_view pattern = {}  // empty name for all
 );
-
 const char * dbGetMetricName(DbHandle h, uint32_t id);
+
+// returns all branches containing metrics that match the pattern
+void dbFindBranches(
+    Dim::UnsignedSet & out,
+    DbHandle h,
+    std::string_view pattern = {}  // empty name for all
+);
+const char * dbGetBranchName(DbHandle h, uint32_t branchId);
 
 // returns true if inserted, false if it already existed, sets out either way
 bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);

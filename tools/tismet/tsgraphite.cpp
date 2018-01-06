@@ -11,6 +11,46 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Helpers
+*
+***/
+
+//===========================================================================
+static bool xferIfFull(
+    HttpResponse & res,
+    bool started,
+    unsigned reqId,
+    size_t pending
+) {
+    auto blksize = res.body().defaultBlockSize();
+    if (res.body().size() + pending > blksize) {
+        if (!started) {
+            httpRouteReply(reqId, res, true);
+            started = true;
+        } else {
+            httpRouteReply(reqId, res.body(), true);
+        }
+        res.body().clear();
+    }
+    return started;
+}
+
+//===========================================================================
+static void xferRest(
+    HttpResponse & res,
+    bool started,
+    unsigned reqId
+) {
+    if (!started) {
+        httpRouteReply(reqId, res);
+    } else {
+        httpRouteReply(reqId, res.body(), false);
+    }
+}
+
+
+/****************************************************************************
+*
 *   MetricIndex
 *
 ***/
@@ -31,30 +71,17 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
-    auto blksize = res.body().defaultBlockSize();
     JBuilder bld(res.body());
     bld.array();
     for (auto id : ids) {
         if (auto name = dbGetMetricName(h, id)) {
             auto namev = string_view{name};
-            if (res.body().size() + namev.size() > blksize) {
-                if (!started) {
-                    httpRouteReply(reqId, res, true);
-                    started = true;
-                } else {
-                    httpRouteReply(reqId, res.body(), true);
-                }
-                res.body().clear();
-            }
+            started = xferIfFull(res, started, reqId, namev.size() + 8);
             bld.value(name);
         }
     }
     bld.end();
-    if (!started) {
-        httpRouteReply(reqId, res);
-    } else {
-        httpRouteReply(reqId, res.body(), false);
-    }
+    xferRest(res, started, reqId);
 }
 
 
@@ -71,10 +98,10 @@ class MetricFind : public IHttpRouteNotify {
 } // namespace
 
 //===========================================================================
-void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & msg) {
+void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
     string format;
     string query;
-    for (auto && param : msg.query().parameters) {
+    for (auto && param : req.query().parameters) {
         if (param.name == "format") {
             if (!param.values.empty())
                 format = param.values.front()->value;
@@ -83,33 +110,45 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & msg) {
                 query = param.values.front()->value;
         }
     }
+    if (query.empty())
+        return httpRouteReply(reqId, req, 401, "Missing parameter, 'query'.");
+    if (format != "pickle") {
+        return httpRouteReply(
+            reqId,
+            req,
+            401,
+            "Missing or unknown format, '"s + format + "'."
+        );
+    }
 
     auto h = tsDataHandle();
     UnsignedSet ids;
     dbFindMetrics(ids, h, query);
+    UnsignedSet bids;
+    dbFindBranches(bids, h, query);
 
     bool started = false;
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/x-msgpack");
     res.addHeader(kHttp_Status, "200");
-    auto blksize = res.body().defaultBlockSize();
     MsgBuilder bld(res.body());
-    auto count = ids.size();
+    auto count = ids.size() + bids.size();
     bld.array(count);
+    for (auto bid : bids) {
+        if (auto name = dbGetBranchName(h, bid)) {
+            auto namev = string_view{name};
+            started = xferIfFull(res, started, reqId, namev.size() + 16);
+            bld.map(2);
+            bld.element("path", namev);
+            bld.element("is_leaf", false);
+        }
+    }
     for (auto id : ids) {
         MetricInfo info;
         auto name = dbGetMetricName(h, id);
         if (name && dbGetMetricInfo(info, h, id)) {
             auto namev = string_view{name};
-            if (res.body().size() + namev.size() > blksize) {
-                if (!started) {
-                    httpRouteReply(reqId, res, true);
-                    started = true;
-                } else {
-                    httpRouteReply(reqId, res.body(), true);
-                }
-                res.body().clear();
-            }
+            started = xferIfFull(res, started, reqId, namev.size() + 32);
             bool withInterval = info.first != TimePoint{};
             bld.map(2 + withInterval);
             bld.element("path", namev);
@@ -127,11 +166,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & msg) {
             }
         }
     }
-    if (!started) {
-        httpRouteReply(reqId, res);
-    } else {
-        httpRouteReply(reqId, res.body(), false);
-    }
+    xferRest(res, started, reqId);
 }
 
 

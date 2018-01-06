@@ -30,8 +30,14 @@ public:
 public:
     void clear();
 
-    void insert(uint32_t id, const std::string & name);
-    void erase(uint32_t id, const std::string & name);
+    void insert(uint32_t id, std::string_view name, bool branch = false);
+    void erase(uint32_t id, std::string_view name, bool branch = false);
+
+    // A branch is the string consisting of one or more segments prefixing
+    // the name of a metric name. A string is both a branch and a metric if
+    // there are additional metrics for which it is a prefix.
+    void insertBranches(uint32_t id, std::string_view name);
+    void eraseBranches(uint32_t id, std::string_view name);
 
     uint32_t nextId() const;
     size_t size() const;
@@ -51,7 +57,7 @@ private:
     ) const;
 
     std::vector<const char *> m_idNames;
-    std::unordered_map<std::string, uint32_t> m_metricIds;
+    std::unordered_map<std::string, std::pair<uint32_t, unsigned>> m_metricIds;
     UnsignedSetWithCount m_ids;
 
     // metric ids by name length as measured in segments

@@ -37,7 +37,10 @@ public:
     bool getMetricInfo(MetricInfo & info, uint32_t id) const;
 
     bool findMetric(uint32_t & out, const string & name) const;
-    void findMetrics(UnsignedSet & out, string_view name) const;
+    void findMetrics(UnsignedSet & out, string_view pattern) const;
+
+    const char * getBranchName(uint32_t id) const;
+    void findBranches(UnsignedSet & out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, float value);
     size_t enumSamples(
@@ -56,7 +59,8 @@ public:
     ) override;
 
 private:
-    DbIndex m_index;
+    DbIndex m_leaf;
+    DbIndex m_branch;
 
     DbPage m_page;
     DbData m_data;
@@ -117,11 +121,13 @@ bool DbBase::open(string_view name, size_t pageSize) {
 //===========================================================================
 bool DbBase::OnDbSample(
     uint32_t id,
-    std::string_view name,
+    std::string_view vname,
     Dim::TimePoint time,
     float value
 ) {
-    m_index.insert(id, string(name));
+    auto name = string(vname);
+    m_leaf.insert(id, name);
+    m_branch.insertBranches(id, name);
     return !appStopping();
 }
 
@@ -134,7 +140,7 @@ void DbBase::configure(const DbConfig & conf) {
 //===========================================================================
 DbStats DbBase::queryStats() {
     DbStats s = m_data.queryStats();
-    s.metrics = (unsigned) m_index.size();
+    s.metrics = (unsigned) m_leaf.size();
     return s;
 }
 
@@ -151,10 +157,11 @@ bool DbBase::insertMetric(uint32_t & out, const string & name) {
         return false;
 
     // get metric id
-    out = m_index.nextId();
+    out = m_leaf.nextId();
 
     // update indexes
-    m_index.insert(out, name);
+    m_leaf.insert(out, name);
+    m_branch.insertBranches(out, name);
 
     // set info page
     DbTxn txn{m_log, m_page};
@@ -168,14 +175,15 @@ void DbBase::eraseMetric(uint32_t id) {
     DbTxn txn{m_log, m_page};
     string name;
     if (m_data.eraseMetric(txn, name, id)) {
-        m_index.erase(id, name);
+        m_leaf.erase(id, name);
+        m_branch.eraseBranches(id, name);
         s_perfDeleted += 1;
     }
 }
 
 //===========================================================================
 const char * DbBase::getMetricName(uint32_t id) const {
-    return m_index.name(id);
+    return m_leaf.name(id);
 }
 
 //===========================================================================
@@ -196,12 +204,22 @@ void DbBase::updateMetric(
 
 //===========================================================================
 bool DbBase::findMetric(uint32_t & out, const string & name) const {
-    return m_index.find(out, name);
+    return m_leaf.find(out, name);
 }
 
 //===========================================================================
-void DbBase::findMetrics(UnsignedSet & out, string_view name) const {
-    return m_index.find(out, name);
+void DbBase::findMetrics(UnsignedSet & out, string_view pattern) const {
+    m_leaf.find(out, pattern);
+}
+
+//===========================================================================
+const char * DbBase::getBranchName(uint32_t id) const {
+    return m_branch.name(id);
+}
+
+//===========================================================================
+void DbBase::findBranches(UnsignedSet & out, string_view pattern) const {
+    m_branch.find(out, pattern);
 }
 
 
@@ -287,6 +305,24 @@ const char * dbGetMetricName(DbHandle h, uint32_t id) {
     auto * db = s_files.find(h);
     assert(db);
     return db->getMetricName(id);
+}
+
+//===========================================================================
+void dbFindBranches(
+    Dim::UnsignedSet & out,
+    DbHandle h,
+    std::string_view name
+) {
+    auto * db = s_files.find(h);
+    assert(db);
+    db->findBranches(out, name);
+}
+
+//===========================================================================
+const char * dbGetBranchName(DbHandle h, uint32_t id) {
+    auto * db = s_files.find(h);
+    assert(db);
+    return db->getBranchName(id);
 }
 
 //===========================================================================
