@@ -67,6 +67,13 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     auto h = tsDataHandle();
     UnsignedSet ids;
     dbFindMetrics(ids, h);
+    vector<string_view> names;
+    names.reserve(ids.size());
+    for (auto && id : ids) {
+        if (auto name = dbGetMetricName(h, id))
+            names.push_back(name);
+    }
+    sort(names.begin(), names.end());
 
     bool started = false;
     HttpResponse res;
@@ -74,12 +81,9 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     res.addHeader(kHttp_Status, "200");
     JBuilder bld(res.body());
     bld.array();
-    for (auto && id : ids) {
-        if (auto name = dbGetMetricName(h, id)) {
-            auto namev = string_view{name};
-            started = xferIfFull(res, started, reqId, namev.size() + 8);
-            bld.value(name);
-        }
+    for (auto && name : names) {
+        started = xferIfFull(res, started, reqId, name.size() + 8);
+        bld.value(name);
     }
     bld.end();
     xferRest(res, started, reqId);
@@ -113,7 +117,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     if (target.empty())
         return httpRouteReply(reqId, req, 401, "Missing parameter, 'query'.");
-    if (format != "pickle") {
+    if (format != "pickle" && format != "msgpack") {
         return httpRouteReply(
             reqId,
             req,
@@ -225,7 +229,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     if (targets.empty())
         return httpRouteReply(reqId, req, 401, "Missing parameter, 'target'.");
-    if (format != "pickle") {
+    if (format != "pickle" && format != "msgpack") {
         return httpRouteReply(
             reqId,
             req,
