@@ -167,6 +167,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
             }
         }
     }
+    assert(bld.depth() == 0);
     xferRest(res, started, reqId);
 }
 
@@ -257,6 +258,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         }
         ids.insert(move(iset));
     }
+    assert(m_bld.depth() == 0);
     xferRest(m_res, m_started, reqId);
     m_started = false;
     m_res.clear();
