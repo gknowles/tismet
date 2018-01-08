@@ -121,7 +121,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
         return httpRouteReply(
             reqId,
             req,
-            401,
+            400,
             "Missing or unknown format, '"s + format + "'."
         );
     }
@@ -233,7 +233,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         return httpRouteReply(
             reqId,
             req,
-            401,
+            400,
             "Missing or unknown format, '"s + format + "'."
         );
     }
