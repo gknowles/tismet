@@ -243,15 +243,21 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     m_res.addHeader(kHttp_Status, "200");
 
     auto h = tsDataHandle();
-    UnsignedSet ids;
     vector<UnsignedSet> idSets;
     for (auto && target : targets) {
         UnsignedSet & out = idSets.emplace_back();
         dbFindMetrics(out, h, target);
-        ids.insert(out);
     }
-    auto count = ids.size();
-    ids.clear();
+    UnsignedSet ids;
+    size_t count{0};
+    if (targets.size() == 1) {
+        count = idSets.front().size();
+    } else {
+        for (auto && iset : idSets)
+            ids.insert(iset);
+        count = ids.size();
+        ids.clear();
+    }
     m_bld.array(count);
     for (unsigned i = 0; i < targets.size(); ++i) {
         m_pathExpr = targets[i];
