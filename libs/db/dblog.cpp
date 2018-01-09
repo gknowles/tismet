@@ -108,6 +108,7 @@ static auto & s_perfPages = uperf("db wal pages (total)");
 static auto & s_perfFreePages = uperf("db wal pages (free)");
 static auto & s_perfWrites = uperf("db wal writes (total)");
 static auto & s_perfReorderedWrites = uperf("db wal writes (out of order)");
+static auto & s_perfPartialWrites = uperf("db wal writes (partial)");
 
 
 /****************************************************************************
@@ -743,6 +744,7 @@ void DbLog::onFileWrite(
     }
 
     // it's a partial
+    s_perfPartialWrites += 1;
     auto buf = data.data() - sizeof(PageHeader *);
     auto * olp = *(PageHeader **) buf;
     auto ibuf = ((char *) olp - m_buffers.get()) / m_pageSize;
