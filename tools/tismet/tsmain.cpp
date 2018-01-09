@@ -46,6 +46,7 @@ void InitializeTask::onTask() {
     appTlsInitialize();
     tsDataInitialize();
     if (!appStopping()) {
+        tsPerfInitialize();
         tsCarbonInitialize();
         tsGraphiteInitialize();
     }

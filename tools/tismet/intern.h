@@ -7,9 +7,12 @@
 // Carbon
 void tsCarbonInitialize();
 
-// Graphite
-void tsGraphiteInitialize();
-
 // Data
 void tsDataInitialize();
 DbHandle tsDataHandle();
+
+// Graphite
+void tsGraphiteInitialize();
+
+// Performance counters
+void tsPerfInitialize();
