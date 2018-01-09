@@ -9,6 +9,7 @@
   <WorkMemoryScanInterval value="60; 1min"/>
   <CheckpointMaxData value="1000000000; 1GB"/>
   <CheckpointMaxInterval value="3600; 1h"/>
+  <ExpirationCheckInterval value="86400; 24h"/>
 
   <Certificates>
     <Store name="My" location="Current User">

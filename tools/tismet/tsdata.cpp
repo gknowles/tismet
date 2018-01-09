@@ -17,6 +17,71 @@ using namespace Dim;
 ***/
 
 static DbHandle s_db;
+static auto & s_perfExpired = uperf("db metrics expired");
+
+
+/****************************************************************************
+*
+*   Expire old metrics
+*
+***/
+
+namespace {
+
+class ExpireTimer : public ITimerNotify, public ITaskNotify {
+public:
+    void updateInterval(Duration interval);
+
+private:
+    Duration onTimer(TimePoint now) override;
+    Duration timeUntilCheck();
+
+    UnsignedSet m_ids;
+    Duration m_expireInterval;
+};
+
+} // namespace
+
+static ExpireTimer s_expireTimer;
+
+//===========================================================================
+void ExpireTimer::updateInterval(Duration interval) {
+    m_expireInterval = interval;
+    timerUpdate(this, timeUntilCheck());
+}
+
+//===========================================================================
+Duration ExpireTimer::timeUntilCheck() {
+    if (!m_expireInterval.count())
+        return kTimerInfinite;
+    auto now = Clock::now();
+    auto ticks = now.time_since_epoch().count();
+    auto interval = m_expireInterval.count();
+    auto wait = Duration{interval - ticks % interval};
+    return wait;
+}
+
+//===========================================================================
+Duration ExpireTimer::onTimer(TimePoint now) {
+    if (m_ids.empty())
+        dbFindMetrics(m_ids, s_db);
+
+    if (!m_ids.empty()) {
+        auto id = m_ids.pop_front();
+        MetricInfo info;
+        if (dbGetMetricInfo(info, s_db, id)) {
+            if (now >= info.first + 2 * info.interval) {
+                s_perfExpired += 1;
+                dbEraseMetric(s_db, id);
+            }
+        }
+    }
+
+    if (!m_ids.empty())
+        return 1ms;
+
+    return timeUntilCheck();
+}
 
 
 /****************************************************************************
@@ -46,6 +111,14 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         (seconds) configUnsigned(doc, "WorkMemoryScanInterval");
     if (s_db)
         dbConfigure(s_db, conf);
+
+    Duration val = (seconds) configUnsigned(
+        doc,
+        "ExpirationCheckInterval",
+        (unsigned) duration_cast<seconds>(24h).count()
+    );
+    val = clamp(val, Duration{5min}, Duration{168h});
+    s_expireTimer.updateInterval(val);
 }
 
 
