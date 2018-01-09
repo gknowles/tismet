@@ -79,7 +79,5 @@ static SampleTimer s_sampleTimer;
 
 //===========================================================================
 void tsPerfInitialize() {
-    auto now = Clock::now();
-    auto wait = ceil<minutes>(now) - now;
-    timerUpdate(&s_sampleTimer, wait);
+    timerUpdate(&s_sampleTimer, 0ms);
 }
