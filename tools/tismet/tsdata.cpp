@@ -117,7 +117,10 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         "ExpirationCheckInterval",
         (unsigned) duration_cast<seconds>(24h).count()
     );
-    val = clamp(val, Duration{5min}, Duration{168h});
+    // In addition to the range of 5 minutes to a week, a check interval of 0
+    // (disable checking) is also allowed.
+    if (val.count())
+        val = clamp(val, Duration{5min}, Duration{168h});
     s_expireTimer.updateInterval(val);
 }
 
