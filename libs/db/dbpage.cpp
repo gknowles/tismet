@@ -443,10 +443,8 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-void * DbPage::wptr(uint64_t lsn, uint32_t pgno, void ** newPage) {
+void * DbPage::wptr(uint64_t lsn, uint32_t pgno) {
     assert(lsn);
-    if (newPage)
-        *newPage = nullptr;
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
     auto hdr = m_pages[pgno];

@@ -868,14 +868,7 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
 void DbLog::applyUpdate(uint64_t lsn, const Record * log) {
     auto pgno = getPgno(log);
     auto ptr = (void *) nullptr;
-    if (interleaveSafe(log)) {
-        void * newPage = nullptr;
-        ptr = m_page.wptr(lsn, pgno, &newPage);
-        if (newPage)
-            applyUpdate(newPage, log);
-    } else {
-        ptr = m_page.wptr(lsn, pgno, nullptr);
-    }
+    ptr = m_page.wptr(lsn, pgno);
     applyUpdate(ptr, log);
 }
 

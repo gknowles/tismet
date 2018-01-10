@@ -99,7 +99,7 @@ public:
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint64_t txn, uint32_t pgno) const;
-    void * wptr(uint64_t lsn, uint32_t pgno, void ** newPage);
+    void * wptr(uint64_t lsn, uint32_t pgno);
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
@@ -163,7 +163,6 @@ public:
 
     struct Record;
     static uint16_t size(const Record * log);
-    static bool interleaveSafe(const Record * log);
     static uint32_t getPgno(const Record * log);
     static uint16_t getLocalTxn(const Record * log);
     static void setLocalTxn(Record * log, uint16_t localTxn);

@@ -289,18 +289,6 @@ uint16_t DbLog::size(const Record * log) {
 
 //===========================================================================
 // static
-bool DbLog::interleaveSafe(const Record * log) {
-    switch (log->type) {
-    case kRecTypeSegmentAlloc:
-    case kRecTypeSegmentFree:
-        return true;
-    default:
-        return false;
-    }
-}
-
-//===========================================================================
-// static
 uint32_t DbLog::getPgno(const Record * log) {
     assert(log->type > kRecTypeTxnCommit);
     switch (log->type) {
