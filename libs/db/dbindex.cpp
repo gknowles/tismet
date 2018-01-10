@@ -68,28 +68,25 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
 }
 
 //===========================================================================
-void DbIndex::eraseBranches(uint32_t id, string_view name) {
+void DbIndex::eraseBranches(string_view name) {
     for (;;) {
         auto pos = name.find_last_of('.');
         if (pos == string_view::npos)
             return;
         name.remove_suffix(name.size() - pos);
-        erase(id, name, true);
+        erase(name);
     }
 }
 
 //===========================================================================
-void DbIndex::erase(uint32_t id, string_view vname, bool branch) {
+void DbIndex::erase(string_view vname) {
     string name{vname};
-    if (branch) {
-        auto i = m_metricIds.find(name);
-        if (--i->second.second)
-            return;
-        m_metricIds.erase(i);
-    } else {
-        auto num [[maybe_unused]] = m_metricIds.erase(name);
-        assert(num == 1);
-    }
+    auto i = m_metricIds.find(name);
+    if (--i->second.second)
+        return;
+    auto id = i->second.first;
+    m_metricIds.erase(i);
+
     m_idNames[id] = nullptr;
     m_ids.uset.erase(id);
     m_ids.count -= 1;

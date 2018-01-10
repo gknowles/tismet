@@ -176,8 +176,8 @@ void DbBase::eraseMetric(uint32_t id) {
     DbTxn txn{m_log, m_page};
     string name;
     if (m_data.eraseMetric(txn, name, id)) {
-        m_leaf.erase(id, name);
-        m_branch.eraseBranches(id, name);
+        m_leaf.erase(name);
+        m_branch.eraseBranches(name);
         s_perfDeleted += 1;
     }
 }

@@ -31,13 +31,13 @@ public:
     void clear();
 
     void insert(uint32_t id, std::string_view name, bool branch = false);
-    void erase(uint32_t id, std::string_view name, bool branch = false);
+    void erase(std::string_view name);
 
     // A branch is the string consisting of one or more segments prefixing
     // the name of a metric name. A string is both a branch and a metric if
     // there are additional metrics for which it is a prefix.
     void insertBranches(uint32_t id, std::string_view name);
-    void eraseBranches(uint32_t id, std::string_view name);
+    void eraseBranches(std::string_view name);
 
     uint32_t nextId() const;
     size_t size() const;
