@@ -396,7 +396,7 @@ const T * DbTxn::viewPage(uint32_t pgno) const {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(intptr_t(ptr) == intptr_t(&ptr->hdr));
-        assert(ptr->hdr.type == ptr->type);
+        assert(ptr->hdr.type == ptr->s_pageType);
     }
     return ptr;
 }

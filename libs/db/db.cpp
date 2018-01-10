@@ -42,7 +42,7 @@ public:
     const char * getBranchName(uint32_t id) const;
     void findBranches(UnsignedSet & out, string_view pattern) const;
 
-    void updateSample(uint32_t id, TimePoint time, float value);
+    void updateSample(uint32_t id, TimePoint time, double value);
     size_t enumSamples(
         IDbEnumNotify * notify,
         uint32_t id,
@@ -231,7 +231,7 @@ void DbBase::findBranches(UnsignedSet & out, string_view pattern) const {
 ***/
 
 //===========================================================================
-void DbBase::updateSample(uint32_t id, TimePoint time, float value) {
+void DbBase::updateSample(uint32_t id, TimePoint time, double value) {
     DbTxn txn{m_log, m_page};
     m_data.updateSample(txn, id, time, value);
 }
@@ -367,7 +367,7 @@ void dbUpdateSample(
     DbHandle h,
     uint32_t id,
     TimePoint time,
-    float value
+    double value
 ) {
     auto * db = s_files.find(h);
     assert(db);

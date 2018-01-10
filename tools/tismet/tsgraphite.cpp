@@ -192,7 +192,7 @@ class Render : public IHttpRouteNotify, IDbEnumNotify {
         TimePoint until,
         Duration interval
     ) override;
-    bool OnDbSample(TimePoint time, float value) override;
+    bool OnDbSample(TimePoint time, double value) override;
 
     unsigned m_reqId{0};
     bool m_started{false};
@@ -297,7 +297,7 @@ void Render::OnDbEnum(
 }
 
 //===========================================================================
-bool Render::OnDbSample(TimePoint time, float value) {
+bool Render::OnDbSample(TimePoint time, double value) {
     auto count = size_t{1};
     if (time != m_prevTime + m_interval)
         count = (time - m_prevTime) / m_interval;

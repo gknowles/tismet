@@ -40,7 +40,7 @@ public:
         TimePoint until,
         Duration interval
     ) override;
-    bool OnDbSample(TimePoint time, float val) override;
+    bool OnDbSample(TimePoint time, double val) override;
 
 private:
     string_view m_name;
@@ -69,7 +69,7 @@ void DumpWriter::OnDbEnum(
 }
 
 //===========================================================================
-bool DumpWriter::OnDbSample(TimePoint time, float val) {
+bool DumpWriter::OnDbSample(TimePoint time, double val) {
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, val);
     m_os << m_buf;

@@ -18,7 +18,7 @@ using namespace Dim;
 const Duration kDefaultRetention = 7 * 24h;
 const Duration kDefaultInterval = 1min;
 
-const unsigned kMaxMetricNameLen = 64;
+const unsigned kMaxMetricNameLen = 63;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 const uint32_t kZeroPageNum = 0;
@@ -48,12 +48,12 @@ enum DbPageType : int32_t {
 };
 
 struct DbData::SegmentPage {
-    static const DbPageType type = kPageTypeSegment;
+    static const DbPageType s_pageType = kPageTypeSegment;
     DbPageHeader hdr;
 };
 
 struct DbData::ZeroPage {
-    static const DbPageType type = kPageTypeZero;
+    static const DbPageType s_pageType = kPageTypeZero;
     union {
         DbPageHeader hdr;
         SegmentPage segment;
@@ -66,7 +66,7 @@ static_assert(is_standard_layout_v<DbData::ZeroPage>);
 static_assert(2 * sizeof(DbData::ZeroPage) <= kMinPageSize);
 
 struct DbData::FreePage {
-    static const DbPageType type = kPageTypeFree;
+    static const DbPageType s_pageType = kPageTypeFree;
     DbPageHeader hdr;
 };
 
@@ -75,11 +75,11 @@ struct DbData::RadixData {
     uint16_t numPages;
 
     // EXTENDS BEYOND END OF STRUCT
-    uint32_t pages[1];
+    uint32_t pages[2];
 };
 
 struct DbData::RadixPage {
-    static const DbPageType type = kPageTypeRadix;
+    static const DbPageType s_pageType = kPageTypeRadix;
     DbPageHeader hdr;
 
     // EXTENDS BEYOND END OF STRUCT
@@ -87,9 +87,10 @@ struct DbData::RadixPage {
 };
 
 struct DbData::MetricPage {
-    static const DbPageType type = kPageTypeMetric;
+    static const DbPageType s_pageType = kPageTypeMetric;
     DbPageHeader hdr;
     char name[kMaxMetricNameLen];
+    SampleType sampleType;
     Duration interval;
     Duration retention;
     uint32_t lastPage;
@@ -98,9 +99,10 @@ struct DbData::MetricPage {
     // EXTENDS BEYOND END OF STRUCT
     RadixData rd;
 };
+static_assert(sizeof(DbData::MetricPage) <= kMinPageSize);
 
 struct DbData::SamplePage {
-    static const DbPageType type = kPageTypeSample;
+    static const DbPageType s_pageType = kPageTypeSample;
     DbPageHeader hdr;
 
     // time of first sample on page
@@ -339,10 +341,11 @@ void DbData::applyMetricInit(
     } else {
         assert(!mp->hdr.type);
     }
-    mp->hdr.type = mp->type;
+    mp->hdr.type = mp->s_pageType;
     mp->hdr.id = id;
     auto count = name.copy(mp->name, size(mp->name) - 1);
     mp->name[count] = 0;
+    mp->sampleType = kSampleFloat32;
     mp->retention = retention;
     mp->interval = interval;
     mp->rd.height = 0;
@@ -370,6 +373,7 @@ void DbData::updateMetric(
     assert(info.name.empty());
     assert(!info.first);
     // TODO: validate interval and retention
+    // TODO: support sample type
 
     auto & mi = m_metricPos[id];
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
@@ -408,6 +412,7 @@ bool DbData::getMetricInfo(
         auto last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
         info.first = last - mp->retention + mp->interval;
     }
+    info.type = mp->sampleType;
     info.retention = mp->retention;
     info.interval = mp->interval;
     return true;
@@ -420,7 +425,7 @@ void DbData::applyMetricUpdate(
     Dim::Duration interval
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->type);
+    assert(mp->hdr.type == mp->s_pageType);
     mp->retention = retention;
     mp->interval = interval;
     mp->lastPage = 0;
@@ -489,7 +494,7 @@ DbData::MetricPosition & DbData::loadMetricPos(
 //===========================================================================
 void DbData::applyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->type);
+    assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = 0;
     mp->lastPagePos = 0;
     mp->rd.height = 0;
@@ -504,7 +509,7 @@ void DbData::applyMetricUpdateSamples(
     bool updateIndex
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->type);
+    assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = refPage;
     mp->lastPagePos = (unsigned) pos;
     if (updateIndex)
@@ -697,7 +702,7 @@ void DbData::applySampleInit(
     } else {
         assert(!sp->hdr.type);
     }
-    sp->hdr.type = sp->type;
+    sp->hdr.type = sp->s_pageType;
     sp->hdr.id = id;
     sp->pageLastSample = (uint16_t) lastSample;
     sp->pageFirstTime = pageTime;
@@ -715,7 +720,7 @@ void DbData::applySampleUpdate(
     bool updateLast
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
-    assert(sp->hdr.type == sp->type);
+    assert(sp->hdr.type == sp->s_pageType);
     for (auto i = firstPos; i < lastPos; ++i)
         sp->samples[i] = NAN;
     if (!isnan(value))
@@ -727,7 +732,7 @@ void DbData::applySampleUpdate(
 //===========================================================================
 void DbData::applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
     auto sp = static_cast<SamplePage *>(ptr);
-    assert(sp->hdr.type == sp->type);
+    assert(sp->hdr.type == sp->s_pageType);
     sp->pageFirstTime = pageTime;
     sp->pageLastSample = 0;
     sp->samples[0] = NAN;
@@ -1064,7 +1069,7 @@ void DbData::applyRadixInit(
     } else {
         assert(!rp->hdr.type);
     }
-    rp->hdr.type = rp->type;
+    rp->hdr.type = rp->s_pageType;
     rp->hdr.id = id;
     rp->rd.height = height;
     rp->rd.numPages = radixEntriesPerPage<RadixPage>();
@@ -1298,7 +1303,7 @@ void DbData::applyPageFree(void * ptr) {
 void DbData::applyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(!zp->hdr.type);
-    zp->hdr.type = zp->type;
+    zp->hdr.type = zp->s_pageType;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
     auto segSize = segmentSize(m_pageSize);
@@ -1320,7 +1325,7 @@ void DbData::applySegmentUpdate(
     auto sp = static_cast<SegmentPage *>(ptr);
     auto bits = segmentBitView(sp, m_pageSize);
     if (!sp->hdr.type) {
-        sp->hdr.type = sp->type;
+        sp->hdr.type = sp->s_pageType;
         sp->hdr.id = 0;
         if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
             auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);
