@@ -157,6 +157,10 @@ static int internalTest() {
 
     h = dbOpen(dat);
     EXPECT(h);
+    dbFindMetrics(found, h);
+    id = found.pop_front();
+    dbEraseMetric(h, id);
+    dbInsertMetric(id, h, "replacement.metric.1");
     dbClose(h);
 
     return EX_OK;

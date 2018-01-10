@@ -529,6 +529,7 @@ private:
         int * ents,
         size_t maxEnts,
         DbPageType rootType,
+        uint16_t height,
         size_t pos
     );
     void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);

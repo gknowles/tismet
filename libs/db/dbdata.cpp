@@ -922,6 +922,7 @@ size_t DbData::radixPageEntries(
     int * out,
     size_t outLen,
     DbPageType rootType,
+    uint16_t height,
     size_t pos
 ) {
     int * base = out;
@@ -934,13 +935,16 @@ size_t DbData::radixPageEntries(
         rents = pents;
     }
 
-    for (size_t i = 0;; ++i) {
-        assert(i < outLen);
+    for (;;) {
         *out++ = (int) (pos % pents);
         if (pos < rents)
             break;
         pos /= pents;
     }
+
+    // always return at least "height" entries
+    for (int * end = base + height + 1; out < end; ++out)
+        *out = 0;
     reverse(base, out);
     return out - base;
 }
@@ -983,9 +987,8 @@ void DbData::radixErase(
             if (auto p = rd->pages[i])
                 freePage(txn, p);
         }
-        auto nextPos = firstPos + lastPagePos - rpos;
-        txn.logRadixErase(hdr->pgno, firstPos, nextPos);
-        firstPos = nextPos;
+        txn.logRadixErase(hdr->pgno, rpos, lastPagePos);
+        firstPos = firstPos + lastPagePos - rpos;
     }
 }
 
@@ -1001,7 +1004,13 @@ bool DbData::radixInsert(
     auto rd = radixData(hdr);
 
     int digits[10];
-    size_t count = radixPageEntries(digits, size(digits), hdr->type, pos);
+    size_t count = radixPageEntries(
+        digits,
+        size(digits),
+        hdr->type,
+        rd->height,
+        pos
+    );
     count -= 1;
     while (rd->height < count) {
         auto pgno = allocPgno(txn);
@@ -1107,7 +1116,13 @@ bool DbData::radixFind(
     *rd = radixData(*hdr);
 
     int digits[10];
-    size_t count = radixPageEntries(digits, size(digits), (*hdr)->type, pos);
+    size_t count = radixPageEntries(
+        digits,
+        size(digits),
+        (*hdr)->type,
+        (*rd)->height,
+        pos
+    );
     count -= 1;
     if ((*rd)->height < count) {
         // pos is beyond the limit that can be held in a tree this size, in
