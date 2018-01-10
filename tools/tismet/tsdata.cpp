@@ -70,7 +70,7 @@ Duration ExpireTimer::onTimer(TimePoint now) {
         auto id = m_ids.pop_front();
         MetricInfo info;
         if (dbGetMetricInfo(info, s_db, id)) {
-            if (now >= info.first + 2 * info.interval) {
+            if (now >= info.first + 2 * info.retention) {
                 s_perfExpired += 1;
                 dbEraseMetric(s_db, id);
             }
