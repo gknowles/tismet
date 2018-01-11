@@ -158,7 +158,7 @@ void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     string path;
     appDataPath(path, "metrics.dat");
-    s_db = dbOpen(path);
+    s_db = dbOpen(path, 0, fDbOpenVerbose);
     if (!s_db) {
         logMsgError() << "Unable to open database, " << path;
         return appSignalShutdown(EX_DATAERR);

@@ -171,7 +171,8 @@ DbData::~DbData () {
 }
 
 //===========================================================================
-void DbData::openForApply(size_t pageSize) {
+void DbData::openForApply(size_t pageSize, DbOpenFlags flags) {
+    m_verbose = flags & fDbOpenVerbose;
     m_pageSize = pageSize;
 }
 
@@ -179,9 +180,11 @@ void DbData::openForApply(size_t pageSize) {
 bool DbData::openForUpdate(
     DbTxn & txn,
     IDbEnumNotify * notify,
-    string_view name
+    string_view name,
+    DbOpenFlags flags
 ) {
     assert(m_pageSize);
+    m_verbose = flags & fDbOpenVerbose;
 
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
     if (!zp->hdr.type) {
@@ -204,6 +207,8 @@ bool DbData::openForUpdate(
     m_numPages = txn.numPages();
     m_segmentSize = zp->segmentSize;
 
+    if (m_verbose)
+        logMsgInfo() << "Load free page list";
     if (!loadFreePages(txn))
         return false;
     if (m_numPages == 1) {
@@ -211,6 +216,8 @@ bool DbData::openForUpdate(
         assert(pgno == kMetricIndexPageNum);
         txn.logRadixInit(pgno, 0, 0, nullptr, nullptr);
     }
+    if (m_verbose)
+        logMsgInfo() << "Load metric index";
     if (!loadMetrics(txn, notify, kMetricIndexPageNum))
         return false;
 

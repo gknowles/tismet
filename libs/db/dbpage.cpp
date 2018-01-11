@@ -63,8 +63,8 @@ struct ZeroPage {
 static auto & s_perfPages = uperf("db work pages (total)");
 static auto & s_perfFreePages = uperf("db work pages (free)");
 static auto & s_perfDirtyPages = uperf("db work pages (dirty)");
-static auto & s_perfPurges = uperf("db work purges (total)");
-static auto & s_perfCurPurges = uperf("db work purges (current)");
+static auto & s_perfPurges = uperf("db work dirty scans (total)");
+static auto & s_perfCurPurges = uperf("db work dirty scans (current)");
 
 
 /****************************************************************************
@@ -89,8 +89,12 @@ DbPage::~DbPage() {
 bool DbPage::open(
     string_view datafile,
     string_view workfile,
-    size_t pageSize
+    size_t pageSize,
+    DbOpenFlags flags
 ) {
+    m_verbose = flags & fDbOpenVerbose;
+    if (m_verbose)
+        logMsgInfo() << "Open data files";
     if (openWork(workfile, pageSize) && openData(datafile))
         return true;
 
@@ -267,6 +271,8 @@ bool DbPage::enablePageScan(bool enable) {
 void DbPage::flushStalePages() {
     s_perfPurges += 1;
     s_perfCurPurges += 1;
+    if (m_verbose)
+        logMsgInfo() << "Dirty page scan started";
     uint32_t wpno = 1;
     auto buf = make_unique<char[]>(m_pageSize);
     auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
@@ -317,6 +323,8 @@ void DbPage::flushStalePages() {
 
     m_flushLsn = 0;
     s_perfCurPurges -= 1;
+    if (m_verbose)
+        logMsgInfo() << "Dirty page scan completed";
 }
 
 //===========================================================================

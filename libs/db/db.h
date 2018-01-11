@@ -16,7 +16,15 @@
 
 struct DbHandle : Dim::HandleBase {};
 
-DbHandle dbOpen(std::string_view name, size_t pageSize = 0);
+enum DbOpenFlags : unsigned {
+    // Log database status info messages
+    fDbOpenVerbose = 1,
+};
+DbHandle dbOpen(
+    std::string_view name,
+    size_t pageSize = 0, // 0 for same size as system memory pages
+    DbOpenFlags flags = {}
+);
 
 void dbClose(DbHandle h);
 

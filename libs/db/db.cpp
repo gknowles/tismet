@@ -22,7 +22,7 @@ public:
     DbBase();
     ~DbBase();
 
-    bool open(string_view name, size_t pageSize);
+    bool open(string_view name, size_t pageSize, DbOpenFlags flags);
     void configure(const DbConfig & conf);
     DbStats queryStats();
 
@@ -107,17 +107,17 @@ DbBase::~DbBase () {
 }
 
 //===========================================================================
-bool DbBase::open(string_view name, size_t pageSize) {
+bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
     auto logfile = Path(name).setExt("tsl");
-    if (!m_page.open(datafile, workfile, pageSize))
+    if (!m_page.open(datafile, workfile, pageSize, flags))
         return false;
-    m_data.openForApply(m_page.pageSize());
-    if (!m_log.open(logfile))
+    m_data.openForApply(m_page.pageSize(), flags);
+    if (!m_log.open(logfile, flags))
         return false;
     DbTxn txn{m_log, m_page};
-    return m_data.openForUpdate(txn, this, datafile);
+    return m_data.openForUpdate(txn, this, datafile, flags);
 }
 
 //===========================================================================
@@ -257,9 +257,9 @@ size_t DbBase::enumSamples(
 ***/
 
 //===========================================================================
-DbHandle dbOpen(string_view name, size_t pageSize) {
+DbHandle dbOpen(string_view name, size_t pageSize, DbOpenFlags flags) {
     auto db = make_unique<DbBase>();
-    if (!db->open(name, pageSize))
+    if (!db->open(name, pageSize, flags))
         return DbHandle{};
 
     auto h = s_files.insert(db.release());

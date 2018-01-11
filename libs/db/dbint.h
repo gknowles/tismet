@@ -92,7 +92,8 @@ public:
     bool open(
         std::string_view datafile,
         std::string_view workfile,
-        size_t pageSize
+        size_t pageSize,
+        DbOpenFlags flags
     );
     void close();
     void configure(const DbConfig & conf);
@@ -129,6 +130,7 @@ private:
     std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
 
     size_t m_pageSize{0};
+    bool m_verbose{false};
 
     bool m_pageScanEnabled{true};
     Dim::Duration m_pageMaxAge;
@@ -187,7 +189,7 @@ public:
     DbLog(DbData & data, DbPage & page);
     ~DbLog();
 
-    bool open(std::string_view file);
+    bool open(std::string_view file, DbOpenFlags flags);
     void close();
     void configure(const DbConfig & conf);
 
@@ -253,6 +255,7 @@ private:
     DbPage & m_page;
     Dim::FileHandle m_flog;
     bool m_closing{false};
+    bool m_verbose{false};
 
     // last assigned
     uint16_t m_lastLocalTxn{0};
@@ -431,13 +434,14 @@ public:
     ~DbData();
 
     // Allows updates from DbLog to be applied
-    void openForApply(size_t pageSize);
+    void openForApply(size_t pageSize, DbOpenFlags flags);
 
     // After open metrics and samples can be updated and queried
     bool openForUpdate(
         DbTxn & txn,
         IDbEnumNotify * notify,
-        std::string_view name
+        std::string_view name,
+        DbOpenFlags flags
     );
     DbStats queryStats();
 
@@ -569,6 +573,7 @@ private:
         Dim::TimePoint time
     );
 
+    bool m_verbose{false};
     std::vector<MetricPosition> m_metricPos;
 
     size_t m_segmentSize = 0;

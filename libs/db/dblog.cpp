@@ -159,7 +159,8 @@ char * DbLog::bufPtr(size_t ibuf) {
 }
 
 //===========================================================================
-bool DbLog::open(string_view logfile) {
+bool DbLog::open(string_view logfile, DbOpenFlags flags) {
+    m_verbose = flags & fDbOpenVerbose;
     m_pageSize = 2 * m_page.pageSize();
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::Empty);
@@ -352,6 +353,8 @@ void DbLog::applyAll(AnalyzeData & data) {
 
 //===========================================================================
 bool DbLog::recover() {
+    if (m_verbose)
+        logMsgInfo() << "Load transaction log";
     if (!loadPages())
         return false;
     if (m_pages.empty())
@@ -360,6 +363,8 @@ bool DbLog::recover() {
     // Go through log entries looking for last committed checkpoint and the
     // set of incomplete transactions (so we can avoid trying to redo them
     // later).
+    if (m_verbose)
+        logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
     applyAll(data);
@@ -384,6 +389,8 @@ bool DbLog::recover() {
 
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
+    if (m_verbose)
+        logMsgInfo() << "Recover database";
     data.analyze = false;
     applyAll(data);
     assert(data.incompleteTxnLsns.empty());
@@ -519,6 +526,8 @@ void DbLog::commit(uint64_t txn) {
 void DbLog::checkpoint() {
     if (m_phase != Checkpoint::Complete)
         return;
+    if (m_verbose)
+        logMsgInfo() << "Checkpoint started";
     m_checkpointStart = Clock::now();
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
@@ -593,6 +602,8 @@ void DbLog::checkpointStableCommit() {
 //===========================================================================
 void DbLog::checkpointTruncateCommit() {
     assert(m_phase == Checkpoint::WaitForTruncateCommit);
+    if (m_verbose)
+        logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::Complete;
     s_perfCurCps -= 1;
     if (!m_closing) {
