@@ -107,6 +107,8 @@ Duration RecordTimer::onTimer(TimePoint now) {
 *
 ***/
 
+static SockMgrHandle s_mgr;
+
 namespace {
 
 class RecordConn : public ICarbonSocketNotify {
@@ -164,21 +166,12 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
 namespace {
 
 class ShutdownNotify : public IShutdownNotify {
-    void onShutdownClient(bool firstTry) override;
     void onShutdownServer(bool firstTry) override;
 };
 
 } // namespace
 
 static ShutdownNotify s_cleanup;
-
-//===========================================================================
-void ShutdownNotify::onShutdownClient(bool firstTry) {
-    socketCloseWait<RecordConn>(
-        s_opts.addr,
-        (AppSocket::Family) TismetSocket::kCarbon
-    );
-}
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
@@ -256,10 +249,11 @@ static bool recordCmd(Cli & cli) {
 
     taskSetQueueThreads(taskComputeQueue(), 1);
     carbonInitialize();
-    socketListen<RecordConn>(
-        s_opts.addr,
+    s_mgr = sockMgrListen<RecordConn>(
+        "CarbonCli",
         (AppSocket::Family) TismetSocket::kCarbon
     );
+    sockMgrSetEndpoints(s_mgr, &s_opts.addr, 1);
 
     return cli.fail(EX_PENDING, "");
 }

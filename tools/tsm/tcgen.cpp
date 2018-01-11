@@ -256,7 +256,6 @@ public:
     void onSocketDisconnect() override;
     void onSocketRead(AppSocketData & data) override;
     void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
-
 private:
     void write();
 
@@ -276,7 +275,7 @@ void AddrConn::write() {
             break;
         buffer.resize(len);
         socketWrite(this, buffer);
-        if (m_full)
+        if (m_full || m_done)
             return;
     }
     m_done = true;
@@ -295,8 +294,11 @@ void AddrConn::onSocketConnectFailed() {
 
 //===========================================================================
 void AddrConn::onSocketDisconnect() {
-    if (!m_done)
+    if (!m_done) {
         logMsgInfo() << "Disconnect";
+        m_done = true;
+    }
+    sockMgrSetEndpoints(s_mgr, nullptr, 0);
     appSignalShutdown();
 }
 
@@ -352,8 +354,7 @@ void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
         appSignalShutdown();
     } else {
         logStart(s_opts.oaddr, ptr);
-        auto addrs = vector<Endpoint>(ptr, ptr + count);
-        sockMgrSetEndpoints(s_mgr, addrs);
+        sockMgrSetEndpoints(s_mgr, ptr, count);
     }
     delete this;
 }
