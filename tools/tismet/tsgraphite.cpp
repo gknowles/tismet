@@ -57,9 +57,11 @@ static void xferRest(
 ***/
 
 namespace {
+
 class MetricIndex : public IHttpRouteNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & req) override;
 };
+
 } // namespace
 
 //===========================================================================
@@ -97,9 +99,11 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
 ***/
 
 namespace {
+
 class MetricFind : public IHttpRouteNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
 };
+
 } // namespace
 
 //===========================================================================
@@ -183,11 +187,13 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
 ***/
 
 namespace {
+
 class Render : public IHttpRouteNotify, IDbEnumNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
-    void OnDbEnum(
+    void OnDbMetric(
         uint32_t id,
         string_view name,
+        DbSampleType type,
         TimePoint from,
         TimePoint until,
         Duration interval
@@ -202,6 +208,7 @@ class Render : public IHttpRouteNotify, IDbEnumNotify {
     Duration m_interval;
     string_view m_pathExpr;
 };
+
 } // namespace
 
 //===========================================================================
@@ -276,9 +283,10 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
 }
 
 //===========================================================================
-void Render::OnDbEnum(
+void Render::OnDbMetric(
     uint32_t id,
     string_view name,
+    DbSampleType type,
     TimePoint from,
     TimePoint until,
     Duration interval

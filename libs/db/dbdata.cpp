@@ -90,7 +90,7 @@ struct DbData::MetricPage {
     static const DbPageType s_pageType = kPageTypeMetric;
     DbPageHeader hdr;
     char name[kMaxMetricNameLen];
-    SampleType sampleType;
+    DbSampleType sampleType;
     Duration interval;
     Duration retention;
     uint32_t lastPage;
@@ -271,7 +271,14 @@ bool DbData::loadMetrics (
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
         if (notify) {
-            notify->OnDbEnum(mp->hdr.id, mp->name, {}, {}, mp->interval);
+            notify->OnDbMetric(
+                mp->hdr.id,
+                mp->name,
+                mp->sampleType,
+                {},
+                {},
+                mp->interval
+            );
             if (appStopping())
                 return false;
         }
@@ -799,13 +806,14 @@ size_t DbData::enumSamples(
     assert(mi.infoPage);
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
     auto name = string_view(mp->name);
+    auto stype = mp->sampleType;
 
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;
     last -= last.time_since_epoch() % mi.interval;
     if (first > last) {
         if (notify)
-            notify->OnDbEnum(id, name, first, first, mi.interval);
+            notify->OnDbMetric(id, name, stype, first, first, mi.interval);
         return 0;
     }
 
@@ -814,7 +822,7 @@ size_t DbData::enumSamples(
     bool found = findSamplePage(txn, &spno, &dppos, id, first);
     if (!found && first >= mi.pageFirstTime) {
         if (notify)
-            notify->OnDbEnum(id, name, first, first, mi.interval);
+            notify->OnDbMetric(id, name, stype, first, first, mi.interval);
         return 0;
     }
 
@@ -827,7 +835,7 @@ size_t DbData::enumSamples(
             first = lastSampleTime - mp->retention + mi.interval;
         if (first > last) {
             if (notify)
-                notify->OnDbEnum(id, name, first, first, mi.interval);
+                notify->OnDbMetric(id, name, stype, first, first, mi.interval);
             return 0;
         }
         found = findSamplePage(txn, &spno, &dppos, id, first);
@@ -868,9 +876,10 @@ size_t DbData::enumSamples(
                 auto value = sp->samples[vpos];
                 if (!isnan(value)) {
                     if (!count++) {
-                        notify->OnDbEnum(
+                        notify->OnDbMetric(
                             id,
                             name,
+                            stype,
                             first,
                             last + mi.interval,
                             mi.interval
@@ -889,7 +898,7 @@ size_t DbData::enumSamples(
         radixFind(txn, &spno, mi.infoPage, dppos);
     }
     if (!count)
-        notify->OnDbEnum(id, name, first, first, mi.interval);
+        notify->OnDbMetric(id, name, stype, first, first, mi.interval);
     return count;
 }
 

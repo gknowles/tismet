@@ -51,9 +51,10 @@ public:
     );
 
     // Inherited via IDbEnumNotify
-    void OnDbEnum(
+    void OnDbMetric(
         uint32_t id,
         string_view vname,
+        DbSampleType type,
         TimePoint from,
         TimePoint until,
         Duration interval
@@ -120,9 +121,10 @@ bool DbBase::open(string_view name, size_t pageSize) {
 }
 
 //===========================================================================
-void DbBase::OnDbEnum(
+void DbBase::OnDbMetric(
     uint32_t id,
     string_view vname,
+    DbSampleType type,
     TimePoint from,
     TimePoint until,
     Duration interval
