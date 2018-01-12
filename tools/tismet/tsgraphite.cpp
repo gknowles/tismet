@@ -12,6 +12,31 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Declarations
+*
+***/
+
+namespace {
+
+enum Format {
+    kFormatInvalid,
+    kFormatJson,
+    kFormatMsgPack,
+    kFormatPickle,
+};
+
+} // namespace
+
+static TokenTable::Token s_formats[] = {
+    { kFormatJson, "json" },
+    { kFormatMsgPack, "msgpack" },
+    { kFormatPickle, "pickle" },
+};
+static TokenTable s_formatTbl{s_formats, size(s_formats)};
+
+
+/****************************************************************************
+*
 *   Helpers
 *
 ***/
@@ -102,13 +127,17 @@ namespace {
 
 class MetricFind : public IHttpRouteNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
+
+    void jsonReply(unsigned reqId, string_view target);
+    void msgpackReply(unsigned reqId, string_view target);
 };
 
 } // namespace
 
+
 //===========================================================================
 void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
-    string format;
+    string format = "json";
     string target;
     for (auto && param : req.query().parameters) {
         if (param.values.empty())
@@ -121,7 +150,14 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     if (target.empty())
         return httpRouteReply(reqId, req, 401, "Missing parameter, 'query'.");
-    if (format != "pickle" && format != "msgpack") {
+    auto ftype = tokenTableGetEnum(s_formatTbl, format.data(), kFormatInvalid);
+    switch (ftype) {
+    case kFormatJson:
+        return jsonReply(reqId, target);
+    case kFormatMsgPack:
+    case kFormatPickle:
+        return msgpackReply(reqId, target);
+    default:
         return httpRouteReply(
             reqId,
             req,
@@ -129,7 +165,50 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
             "Missing or unknown format, '"s + format + "'."
         );
     }
+}
 
+//===========================================================================
+void MetricFind::jsonReply(unsigned reqId, string_view target) {
+    auto h = tsDataHandle();
+    UnsignedSet ids;
+    dbFindMetrics(ids, h, target);
+    UnsignedSet bids;
+    dbFindBranches(bids, h, target);
+
+    bool started = false;
+    HttpResponse res;
+    res.addHeader(kHttpContentType, "application/json");
+    res.addHeader(kHttp_Status, "200");
+    JBuilder bld(res.body());
+    bld.array();
+    for (auto && bid : bids) {
+        if (auto name = dbGetBranchName(h, bid)) {
+            auto namev = string_view{name};
+            started = xferIfFull(res, started, reqId, namev.size() + 16);
+            bld.object();
+            bld.member("text", namev);
+            bld.member("expandable", true);
+            bld.end();
+        }
+    }
+    for (auto && id : ids) {
+        MetricInfo info;
+        auto name = dbGetMetricName(h, id);
+        if (name && dbGetMetricInfo(info, h, id)) {
+            auto namev = string_view{name};
+            started = xferIfFull(res, started, reqId, namev.size() + 32);
+            bld.object();
+            bld.member("text", namev);
+            bld.member("expandable", false);
+            bld.end();
+        }
+    }
+    bld.end();
+    xferRest(res, started, reqId);
+}
+
+//===========================================================================
+void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     auto h = tsDataHandle();
     UnsignedSet ids;
     dbFindMetrics(ids, h, target);
