@@ -8,6 +8,7 @@
 #include "query/query.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,7 +37,7 @@ public:
     // A branch is the string consisting of one or more segments prefixing
     // the name of a metric name. A string is both a branch and a metric if
     // there are additional metrics for which it is a prefix.
-    void insertBranches(uint32_t id, std::string_view name);
+    void insertBranches(std::string_view name);
     void eraseBranches(std::string_view name);
 
     uint32_t nextId() const;
@@ -67,5 +68,5 @@ private:
     // *.red.* could be matched by finding all the metrics whose name has
     // "red" as the second segment (m_segIds[1]["red"]) and is three segments
     // long (m_lenIds[3]).
-    std::vector<std::unordered_map<std::string, UnsignedSetWithCount>> m_segIds;
+    std::vector<std::map<std::string, UnsignedSetWithCount>> m_segIds;
 };

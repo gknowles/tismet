@@ -25,12 +25,13 @@ void DbIndex::clear() {
 }
 
 //===========================================================================
-void DbIndex::insertBranches(uint32_t id, string_view name) {
+void DbIndex::insertBranches(string_view name) {
     for (;;) {
         auto pos = name.find_last_of('.');
         if (pos == string_view::npos)
             return;
         name.remove_suffix(name.size() - pos);
+        auto id = nextId();
         insert(id, name, true);
     }
 }
@@ -208,12 +209,18 @@ void DbIndex::find(
         }
         assert(seg.type == QueryInfo::kCondition);
         UnsignedSet found;
-        for (auto && kv : m_segIds[pos + i]) {
-            if (queryMatchSegment(seg.node, kv.first)) {
+        auto & sids = m_segIds[pos + i];
+        auto it = sids.lower_bound(string(seg.prefix));
+        for (; it != sids.end(); ++it) {
+            auto & [k, v] = *it;
+            auto vk = string_view{k}.substr(0, seg.prefix.size());
+            if (vk != seg.prefix)
+                break;
+            if (queryMatchSegment(seg.node, k)) {
                 if (found.empty()) {
-                    found = kv.second.uset;
+                    found = v.uset;
                 } else {
-                    found.insert(kv.second.uset);
+                    found.insert(v.uset);
                 }
             }
         }

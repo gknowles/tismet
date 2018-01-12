@@ -131,7 +131,7 @@ void DbBase::OnDbMetric(
 ) {
     auto name = string(vname);
     m_leaf.insert(id, name);
-    m_branch.insertBranches(id, name);
+    m_branch.insertBranches(name);
 }
 
 //===========================================================================
@@ -163,7 +163,7 @@ bool DbBase::insertMetric(uint32_t & out, const string & name) {
 
     // update indexes
     m_leaf.insert(out, name);
-    m_branch.insertBranches(out, name);
+    m_branch.insertBranches(name);
 
     // set info page
     DbTxn txn{m_log, m_page};
