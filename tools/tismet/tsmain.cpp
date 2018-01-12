@@ -28,6 +28,8 @@ namespace {
 
 class ConsoleLogger : public ILogNotify {
     void onLog(LogType type, string_view msg) override;
+
+    mutex m_mut;
 };
 
 } // namespace
@@ -38,6 +40,7 @@ static ConsoleLogger s_consoleLogger;
 void ConsoleLogger::onLog(LogType type, string_view msg) {
     auto now = Clock::now();
     Time8601Str nowStr{now, 3, timeZoneMinutes(now)};
+    scoped_lock<mutex> lk{m_mut};
     cout << nowStr.view() << ' ';
     if (type == kLogTypeCrash) {
         ConsoleScopedAttr attr(kConsoleError);
