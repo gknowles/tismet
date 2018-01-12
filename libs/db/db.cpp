@@ -143,7 +143,6 @@ void DbBase::configure(const DbConfig & conf) {
 //===========================================================================
 DbStats DbBase::queryStats() {
     DbStats s = m_data.queryStats();
-    s.metrics = (unsigned) m_leaf.size();
     return s;
 }
 

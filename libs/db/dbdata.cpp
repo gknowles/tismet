@@ -18,7 +18,7 @@ using namespace Dim;
 const Duration kDefaultRetention = 7 * 24h;
 const Duration kDefaultInterval = 1min;
 
-const unsigned kMaxMetricNameLen = 63;
+const unsigned kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 const uint32_t kZeroPageNum = 0;
@@ -75,7 +75,7 @@ struct DbData::RadixData {
     uint16_t numPages;
 
     // EXTENDS BEYOND END OF STRUCT
-    uint32_t pages[2];
+    uint32_t pages[4];
 };
 
 struct DbData::RadixPage {
@@ -89,15 +89,16 @@ struct DbData::RadixPage {
 struct DbData::MetricPage {
     static const DbPageType s_pageType = kPageTypeMetric;
     DbPageHeader hdr;
-    char name[kMaxMetricNameLen];
-    DbSampleType sampleType;
     Duration interval;
     Duration retention;
     uint32_t lastPage;
     unsigned lastPagePos;
+    DbSampleType sampleType;
 
     // EXTENDS BEYOND END OF STRUCT
-    RadixData rd;
+    char name[1];
+
+    // RadixData object immediately follows name
 };
 static_assert(sizeof(DbData::MetricPage) <= kMinPageSize);
 
@@ -156,6 +157,16 @@ constexpr pair<uint32_t, size_t> segmentPage(uint32_t pgno, size_t pageSize) {
     auto segPage = pgno / pps * pps;
     auto segPos = pgno % pps;
     return {(uint32_t) segPage, segPos};
+}
+
+//===========================================================================
+constexpr size_t metricNameSize(size_t pageSize) {
+    assert(pageSize > sizeof(DbData::MetricPage) + sizeof(DbData::RadixData));
+    auto count = pageSize - sizeof(DbData::MetricPage)
+        - sizeof(DbData::RadixData);
+    if (count > kMaxMetricNameLen)
+        count = kMaxMetricNameLen;
+    return count;
 }
 
 
@@ -229,10 +240,11 @@ DbStats DbData::queryStats() {
     DbStats s;
     s.pageSize = (unsigned) m_pageSize;
     s.segmentSize = (unsigned) m_segmentSize;
-    s.metricNameLength = sizeof(MetricPage::name);
+    s.metricNameSize = (unsigned) metricNameSize(m_pageSize);
     s.samplesPerPage = (unsigned) samplesPerPage();
     s.numPages = (unsigned) m_numPages;
     s.freePages = (unsigned) m_freePages.size();
+    s.metrics = m_numMetrics;
     return s;
 }
 
@@ -306,9 +318,11 @@ bool DbData::loadMetrics (
 }
 
 //===========================================================================
-void DbData::insertMetric(DbTxn & txn, uint32_t id, const string & name) {
+void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     assert(!name.empty());
-    assert(name.size() < kMaxMetricNameLen);
+    auto nameLen = metricNameSize(m_pageSize);
+    if (name.size() >= nameLen)
+        name = name.substr(0, nameLen - 1);
 
     // set info page
     auto pgno = allocPgno(txn);
@@ -357,13 +371,14 @@ void DbData::applyMetricInit(
     }
     mp->hdr.type = mp->s_pageType;
     mp->hdr.id = id;
-    auto count = name.copy(mp->name, size(mp->name) - 1);
-    mp->name[count] = 0;
     mp->sampleType = kSampleFloat32;
     mp->retention = retention;
     mp->interval = interval;
-    mp->rd.height = 0;
-    mp->rd.numPages = radixEntriesPerPage<MetricPage>();
+    auto count = name.copy(mp->name, metricNameSize(m_pageSize) - 1);
+    auto rd = radixData(mp);
+    memset(mp->name + count, 0, (char *) rd - mp->name - count);
+    rd->height = 0;
+    rd->numPages = entriesPerMetricPage();
 }
 
 //===========================================================================
@@ -444,8 +459,9 @@ void DbData::applyMetricUpdate(
     mp->interval = interval;
     mp->lastPage = 0;
     mp->lastPagePos = 0;
-    mp->rd.height = 0;
-    memset(mp->rd.pages, 0, mp->rd.numPages * sizeof(*mp->rd.pages));
+    auto rd = radixData(mp);
+    rd->height = 0;
+    memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
 }
 
 
@@ -511,8 +527,9 @@ void DbData::applyMetricClearSamples(void * ptr) {
     assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = 0;
     mp->lastPagePos = 0;
-    mp->rd.height = 0;
-    memset(mp->rd.pages, 0, mp->rd.numPages * sizeof(*mp->rd.pages));
+    auto rd = radixData(mp);
+    rd->height = 0;
+    memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
 }
 
 //===========================================================================
@@ -526,8 +543,10 @@ void DbData::applyMetricUpdateSamples(
     assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = refPage;
     mp->lastPagePos = (unsigned) pos;
-    if (updateIndex)
-        mp->rd.pages[pos] = refPage;
+    if (updateIndex) {
+        auto rd = radixData(mp);
+        rd->pages[pos] = refPage;
+    }
 }
 
 //===========================================================================
@@ -917,9 +936,18 @@ size_t DbData::enumSamples(
 ***/
 
 //===========================================================================
-static DbData::RadixData * radixData(DbPageHeader * hdr) {
+DbData::RadixData * DbData::radixData(MetricPage * mp) const {
+    auto ents = entriesPerMetricPage();
+    auto off = offsetof(RadixData, pages) + ents * sizeof(uint32_t);
+    auto ptr = (char *) mp + m_pageSize - off;
+    return reinterpret_cast<DbData::RadixData *>(ptr);
+}
+
+//===========================================================================
+DbData::RadixData * DbData::radixData(DbPageHeader * hdr) const {
     if (hdr->type == kPageTypeMetric) {
-        return &reinterpret_cast<DbData::MetricPage *>(hdr)->rd;
+        auto mp = reinterpret_cast<DbData::MetricPage *>(hdr);
+        return radixData(mp);
     } else {
         assert(hdr->type == kPageTypeRadix);
         return &reinterpret_cast<DbData::RadixPage *>(hdr)->rd;
@@ -927,14 +955,20 @@ static DbData::RadixData * radixData(DbPageHeader * hdr) {
 }
 
 //===========================================================================
-static const DbData::RadixData * radixData(const DbPageHeader * hdr) {
+const DbData::RadixData * DbData::radixData(const DbPageHeader * hdr) const {
     return radixData(const_cast<DbPageHeader *>(hdr));
 }
 
 //===========================================================================
-template<typename T>
-uint16_t DbData::radixEntriesPerPage() const {
-    auto off = offsetof(T, rd) + offsetof(RadixData, pages);
+uint16_t DbData::entriesPerMetricPage() const {
+    auto off = offsetof(MetricPage, name) + metricNameSize(m_pageSize)
+        + offsetof(RadixData, pages);
+    return (uint16_t) (m_pageSize - off) / sizeof(uint32_t);
+}
+
+//===========================================================================
+uint16_t DbData::entriesPerRadixPage() const {
+    auto off = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
     return (uint16_t) (m_pageSize - off) / sizeof(uint32_t);
 }
 
@@ -947,10 +981,10 @@ size_t DbData::radixPageEntries(
     size_t pos
 ) {
     int * base = out;
-    size_t pents = radixEntriesPerPage<RadixPage>();
+    size_t pents = entriesPerRadixPage();
     size_t rents;
     if (rootType == kPageTypeMetric) {
-        rents = radixEntriesPerPage<MetricPage>();
+        rents = entriesPerMetricPage();
     } else {
         assert(rootType == kPageTypeRadix);
         rents = pents;
@@ -1088,7 +1122,7 @@ void DbData::applyRadixInit(
     rp->hdr.type = rp->s_pageType;
     rp->hdr.id = id;
     rp->rd.height = height;
-    rp->rd.numPages = radixEntriesPerPage<RadixPage>();
+    rp->rd.numPages = entriesPerRadixPage();
     if (auto count = lastPgno - firstPgno) {
         assert(count <= rp->rd.numPages);
         memcpy(rp->rd.pages, firstPgno, count * sizeof(*firstPgno));

@@ -445,8 +445,8 @@ public:
     );
     DbStats queryStats();
 
-    void insertMetric(DbTxn & txn, uint32_t id, const std::string & name);
-    bool eraseMetric(DbTxn & txn, std::string & name, uint32_t id);
+    void insertMetric(DbTxn & txn, uint32_t id, std::string_view name);
+    bool eraseMetric(DbTxn & txn, std::string & outName, uint32_t id);
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
@@ -516,6 +516,10 @@ public:
     void applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime);
 
 private:
+    RadixData * radixData(DbPageHeader * hdr) const;
+    RadixData * radixData(MetricPage * mp) const;
+    const RadixData * radixData(const DbPageHeader * hdr) const;
+
     bool loadMetrics(
         DbTxn & txn,
         IDbEnumNotify * notify,
@@ -527,7 +531,8 @@ private:
     uint32_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, uint32_t pgno);
 
-    template<typename T> uint16_t radixEntriesPerPage() const;
+    uint16_t entriesPerMetricPage() const;
+    uint16_t entriesPerRadixPage() const;
     size_t radixPageEntries(
         int * ents,
         size_t maxEnts,

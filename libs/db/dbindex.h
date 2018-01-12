@@ -24,7 +24,7 @@ class DbIndex {
 public:
     struct UnsignedSetWithCount {
         Dim::UnsignedSet uset;
-        size_t count = 0;
+        size_t count{0};
     };
 
 public:

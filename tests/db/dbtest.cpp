@@ -46,6 +46,7 @@ static int internalTest() {
         return EX_IOERR;
 
     auto stats = dbQueryStats(h);
+    EXPECT(stats.metrics == 0);
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
     auto pgt = stats.samplesPerPage * 1min;
@@ -91,12 +92,12 @@ static int internalTest() {
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     dbWriteDump(nullptr, cout, h);
-    // add to new page 5. creates sample pages 3, 4, 5, and a radix page
+    // add to new page 5. creates sample pages 3, 4, 5
     // to track the value pages.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 7);
-    // add to historical page
+    EXPECT(stats.numPages == 6);
+    // add to new historical page, and adds a radix page
     dbUpdateSample(h, id, start - 2min, 1);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 8);
