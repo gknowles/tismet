@@ -119,6 +119,12 @@ static bool loadCmd(Cli & cli) {
     if (s_truncate)
         fileRemove(*s_dat);
     auto h = dbOpen(*s_dat);
+    DbConfig conf = {};
+    conf.checkpointMaxData = 1'000'000'000;
+    conf.checkpointMaxInterval = 24h;
+    conf.pageMaxAge = 5min;
+    conf.pageScanInterval = 1min;
+    dbConfigure(h, conf);
     auto progress = make_unique<LoadProgress>();
     progress->m_f = h;
     dbLoadDump(progress.release(), h, *s_in);
