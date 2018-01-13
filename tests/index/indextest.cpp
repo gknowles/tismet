@@ -60,6 +60,10 @@ static void internalTest() {
     index.insert(4, "a.b.m.y.z");
     EXPECT(index.size() == 4);
 
+    // 2+ exact segments, the least matching of which has no intersection
+    // with keys of the requested number of segments.
+    EXPECT_FIND("*.z.m.*", "");
+
     EXPECT_FIND("a*", "");
     EXPECT_FIND("a*.z", "1");
     EXPECT_FIND("a.b*", "");

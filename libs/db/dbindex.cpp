@@ -153,10 +153,10 @@ void DbIndex::find(
     const UnsignedSetWithCount * subset
 ) const {
     assert(basePos + numSegs < m_lenIds.size());
-    if (!numSegs || subset && subset->count == 0) {
-        out.clear();
+    out.clear();
+    if (!numSegs || subset && subset->count == 0)
         return;
-    }
+
     vector<const UnsignedSetWithCount*> usets(numSegs);
     const UnsignedSetWithCount * fewest = subset;
     int ifewest = -1;
@@ -166,10 +166,8 @@ void DbIndex::find(
         if (seg.type == QueryInfo::kExact) {
             assert(pos + i < m_segIds.size());
             auto it = m_segIds[pos + i].find(string(seg.prefix));
-            if (it == m_segIds[pos + i].end()) {
-                out.clear();
+            if (it == m_segIds[pos + i].end())
                 return;
-            }
             usets[i] = &it->second;
             if (!fewest || it->second.count < fewest->count) {
                 ifewest = i;
@@ -181,10 +179,11 @@ void DbIndex::find(
     }
     if (fewest) {
         out = fewest->uset;
-        if (subset && fewest != subset)
+        if (subset && fewest != subset) {
             out.intersect(subset->uset);
-    } else {
-        out.clear();
+            if (out.empty())
+                return;
+        }
     }
     pos = (int) basePos;
     for (int i = 0; i < numSegs; ++i) {
@@ -195,9 +194,9 @@ void DbIndex::find(
                 out = usetw->uset;
             } else {
                 out.intersect(usetw->uset);
+                if (out.empty())
+                    return;
             }
-            if (out.empty())
-                return;
             continue;
         }
         auto & seg = segs[i];
@@ -216,13 +215,8 @@ void DbIndex::find(
             auto vk = string_view{k}.substr(0, seg.prefix.size());
             if (vk != seg.prefix)
                 break;
-            if (queryMatchSegment(seg.node, k)) {
-                if (found.empty()) {
-                    found = v.uset;
-                } else {
-                    found.insert(v.uset);
-                }
-            }
+            if (queryMatchSegment(seg.node, k))
+                found.insert(v.uset);
         }
         if (out.empty()) {
             out = move(found);
