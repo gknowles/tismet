@@ -155,7 +155,7 @@ bool DbPage::openData(string_view datafile) {
     m_fdata = fileOpen(
         datafile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking | File::fRandom
+            | File::fRandom
     );
     if (!m_fdata)
         return false;
