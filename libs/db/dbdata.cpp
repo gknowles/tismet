@@ -258,7 +258,7 @@ bool DbData::openForUpdate(
         txn.logRadixInit(pgno, 0, 0, nullptr, nullptr);
     }
     if (m_verbose)
-        logMsgInfo() << "Load metric index";
+        logMsgInfo() << "Build metric index";
     if (!loadMetrics(txn, notify, kMetricIndexPageNum))
         return false;
 

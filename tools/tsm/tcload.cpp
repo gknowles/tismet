@@ -149,7 +149,7 @@ static bool loadCmd(Cli & cli) {
     DbConfig conf = {};
     conf.checkpointMaxData = 1'000'000'000;
     conf.checkpointMaxInterval = 24h;
-    conf.pageMaxAge = 5min;
+    conf.pageMaxAge = 1min;
     conf.pageScanInterval = 1min;
     dbConfigure(h, conf);
     s_progress.m_f = h;
