@@ -137,6 +137,7 @@ struct RadixUpdateRec {
 struct MetricInitRec {
     DbLog::Record hdr;
     uint32_t id;
+    DbSampleType sampleType;
     Duration retention;
     Duration interval;
 
@@ -145,6 +146,7 @@ struct MetricInitRec {
 };
 struct MetricUpdateRec {
     DbLog::Record hdr;
+    DbSampleType sampleType;
     Duration retention;
     Duration interval;
 };
@@ -159,6 +161,7 @@ struct MetricUpdateSamplesRec {
 struct SampleInitRec {
     DbLog::Record hdr;
     uint32_t id;
+    DbSampleType sampleType;
     TimePoint pageTime;
     uint16_t lastSample;
 };
@@ -485,6 +488,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             page,
             rec->id,
             rec->name,
+            rec->sampleType,
             rec->retention,
             rec->interval
         );
@@ -493,6 +497,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
         auto rec = reinterpret_cast<const MetricUpdateRec *>(log);
         return m_data.applyMetricUpdate(
             page,
+            rec->sampleType,
             rec->retention,
             rec->interval
         );
@@ -523,6 +528,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
         return m_data.applySampleInit(
             page,
             rec->id,
+            rec->sampleType,
             rec->pageTime,
             rec->lastSample
         );
@@ -782,6 +788,7 @@ void DbTxn::logMetricInit(
     uint32_t pgno,
     uint32_t id,
     string_view name,
+    DbSampleType sampleType,
     Duration retention,
     Duration interval
 ) {
@@ -793,6 +800,7 @@ void DbTxn::logMetricInit(
         offset + extra
     );
     rec->id = id;
+    rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;
     memcpy(rec->name, name.data(), extra);
@@ -802,10 +810,12 @@ void DbTxn::logMetricInit(
 //===========================================================================
 void DbTxn::logMetricUpdate(
     uint32_t pgno,
+    DbSampleType sampleType,
     Duration retention,
     Duration interval
 ) {
     auto [rec, bytes] = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
+    rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;
     log(&rec->hdr, bytes);
@@ -837,11 +847,13 @@ void DbTxn::logMetricUpdateSamples(
 void DbTxn::logSampleInit(
     uint32_t pgno,
     uint32_t id,
+    DbSampleType sampleType,
     TimePoint pageTime,
     size_t lastSample
 ) {
     auto [rec, bytes] = alloc<SampleInitRec>(kRecTypeSampleInit, pgno);
     rec->id = id;
+    rec->sampleType = sampleType;
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
     log(&rec->hdr, bytes);

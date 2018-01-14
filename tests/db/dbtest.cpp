@@ -49,7 +49,7 @@ static int internalTest() {
     EXPECT(stats.metrics == 0);
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
-    auto pgt = stats.samplesPerPage * 1min;
+    auto pgt = stats.samplesPerPage[kSampleTypeFloat32] * 1min;
     uint32_t id;
     unsigned count = 0;
     count += dbInsertMetric(id, h, name);
@@ -96,7 +96,7 @@ static int internalTest() {
     // to track the value pages.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 6);
+    EXPECT(stats.numPages == 7);
     // add to new historical page, and adds a radix page
     dbUpdateSample(h, id, start - 2min, 1);
     stats = dbQueryStats(h);

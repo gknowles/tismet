@@ -38,12 +38,21 @@ struct DbConfig {
 };
 void dbConfigure(DbHandle h, const DbConfig & conf);
 
+enum DbSampleType : int8_t {
+    kSampleTypeInvalid = 0,
+    kSampleTypeFloat32 = 1,
+    kSampleTypeFloat64 = 2,
+    kSampleTypeInt8    = 3,
+    kSampleTypeInt16   = 4,
+    kSampleTypeInt32   = 5,
+    kSampleTypes,
+};
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;
     unsigned segmentSize;
     unsigned metricNameSize; // includes terminating null
-    unsigned samplesPerPage;
+    unsigned samplesPerPage[kSampleTypes];
 
     // Change as data is modified
     unsigned numPages;
@@ -75,14 +84,6 @@ bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
 
 void dbEraseMetric(DbHandle h, uint32_t id);
 
-enum DbSampleType : int8_t {
-    kSampleInvalid = 0,
-    kSampleFloat32 = 1,
-    kSampleFloat64 = 2,
-    kSampleInt8    = 3,
-    kSampleInt16   = 4,
-    kSampleInt32   = 5,
-};
 struct MetricInfo {
     std::string_view name;
     DbSampleType type;

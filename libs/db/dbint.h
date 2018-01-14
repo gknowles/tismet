@@ -339,11 +339,13 @@ public:
         uint32_t pgno,
         uint32_t id,
         std::string_view name,
+        DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     );
     void logMetricUpdate(
         uint32_t pgno,
+        DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     );
@@ -357,6 +359,7 @@ public:
     void logSampleInit(
         uint32_t pgno,
         uint32_t id,
+        DbSampleType sampleType,
         Dim::TimePoint pageTime,
         size_t lastSample
     );
@@ -424,10 +427,11 @@ public:
 
     struct MetricPosition {
         Dim::Duration interval;
+        Dim::TimePoint pageFirstTime; // time of first sample on last page
         uint32_t infoPage;
         uint32_t lastPage; // page with most recent samples
-        Dim::TimePoint pageFirstTime; // time of first sample on last page
         uint16_t pageLastSample; // position of last sample on last page
+        DbSampleType sampleType;
     };
 
 public:
@@ -485,11 +489,13 @@ public:
         void * ptr,
         uint32_t id,
         std::string_view name,
+        DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     );
     void applyMetricUpdate(
         void * ptr,
+        DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     );
@@ -503,6 +509,7 @@ public:
     void applySampleInit(
         void * ptr,
         uint32_t id,
+        DbSampleType sampleType,
         Dim::TimePoint pageTime,
         size_t lastSample
     );
@@ -563,7 +570,7 @@ private:
     // past the end of the index.
     bool radixFind(DbTxn & txn, uint32_t * out, uint32_t root, size_t pos);
 
-    size_t samplesPerPage() const;
+    size_t samplesPerPage(DbSampleType type) const;
     MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id);
     MetricPosition & loadMetricPos(
         DbTxn & txn,
