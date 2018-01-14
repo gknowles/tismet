@@ -29,6 +29,8 @@ public:
     };
 
 public:
+    ~DbIndex();
+
     void clear();
 
     void insert(uint32_t id, std::string_view name, bool branch = false);
@@ -45,7 +47,7 @@ public:
 
     const char * name(uint32_t id) const;
 
-    bool find(uint32_t & out, const std::string & name) const;
+    bool find(uint32_t & out, std::string_view name) const;
     void find(Dim::UnsignedSet & out, std::string_view name) const;
 
 private:
@@ -57,8 +59,11 @@ private:
         const UnsignedSetWithCount * subset
     ) const;
 
-    std::vector<const char *> m_idNames;
-    std::unordered_map<std::string, std::pair<uint32_t, unsigned>> m_metricIds;
+    uint32_t m_nextBranchId{0};
+    bool m_branchErasures{false};
+    std::vector<std::unique_ptr<char[]>> m_idNames;
+    std::unordered_map<std::string_view, std::pair<uint32_t, unsigned>>
+        m_metricIds;
     UnsignedSetWithCount m_ids;
 
     // metric ids by name length as measured in segments
@@ -68,5 +73,8 @@ private:
     // *.red.* could be matched by finding all the metrics whose name has
     // "red" as the second segment (m_segIds[1]["red"]) and is three segments
     // long (m_lenIds[3]).
-    std::vector<std::map<std::string, UnsignedSetWithCount>> m_segIds;
+    std::vector<std::unordered_map<std::string_view, const char*>> m_segNames;
+    std::vector<std::map<std::string_view, UnsignedSetWithCount>> m_segIds;
+
+    std::vector<std::string_view> m_tmpSegs;
 };

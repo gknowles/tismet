@@ -26,7 +26,7 @@ public:
     void configure(const DbConfig & conf);
     DbStats queryStats();
 
-    bool insertMetric(uint32_t & out, const string & name);
+    bool insertMetric(uint32_t & out, string_view name);
     void eraseMetric(uint32_t id);
     void updateMetric(
         uint32_t id,
@@ -36,7 +36,7 @@ public:
     const char * getMetricName(uint32_t id) const;
     bool getMetricInfo(MetricInfo & info, uint32_t id) const;
 
-    bool findMetric(uint32_t & out, const string & name) const;
+    bool findMetric(uint32_t & out, string_view name) const;
     void findMetrics(UnsignedSet & out, string_view pattern) const;
 
     const char * getBranchName(uint32_t id) const;
@@ -123,13 +123,12 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
 //===========================================================================
 void DbBase::OnDbMetric(
     uint32_t id,
-    string_view vname,
+    string_view name,
     DbSampleType type,
     TimePoint from,
     TimePoint until,
     Duration interval
 ) {
-    auto name = string(vname);
     m_leaf.insert(id, name);
     m_branch.insertBranches(name);
 }
@@ -154,7 +153,7 @@ DbStats DbBase::queryStats() {
 ***/
 
 //===========================================================================
-bool DbBase::insertMetric(uint32_t & out, const string & name) {
+bool DbBase::insertMetric(uint32_t & out, string_view name) {
     if (findMetric(out, name))
         return false;
 
@@ -205,7 +204,7 @@ void DbBase::updateMetric(
 }
 
 //===========================================================================
-bool DbBase::findMetric(uint32_t & out, const string & name) const {
+bool DbBase::findMetric(uint32_t & out, string_view name) const {
     return m_leaf.find(out, name);
 }
 
@@ -288,7 +287,7 @@ DbStats dbQueryStats(DbHandle h) {
 bool dbFindMetric(uint32_t & out, DbHandle h, string_view name) {
     auto * db = s_files.find(h);
     assert(db);
-    return db->findMetric(out, string(name));
+    return db->findMetric(out, name);
 }
 
 //===========================================================================
@@ -331,7 +330,7 @@ const char * dbGetBranchName(DbHandle h, uint32_t id) {
 bool dbInsertMetric(uint32_t & out, DbHandle h, string_view name) {
     auto * db = s_files.find(h);
     assert(db);
-    return db->insertMetric(out, string(name));
+    return db->insertMetric(out, name);
 }
 
 //===========================================================================

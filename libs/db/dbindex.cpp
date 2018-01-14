@@ -16,12 +16,24 @@ using namespace Dim;
 ***/
 
 //===========================================================================
+DbIndex::~DbIndex() {
+    clear();
+}
+
+//===========================================================================
 void DbIndex::clear() {
     m_metricIds.clear();
     m_ids.uset.clear();
     m_ids.count = 0;
     m_lenIds.clear();
     m_segIds.clear();
+    for (auto && sn : m_segNames) {
+        for (auto && kv : sn) {
+            delete[] kv.second;
+        }
+    }
+    m_nextBranchId = 0;
+    m_branchErasures = false;
 }
 
 //===========================================================================
@@ -31,14 +43,26 @@ void DbIndex::insertBranches(string_view name) {
         if (pos == string_view::npos)
             return;
         name.remove_suffix(name.size() - pos);
-        auto id = nextId();
+        auto id = m_branchErasures ? nextId() : ++m_nextBranchId;
         insert(id, name, true);
     }
 }
 
 //===========================================================================
+static unique_ptr<char[]> strdup(string_view * inout) {
+    auto ptr = make_unique<char[]>(inout->size() + 1);
+    memcpy(ptr.get(), inout->data(), inout->size());
+    ptr[inout->size()] = 0;
+    *inout = string_view{ptr.get(), inout->size()};
+    return move(ptr);
+}
+
+//===========================================================================
 void DbIndex::insert(uint32_t id, string_view name, bool branch) {
-    auto ib = m_metricIds.insert({string{name}, {id, 1}});
+    if (id >= m_idNames.size())
+        m_idNames.resize(id + 1);
+    m_idNames[id] = strdup(&name);
+    auto ib = m_metricIds.insert({name, {id, 1}});
     if (!ib.second) {
         if (branch) {
             ib.first->second.second += 1;
@@ -47,22 +71,26 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
         }
         return;
     }
-    if (id >= m_idNames.size())
-        m_idNames.resize(id + 1);
-    m_idNames[id] = ib.first->first.c_str();
     m_ids.uset.insert(id);
     m_ids.count += 1;
-    vector<string_view> segs;
-    strSplit(segs, name, '.');
-    auto numSegs = segs.size();
+    strSplit(m_tmpSegs, name, '.');
+    auto numSegs = m_tmpSegs.size();
     if (m_lenIds.size() <= numSegs) {
         m_lenIds.resize(numSegs + 1);
         m_segIds.resize(numSegs);
+        m_segNames.resize(numSegs);
     }
     m_lenIds[numSegs].uset.insert(id);
     m_lenIds[numSegs].count += 1;
     for (unsigned i = 0; i < numSegs; ++i) {
-        auto & ids = m_segIds[i][string(segs[i])];
+        auto seg = m_tmpSegs[i];
+        auto cur = m_segIds[i].find(seg);
+        if (cur == m_segIds[i].end()) {
+            auto ptr = strdup(&seg).release();
+            m_segNames[i][seg] = ptr;
+            cur = m_segIds[i].insert({seg, {}}).first;
+        }
+        auto & ids = cur->second;
         ids.uset.insert(id);
         ids.count += 1;
     }
@@ -70,6 +98,7 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
 
 //===========================================================================
 void DbIndex::eraseBranches(string_view name) {
+    m_branchErasures = true;
     for (;;) {
         auto pos = name.find_last_of('.');
         if (pos == string_view::npos)
@@ -80,15 +109,14 @@ void DbIndex::eraseBranches(string_view name) {
 }
 
 //===========================================================================
-void DbIndex::erase(string_view vname) {
-    string name{vname};
+void DbIndex::erase(string_view name) {
     auto i = m_metricIds.find(name);
     if (--i->second.second)
         return;
     auto id = i->second.first;
     m_metricIds.erase(i);
-
     m_idNames[id] = nullptr;
+
     m_ids.uset.erase(id);
     m_ids.count -= 1;
     vector<string_view> segs;
@@ -97,11 +125,15 @@ void DbIndex::erase(string_view vname) {
     m_lenIds[numSegs].uset.erase(id);
     m_lenIds[numSegs].count -= 1;
     for (unsigned i = 0; i < numSegs; ++i) {
-        auto key = string(segs[i]);
+        auto & key = segs[i];
         auto & ids = m_segIds[i][key];
         ids.uset.erase(id);
-        if (--ids.count == 0)
+        if (--ids.count == 0) {
             m_segIds[i].erase(key);
+            auto cur = m_segNames[i].find(key);
+            delete[] cur->second;
+            m_segNames[i].erase(cur);
+        }
     }
     numSegs = m_segIds.size();
     for (; numSegs; --numSegs) {
@@ -110,6 +142,7 @@ void DbIndex::erase(string_view vname) {
         assert(m_lenIds[numSegs].uset.empty());
         m_lenIds.resize(numSegs);
         m_segIds.resize(numSegs - 1);
+        m_segNames.resize(numSegs - 1);
     }
 }
 
@@ -130,11 +163,11 @@ size_t DbIndex::size() const {
 
 //===========================================================================
 const char * DbIndex::name(uint32_t id) const {
-    return id < m_idNames.size() ? m_idNames[id] : nullptr;
+    return id < m_idNames.size() ? m_idNames[id].get() : nullptr;
 }
 
 //===========================================================================
-bool DbIndex::find(uint32_t & out, const string & name) const {
+bool DbIndex::find(uint32_t & out, string_view name) const {
     auto i = m_metricIds.find(name);
     if (i == m_metricIds.end()) {
         out = 0;
@@ -165,7 +198,7 @@ void DbIndex::find(
         auto & seg = segs[i];
         if (seg.type == QueryInfo::kExact) {
             assert(pos + i < m_segIds.size());
-            auto it = m_segIds[pos + i].find(string(seg.prefix));
+            auto it = m_segIds[pos + i].find(seg.prefix);
             if (it == m_segIds[pos + i].end())
                 return;
             usets[i] = &it->second;
@@ -209,7 +242,7 @@ void DbIndex::find(
         assert(seg.type == QueryInfo::kCondition);
         UnsignedSet found;
         auto & sids = m_segIds[pos + i];
-        auto it = sids.lower_bound(string(seg.prefix));
+        auto it = sids.lower_bound(seg.prefix);
         for (; it != sids.end(); ++it) {
             auto & [k, v] = *it;
             auto vk = string_view{k}.substr(0, seg.prefix.size());
@@ -243,7 +276,7 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
     if (qry.type == QueryInfo::kExact) {
         uint32_t id;
         out.clear();
-        if (find(id, string(name)))
+        if (find(id, name))
             out.insert(id);
         return;
     }
