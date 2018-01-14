@@ -55,6 +55,7 @@ static int internalTest() {
     count += dbInsertMetric(id, h, name);
     cout << "metrics inserted: " << count << endl;
     MetricInfo info;
+    info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(6.5 * pgt);
     info.interval = 1min;
     dbUpdateMetric(h, id, info);

@@ -86,7 +86,7 @@ void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct MetricInfo {
     std::string_view name;
-    DbSampleType type;
+    DbSampleType type{kSampleTypeInvalid};
     Dim::Duration retention;
     Dim::Duration interval;
     Dim::TimePoint first;
@@ -96,7 +96,7 @@ bool dbGetMetricInfo(
     DbHandle h,
     uint32_t id
 );
-// Removes all existing data when retention or interval are changed.
+// Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
