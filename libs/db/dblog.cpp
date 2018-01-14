@@ -372,12 +372,6 @@ bool DbLog::recover() {
         logMsgCrash() << "Invalid .tsl file, no checkpoint found";
     m_checkpointLsn = data.checkpoint;
 
-    auto i = lower_bound(
-        data.incompleteTxnLsns.begin(),
-        data.incompleteTxnLsns.end(),
-        data.checkpoint
-    );
-    data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
     for (auto && kv : data.txns) {
         data.incompleteTxnLsns.push_back(kv.second);
     }
@@ -386,6 +380,12 @@ bool DbLog::recover() {
         data.incompleteTxnLsns.end(),
         [](auto & a, auto & b) { return a > b; }
     );
+    auto i = lower_bound(
+        data.incompleteTxnLsns.begin(),
+        data.incompleteTxnLsns.end(),
+        data.checkpoint
+    );
+    data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
 
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
