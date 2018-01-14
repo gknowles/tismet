@@ -36,6 +36,12 @@ class SampleTimer : public ITimerNotify {
 
 } // namespace
 
+const char s_allowedChars[] =
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "_-.";
+
 //===========================================================================
 Duration SampleTimer::onTimer(TimePoint now) {
     if (appStopping())
@@ -50,11 +56,11 @@ Duration SampleTimer::onTimer(TimePoint now) {
         if (!id) {
             string name = "tismet.";
             for (auto && ch : val.name.substr(3)) {
-                if (ch == ' ' || ch == '(' || ch == ')') {
+                if (strchr(s_allowedChars, ch)) {
+                    name += ch;
+                } else {
                     if (name.back() != '_')
                         name += '_';
-                } else {
-                    name += ch;
                 }
             }
             if (name.back() == '_')
