@@ -81,6 +81,8 @@ struct LoadProgress : IDbProgressNotify {
 
 } // namespace
 
+static LoadProgress s_progress;
+
 //===========================================================================
 bool LoadProgress::OnDbProgress(
     bool complete,
@@ -89,15 +91,38 @@ bool LoadProgress::OnDbProgress(
     if (complete) {
         m_info = info;
         dbClose(m_f);
+        m_f = {};
         if (logGetMsgCount(kLogTypeError)) {
             appSignalShutdown(EX_DATAERR);
         } else {
             logShutdown(m_info);
             appSignalShutdown();
         }
-        delete this;
     }
-    return true;
+    return !appStopping();
+}
+
+
+/****************************************************************************
+*
+*   ShutdownNotify
+*
+***/
+
+namespace {
+
+class ShutdownNotify : public IShutdownNotify {
+    void onShutdownServer(bool firstTry) override;
+};
+
+} // namespace
+
+static ShutdownNotify s_cleanup;
+
+//===========================================================================
+void ShutdownNotify::onShutdownServer(bool firstTry) {
+    if (s_progress.m_f)
+        shutdownIncomplete();
 }
 
 
@@ -127,9 +152,8 @@ static bool loadCmd(Cli & cli) {
     conf.pageMaxAge = 5min;
     conf.pageScanInterval = 1min;
     dbConfigure(h, conf);
-    auto progress = make_unique<LoadProgress>();
-    progress->m_f = h;
-    dbLoadDump(progress.release(), h, *s_in);
+    s_progress.m_f = h;
+    dbLoadDump(&s_progress, h, *s_in);
 
     return cli.fail(EX_PENDING, "");
 }
