@@ -15,16 +15,18 @@ metric = path SP value SP timestamp [CR] LF { End }
 x = path SP value SP timestamp *(SP option) [CR] LF { End }
 option = opt-name "=" opt-value
 
-BSLASH = %x5c ; \
-
 ; Path
 path = 1*path-chars { Start+, End+ }
 path-chars = ALPHA / DIGIT
-    / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
-    / "+" / "-" / "."
+    / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"  ; "(" / ")" / "*"
+    / "+"                                         ; ","
+    / "-" / "."                                   ; "/"
     / ":" / ";" / "<" / "=" / ">" / "?"
-    / "@" / "\" / "^" / "_"
-    / "`" / "|" / "~"
+    / "@"                                         ; "["
+    / "\"                                         ; "]"
+    / "^" / "_"
+    / "`"                                         ; "{" / "|" / "}"
+    / "~"
 
 ; Timestamp
 timestamp = 1*DIGIT { Char+ }
