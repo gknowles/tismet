@@ -119,6 +119,8 @@ static bool loadCmd(Cli & cli) {
     if (s_truncate)
         fileRemove(*s_dat);
     auto h = dbOpen(*s_dat);
+    if (!h)
+        return cli.fail(EX_ABORTED, "Canceled");
     DbConfig conf = {};
     conf.checkpointMaxData = 1'000'000'000;
     conf.checkpointMaxInterval = 24h;
