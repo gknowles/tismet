@@ -432,15 +432,20 @@ bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    const MetricInfo & info
+    const MetricInfo & from
 ) {
     assert(id < m_metricPos.size());
-    assert(info.name.empty());
-    assert(!info.first);
-    // TODO: validate interval and retention
+    assert(from.name.empty());
+    assert(!from.first);
+
+    // TODO: validate interval, retention, and sample type
 
     auto & mi = m_metricPos[id];
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    MetricInfo info = {};
+    info.retention = from.retention.count() ? from.retention : mp->retention;
+    info.interval = from.interval.count() ? from.interval : mp->interval;
+    info.type = from.type ? from.type : mp->sampleType;
     if (mp->retention == info.retention
         && mp->interval == info.interval
         && mp->sampleType == info.type

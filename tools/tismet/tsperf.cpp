@@ -66,8 +66,18 @@ Duration SampleTimer::onTimer(TimePoint now) {
             if (name.back() == '_')
                 name.pop_back();
             dbInsertMetric(id, h, name);
+            MetricInfo info = {};
+            switch (val.type) {
+            case PerfType::kFloat: info.type = kSampleTypeFloat32; break;
+            case PerfType::kInt: info.type = kSampleTypeInt32; break;
+            case PerfType::kUnsigned: info.type = kSampleTypeFloat64; break;
+            default:
+                assert(!"unknown perf type");
+                break;
+            }
+            dbUpdateMetric(h, id, info);
         }
-        dbUpdateSample(h, id, now, (float) val.raw);
+        dbUpdateSample(h, id, now, val.raw);
     }
     now = Clock::now();
     auto wait = ceil<minutes>(now) - now;
