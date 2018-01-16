@@ -22,6 +22,27 @@ static auto & s_perfExpired = uperf("db metrics expired");
 
 /****************************************************************************
 *
+*   Metric defaults
+*
+***/
+
+namespace {
+
+struct MetricRule {
+    regex pattern;
+    Duration retention;
+    Duration interval;
+    DbSampleType type;
+};
+
+} // namespace
+
+static vector<MetricRule> s_rules;
+
+
+
+/****************************************************************************
+*
 *   Expire old metrics
 *
 ***/
@@ -122,6 +143,23 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
     if (val.count())
         val = clamp(val, Duration{5min}, Duration{168h});
     s_expireTimer.updateInterval(val);
+
+    auto xdefs = configElement(doc, "MetricDefaults");
+    for (auto && xrule : elems(xdefs, "Rule")) {
+        MetricRule rule;
+        auto val = attrValue(&xrule, "pattern", "");
+        try {
+            rule.pattern.assign(val, regex::nosubs|regex::optimize);
+        } catch(exception &) {
+            logMsgError() << "invalid metric rule pattern, " << val;
+            continue;
+        }
+        val = attrValue(&xrule, "type", "");
+        rule.type = fromString(val, kSampleTypeInvalid);
+        parse(&rule.retention, attrValue(&xrule, "retention", ""));
+        parse(&rule.interval, attrValue(&xrule, "interval", ""));
+        s_rules.push_back(rule);
+    }
 }
 
 
@@ -156,6 +194,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 //===========================================================================
 void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
+    configMonitor("app.xml", &s_appXml);
     string path;
     appDataPath(path, "metrics.dat");
     s_db = dbOpen(path, 0, fDbOpenVerbose);
@@ -163,11 +202,42 @@ void tsDataInitialize() {
         logMsgError() << "Unable to open database, " << path;
         return appSignalShutdown(EX_DATAERR);
     }
-    configMonitor("app.xml", &s_appXml);
+    configChange("app.xml", &s_appXml);
 }
 
 //===========================================================================
 DbHandle tsDataHandle() {
     assert(s_db);
     return s_db;
+}
+
+//===========================================================================
+bool tsDataInsertMetric(uint32_t * id, string_view name) {
+    assert(s_db);
+    if (!dbInsertMetric(*id, s_db, name))
+        return false;
+
+    for (auto && rule : s_rules) {
+        if (regex_search(name.begin(), name.end(), rule.pattern)) {
+            MetricInfo info = {};
+            info.type = rule.type;
+            info.retention = rule.retention;
+            info.interval = rule.interval;
+            dbUpdateMetric(s_db, *id, info);
+            break;
+        }
+    }
+    return true;
+}
+
+//===========================================================================
+void tsDataUpdateMetric(uint32_t id, const MetricInfo & info) {
+    assert(s_db);
+    dbUpdateMetric(s_db, id, info);
+}
+
+//===========================================================================
+void tsDataUpdateSample(uint32_t id, TimePoint time, double value) {
+    assert(s_db);
+    dbUpdateSample(s_db, id, time, value);
 }

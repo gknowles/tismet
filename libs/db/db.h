@@ -47,6 +47,9 @@ enum DbSampleType : int8_t {
     kSampleTypeInt32   = 5,
     kSampleTypes,
 };
+const char * toString(DbSampleType type, const char def[] = nullptr);
+DbSampleType fromString(std::string_view src, DbSampleType def);
+
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;

@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <mutex>
+#include <regex>
 
 // Platform headers
 // External library internal headers

@@ -47,7 +47,6 @@ Duration SampleTimer::onTimer(TimePoint now) {
     if (appStopping())
         return kTimerInfinite;
 
-    auto h = tsDataHandle();
     perfGetValues(m_vals);
     for (auto && val : m_vals) {
         if (val.name.substr(0, 3) != "db ")
@@ -65,7 +64,7 @@ Duration SampleTimer::onTimer(TimePoint now) {
             }
             if (name.back() == '_')
                 name.pop_back();
-            dbInsertMetric(id, h, name);
+            tsDataInsertMetric(&id, name);
             MetricInfo info = {};
             switch (val.type) {
             case PerfType::kFloat: info.type = kSampleTypeFloat32; break;
@@ -75,9 +74,9 @@ Duration SampleTimer::onTimer(TimePoint now) {
                 assert(!"unknown perf type");
                 break;
             }
-            dbUpdateMetric(h, id, info);
+            tsDataUpdateMetric(id, info);
         }
-        dbUpdateSample(h, id, now, val.raw);
+        tsDataUpdateSample(id, now, val.raw);
     }
     now = Clock::now();
     auto wait = ceil<minutes>(now) - now;

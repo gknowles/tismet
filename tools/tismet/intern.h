@@ -10,6 +10,9 @@ void tsCarbonInitialize();
 // Data
 void tsDataInitialize();
 DbHandle tsDataHandle();
+bool tsDataInsertMetric(uint32_t * id, std::string_view name);
+void tsDataUpdateMetric(uint32_t id, const MetricInfo & info);
+void tsDataUpdateSample(uint32_t id, Dim::TimePoint time, double value);
 
 // Graphite
 void tsGraphiteInitialize();

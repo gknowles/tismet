@@ -16,7 +16,6 @@ using namespace Dim;
 ***/
 
 static SockMgrHandle s_mgr;
-static DbHandle s_db;
 
 
 /****************************************************************************
@@ -41,14 +40,14 @@ public:
 //===========================================================================
 uint32_t RecordConn::onCarbonMetric(string_view name) {
     uint32_t id;
-    dbInsertMetric(id, s_db, name);
+    tsDataInsertMetric(&id, name);
     return id;
 }
 
 //===========================================================================
 void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
     assert(id);
-    dbUpdateSample(s_db, id, time, (float) value);
+    tsDataUpdateSample(id, time, value);
 }
 
 
@@ -60,7 +59,6 @@ void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
 
 //===========================================================================
 void tsCarbonInitialize() {
-    s_db = tsDataHandle();
     carbonInitialize();
     s_mgr = sockMgrListen(
         "carbon",

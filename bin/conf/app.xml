@@ -10,6 +10,10 @@
   <CheckpointMaxData value="1000000000; 1GB"/>
   <CheckpointMaxInterval value="3600; 1h"/>
   <ExpirationCheckInterval value="0; never; 86400; 24h"/>
+  <MetricDefaults>
+    <Rule pattern="^tismet\." retention="90d" interval="60s" type="int32"/>
+    <Rule pattern=".*" retention="30d" interval="60s" type="float64"/>
+  </MetricDefaults>
 
   <Certificates>
     <Store name="My" location="Current User">
