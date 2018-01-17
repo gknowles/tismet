@@ -257,6 +257,27 @@ void DbLog::configure(const DbConfig & conf) {
 }
 
 //===========================================================================
+void DbLog::checkpointBlock(IDbProgressNotify * notify, bool enable) {
+    if (enable) {
+        DbProgressInfo info = {};
+        m_checkpointBlocks.push_back(notify);
+        if (m_phase == Checkpoint::Complete) {
+            notify->OnDbProgress(kRunStopped, info);
+        } else {
+            notify->OnDbProgress(kRunStopping, info);
+        }
+        return;
+    }
+
+    // Remove the block
+    auto i = find(m_checkpointBlocks.begin(), m_checkpointBlocks.end(), notify);
+    if (i != m_checkpointBlocks.end())
+        m_checkpointBlocks.erase(i);
+    if (m_checkpointBlocks.empty() && m_phase == Checkpoint::Complete)
+        checkpointWaitForNext();
+}
+
+//===========================================================================
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
     PageHeader hdr;
@@ -524,7 +545,7 @@ void DbLog::commit(uint64_t txn) {
 // Write the pages from the copies
 // Write the checkpoint record, specifying the low LSN as it's start
 void DbLog::checkpoint() {
-    if (m_phase != Checkpoint::Complete)
+    if (m_phase != Checkpoint::Complete || !m_checkpointBlocks.empty())
         return;
     if (m_verbose)
         logMsgInfo() << "Checkpoint started";
@@ -579,7 +600,8 @@ void DbLog::checkpointStableCommit() {
             lastPgno = pi.pgno;
             m_pages.pop_front();
         }
-        s_perfFreePages += (unsigned) (before - m_pages.size() - (bool) lastPgno);
+        s_perfFreePages +=
+            (unsigned) (before - m_pages.size() - (bool) lastPgno);
     }
 
     m_phase = Checkpoint::WaitForTruncateCommit;
@@ -606,6 +628,18 @@ void DbLog::checkpointTruncateCommit() {
         logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::Complete;
     s_perfCurCps -= 1;
+    if (m_checkpointBlocks.empty()) {
+        checkpointWaitForNext();
+    } else {
+        DbProgressInfo info = {};
+        for (auto && block : m_checkpointBlocks)
+            block->OnDbProgress(kRunStopped, info);
+    }
+    m_bufAvailCv.notify_one();
+}
+
+//===========================================================================
+void DbLog::checkpointWaitForNext() {
     if (!m_closing) {
         Duration wait = 0ms;
         auto elapsed = Clock::now() - m_checkpointStart;
@@ -615,7 +649,6 @@ void DbLog::checkpointTruncateCommit() {
             wait = 0ms;
         timerUpdate(&m_checkpointTimer, wait);
     }
-    m_bufAvailCv.notify_one();
 }
 
 //===========================================================================

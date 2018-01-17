@@ -197,6 +197,7 @@ public:
     uint64_t beginTxn();
     void commit(uint64_t txn);
     void checkpoint();
+    void checkpointBlock(IDbProgressNotify * notify, bool enable);
 
     void logAndApply(uint64_t txn, Record * log, size_t bytes);
     void queueTask(
@@ -235,6 +236,7 @@ private:
     void checkpointStablePages();
     void checkpointStableCommit();
     void checkpointTruncateCommit();
+    void checkpointWaitForNext();
     void flushWriteBuffer();
 
     struct AnalyzeData;
@@ -274,6 +276,7 @@ private:
     Dim::TaskProxy m_checkpointStablePagesTask;
     Dim::TaskProxy m_checkpointStableCommitTask;
     Checkpoint m_phase{};
+    std::vector<IDbProgressNotify *> m_checkpointBlocks;
 
     // last started (perhaps unfinished) checkpoint
     Dim::TimePoint m_checkpointStart;

@@ -17,9 +17,6 @@ using namespace Dim;
 
 const char kDumpVersion[] = "Tismet Dump Version 2017.1";
 
-const unsigned kMaxMetricNameLen = 64;
-static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
-
 
 /****************************************************************************
 *
@@ -98,14 +95,14 @@ void dbWriteDump(
         dbEnumSamples(&out, h, id);
         info.metrics += 1;
         if (notify)
-            notify->OnDbProgress(false, info);
+            notify->OnDbProgress(kRunRunning, info);
     }
     info.totalMetrics = info.metrics;
     info.totalValues = info.samples;
     if (info.totalBytes != (size_t) -1)
         info.bytes = info.totalBytes;
     if (notify)
-        notify->OnDbProgress(true, info);
+        notify->OnDbProgress(kRunStopped, info);
 }
 
 
@@ -193,7 +190,7 @@ bool DbWriter::onFileRead(
         while (!data.empty() && (data[0] == '\r' || data[0] == '\n'))
             data.remove_prefix(1);
     }
-    if (!m_notify->OnDbProgress(false, m_info))
+    if (!m_notify->OnDbProgress(kRunRunning, m_info))
         return false;
     return append(data);
 }
@@ -204,7 +201,7 @@ void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalValues = m_info.samples;
     if (m_info.totalBytes != (size_t) -1)
         m_info.bytes = m_info.totalBytes;
-    m_notify->OnDbProgress(true, m_info);
+    m_notify->OnDbProgress(kRunStopped, m_info);
     delete this;
 }
 

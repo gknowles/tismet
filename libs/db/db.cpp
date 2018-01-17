@@ -25,6 +25,7 @@ public:
     bool open(string_view name, size_t pageSize, DbOpenFlags flags);
     void configure(const DbConfig & conf);
     DbStats queryStats();
+    void checkpointBlock(IDbProgressNotify * notify, bool enable);
 
     bool insertMetric(uint32_t & out, string_view name);
     void eraseMetric(uint32_t id);
@@ -143,6 +144,11 @@ void DbBase::configure(const DbConfig & conf) {
 DbStats DbBase::queryStats() {
     DbStats s = m_data.queryStats();
     return s;
+}
+
+//===========================================================================
+void DbBase::checkpointBlock(IDbProgressNotify * notify, bool enable) {
+    m_log.checkpointBlock(notify, enable);
 }
 
 
@@ -405,4 +411,11 @@ size_t dbEnumSamples(
     auto * db = s_files.find(h);
     assert(db);
     return db->enumSamples(notify, id, first, last);
+}
+
+//===========================================================================
+void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable) {
+    auto * db = s_files.find(h);
+    assert(db);
+    db->checkpointBlock(notify, enable);
 }

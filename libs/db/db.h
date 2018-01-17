@@ -1,6 +1,8 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
+// Database of time series metrics
+//
 // db.h - tismet db
 #pragma once
 
@@ -10,7 +12,7 @@
 
 /****************************************************************************
 *
-*   Database of time series metrics
+*   Open, close, general configuration, and status commands
 *
 ***/
 
@@ -57,12 +59,19 @@ struct DbStats {
     unsigned metricNameSize; // includes terminating null
     unsigned samplesPerPage[kSampleTypes];
 
-    // Change as data is modified
+    // Changes as data is modified
     unsigned numPages;
     unsigned freePages;
     unsigned metrics;
 };
 DbStats dbQueryStats(DbHandle h);
+
+
+/****************************************************************************
+*
+*   Metric series
+*
+***/
 
 // returns true if found
 bool dbFindMetric(uint32_t & out, DbHandle h, std::string_view name);
@@ -73,19 +82,6 @@ void dbFindMetrics(
     std::string_view pattern = {}  // empty name for all
 );
 const char * dbGetMetricName(DbHandle h, uint32_t id);
-
-// returns all branches containing metrics that match the pattern
-void dbFindBranches(
-    Dim::UnsignedSet & out,
-    DbHandle h,
-    std::string_view pattern = {}  // empty name for all
-);
-const char * dbGetBranchName(DbHandle h, uint32_t branchId);
-
-// returns true if inserted, false if it already existed, sets out either way
-bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
-
-void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct MetricInfo {
     std::string_view name;
@@ -99,12 +95,33 @@ bool dbGetMetricInfo(
     DbHandle h,
     uint32_t id
 );
+
+// returns true if inserted, false if it already existed, sets out either way
+bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
+
+void dbEraseMetric(DbHandle h, uint32_t id);
+
 // Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
     const MetricInfo & info
 );
+
+// returns all branches containing metrics that match the pattern
+void dbFindBranches(
+    Dim::UnsignedSet & out,
+    DbHandle h,
+    std::string_view pattern = {}  // empty name for all
+);
+const char * dbGetBranchName(DbHandle h, uint32_t branchId);
+
+
+/****************************************************************************
+*
+*   Samples
+*
+***/
 
 void dbUpdateSample(
     DbHandle h,
@@ -139,7 +156,7 @@ size_t dbEnumSamples(
 
 /****************************************************************************
 *
-*   Database dump files
+*   Database dump and backup
 *
 ***/
 
@@ -154,10 +171,12 @@ struct DbProgressInfo {
 struct IDbProgressNotify {
     virtual ~IDbProgressNotify() {}
     virtual bool OnDbProgress(
-        bool complete,
+        Dim::RunMode mode,
         const DbProgressInfo & info
     ) = 0;
 };
+
+void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable);
 
 void dbWriteDump(
     IDbProgressNotify * notify,
