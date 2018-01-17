@@ -20,7 +20,6 @@ namespace {
 class DbBase : public HandleContent, public IDbEnumNotify {
 public:
     DbBase();
-    ~DbBase();
 
     bool open(string_view name, size_t pageSize, DbOpenFlags flags);
     void configure(const DbConfig & conf);
@@ -104,10 +103,6 @@ DbBase::DbBase ()
 {}
 
 //===========================================================================
-DbBase::~DbBase () {
-}
-
-//===========================================================================
 bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
@@ -142,8 +137,7 @@ void DbBase::configure(const DbConfig & conf) {
 
 //===========================================================================
 DbStats DbBase::queryStats() {
-    DbStats s = m_data.queryStats();
-    return s;
+    return m_data.queryStats();
 }
 
 //===========================================================================
@@ -189,6 +183,12 @@ void DbBase::eraseMetric(uint32_t id) {
 }
 
 //===========================================================================
+void DbBase::updateMetric(uint32_t id, const MetricInfo & info) {
+    DbTxn txn{m_log, m_page};
+    m_data.updateMetric(txn, id, info);
+}
+
+//===========================================================================
 const char * DbBase::getMetricName(uint32_t id) const {
     return m_leaf.name(id);
 }
@@ -198,15 +198,6 @@ bool DbBase::getMetricInfo(MetricInfo & info, uint32_t id) const {
     auto self = const_cast<DbBase *>(this);
     DbTxn txn{self->m_log, self->m_page};
     return m_data.getMetricInfo(txn, info, id);
-}
-
-//===========================================================================
-void DbBase::updateMetric(
-    uint32_t id,
-    const MetricInfo & info
-) {
-    DbTxn txn{m_log, m_page};
-    m_data.updateMetric(txn, id, info);
 }
 
 //===========================================================================
@@ -297,107 +288,67 @@ DbSampleType fromString(std::string_view src, DbSampleType def) {
 
 //===========================================================================
 void dbConfigure(DbHandle h, const DbConfig & conf) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->configure(conf);
+    s_files.find(h)->configure(conf);
 }
 
 //===========================================================================
 DbStats dbQueryStats(DbHandle h) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->queryStats();
+    return s_files.find(h)->queryStats();
 }
 
 //===========================================================================
-bool dbFindMetric(uint32_t & out, DbHandle h, string_view name) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->findMetric(out, name);
-}
-
-//===========================================================================
-void dbFindMetrics(
-    Dim::UnsignedSet & out,
-    DbHandle h,
-    std::string_view name
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->findMetrics(out, name);
-}
-
-//===========================================================================
-const char * dbGetMetricName(DbHandle h, uint32_t id) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->getMetricName(id);
-}
-
-//===========================================================================
-void dbFindBranches(
-    Dim::UnsignedSet & out,
-    DbHandle h,
-    std::string_view name
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->findBranches(out, name);
-}
-
-//===========================================================================
-const char * dbGetBranchName(DbHandle h, uint32_t id) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->getBranchName(id);
+void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable) {
+    s_files.find(h)->checkpointBlock(notify, enable);
 }
 
 //===========================================================================
 bool dbInsertMetric(uint32_t & out, DbHandle h, string_view name) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->insertMetric(out, name);
+    return s_files.find(h)->insertMetric(out, name);
 }
 
 //===========================================================================
 void dbEraseMetric(DbHandle h, uint32_t id) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->eraseMetric(id);
+    s_files.find(h)->eraseMetric(id);
 }
 
 //===========================================================================
-bool dbGetMetricInfo(
-    MetricInfo & info,
-    DbHandle h,
-    uint32_t id
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->getMetricInfo(info, id);
+void dbUpdateMetric(DbHandle h, uint32_t id, const MetricInfo & info) {
+    s_files.find(h)->updateMetric(id, info);
 }
 
 //===========================================================================
-void dbUpdateMetric(
-    DbHandle h,
-    uint32_t id,
-    const MetricInfo & info
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->updateMetric(id, info);
+const char * dbGetMetricName(DbHandle h, uint32_t id) {
+    return s_files.find(h)->getMetricName(id);
 }
 
 //===========================================================================
-void dbUpdateSample(
-    DbHandle h,
-    uint32_t id,
-    TimePoint time,
-    double value
-) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->updateSample(id, time, value);
+bool dbGetMetricInfo(MetricInfo & info, DbHandle h, uint32_t id) {
+    return s_files.find(h)->getMetricInfo(info, id);
+}
+
+//===========================================================================
+bool dbFindMetric(uint32_t & out, DbHandle h, string_view name) {
+    return s_files.find(h)->findMetric(out, name);
+}
+
+//===========================================================================
+void dbFindMetrics(UnsignedSet & out, DbHandle h, string_view name) {
+    s_files.find(h)->findMetrics(out, name);
+}
+
+//===========================================================================
+const char * dbGetBranchName(DbHandle h, uint32_t id) {
+    return s_files.find(h)->getBranchName(id);
+}
+
+//===========================================================================
+void dbFindBranches(UnsignedSet & out, DbHandle h, string_view name) {
+    s_files.find(h)->findBranches(out, name);
+}
+
+//===========================================================================
+void dbUpdateSample(DbHandle h, uint32_t id, TimePoint time, double value) {
+    s_files.find(h)->updateSample(id, time, value);
 }
 
 //===========================================================================
@@ -408,14 +359,5 @@ size_t dbEnumSamples(
     TimePoint first,
     TimePoint last
 ) {
-    auto * db = s_files.find(h);
-    assert(db);
-    return db->enumSamples(notify, id, first, last);
-}
-
-//===========================================================================
-void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable) {
-    auto * db = s_files.find(h);
-    assert(db);
-    db->checkpointBlock(notify, enable);
+    return s_files.find(h)->enumSamples(notify, id, first, last);
 }
