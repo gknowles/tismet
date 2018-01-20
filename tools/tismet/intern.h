@@ -4,18 +4,23 @@
 // intern.h - tismet
 #pragma once
 
-// Carbon
-void tsCarbonInitialize();
+// Performance counters
+void tsPerfInitialize();
 
 // Data
 void tsDataInitialize();
 DbHandle tsDataHandle();
+void tsDataBackup(IDbProgressNotify * notify);
 bool tsDataInsertMetric(uint32_t * id, std::string_view name);
 void tsDataUpdateMetric(uint32_t id, const MetricInfo & info);
 void tsDataUpdateSample(uint32_t id, Dim::TimePoint time, double value);
 
-// Graphite
-void tsGraphiteInitialize();
+// Backup
+void tsBackupInitialize();
+void tsBackupStart();
 
-// Performance counters
-void tsPerfInitialize();
+// Carbon
+void tsCarbonInitialize();
+
+// Graphite Web API
+void tsGraphiteInitialize();

@@ -98,7 +98,7 @@ void dbWriteDump(
             notify->OnDbProgress(kRunRunning, info);
     }
     info.totalMetrics = info.metrics;
-    info.totalValues = info.samples;
+    info.totalSamples = info.samples;
     if (info.totalBytes != (size_t) -1)
         info.bytes = info.totalBytes;
     if (notify)
@@ -198,7 +198,7 @@ bool DbWriter::onFileRead(
 //===========================================================================
 void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalMetrics = m_info.metrics;
-    m_info.totalValues = m_info.samples;
+    m_info.totalSamples = m_info.samples;
     if (m_info.totalBytes != (size_t) -1)
         m_info.bytes = m_info.totalBytes;
     m_notify->OnDbProgress(kRunStopped, m_info);

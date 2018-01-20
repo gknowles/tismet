@@ -23,7 +23,7 @@ enum DbOpenFlags : unsigned {
     fDbOpenVerbose = 1,
 };
 DbHandle dbOpen(
-    std::string_view name,
+    std::string_view path,
     size_t pageSize = 0, // 0 for same size as system memory pages
     DbOpenFlags flags = {}
 );
@@ -164,9 +164,11 @@ struct DbProgressInfo {
     size_t metrics{0};
     size_t totalMetrics{(size_t) -1};    // -1 for unknown
     size_t samples{0};
-    size_t totalValues{(size_t) -1};
+    size_t totalSamples{(size_t) -1};
     size_t bytes{0};
     size_t totalBytes{(size_t) -1};
+    size_t files{0};
+    size_t totalFiles{(size_t) -1};
 };
 struct IDbProgressNotify {
     virtual ~IDbProgressNotify() {}
@@ -176,7 +178,10 @@ struct IDbProgressNotify {
     ) = 0;
 };
 
-void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable);
+// returns false if backup is already running
+bool dbBackup(IDbProgressNotify * notify, DbHandle h, std::string_view dst);
+
+void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 
 void dbWriteDump(
     IDbProgressNotify * notify,

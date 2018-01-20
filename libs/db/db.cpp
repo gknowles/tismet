@@ -17,14 +17,20 @@ using namespace Dim;
 
 namespace {
 
-class DbBase : public HandleContent, public IDbEnumNotify {
+class DbBase
+    : public HandleContent
+    , IDbEnumNotify
+    , IDbProgressNotify
+    , IFileReadNotify
+{
 public:
     DbBase();
 
     bool open(string_view name, size_t pageSize, DbOpenFlags flags);
     void configure(const DbConfig & conf);
     DbStats queryStats();
-    void checkpointBlock(IDbProgressNotify * notify, bool enable);
+    void blockCheckpoint(IDbProgressNotify * notify, bool enable);
+    bool backup(IDbProgressNotify * notify, string_view dst);
 
     bool insertMetric(uint32_t & out, string_view name);
     void eraseMetric(uint32_t id);
@@ -50,6 +56,7 @@ public:
         TimePoint last
     );
 
+private:
     // Inherited via IDbEnumNotify
     void OnDbMetric(
         uint32_t id,
@@ -60,7 +67,26 @@ public:
         Duration interval
     ) override;
 
-private:
+    // Inherited via IDbProgressNotify
+    bool OnDbProgress(RunMode mode, const DbProgressInfo & info) override;
+
+    void backupNextFile();
+
+    // Inherited via IFileReadNotify
+    bool onFileRead(
+        size_t * bytesUsed,
+        string_view data,
+        int64_t offset,
+        FileHandle f
+    ) override;
+    void onFileEnd(int64_t offset, FileHandle f) override;
+
+    RunMode m_backupMode{kRunStopped};
+    DbProgressInfo m_info;
+    IDbProgressNotify * m_backer{nullptr};
+    vector<pair<Path, Path>> m_backupFiles;
+    FileAppendQueue m_dstFile;
+
     DbIndex m_leaf;
     DbIndex m_branch;
 
@@ -99,7 +125,8 @@ static auto & s_perfDeleted = uperf("db metrics deleted");
 
 //===========================================================================
 DbBase::DbBase ()
-    : m_log(m_data, m_page)
+    : m_dstFile(100, 2, envMemoryConfig().pageSize)
+    , m_log(m_data, m_page)
 {}
 
 //===========================================================================
@@ -141,8 +168,91 @@ DbStats DbBase::queryStats() {
 }
 
 //===========================================================================
-void DbBase::checkpointBlock(IDbProgressNotify * notify, bool enable) {
-    m_log.checkpointBlock(notify, enable);
+void DbBase::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
+    m_log.blockCheckpoint(notify, enable);
+}
+
+
+/****************************************************************************
+*
+*   Backup
+*
+***/
+
+//===========================================================================
+bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
+    if (m_backupMode != kRunStopped)
+        return false;
+
+    m_backupFiles.clear();
+    Path src = filePath(m_page.dataFile());
+    Path dst = dstStem;
+    dst.setExt(src.extension());
+    m_backupFiles.push_back(make_pair(dst, src));
+    src = filePath(m_log.logFile());
+    dst.setExt(src.extension());
+    m_backupFiles.push_back(make_pair(dst, src));
+    m_backer = notify;
+    m_backupMode = kRunStarting;
+    m_info = {};
+    m_info.totalFiles = m_backupFiles.size();
+    blockCheckpoint(this, true);
+    return true;
+}
+
+//===========================================================================
+bool DbBase::OnDbProgress(RunMode mode, const DbProgressInfo & info) {
+    if (m_backupMode != kRunStarting)
+        return true;
+
+    if (mode == kRunStopped) {
+        m_backupMode = kRunRunning;
+        backupNextFile();
+        return true;
+    }
+
+    assert(mode == kRunStopping);
+    return m_backer ? m_backer->OnDbProgress(m_backupMode, m_info) : true;
+}
+
+//===========================================================================
+void DbBase::backupNextFile() {
+    if (!m_backupFiles.empty()) {
+        auto [dst, src] = m_backupFiles.front();
+        if (m_dstFile.open(dst, FileAppendQueue::kTrunc)) {
+            m_info.totalBytes += fileSize(src);
+            m_backupFiles.erase(m_backupFiles.begin());
+            fileStreamBinary(this, src, 65536, taskComputeQueue());
+            return;
+        }
+        logMsgError() << "Unable to create " << dst;
+        m_backupFiles.clear();
+    }
+
+    blockCheckpoint(this, false);
+    if (m_backer)
+        m_backer->OnDbProgress(kRunStopped, m_info);
+    m_backupMode = kRunStopped;
+}
+
+//===========================================================================
+bool DbBase::onFileRead(
+    size_t * bytesUsed,
+    string_view data,
+    int64_t offset,
+    FileHandle f
+) {
+    *bytesUsed = data.size();
+    m_info.bytes += *bytesUsed;
+    m_dstFile.append(data);
+    return m_backer ? m_backer->OnDbProgress(m_backupMode, m_info) : true;
+}
+
+//===========================================================================
+void DbBase::onFileEnd(int64_t offset, FileHandle f) {
+    m_dstFile.close();
+    m_info.files += 1;
+    backupNextFile();
 }
 
 
@@ -297,8 +407,13 @@ DbStats dbQueryStats(DbHandle h) {
 }
 
 //===========================================================================
-void dbCheckpointBlock(IDbProgressNotify * notify, DbHandle h, bool enable) {
-    s_files.find(h)->checkpointBlock(notify, enable);
+void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable) {
+    s_files.find(h)->blockCheckpoint(notify, enable);
+}
+
+//===========================================================================
+bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
+    return s_files.find(h)->backup(notify, dst);
 }
 
 //===========================================================================

@@ -51,6 +51,7 @@
 # tools/tismet/intern.h
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
+# tools/tismet/tsbackup.cpp
 # tools/tismet/tscarbon.cpp
 # tools/tismet/tsdata.cpp
 # tools/tismet/tsgraphite.cpp

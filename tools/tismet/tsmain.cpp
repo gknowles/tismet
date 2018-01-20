@@ -94,6 +94,7 @@ void InitializeTask::onTask() {
         tsPerfInitialize();
         tsCarbonInitialize();
         tsGraphiteInitialize();
+        tsBackupInitialize();
     }
     m_ready = true;
     logMsgInfo() << "Server ready";

@@ -113,6 +113,8 @@ public:
     // true if page scan previously enabled
     bool enablePageScan(bool enable);
 
+    Dim::FileHandle dataFile() const { return m_fdata; }
+
 private:
     bool openWork(std::string_view workfile, size_t pageSize);
     bool openData(std::string_view datafile);
@@ -197,7 +199,7 @@ public:
     uint64_t beginTxn();
     void commit(uint64_t txn);
     void checkpoint();
-    void checkpointBlock(IDbProgressNotify * notify, bool enable);
+    void blockCheckpoint(IDbProgressNotify * notify, bool enable);
 
     void logAndApply(uint64_t txn, Record * log, size_t bytes);
     void queueTask(
@@ -205,6 +207,8 @@ public:
         uint64_t waitTxn,
         Dim::TaskQueueHandle hq = {} // defaults to compute queue
     );
+
+    Dim::FileHandle logFile() const { return m_flog; }
 
 private:
     char * bufPtr(size_t ibuf);

@@ -257,7 +257,7 @@ void DbLog::configure(const DbConfig & conf) {
 }
 
 //===========================================================================
-void DbLog::checkpointBlock(IDbProgressNotify * notify, bool enable) {
+void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     if (enable) {
         DbProgressInfo info = {};
         m_checkpointBlocks.push_back(notify);

@@ -196,7 +196,7 @@ void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     configMonitor("app.xml", &s_appXml);
     string path;
-    appDataPath(path, "metrics.dat");
+    appDataPath(path, "metrics");
     s_db = dbOpen(path, 0, fDbOpenVerbose);
     if (!s_db) {
         logMsgError() << "Unable to open database, " << path;
@@ -209,6 +209,13 @@ void tsDataInitialize() {
 DbHandle tsDataHandle() {
     assert(s_db);
     return s_db;
+}
+
+//===========================================================================
+void tsDataBackup(IDbProgressNotify * notify) {
+    string path;
+    appDataPath(path, "backup/metrics");
+    dbBackup(notify, s_db, path);
 }
 
 //===========================================================================
