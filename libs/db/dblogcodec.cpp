@@ -803,7 +803,8 @@ void DbTxn::logMetricInit(
     rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;
-    memcpy(rec->name, name.data(), extra);
+    memcpy(rec->name, name.data(), extra - 1);
+    rec->name[extra] = 0;
     log(&rec->hdr, bytes);
 }
 
