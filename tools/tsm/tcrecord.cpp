@@ -46,7 +46,7 @@ static uint64_t s_samplesWritten;
 static uint64_t s_bytesWritten;
 static TimePoint s_startTime;
 
-static FileAppendQueue s_file{10, 2};
+static FileAppendQueue s_file;
 
 
 //===========================================================================
@@ -237,8 +237,9 @@ CmdOpts::CmdOpts() {
 //===========================================================================
 static bool recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
+        s_file.init(10, 2, envMemoryConfig().pageSize);
         if (!s_file.open(s_opts.ofile.view(), s_opts.openMode))
-            return false;
+            return cli.fail(EX_DATAERR, string(s_opts.ofile) + ": open failed");
     }
 
     consoleCatchCtrlC();

@@ -56,10 +56,8 @@
 # tools/tismet/tsgraphite.cpp
 # tools/tismet/tsmain.cpp
 # tools/tismet/tsperf.cpp
-# tools/tsm/intern.h
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
-# tools/tsm/tcappendfile.cpp
 # tools/tsm/tcdump.cpp
 # tools/tsm/tcgen.cpp
 # tools/tsm/tcload.cpp
@@ -113,6 +111,7 @@
 # vendor/dimapp/libs/core/timerlist.h
 # vendor/dimapp/libs/core/tokentable.cpp
 # vendor/dimapp/libs/core/tokentable.h
+# vendor/dimapp/libs/core/types.cpp
 # vendor/dimapp/libs/core/types.h
 # vendor/dimapp/libs/core/uset.cpp
 # vendor/dimapp/libs/core/uset.h

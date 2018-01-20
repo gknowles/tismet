@@ -376,7 +376,7 @@ private:
     // Inherited via ITaskNotify
     void onTask() override;
 
-    FileAppendQueue m_file{100, 2};
+    FileAppendQueue m_file{100, 2, envMemoryConfig().pageSize};
     MetricSource m_mets;
 };
 
