@@ -209,6 +209,7 @@ bool DbLog::open(string_view logfile, DbOpenFlags flags) {
     s_perfPages += (unsigned) m_numPages;
     if (!recover())
         return false;
+    m_checkpointStart = Clock::now();
     return true;
 }
 
