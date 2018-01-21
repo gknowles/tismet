@@ -207,6 +207,9 @@ bool DbBase::OnDbProgress(RunMode mode, const DbProgressInfo & info) {
 
     if (mode == kRunStopped) {
         m_backupMode = kRunRunning;
+        if (m_backer && !m_backer->OnDbProgress(m_backupMode, m_info)) {
+            m_backupFiles.clear();
+        }
         backupNextFile();
         return true;
     }
@@ -220,7 +223,11 @@ void DbBase::backupNextFile() {
     if (!m_backupFiles.empty()) {
         auto [dst, src] = m_backupFiles.front();
         if (m_dstFile.open(dst, FileAppendQueue::kTrunc)) {
-            m_info.totalBytes += fileSize(src);
+            if (m_info.totalBytes == size_t(-1)) {
+                m_info.totalBytes = fileSize(src);
+            } else {
+                m_info.totalBytes += fileSize(src);
+            }
             m_backupFiles.erase(m_backupFiles.begin());
             fileStreamBinary(this, src, 65536, taskComputeQueue());
             return;
@@ -245,13 +252,21 @@ bool DbBase::onFileRead(
     *bytesUsed = data.size();
     m_info.bytes += *bytesUsed;
     m_dstFile.append(data);
-    return m_backer ? m_backer->OnDbProgress(m_backupMode, m_info) : true;
+    if (m_backer && !m_backer->OnDbProgress(m_backupMode, m_info)) {
+        m_backupMode = kRunStopping;
+        return false;
+    }
+    return true;
 }
 
 //===========================================================================
 void DbBase::onFileEnd(int64_t offset, FileHandle f) {
     m_dstFile.close();
-    m_info.files += 1;
+    if (m_backupMode == kRunStopping) {
+        m_backupFiles.clear();
+    } else {
+        m_info.files += 1;
+    }
     backupNextFile();
 }
 
