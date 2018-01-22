@@ -133,7 +133,7 @@ static void app(int argc, char * argv[]) {
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
     shutdownMonitor(&s_initTask);
-    taskPushCompute(s_initTask);
+    taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
 }
 

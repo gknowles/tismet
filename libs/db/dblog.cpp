@@ -555,7 +555,7 @@ void DbLog::checkpoint() {
     m_phase = Checkpoint::WaitForPageFlush;
     s_perfCps += 1;
     s_perfCurCps += 1;
-    taskPushCompute(m_checkpointPagesTask);
+    taskPushCompute(&m_checkpointPagesTask);
 }
 
 //===========================================================================
@@ -662,7 +662,7 @@ void DbLog::queueTask(
         hq = taskComputeQueue();
     unique_lock<mutex> lk{m_bufMut};
     if (m_stableTxn >= waitTxn) {
-        taskPush(hq, *task);
+        taskPush(hq, task);
     } else {
         auto ti = TaskInfo{task, waitTxn, hq};
         m_tasks.push(ti);
@@ -744,7 +744,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
         auto & ti = m_tasks.top();
         if (m_stableTxn < ti.waitTxn)
             break;
-        taskPush(ti.hq, *ti.notify);
+        taskPush(ti.hq, ti.notify);
         m_tasks.pop();
     }
 }

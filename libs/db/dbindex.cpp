@@ -73,7 +73,7 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
     }
     m_ids.uset.insert(id);
     m_ids.count += 1;
-    strSplit(m_tmpSegs, name, '.');
+    strSplit(&m_tmpSegs, name, '.');
     auto numSegs = m_tmpSegs.size();
     if (m_lenIds.size() <= numSegs) {
         m_lenIds.resize(numSegs + 1);
@@ -120,7 +120,7 @@ void DbIndex::erase(string_view name) {
     m_ids.uset.erase(id);
     m_ids.count -= 1;
     vector<string_view> segs;
-    strSplit(segs, name, '.');
+    strSplit(&segs, name, '.');
     auto numSegs = segs.size();
     m_lenIds[numSegs].uset.erase(id);
     m_lenIds[numSegs].count -= 1;

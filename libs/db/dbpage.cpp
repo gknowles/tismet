@@ -247,7 +247,7 @@ Duration DbPage::onTimer(TimePoint now) {
     }
 
     if (m_flushLsn) {
-        taskPushCompute(m_flushTask);
+        taskPushCompute(&m_flushTask);
     } else {
         queuePageScan();
     }

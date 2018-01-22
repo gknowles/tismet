@@ -47,7 +47,7 @@ Duration SampleTimer::onTimer(TimePoint now) {
     if (appStopping())
         return kTimerInfinite;
 
-    perfGetValues(m_vals);
+    perfGetValues(&m_vals);
     for (auto && val : m_vals) {
         if (val.name.substr(0, 3) != "db ")
             continue;

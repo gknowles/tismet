@@ -128,6 +128,8 @@ static bool checkLimits(size_t moreBytes) {
 *
 ***/
 
+namespace {
+
 class MetricSource {
 public:
     MetricSource();
@@ -142,6 +144,8 @@ private:
     size_t m_pos = (size_t) -1;
     bool m_firstPass{true};
 };
+
+} // namespace
 
 //===========================================================================
 MetricSource::MetricSource()
@@ -199,6 +203,8 @@ Metric * MetricSource::next() {
 *
 ***/
 
+namespace {
+
 class BufferSource {
 public:
     size_t next(void * out, size_t outLen, MetricSource & src);
@@ -206,6 +212,8 @@ public:
 private:
     string m_buffer;
 };
+
+} // namespace
 
 //===========================================================================
 size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
@@ -245,6 +253,8 @@ size_t BufferSource::next(void * out, size_t outLen, MetricSource & src) {
 *
 ***/
 
+namespace {
+
 class AddrConn : public IAppSocketNotify {
 public:
     static constexpr size_t kBufferSize = 4096;
@@ -264,6 +274,8 @@ private:
     bool m_done{false};
     bool m_full{false};
 };
+
+} // namespace
 
 //===========================================================================
 void AddrConn::write() {
@@ -329,6 +341,8 @@ void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
 *
 ***/
 
+namespace {
+
 class AddrJob : IEndpointNotify {
 public:
     bool start(Cli & cli);
@@ -339,6 +353,8 @@ private:
 
     int m_cancelId;
 };
+
+} // namespace
 
 //===========================================================================
 bool AddrJob::start(Cli & cli) {
@@ -366,6 +382,8 @@ void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
 *
 ***/
 
+namespace {
+
 class FileJob : public ITaskNotify {
 public:
     ~FileJob();
@@ -379,6 +397,8 @@ private:
     FileAppendQueue m_file{100, 2, envMemoryConfig().pageSize};
     MetricSource m_mets;
 };
+
+} // namespace
 
 //===========================================================================
 FileJob::~FileJob() {
@@ -403,7 +423,7 @@ bool FileJob::start(Cli & cli) {
 
     taskSetQueueThreads(taskComputeQueue(), 2);
     logStart(fname, nullptr);
-    taskPushCompute(*this);
+    taskPushCompute(this);
     cli.fail(EX_PENDING, "");
     return true;
 }
