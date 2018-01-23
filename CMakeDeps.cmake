@@ -59,11 +59,13 @@
 # tools/tismet/tsperf.cpp
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
+# tools/tsm/tcbackup.cpp
 # tools/tsm/tcdump.cpp
 # tools/tsm/tcgen.cpp
 # tools/tsm/tcload.cpp
 # tools/tsm/tcmain.cpp
 # tools/tsm/tcrecord.cpp
+# tools/tsm/tcreplay.cpp
 # vendor/dimapp
 # vendor/dimapp/libs/app/app.cpp
 # vendor/dimapp/libs/app/app.h

@@ -27,8 +27,9 @@ const char kVersion[] = "1.0";
 //===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
-    cli.header("tsm v"s + kVersion + " (" __DATE__ ")");
-    cli.versionOpt(kVersion, "tsm");
+    auto version = string(kVersion) + " (" __DATE__ ")";
+    cli.header("tsm v"s + version);
+    cli.versionOpt(version, "tsm");
     cli.helpCmd().helpNoArgs();
     (void) cli.exec(argc, argv);
     return appSignalUsageError();

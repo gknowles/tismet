@@ -81,6 +81,8 @@ private:
     ) override;
     void onFileEnd(int64_t offset, FileHandle f) override;
 
+    bool m_verbose{false};
+
     RunMode m_backupMode{kRunStopped};
     DbProgressInfo m_info;
     IDbProgressNotify * m_backer{nullptr};
@@ -131,6 +133,8 @@ DbBase::DbBase ()
 
 //===========================================================================
 bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
+    m_verbose = flags & fDbOpenVerbose;
+
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
     auto logfile = Path(name).setExt("tsl");
@@ -184,6 +188,8 @@ bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
     if (m_backupMode != kRunStopped)
         return false;
 
+    if (m_verbose)
+        logMsgInfo() << "Backup started";
     m_backupFiles.clear();
     Path src = filePath(m_page.dataFile());
     Path dst = dstStem;
@@ -240,6 +246,8 @@ void DbBase::backupNextFile() {
     if (m_backer)
         m_backer->OnDbProgress(kRunStopped, m_info);
     m_backupMode = kRunStopped;
+    if (m_verbose)
+        logMsgInfo() << "Backup completed";
 }
 
 //===========================================================================

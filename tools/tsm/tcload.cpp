@@ -18,7 +18,7 @@ using namespace Dim;
 static bool loadCmd(Cli & cli);
 
 static Cli s_cli = Cli{}.command("load")
-    .desc("Load metrics from dump file into database")
+    .desc("Load metrics from dump file into database.")
     .action(loadCmd);
 static auto & s_dat = s_cli.opt<Path>("[dat file]")
     .desc("Target database");
