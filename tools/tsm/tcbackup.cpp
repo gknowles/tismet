@@ -195,8 +195,7 @@ void AddrConn::onSocketRead(AppSocketData & data) {
         assert(!msg->isRequest());
         auto res = static_cast<HttpResponse *>(msg.get());
         XDocument doc;
-        res->body().pushBack(0);
-        auto root = doc.parse(res->body().data());
+        auto root = doc.parse(res->body().c_str());
         result = reportStatus(root);
         if (result) {
             if (s_opts.wait) {
