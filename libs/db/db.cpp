@@ -58,7 +58,7 @@ public:
 
 private:
     // Inherited via IDbEnumNotify
-    void OnDbMetric(
+    void OnDbMetricStart(
         uint32_t id,
         string_view vname,
         DbSampleType type,
@@ -148,7 +148,7 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
 }
 
 //===========================================================================
-void DbBase::OnDbMetric(
+void DbBase::OnDbMetricStart(
     uint32_t id,
     string_view name,
     DbSampleType type,
