@@ -952,55 +952,6 @@ void DbData::applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
 }
 
 //===========================================================================
-// Returns false if time is outside of the retention period, or if no
-// retention period has been established because there are no samples.
-// Otherwise it sets:
-//  - outPgno: the page number that contains the time point, or zero if the
-//      page is missing. Missing pages can occur when the recorded samples
-//      have large gaps that span entire pages.
-//  - outPos: the position of the page (whether or not it's missing) of the
-//      page within the ring buffer of sample pages for the metric.
-bool DbData::findSamplePage(
-    DbTxn & txn,
-    uint32_t * outPgno,
-    unsigned * outPos,
-    uint32_t id,
-    TimePoint time
-) {
-    auto & mi = loadMetricPos(txn, id);
-
-    if (!mi.lastPage) {
-        // metric has no sample pages (i.e. no samples)
-        return false;
-    }
-
-    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
-
-    time -= time.time_since_epoch() % mi.interval;
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-
-    if (time >= mi.pageFirstTime) {
-        if (time > lastSampleTime)
-            return false;
-        *outPgno = mi.lastPage;
-        *outPos = mp->lastPagePos;
-        return true;
-    }
-
-    if (time <= lastSampleTime - mp->retention) {
-        // before first sample
-        return false;
-    }
-    auto pageInterval = samplesPerPage(mi.sampleType) * mi.interval;
-    auto off = (mi.pageFirstTime - time - mi.interval) / pageInterval + 1;
-    auto pages = (mp->retention + pageInterval - mi.interval) / pageInterval;
-    *outPos = (uint32_t) (mp->lastPagePos + pages - off) % pages;
-    if (!radixFind(txn, outPgno, mi.infoPage, *outPos))
-        *outPgno = 0;
-    return true;
-}
-
-//===========================================================================
 static size_t noSamples(
     IDbEnumNotify * notify,
     uint32_t id,
@@ -1033,32 +984,35 @@ size_t DbData::enumSamples(
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;
     last -= last.time_since_epoch() % mi.interval;
-    if (first > last)
-        return noSamples(notify, id, name, stype, first, mi.interval);
 
-    uint32_t spno;
-    unsigned dppos;
-    bool found = findSamplePage(txn, &spno, &dppos, id, first);
-    if (!found && first >= mi.pageFirstTime)
+    if (!mi.lastPage)
         return noSamples(notify, id, name, stype, first, mi.interval);
 
     auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
+    auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
+    if (first < firstSampleTime)
+        first = firstSampleTime;
     if (last > lastSampleTime)
         last = lastSampleTime;
-
-    if (!found) {
-        if (first < last)
-            first = lastSampleTime - mp->retention + mi.interval;
-        if (first > last)
-            return noSamples(notify, id, name, stype, first, mi.interval);
-        found = findSamplePage(txn, &spno, &dppos, id, first);
-        assert(found);
-    }
+    if (first >= last)
+        return noSamples(notify, id, name, stype, first, mi.interval);
 
     auto vpp = samplesPerPage(mi.sampleType);
     auto pageInterval = vpp * mi.interval;
     auto numSamples = mp->retention / mp->interval;
     auto numPages = (numSamples - 1) / vpp + 1;
+
+    uint32_t spno;
+    unsigned sppos;
+    if (first >= mi.pageFirstTime) {
+        sppos = mp->lastPagePos;
+        spno = mi.lastPage;
+    } else {
+        auto off = (mi.pageFirstTime - first - mi.interval) / pageInterval + 1;
+        sppos = (uint32_t) (mp->lastPagePos + numPages - off) % numPages;
+        if (!radixFind(txn, &spno, mi.infoPage, sppos))
+            spno = 0;
+    }
 
     unsigned count = 0;
     for (;;) {
@@ -1109,8 +1063,8 @@ size_t DbData::enumSamples(
             break;
 
         // advance to next page
-        dppos = (dppos + 1) % numPages;
-        radixFind(txn, &spno, mi.infoPage, dppos);
+        sppos = (sppos + 1) % numPages;
+        radixFind(txn, &spno, mi.infoPage, sppos);
     }
     if (!count) {
         return noSamples(notify, id, name, stype, first, mi.interval);

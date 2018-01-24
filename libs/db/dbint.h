@@ -586,13 +586,6 @@ private:
         uint32_t id,
         Dim::TimePoint time
     );
-    bool findSamplePage(
-        DbTxn & txn,
-        uint32_t * pgno,
-        unsigned * pagePos,
-        uint32_t id,
-        Dim::TimePoint time
-    );
 
     bool m_verbose{false};
     std::vector<MetricPosition> m_metricPos;
