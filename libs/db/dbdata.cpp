@@ -92,6 +92,7 @@ struct DbData::MetricPage {
     DbPageHeader hdr;
     Duration interval;
     Duration retention;
+    TimePoint lastPageFirstTime;
     uint32_t lastPage;
     unsigned lastPagePos;
     DbSampleType sampleType;
@@ -507,6 +508,7 @@ void DbData::applyMetricUpdate(
     mp->interval = interval;
     mp->lastPage = 0;
     mp->lastPagePos = 0;
+    mp->lastPageFirstTime = {};
     auto rd = radixData(mp);
     rd->height = 0;
     memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
@@ -598,7 +600,7 @@ DbData::MetricPosition & DbData::loadMetricPos(
         auto pageTime = time - lastSample * mi.interval;
         auto spno = allocPgno(txn);
         txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
-        txn.logMetricUpdateSamples(mi.infoPage, 0, spno, true);
+        txn.logMetricUpdateSamples(mi.infoPage, 0, spno, pageTime, true);
 
         mi.lastPage = spno;
         mi.pageFirstTime = pageTime;
@@ -614,6 +616,7 @@ void DbData::applyMetricClearSamples(void * ptr) {
     assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = 0;
     mp->lastPagePos = 0;
+    mp->lastPageFirstTime = {};
     auto rd = radixData(mp);
     rd->height = 0;
     memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
@@ -624,12 +627,14 @@ void DbData::applyMetricUpdateSamples(
     void * ptr,
     size_t pos,
     uint32_t refPage,
+    TimePoint refTime,
     bool updateIndex
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = refPage;
     mp->lastPagePos = (unsigned) pos;
+    mp->lastPageFirstTime = refTime;
     if (updateIndex) {
         auto rd = radixData(mp);
         rd->pages[pos] = refPage;
@@ -805,7 +810,7 @@ void DbData::updateSample(
     } else {
         txn.logSampleUpdateTime(lastPage, endPageTime);
     }
-    txn.logMetricUpdateSamples(mi.infoPage, last, lastPage, false);
+    txn.logMetricUpdateSamples(mi.infoPage, last, lastPage, endPageTime, false);
 
     mi.lastPage = lastPage;
     mi.pageFirstTime = endPageTime;

@@ -361,6 +361,7 @@ public:
         uint32_t pgno,
         size_t refPos,
         uint32_t refPage,
+        Dim::TimePoint refTime,
         bool updateIndex
     );
     void logSampleInit(
@@ -511,6 +512,7 @@ public:
         void * ptr,
         size_t pos,
         uint32_t refPage,
+        Dim::TimePoint refTime,
         bool updateIndex
     );
     void applySampleInit(

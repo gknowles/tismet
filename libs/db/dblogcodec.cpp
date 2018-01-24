@@ -154,6 +154,7 @@ struct MetricUpdateSamplesRec {
     DbLog::Record hdr;
     uint16_t refPos;
     uint32_t refPage;
+    TimePoint refTime;
 };
 
 //---------------------------------------------------------------------------
@@ -510,6 +511,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             page,
             rec->refPos,
             rec->refPage,
+            rec->refTime,
             false
         );
     }
@@ -519,6 +521,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             page,
             rec->refPos,
             rec->refPage,
+            rec->refTime,
             true
         );
     }
@@ -833,6 +836,7 @@ void DbTxn::logMetricUpdateSamples(
     uint32_t pgno,
     size_t refPos,
     uint32_t refPage,
+    TimePoint refTime,
     bool updateIndex
 ) {
     auto type = updateIndex
@@ -841,6 +845,7 @@ void DbTxn::logMetricUpdateSamples(
     auto [rec, bytes] = alloc<MetricUpdateSamplesRec>(type, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
+    rec->refTime = refTime;
     log(&rec->hdr, bytes);
 }
 
