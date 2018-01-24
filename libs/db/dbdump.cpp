@@ -30,7 +30,7 @@ class DumpWriter : public IDbEnumNotify {
 public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    void OnDbMetricStart(
+    bool OnDbMetricStart(
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -56,7 +56,7 @@ DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
 {}
 
 //===========================================================================
-void DumpWriter::OnDbMetricStart(
+bool DumpWriter::OnDbMetricStart(
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -65,6 +65,7 @@ void DumpWriter::OnDbMetricStart(
     Duration interval
 ) {
     m_name = name;
+    return true;
 }
 
 //===========================================================================

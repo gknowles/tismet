@@ -58,7 +58,7 @@ public:
 
 private:
     // Inherited via IDbEnumNotify
-    void OnDbMetricStart(
+    bool OnDbMetricStart(
         uint32_t id,
         string_view vname,
         DbSampleType type,
@@ -148,7 +148,7 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
 }
 
 //===========================================================================
-void DbBase::OnDbMetricStart(
+bool DbBase::OnDbMetricStart(
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -158,6 +158,7 @@ void DbBase::OnDbMetricStart(
 ) {
     m_leaf.insert(id, name);
     m_branch.insertBranches(name);
+    return true;
 }
 
 //===========================================================================

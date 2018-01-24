@@ -323,14 +323,16 @@ bool DbData::loadMetrics (
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
         if (notify) {
-            notify->OnDbMetricStart(
+            if (!notify->OnDbMetricStart(
                 mp->hdr.id,
                 mp->name,
                 mp->sampleType,
                 {},
                 {},
                 mp->interval
-            );
+            )) {
+                return false;
+            }
         }
         if (appStopping())
             return false;
@@ -589,25 +591,25 @@ DbData::MetricPosition & DbData::loadMetricPos(
     auto & mi = m_metricPos[id];
     assert(mi.infoPage);
 
-    if (!mi.lastPage) {
-        // metric has no sample pages
-        // create empty page that covers the requested time
+    if (mi.lastPage)
+        return loadMetricPos(txn, id);
 
-        // round time down to metric's sampling interval
-        time -= time.time_since_epoch() % mi.interval;
+    // metric has no sample pages
+    // create empty page that covers the requested time
 
-        auto lastSample = (uint16_t) (id % samplesPerPage(mi.sampleType));
-        auto pageTime = time - lastSample * mi.interval;
-        auto spno = allocPgno(txn);
-        txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
-        txn.logMetricUpdateSamples(mi.infoPage, 0, spno, pageTime, true);
+    // round time down to metric's sampling interval
+    time -= time.time_since_epoch() % mi.interval;
 
-        mi.lastPage = spno;
-        mi.pageFirstTime = pageTime;
-        mi.pageLastSample = lastSample;
-    }
+    auto lastSample = (uint16_t) (id % samplesPerPage(mi.sampleType));
+    auto pageTime = time - lastSample * mi.interval;
+    auto spno = allocPgno(txn);
+    txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
+    txn.logMetricUpdateSamples(mi.infoPage, 0, spno, pageTime, true);
 
-    return loadMetricPos(txn, id);
+    mi.lastPage = spno;
+    mi.pageFirstTime = pageTime;
+    mi.pageLastSample = lastSample;
+    return mi;
 }
 
 //===========================================================================
@@ -1008,8 +1010,8 @@ static size_t noSamples(
     Duration interval
 ) {
     if (notify) {
-        notify->OnDbMetricStart(id, name, stype, first, first, interval);
-        notify->OnDbMetricEnd(id);
+        if (notify->OnDbMetricStart(id, name, stype, first, first, interval))
+            notify->OnDbMetricEnd(id);
     }
     return 0;
 }
@@ -1087,14 +1089,16 @@ size_t DbData::enumSamples(
                 auto value = getSample(sp, vpos);
                 if (!isnan(value)) {
                     if (!count++) {
-                        notify->OnDbMetricStart(
+                        if (!notify->OnDbMetricStart(
                             id,
                             name,
                             stype,
                             first,
                             last + mi.interval,
                             mi.interval
-                        );
+                        )) {
+                            return count;
+                        }
                     }
                     if (!notify->OnDbSample(first, value))
                         return count;

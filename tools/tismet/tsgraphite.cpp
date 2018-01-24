@@ -300,7 +300,7 @@ public:
     );
 
 private:
-    void OnDbMetricStart(
+    bool OnDbMetricStart(
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -331,7 +331,7 @@ public:
     );
 
 private:
-    void OnDbMetricStart(
+    bool OnDbMetricStart(
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -466,7 +466,7 @@ RenderMsgPack::RenderMsgPack(
 }
 
 //===========================================================================
-void RenderMsgPack::OnDbMetricStart(
+bool RenderMsgPack::OnDbMetricStart(
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -485,6 +485,7 @@ void RenderMsgPack::OnDbMetricStart(
     m_bld.array(count);
     m_prevTime = from - interval;
     m_interval = interval;
+    return true;
 }
 
 //===========================================================================
@@ -532,7 +533,7 @@ RenderJson::RenderJson(
 }
 
 //===========================================================================
-void RenderJson::OnDbMetricStart(
+bool RenderJson::OnDbMetricStart(
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -540,10 +541,14 @@ void RenderJson::OnDbMetricStart(
     TimePoint until,
     Duration interval
 ) {
+    if (from == until)
+        return false;
+
     m_bld.object();
     m_bld.member("target", name);
     m_bld.member("datapoints");
     m_bld.array();
+    return true;
 }
 
 //===========================================================================

@@ -132,15 +132,18 @@ void dbUpdateSample(
 
 struct IDbEnumNotify {
     virtual ~IDbEnumNotify() {}
-    // Called once before any calls to OnDbSample
-    virtual void OnDbMetricStart(
+
+    // Called once before any calls to OnDbSample, return false to abort the
+    // enum, otherwise it continues to the samples.
+    virtual bool OnDbMetricStart(
         uint32_t id,
         std::string_view name,
         DbSampleType type,
         Dim::TimePoint from,
         Dim::TimePoint until,
         Dim::Duration interval
-    ) {}
+    ) { return true; }
+
     virtual void OnDbMetricEnd(uint32_t id) {}
 
     // Called for each matching sample, return false to abort the enum,
