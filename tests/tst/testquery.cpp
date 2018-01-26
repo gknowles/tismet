@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// querytest.cpp - tismet test query
+// testquery.cpp - tismet test
 #include "pch.h"
 #pragma hdrstop
 
@@ -42,8 +42,27 @@ static void parseTest(
     EXPECT(qry.text == normal);
 }
 
+
+/****************************************************************************
+*
+*   Test
+*
+***/
+
+namespace {
+
+class Test : public ITest {
+public:
+    Test() : ITest("query", "Query parsing tests.") {}
+    void onTestRun() override;
+};
+
+} // namespace
+
+static Test s_test;
+
 //===========================================================================
-static void internalTest() {
+void Test::onTestRun() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
     EXPECT_PARSE("**", "**");
@@ -59,49 +78,4 @@ static void internalTest() {
     EXPECT_PARSE("sum( a )", "sum(a)");
     EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))",
         "sum(maximumAbove(a.b[12346], 2))");
-}
-
-
-/****************************************************************************
-*
-*   Application
-*
-***/
-
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    Cli cli;
-    auto & test = cli.opt<bool>("test", true).desc("Run internal unit tests");
-    if (!cli.parse(argc, argv))
-        return appSignalUsageError();
-    if (*test)
-        internalTest();
-
-    if (int errors = logGetMsgCount(kLogTypeError)) {
-        ConsoleScopedAttr attr(kConsoleError);
-        cerr << "*** " << errors << " FAILURES" << endl;
-        appSignalShutdown(EX_SOFTWARE);
-    } else {
-        cout << "All tests passed" << endl;
-        appSignalShutdown(EX_OK);
-    }
-}
-
-
-/****************************************************************************
-*
-*   main
-*
-***/
-
-//===========================================================================
-int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
-        | _CRTDBG_LEAK_CHECK_DF
-        | _CRTDBG_DELAY_FREE_MEM_DF
-    );
-    _set_error_mode(_OUT_TO_MSGBOX);
-
-    int code = appRun(app, argc, argv);
-    return code;
 }

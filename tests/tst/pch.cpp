@@ -1,6 +1,6 @@
-// Copyright Glen Knowles 2017.
+// Copyright Glen Knowles 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// pch.cpp - tismet test query
+// pch.cpp - tismet test
 #include "pch.h"
 #pragma hdrstop

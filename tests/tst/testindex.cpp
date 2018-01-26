@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// indextest.cpp - tismet test index
+// testindex.cpp - tismet test
 #include "pch.h"
 #pragma hdrstop
 
@@ -49,8 +49,27 @@ static void findTest(
     }
 }
 
+
+/****************************************************************************
+*
+*   Test
+*
+***/
+
+namespace {
+
+class Test : public ITest {
+public:
+    Test() : ITest("index", "Metric index tests.") {}
+    void onTestRun() override;
+};
+
+} // namespace
+
+static Test s_test;
+
 //===========================================================================
-static void internalTest() {
+void Test::onTestRun() {
     int line = 0;
 
     DbIndex index;
@@ -79,49 +98,4 @@ static void internalTest() {
     EXPECT_FIND("**.y.z", "3-4");
     EXPECT_FIND("a.**.z", "1-4");
     EXPECT_FIND("a.**.m.**.z", "2-4");
-}
-
-
-/****************************************************************************
-*
-*   Application
-*
-***/
-
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    Cli cli;
-    auto & test = cli.opt<bool>("test", true).desc("Run internal unit tests");
-    if (!cli.parse(argc, argv))
-        return appSignalUsageError();
-    if (*test)
-        internalTest();
-
-    if (int errors = logGetMsgCount(kLogTypeError)) {
-        ConsoleScopedAttr attr(kConsoleError);
-        cerr << "*** " << errors << " FAILURES" << endl;
-        appSignalShutdown(EX_SOFTWARE);
-    } else {
-        cout << "All tests passed" << endl;
-        appSignalShutdown(EX_OK);
-    }
-}
-
-
-/****************************************************************************
-*
-*   main
-*
-***/
-
-//===========================================================================
-int main(int argc, char *argv[]) {
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
-        | _CRTDBG_LEAK_CHECK_DF
-        | _CRTDBG_DELAY_FREE_MEM_DF
-    );
-    _set_error_mode(_OUT_TO_MSGBOX);
-
-    int code = appRun(app, argc, argv);
-    return code;
 }
