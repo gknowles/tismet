@@ -19,6 +19,21 @@
 *
 ***/
 
+namespace QueryFunc {
+    enum Type {
+        kAlias,
+        kDerivative,
+        kKeepLastValue,
+        kMaximumAbove,
+        kNonNegativeDerivative,
+        kScale,
+        kSum,
+        kTimeShift,
+
+        kFuncTypes
+    };
+}
+
 struct QueryInfo {
     enum PathType {
         // for both query infos and path segments
@@ -63,8 +78,8 @@ struct QueryInfo {
 // successfully parsed.
 bool queryParse(QueryInfo & qry, std::string_view src);
 
-// Returns returns an entry for each segment of path. "out" will empty if
-// query is not a path.
+// Returns an entry for each segment of path. "out" will empty if query is
+// not a path.
 void queryPathSegments(
     std::vector<QueryInfo::PathSegment> & out,
     const QueryInfo & qry

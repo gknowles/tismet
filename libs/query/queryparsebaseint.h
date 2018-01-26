@@ -35,5 +35,5 @@ struct QueryParserBase {
     // Functions
     QueryParserBase(QueryInfo * qry) : m_query{qry} {}
 
-    bool startFunc(QueryInfo::NodeType type);
+    bool startFunc(QueryFunc::Type type);
 };

@@ -68,8 +68,7 @@ inline bool QueryParser::onFracNumChar (char ch) {
 
 //===========================================================================
 inline bool QueryParser::onFuncEnd () {
-    assert(m_nodes.back()->type > QueryInfo::kBeforeFirstFunc);
-    assert(m_nodes.back()->type < QueryInfo::kAfterLastFunc);
+    assert(m_nodes.back()->type == QueryInfo::kFunc);
     m_nodes.pop_back();
     return true;
 }
@@ -190,6 +189,22 @@ inline bool QueryParser::onSegStrValEnd (const char * eptr) {
     return true;
 }
 
+//===========================================================================
+inline bool QueryParser::onStringStart (const char * ptr) {
+    m_start = ptr;
+    return true;
+}
+
+//===========================================================================
+inline bool QueryParser::onStringEnd (const char * eptr) {
+    addStringArg(
+        m_query,
+        m_nodes.back(),
+        std::string_view(m_start, eptr - m_start)
+    );
+    return true;
+}
+
 
 /****************************************************************************
 *
@@ -198,11 +213,41 @@ inline bool QueryParser::onSegStrValEnd (const char * eptr) {
 ***/
 
 //===========================================================================
+inline bool QueryParser::onFnAliasStart () {
+    return startFunc(QueryFunc::kAlias);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnDerivativeStart () {
+    return startFunc(QueryFunc::kDerivative);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnKeepLastValueStart () {
+    return startFunc(QueryFunc::kKeepLastValue);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnMaximumAboveStart () {
-    return startFunc(QueryInfo::kFnMaximumAbove);
+    return startFunc(QueryFunc::kMaximumAbove);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnNonNegativeDerivativeStart () {
+    return startFunc(QueryFunc::kNonNegativeDerivative);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnScaleStart () {
+    return startFunc(QueryFunc::kScale);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnSumStart () {
-    return startFunc(QueryInfo::kFnSum);
+    return startFunc(QueryFunc::kSum);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnTimeShiftStart () {
+    return startFunc(QueryFunc::kTimeShift);
 }

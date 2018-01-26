@@ -54,6 +54,8 @@ static void internalTest() {
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
     EXPECT_PARSE("a[62-41]", "a[12346]");
     EXPECT_PARSE("a.b.c", "a.b.c");
+
+    EXPECT_PARSE("alias(a.b, \"legend\" )", "alias(a.b, \"legend\")");
     EXPECT_PARSE("sum( a )", "sum(a)");
     EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))",
         "sum(maximumAbove(a.b[12346], 2))");

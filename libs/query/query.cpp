@@ -27,6 +27,7 @@ const unsigned kQueryMaxSize = 8192;
 namespace {
 
 struct FuncNode : QueryInfo::Node {
+    QueryFunc::Type func;
     List<Node> args;
 };
 
@@ -53,13 +54,21 @@ struct SegStrChoice : QueryInfo::Node {
 struct NumNode : QueryInfo::Node {
     double val;
 };
+struct StringNode : QueryInfo::Node {
+    string_view val;
+};
 
 const TokenTable::Token s_funcNames[] = {
-    { QueryInfo::kFnMaximumAbove, "maximumAbove" },
-    { QueryInfo::kFnSum,          "sum" },
+    { QueryFunc::kAlias,                  "alias" },
+    { QueryFunc::kDerivative,             "derivative" },
+    { QueryFunc::kKeepLastValue,          "keepLastValue" },
+    { QueryFunc::kMaximumAbove,           "maximumAbove" },
+    { QueryFunc::kNonNegativeDerivative,  "nonNegativeDerivative" },
+    { QueryFunc::kScale,                  "scale" },
+    { QueryFunc::kSum,                    "sum" },
+    { QueryFunc::kTimeShift,              "timeShift" },
 };
-static_assert(size(s_funcNames) ==
-    QueryInfo::kAfterLastFunc - QueryInfo::kBeforeFirstFunc - 1);
+static_assert(size(s_funcNames) == QueryFunc::kFuncTypes);
 const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 
 } // namespace
@@ -142,10 +151,16 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
     case QueryInfo::kNum:
         out += StrFrom<double>(static_cast<const NumNode &>(node).val);
         break;
-    default:
-        assert(node.type > QueryInfo::kBeforeFirstFunc);
-        assert(node.type < QueryInfo::kAfterLastFunc);
-        out += tokenTableGetName(s_funcNameTbl, node.type);
+    case QueryInfo::kString:
+        out += '"';
+        out += static_cast<const StringNode &>(node).val;
+        out += '"';
+        break;
+    case QueryInfo::kFunc:
+        out += tokenTableGetName(
+            s_funcNameTbl,
+            static_cast<const FuncNode &>(node).func
+        );
         out += '(';
         for (auto && arg : static_cast<const FuncNode &>(node).args) {
             if (first) {
@@ -168,7 +183,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
 ***/
 
 //===========================================================================
-bool QueryParserBase::startFunc (QueryInfo::NodeType type) {
+bool QueryParserBase::startFunc (QueryFunc::Type type) {
     auto func = m_nodes.empty()
         ? addFunc(m_query, type)
         : addFuncArg(m_query, m_nodes.back(), type);
@@ -333,34 +348,33 @@ QueryInfo::Node * addSegChoice(
 }
 
 //===========================================================================
-QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type) {
+QueryInfo::Node * addFunc(QueryInfo * qi, QueryFunc::Type type) {
     assert(!qi->node);
-    assert(type > QueryInfo::kBeforeFirstFunc);
-    assert(type < QueryInfo::kAfterLastFunc);
-    qi->node = qi->heap.emplace<FuncNode>();
-    qi->node->type = type;
-    return qi->node;
+    auto func = qi->heap.emplace<FuncNode>();
+    qi->node = func;
+    func->type = QueryInfo::kFunc;
+    func->func = type;
+    return func;
 }
 
 //===========================================================================
 QueryInfo::Node * addFuncArg(
     QueryInfo * qi,
     QueryInfo::Node * node,
-    QueryInfo::NodeType type
+    QueryFunc::Type type
 ) {
-    assert(node->type > QueryInfo::kBeforeFirstFunc);
-    assert(node->type < QueryInfo::kAfterLastFunc);
+    assert(node->type == QueryInfo::kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<FuncNode>());
     auto arg = static_cast<FuncNode *>(func->args.back());
-    arg->type = type;
+    arg->type = QueryInfo::kFunc;
+    arg->func = type;
     return arg;
 }
 
 //===========================================================================
 QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type > QueryInfo::kBeforeFirstFunc);
-    assert(node->type < QueryInfo::kAfterLastFunc);
+    assert(node->type == QueryInfo::kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<PathNode>());
     auto arg = static_cast<PathNode *>(func->args.back());
@@ -374,12 +388,26 @@ QueryInfo::Node * addNumArg(
     QueryInfo::Node * node,
     double val
 ) {
-    assert(node->type > QueryInfo::kBeforeFirstFunc);
-    assert(node->type < QueryInfo::kAfterLastFunc);
+    assert(node->type == QueryInfo::kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<NumNode>());
     auto arg = static_cast<NumNode *>(func->args.back());
     arg->type = QueryInfo::kNum;
+    arg->val = val;
+    return arg;
+}
+
+//===========================================================================
+QueryInfo::Node * addStringArg(
+    QueryInfo * qi,
+    QueryInfo::Node * node,
+    string_view val
+) {
+    assert(node->type == QueryInfo::kFunc);
+    auto func = static_cast<FuncNode *>(node);
+    func->args.link(qi->heap.emplace<StringNode>());
+    auto arg = static_cast<StringNode *>(func->args.back());
+    arg->type = QueryInfo::kString;
     arg->val = val;
     return arg;
 }

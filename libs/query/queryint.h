@@ -26,12 +26,10 @@ enum QueryInfo::NodeType : int8_t {
     kSegDoubleBlot,
     kSegCharChoice,
     kSegStrChoice,
-    kNum,
 
-    kBeforeFirstFunc,
-    kFnMaximumAbove,
-    kFnSum,
-    kAfterLastFunc,
+    kFunc,
+    kNum,
+    kString,
 };
 
 struct QueryInfo::Node : Dim::ListBaseLink<> {
@@ -59,15 +57,20 @@ QueryInfo::Node * addSegChoice(
     QueryInfo::Node * seg,
     std::string_view val
 );
-QueryInfo::Node * addFunc(QueryInfo * qi, QueryInfo::NodeType type);
+QueryInfo::Node * addFunc(QueryInfo * qi, QueryFunc::Type type);
 QueryInfo::Node * addFuncArg(
     QueryInfo * qi,
     QueryInfo::Node * func,
-    QueryInfo::NodeType type
+    QueryFunc::Type type
 );
 QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * func);
 QueryInfo::Node * addNumArg(
     QueryInfo * qi,
     QueryInfo::Node * func,
     double val
+);
+QueryInfo::Node * addStringArg(
+    QueryInfo * qi,
+    QueryInfo::Node * func,
+    std::string_view val
 );

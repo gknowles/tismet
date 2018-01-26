@@ -45,21 +45,20 @@ scl-char-nd = ALPHA / DIGIT
 scl-char = scl-char-nd / "-"
 
 ;----------------------------------------------------------------------------
-; Functions
+; Function arguments
 ;----------------------------------------------------------------------------
-func = fn-maximumAbove / fn-sum { End }
-fn-sum = %s"sum(" arg-query ")" { Start }
-fn-maximumAbove  = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
 arg-query = *WSP query *WSP { Start }
 arg-num = *WSP number *WSP { End }
+arg-string = *WSP DQUOTE string DQUOTE *WSP
 
-BSLASH = %x5c ; \
+; String
+string = *(%x20-21 / %x23-7E) { Start+, End+ }
 
 ; Timestamp
 timestamp = 1*DIGIT { Char+ }
 
 ; Number
-number = [minus] int [frac] [exp] { Function }
+number = [minus] int [frac] [exp] ; { Function }
 decimal-point = "."
 digit1-9 = %x31-39 ; 1-9
 e = "e" ; e E
@@ -72,3 +71,24 @@ frac-num = 1*DIGIT { Char+ }
 int = zero / (digit1-9 *DIGIT) { Char+ }
 minus = "-" { End }
 zero = "0"
+
+;----------------------------------------------------------------------------
+; Functions
+;----------------------------------------------------------------------------
+func = fn-alias { End }
+fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
+func =/ fn-derivative
+fn-derivative = %s"derivative(" arg-query ")" { Start }
+func =/ fn-keepLastValue
+fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
+func =/ fn-maximumAbove
+fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
+func =/ fn-nonNegativeDerivative
+fn-nonNegativeDerivative =
+    %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
+func =/ fn-scale
+fn-scale = %s"scale(" arg-query "," arg-num ")" { Start }
+func =/ fn-sum
+fn-sum = (%s"sum" / %s"sumSeries") "(" arg-query *( "," arg-query ) ")" { Start }
+func =/ fn-timeShift
+fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }
