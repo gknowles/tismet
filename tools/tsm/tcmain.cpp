@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2015 - 2017.
+// Copyright Glen Knowles 2015 - 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // tcmain.cpp - tsm
@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const char kVersion[] = "1.0";
+const char kVersion[] = "1.0.0";
 
 
 /****************************************************************************
@@ -30,6 +30,7 @@ static void app(int argc, char * argv[]) {
     auto version = string(kVersion) + " (" __DATE__ ")";
     cli.header("tsm v"s + version);
     cli.versionOpt(version, "tsm");
+    cli.desc("Utility for dealing with metrics and with the tismet server.");
     cli.helpCmd().helpNoArgs();
     (void) cli.exec(argc, argv);
     return appSignalUsageError();

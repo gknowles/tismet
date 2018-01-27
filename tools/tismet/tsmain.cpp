@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2015 - 2017.
+// Copyright Glen Knowles 2015 - 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // tsmain.cpp - tismet
@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const char kVersion[] = "1.0";
+const char kVersion[] = "1.0.0";
 
 
 /****************************************************************************
