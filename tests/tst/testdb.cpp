@@ -33,7 +33,7 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("db", "Database manipulation tests.") {}
+    Test() : ITest("db", "Database manipulation tests.", true) {}
     void onTestRun() override;
 };
 
@@ -65,7 +65,7 @@ void Test::onTestRun() {
     uint32_t id;
     unsigned count = 0;
     count += dbInsertMetric(id, h, name);
-    cout << "metrics inserted: " << count << endl;
+    EXPECT("metrics inserted" && count == 1);
     MetricInfo info;
     info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(6.5 * pgt);
@@ -74,14 +74,14 @@ void Test::onTestRun() {
     dbUpdateSample(h, id, start, 1.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 4);
-    dbWriteDump(nullptr, cout, h);
+    if (m_verbose)
+        dbWriteDump(nullptr, cout, h);
     dbClose(h);
     EXPECT(count == 1);
 
     h = dbOpen(dat);
     count = dbInsertMetric(id, h, name);
-    cout << "metrics inserted: " << count << endl;
-    EXPECT(count == 0);
+    EXPECT("metrics inserted" && count == 0);
     dbUpdateSample(h, id, start, 3.0);
     dbUpdateSample(h, id, start + 1min, 4.0);
     dbUpdateSample(h, id, start - 1min, 2.0);
@@ -91,20 +91,21 @@ void Test::onTestRun() {
     EXPECT(stats.numPages == 5);
     // another on page 2
     dbUpdateSample(h, id, start + pgt, 6.0);
-    dbWriteDump(nullptr, cout, h);
+    if (m_verbose)
+        dbWriteDump(nullptr, cout, h);
     dbClose(h);
 
     h = dbOpen(dat);
     count = dbInsertMetric(id, h, name);
-    cout << "metrics inserted: " << count << endl;
-    EXPECT(count == 0);
+    EXPECT("metrics inserted" && count == 0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     // add to very end of page 2
     dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
-    dbWriteDump(nullptr, cout, h);
+    if (m_verbose)
+        dbWriteDump(nullptr, cout, h);
     // add to new page 5. creates sample pages 3, 4, 5
     // to track the value pages.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
@@ -132,8 +133,10 @@ void Test::onTestRun() {
     EXPECT(stats.freePages == 510);
     EXPECT(stats.metrics == 0);
 
-    cout << "----" << endl;
-    dbWriteDump(nullptr, cout, h);
+    if (m_verbose) {
+        cout << "----" << endl;
+        dbWriteDump(nullptr, cout, h);
+    }
     count = 0;
     for (int i = 1; i < 30; ++i) {
         name = "this.is.metric.";
@@ -142,19 +145,22 @@ void Test::onTestRun() {
         count += dbInsertMetric(i2, h, name);
         dbUpdateSample(h, i2, start, (float) i);
     }
-    cout << "metrics inserted: " << count << endl;
-    EXPECT(count == 29);
+    EXPECT("metrics inserted" && count == 29);
 
-    cout << "----" << endl;
-    dbWriteDump(nullptr, cout, h);
+    if (m_verbose) {
+        cout << "----" << endl;
+        dbWriteDump(nullptr, cout, h);
+    }
 
     UnsignedSet found;
     dbFindMetrics(found, h, "*.is.*.*5");
     ostringstream os;
     os << found;
     EXPECT(os.str() == "5 15 25");
-    cout << "----" << endl;
-    dbWriteDump(nullptr, cout, h, "*.is.*.*5");
+    if (m_verbose) {
+        cout << "----" << endl;
+        dbWriteDump(nullptr, cout, h, "*.is.*.*5");
+    }
 
     for (int i = 100; ; ++i) {
         stats = dbQueryStats(h);

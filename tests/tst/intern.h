@@ -12,12 +12,15 @@
 
 class ITest : public Dim::ListBaseLink<> {
 public:
-    ITest (std::string_view name, std::string_view desc);
+    ITest (std::string_view name, std::string_view desc, bool verbose = false);
     virtual ~ITest() = default;
 
     virtual void onTestRun () = 0;
 
     std::string_view name() const { return m_name; }
+
+protected:
+    bool m_verbose{false};
 
 private:
     std::string m_name;

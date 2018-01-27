@@ -22,13 +22,17 @@ static List<ITest> & tests() {
 }
 
 //===========================================================================
-ITest::ITest (std::string_view name, std::string_view desc)
+ITest::ITest (std::string_view name, std::string_view desc, bool verbose)
     : m_name{name}
 {
     Cli cli;
     cli.command(string(name))
         .desc(string(desc))
         .action([&](Cli & cli) { this->onTestRun(); return true; });
+    if (verbose) {
+        cli.opt<bool>(&m_verbose, "v verbose")
+            .desc("Display additional information during test");
+    }
 
     tests().link(this);
 }
@@ -46,6 +50,7 @@ static bool allCmd(Cli & cli) {
         cout << test.name() << "...\n";
         test.onTestRun();
     }
+    cout << endl;
     return true;
 }
 
@@ -61,6 +66,8 @@ static void app(int argc, char * argv[]) {
         .action(allCmd);
     if (!cli.exec(argc, argv))
         return appSignalUsageError();
+    if (cli.runCommand() == "help")
+        return appSignalShutdown(EX_OK);
 
     if (int errors = logGetMsgCount(kLogTypeError)) {
         ConsoleScopedAttr attr(kConsoleError);
