@@ -5,11 +5,11 @@
   <Port value="41000"/>
   <EnableAppWindow value="1"/>
 
-  <WorkMemoryMaxAge value="300; 5min"/>
-  <WorkMemoryScanInterval value="60; 1min"/>
-  <CheckpointMaxData value="1000000000; 1GB"/>
-  <CheckpointMaxInterval value="3600; 1h"/>
-  <ExpirationCheckInterval value="0; never; 86400; 24h"/>
+  <WorkMemoryMaxAge value="5min"/>
+  <WorkMemoryScanInterval value="1min"/>
+  <CheckpointMaxData value="1G"/>
+  <CheckpointMaxInterval value="1h"/>
+  <ExpirationCheckInterval value="0h"/>
   <MetricDefaults>
     <Rule pattern="^tismet\." retention="90d" interval="60s" type="int32"/>
     <Rule pattern=".*" retention="30d" interval="60s" type="float64"/>

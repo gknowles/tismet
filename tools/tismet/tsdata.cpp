@@ -124,20 +124,14 @@ static AppXmlNotify s_appXml;
 //===========================================================================
 void AppXmlNotify::onConfigChange(const XDocument & doc) {
     DbConfig conf;
-    conf.checkpointMaxData = configUnsigned(doc, "CheckpointMaxData");
-    conf.checkpointMaxInterval =
-        (seconds) configUnsigned(doc, "CheckpointMaxInterval");
-    conf.pageMaxAge = (seconds) configUnsigned(doc, "WorkMemoryMaxAge");
-    conf.pageScanInterval =
-        (seconds) configUnsigned(doc, "WorkMemoryScanInterval");
+    conf.checkpointMaxData = (size_t) configNumber(doc, "CheckpointMaxData");
+    conf.checkpointMaxInterval = configDuration(doc, "CheckpointMaxInterval");
+    conf.pageMaxAge = configDuration(doc, "WorkMemoryMaxAge");
+    conf.pageScanInterval = configDuration(doc, "WorkMemoryScanInterval");
     if (s_db)
         dbConfigure(s_db, conf);
 
-    Duration val = (seconds) configUnsigned(
-        doc,
-        "ExpirationCheckInterval",
-        (unsigned) duration_cast<seconds>(24h).count()
-    );
+    Duration val = configDuration(doc, "ExpirationCheckInterval", 24h);
     // In addition to the range of 5 minutes to a week, a check interval of 0
     // (disable checking) is also allowed.
     if (val.count())
@@ -156,8 +150,8 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         }
         val = attrValue(&xrule, "type", "");
         rule.type = fromString(val, kSampleTypeInvalid);
-        parse(&rule.retention, attrValue(&xrule, "retention", ""));
-        parse(&rule.interval, attrValue(&xrule, "interval", ""));
+        (void) parse(&rule.retention, attrValue(&xrule, "retention", ""));
+        (void) parse(&rule.interval, attrValue(&xrule, "interval", ""));
         s_rules.push_back(rule);
     }
 }

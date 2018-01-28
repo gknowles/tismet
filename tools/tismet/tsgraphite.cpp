@@ -75,17 +75,18 @@ static void xferRest(
 }
 
 //===========================================================================
-static void parseTime(TimePoint * abs, Duration * rel, string_view src) {
+static bool parseTime(TimePoint * abs, Duration * rel, string_view src) {
     char * eptr;
     auto t = strToInt64(src, &eptr);
     if (eptr < src.data() + src.size()) {
-        parse(rel, src);
+        if (!parse(rel, src))
+            return false;
         *abs = {};
     } else {
         *abs = Clock::from_time_t(t);
         *rel = {};
     }
-
+    return true;
 }
 
 
@@ -378,9 +379,23 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
             auto t = strToInt64(param.values.front()->value);
             now = Clock::from_time_t(t);
         } else if (param.name == "from") {
-            parseTime(&from, &relFrom, param.values.front()->value);
+            if (!parseTime(&from, &relFrom, param.values.front()->value)) {
+                return httpRouteReply(
+                    reqId,
+                    req,
+                    400,
+                    "Invalid parameter: 'from'"
+                );
+            }
         } else if (param.name == "until") {
-            parseTime(&until, &relUntil, param.values.front()->value);
+            if (!parseTime(&until, &relUntil, param.values.front()->value)) {
+                return httpRouteReply(
+                    reqId,
+                    req,
+                    400,
+                    "Invalid parameter: 'until'"
+                );
+            }
         }
     }
     if (targets.empty())
