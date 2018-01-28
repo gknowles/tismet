@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017.
+// Copyright Glen Knowles 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // tsbackup.cpp - tismet
@@ -8,46 +8,6 @@
 using namespace std;
 using namespace std::chrono;
 using namespace Dim;
-
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
-
-//===========================================================================
-inline static bool xferIfFull(
-    HttpResponse & res,
-    bool started,
-    unsigned reqId,
-    size_t pending
-) {
-    auto blksize = res.body().defaultBlockSize();
-    if (res.body().size() + pending > blksize) {
-        if (!started) {
-            httpRouteReply(reqId, res, true);
-            started = true;
-        } else {
-            httpRouteReply(reqId, res.body(), true);
-        }
-        res.body().clear();
-    }
-    return started;
-}
-
-//===========================================================================
-inline static void xferRest(
-    HttpResponse & res,
-    bool started,
-    unsigned reqId
-) {
-    if (!started) {
-        httpRouteReply(reqId, res);
-    } else {
-        httpRouteReply(reqId, res.body(), false);
-    }
-}
 
 
 /****************************************************************************

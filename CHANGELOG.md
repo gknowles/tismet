@@ -11,6 +11,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
-## tismet 1.0.0 (2018-01-26)
+## tismet 1.0.0 (2018-01-27)
 Alternative storage provider for graphite
 First public release
