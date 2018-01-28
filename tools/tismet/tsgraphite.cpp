@@ -79,8 +79,11 @@ static bool parseTime(TimePoint * abs, Duration * rel, string_view src) {
     char * eptr;
     auto t = strToInt64(src, &eptr);
     if (eptr < src.data() + src.size()) {
-        if (!parse(rel, src))
-            return false;
+        if (!parse(rel, src)) {
+            if (src != "now")
+                return false;
+            *rel = {};
+        }
         *abs = {};
     } else {
         *abs = Clock::from_time_t(t);
