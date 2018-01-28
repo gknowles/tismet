@@ -23,18 +23,20 @@ Time series metric collection
 
 
 ## Building
-Prerequisites
+#### Prerequisites
   - CMake >= 3.6
-  - Visual Studio 2017
+  - Visual Studio 2017 (should include "Git for Windows")
 
-Steps
-  - git clone https://github.com/gknowles/tismet.git
-  - cd tismet
-  - git submodule update --init
-  - configure.bat
-  - Either:
-    - msbuild /p:Configuration=Release /m
-    - Open tismet.sln in the IDE
+#### Steps
+~~~ batch
+git clone https://github.com/gknowles/tismet.git
+cd tismet
+git submodule update --init
+configure.bat
+msbuild /p:Configuration=Release /m
+~~~
+Instead of running msbuild you can open the tismet.sln solution file in
+Visual Studio and build it there.
 
 Binaries are placed in tismet/bin, and can be run from there for simple
 testing.
@@ -72,7 +74,7 @@ Test Root cert (which is known to all those folks on the internet) it's not
 exactly safe:
 1. Generate the cert signed by the windows test certificate "CertReq Test Root"
 (Friendly name for your new cert is optional)
-~~~
+~~~ powershell
 powershell New-SelfSignedCertificate
         -CertStoreLocation cert:\CurrentUser\MY
         -DnsName MyComputerName
@@ -92,13 +94,27 @@ to Trusted Root Certification Authorities.
 
 Change Graphite's local_settings.py:
 1. to use the RemoteFinder:
-~~~
+~~~ python
 STORAGE_FINDERS = (
     'graphite.finders.remote.RemoteFinder',
 )
 ~~~
 
 2. and reference Tismet (via the proxy) as cluster servers:
-~~~
+~~~ python
 CLUSTER_SERVERS = ["proxy-to-tismet.example.com"]
 ~~~
+
+
+## Making backups
+
+Use the tsm utility to trigger a backup and, optionally, wait for it to finish.
+Run "tsm help" for more information about using tsm.
+
+~~~ batch
+tsm backup <server address>
+~~~
+
+It's not safe to just copy the data/metrics.* files while the server is running,
+the tsd must be copied before the tsl and even if you do that you can still end
+up with a corrupt copy if an internal checkpoint was in progress.
