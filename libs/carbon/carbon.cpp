@@ -90,6 +90,7 @@ bool ICarbonNotify::append(string_view src) {
 bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
     s_perfClients += 1;
     s_perfCurrent += 1;
+    socketWrite(this, "SERVER = tismet/1.0\n");
     return true;
 }
 
