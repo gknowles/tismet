@@ -35,6 +35,7 @@ git submodule update --init
 configure.bat
 msbuild /p:Configuration=Release /m
 ~~~
+
 Instead of running msbuild you can open the tismet.sln solution file in
 Visual Studio and build it there.
 
@@ -45,8 +46,9 @@ testing.
 ## Running
 Tismet can run from the command line or as a service. The easiest way to
 install it as a service is:
-  - sc create Tismet binPath= \<installPath\>\tismet.exe depend= NetworkProvider
-    start= auto
+~~~ batch
+sc create Tismet binPath= <installPath>\tismet.exe start= delayed-auto
+~~~
 
 When run, Tismet accesses directories relative to the executable:
   - tismet.exe
@@ -93,14 +95,14 @@ to Trusted Root Certification Authorities.
 ## Configuring Graphite
 
 Change Graphite's local_settings.py:
-1. to use the RemoteFinder:
+1. To use the RemoteFinder:
 ~~~ python
 STORAGE_FINDERS = (
     'graphite.finders.remote.RemoteFinder',
 )
 ~~~
 
-2. and reference Tismet (via the proxy) as cluster servers:
+2. And to reference Tismet (via the proxy) as a cluster server:
 ~~~ python
 CLUSTER_SERVERS = ["proxy-to-tismet.example.com"]
 ~~~
