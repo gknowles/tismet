@@ -131,7 +131,7 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
     if (s_db)
         dbConfigure(s_db, conf);
 
-    Duration val = configDuration(doc, "ExpirationCheckInterval", 24h);
+    Duration val = configDuration(doc, "MetricExpirationCheckInterval", 24h);
     // In addition to the range of 5 minutes to a week, a check interval of 0
     // (disable checking) is also allowed.
     if (val.count())
