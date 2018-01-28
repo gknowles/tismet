@@ -111,7 +111,7 @@ CLUSTER_SERVERS = ["proxy-to-tismet.example.com"]
 ## Making backups
 
 Use the tsm utility to trigger a backup and, optionally, wait for it to finish.
-Run "tsm help" for more information about using tsm.
+Run "tsm --help" for more information about using tsm.
 
 ~~~ batch
 tsm backup <server address>
