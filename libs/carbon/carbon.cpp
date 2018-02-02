@@ -116,7 +116,7 @@ void ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
 
 namespace {
 class CarbonMatch : public IAppSocketMatchNotify {
-    AppSocket::MatchType OnMatch(
+    AppSocket::MatchType onMatch(
         AppSocket::Family fam,
         string_view view) override;
 };
@@ -124,7 +124,7 @@ static CarbonMatch s_sockMatch;
 } // namespace
 
 //===========================================================================
-AppSocket::MatchType CarbonMatch::OnMatch(
+AppSocket::MatchType CarbonMatch::onMatch(
     AppSocket::Family fam,
     string_view view
 ) {
