@@ -323,7 +323,8 @@ bool DbData::loadMetrics (
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
         if (notify) {
-            if (!notify->OnDbMetricStart(
+            if (!notify->onDbSeriesStart(
+                {},
                 mp->hdr.id,
                 mp->name,
                 mp->sampleType,
@@ -961,8 +962,17 @@ static size_t noSamples(
     Duration interval
 ) {
     if (notify) {
-        if (notify->OnDbMetricStart(id, name, stype, first, first, interval))
-            notify->OnDbMetricEnd(id);
+        if (notify->onDbSeriesStart(
+            {},
+            id,
+            name,
+            stype,
+            first,
+            first,
+            interval
+        )) {
+            notify->onDbSeriesEnd(id);
+        }
     }
     return 0;
 }
@@ -1043,7 +1053,8 @@ size_t DbData::enumSamples(
                 auto value = getSample(sp, vpos);
                 if (!isnan(value)) {
                     if (!count++) {
-                        if (!notify->OnDbMetricStart(
+                        if (!notify->onDbSeriesStart(
+                            {},
                             id,
                             name,
                             stype,
@@ -1054,7 +1065,7 @@ size_t DbData::enumSamples(
                             return count;
                         }
                     }
-                    if (!notify->OnDbSample(first, value))
+                    if (!notify->onDbSample(first, value))
                         return count;
                 }
             }
@@ -1069,7 +1080,7 @@ size_t DbData::enumSamples(
     if (!count) {
         return noSamples(notify, id, name, stype, first, mi.interval);
     } else {
-        notify->OnDbMetricEnd(id);
+        notify->onDbSeriesEnd(id);
     }
     return count;
 }

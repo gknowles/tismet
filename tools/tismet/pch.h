@@ -16,6 +16,7 @@
 #include "wintls/wintls.h"
 
 #include "carbon/carbon.h"
+#include "eval/eval.h"
 #include "db/db.h"
 
 // Standard headers

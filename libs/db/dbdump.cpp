@@ -30,7 +30,8 @@ class DumpWriter : public IDbEnumNotify {
 public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    bool OnDbMetricStart(
+    bool onDbSeriesStart(
+        string_view query,
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -38,7 +39,7 @@ public:
         TimePoint until,
         Duration interval
     ) override;
-    bool OnDbSample(TimePoint time, double val) override;
+    bool onDbSample(TimePoint time, double val) override;
 
 private:
     string_view m_name;
@@ -56,7 +57,8 @@ DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
 {}
 
 //===========================================================================
-bool DumpWriter::OnDbMetricStart(
+bool DumpWriter::onDbSeriesStart(
+    string_view query,
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -69,7 +71,7 @@ bool DumpWriter::OnDbMetricStart(
 }
 
 //===========================================================================
-bool DumpWriter::OnDbSample(TimePoint time, double val) {
+bool DumpWriter::onDbSample(TimePoint time, double val) {
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, val);
     m_os << m_buf;
@@ -96,14 +98,14 @@ void dbWriteDump(
         dbEnumSamples(&out, h, id);
         info.metrics += 1;
         if (notify)
-            notify->OnDbProgress(kRunRunning, info);
+            notify->onDbProgress(kRunRunning, info);
     }
     info.totalMetrics = info.metrics;
     info.totalSamples = info.samples;
     if (info.totalBytes != (size_t) -1)
         info.bytes = info.totalBytes;
     if (notify)
-        notify->OnDbProgress(kRunStopped, info);
+        notify->onDbProgress(kRunStopped, info);
 }
 
 
@@ -191,7 +193,7 @@ bool DbWriter::onFileRead(
         while (!data.empty() && (data[0] == '\r' || data[0] == '\n'))
             data.remove_prefix(1);
     }
-    if (!m_notify->OnDbProgress(kRunRunning, m_info))
+    if (!m_notify->onDbProgress(kRunRunning, m_info))
         return false;
     return append(data);
 }
@@ -202,7 +204,7 @@ void DbWriter::onFileEnd(int64_t offset, FileHandle f) {
     m_info.totalSamples = m_info.samples;
     if (m_info.totalBytes != (size_t) -1)
         m_info.bytes = m_info.totalBytes;
-    m_notify->OnDbProgress(kRunStopped, m_info);
+    m_notify->onDbProgress(kRunStopped, m_info);
     delete this;
 }
 

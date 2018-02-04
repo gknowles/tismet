@@ -36,8 +36,8 @@ static void parseTest(
     const string & src,
     string_view normal
 ) {
-    QueryInfo qry;
-    bool result = queryParse(qry, src);
+    Query::QueryInfo qry;
+    bool result = Query::parse(qry, src);
     EXPECT(result);
     EXPECT(qry.text == normal);
 }

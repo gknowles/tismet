@@ -53,7 +53,7 @@ public:
 private:
     void find(
         Dim::UnsignedSet & out,
-        QueryInfo::PathSegment * segs,
+        Query::PathSegment * segs,
         size_t numSegs,
         size_t pos,
         const UnsignedSetWithCount * subset

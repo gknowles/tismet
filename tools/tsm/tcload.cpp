@@ -76,7 +76,7 @@ struct LoadProgress : IDbProgressNotify {
     DbProgressInfo m_info;
 
     // Inherited via IDbProgressNotify
-    bool OnDbProgress(RunMode mode, const DbProgressInfo & info) override;
+    bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
 };
 
 } // namespace
@@ -84,7 +84,7 @@ struct LoadProgress : IDbProgressNotify {
 static LoadProgress s_progress;
 
 //===========================================================================
-bool LoadProgress::OnDbProgress(
+bool LoadProgress::onDbProgress(
     RunMode mode,
     const DbProgressInfo & info
 ) {

@@ -133,22 +133,23 @@ void dbUpdateSample(
 struct IDbEnumNotify {
     virtual ~IDbEnumNotify() {}
 
-    // Called once before any calls to OnDbSample, return false to abort the
+    // Called once before any calls to onDbSample, return false to abort the
     // enum, otherwise it continues to the samples.
-    virtual bool OnDbMetricStart(
-        uint32_t id,
-        std::string_view name,
+    virtual bool onDbSeriesStart(
+        std::string_view target, // query series is from, empty for metrics
+        uint32_t id, // for metrics, the metric id, otherwise 0
+        std::string_view name, // such as metric name or alias
         DbSampleType type,
-        Dim::TimePoint from,
-        Dim::TimePoint until,
+        Dim::TimePoint first,
+        Dim::TimePoint last,
         Dim::Duration interval
     ) { return true; }
 
-    virtual void OnDbMetricEnd(uint32_t id) {}
+    virtual void onDbSeriesEnd(uint32_t id) {}
 
     // Called for each matching sample, return false to abort the enum,
     // otherwise it continues to the next sample.
-    virtual bool OnDbSample(Dim::TimePoint time, double value) { return false; }
+    virtual bool onDbSample(Dim::TimePoint time, double value) { return false; }
 };
 size_t dbEnumSamples(
     IDbEnumNotify * notify,
@@ -177,7 +178,7 @@ struct DbProgressInfo {
 };
 struct IDbProgressNotify {
     virtual ~IDbProgressNotify() {}
-    virtual bool OnDbProgress(
+    virtual bool onDbProgress(
         Dim::RunMode mode,
         const DbProgressInfo & info
     ) = 0;

@@ -91,6 +91,7 @@ void InitializeTask::onTask() {
     appTlsInitialize();
     tsDataInitialize();
     if (!appStopping()) {
+        evalInitialize(tsDataHandle());
         tsPerfInitialize();
         tsCarbonInitialize();
         tsGraphiteInitialize();

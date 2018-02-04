@@ -17,8 +17,8 @@
 ***/
 
 struct QueryParserBase {
-    QueryInfo * m_query;
-    std::vector<QueryInfo::Node *> m_nodes;
+    Query::QueryInfo * m_query;
+    std::vector<Query::Node *> m_nodes;
 
     const char * m_start{nullptr};
     const char * m_end{nullptr};
@@ -33,7 +33,7 @@ struct QueryParserBase {
     std::bitset<256> m_chars;
 
     // Functions
-    QueryParserBase(QueryInfo * qry) : m_query{qry} {}
+    QueryParserBase(Query::QueryInfo * qry) : m_query{qry} {}
 
-    bool startFunc(QueryFunc::Type type);
+    bool startFunc(Query::Function::Type type);
 };

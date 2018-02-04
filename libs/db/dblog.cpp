@@ -263,9 +263,9 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
         DbProgressInfo info = {};
         m_checkpointBlocks.push_back(notify);
         if (m_phase == Checkpoint::Complete) {
-            notify->OnDbProgress(kRunStopped, info);
+            notify->onDbProgress(kRunStopped, info);
         } else {
-            notify->OnDbProgress(kRunStopping, info);
+            notify->onDbProgress(kRunStopping, info);
         }
         return;
     }
@@ -634,7 +634,7 @@ void DbLog::checkpointTruncateCommit() {
     } else {
         DbProgressInfo info = {};
         for (auto && block : m_checkpointBlocks)
-            block->OnDbProgress(kRunStopped, info);
+            block->onDbProgress(kRunStopped, info);
     }
     m_bufAvailCv.notify_one();
 }

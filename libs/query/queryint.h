@@ -3,7 +3,7 @@
 //
 // queryint.h - tismet query
 //
-// Implemetation of graphite's carbon protocol for receiving metric data
+// Implementation of graphite's carbon protocol for receiving metric data
 #pragma once
 
 #include <bitset>
@@ -14,63 +14,49 @@
 
 /****************************************************************************
 *
-*   QueryInfo
+*   Query::QueryInfo
 *
 ***/
 
-enum QueryInfo::NodeType : int8_t {
-    kPath,
-    kPathSeg,
-    kSegLiteral,
-    kSegBlot,
-    kSegDoubleBlot,
-    kSegCharChoice,
-    kSegStrChoice,
-
-    kFunc,
-    kNum,
-    kString,
-};
-
-struct QueryInfo::Node : Dim::ListBaseLink<> {
+struct Query::Node : Dim::ListBaseLink<> {
     NodeType type;
 };
 
-QueryInfo::Node * addPath(QueryInfo * qi);
-void endPath(QueryInfo * qi, QueryInfo::Node * node);
-QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * path);
-void endSeg(QueryInfo * qi, QueryInfo::Node * node);
-QueryInfo::Node * addSegLiteral(
-    QueryInfo * qi,
-    QueryInfo::Node * seg,
+Query::Node * addPath(Query::QueryInfo * qi);
+void endPath(Query::QueryInfo * qi, Query::Node * node);
+Query::Node * addSeg(Query::QueryInfo * qi, Query::Node * path);
+void endSeg(Query::QueryInfo * qi, Query::Node * node);
+Query::Node * addSegLiteral(
+    Query::QueryInfo * qi,
+    Query::Node * seg,
     std::string_view val
 );
-QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * seg);
-QueryInfo::Node * addSegChoices(
-    QueryInfo * qi,
-    QueryInfo::Node * seg,
+Query::Node * addSegBlot(Query::QueryInfo * qi, Query::Node * seg);
+Query::Node * addSegChoices(
+    Query::QueryInfo * qi,
+    Query::Node * seg,
     std::bitset<256> & vals
 );
-QueryInfo::Node * addSegStrChoices(QueryInfo * qi, QueryInfo::Node * seg);
-QueryInfo::Node * addSegChoice(
-    QueryInfo * qi,
-    QueryInfo::Node * seg,
+Query::Node * addSegStrChoices(Query::QueryInfo * qi, Query::Node * seg);
+Query::Node * addSegChoice(
+    Query::QueryInfo * qi,
+    Query::Node * seg,
     std::string_view val
 );
-QueryInfo::Node * addFunc(QueryInfo * qi, QueryFunc::Type type);
-QueryInfo::Node * addFuncArg(
-    QueryInfo * qi,
-    QueryInfo::Node * func,
-    QueryFunc::Type type
+Query::Node * addFunc(Query::QueryInfo * qi, Query::Function::Type type);
+Query::Node * addFuncArg(
+    Query::QueryInfo * qi,
+    Query::Node * func,
+    Query::Function::Type type
 );
-QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * func);
-QueryInfo::Node * addNumArg(
-    QueryInfo * qi,
-    QueryInfo::Node * func,
+Query::Node * addPathArg(Query::QueryInfo * qi, Query::Node * func);
+Query::Node * addNumArg(
+    Query::QueryInfo * qi,
+    Query::Node * func,
     double val
 );
-QueryInfo::Node * addStringArg(
-    QueryInfo * qi,
-    QueryInfo::Node * func,
+Query::Node * addStringArg(
+    Query::QueryInfo * qi,
+    Query::Node * func,
     std::string_view val
 );

@@ -58,9 +58,10 @@ public:
 
 private:
     // Inherited via IDbEnumNotify
-    bool OnDbMetricStart(
+    bool onDbSeriesStart(
+        string_view query,
         uint32_t id,
-        string_view vname,
+        string_view name,
         DbSampleType type,
         TimePoint from,
         TimePoint until,
@@ -68,7 +69,7 @@ private:
     ) override;
 
     // Inherited via IDbProgressNotify
-    bool OnDbProgress(RunMode mode, const DbProgressInfo & info) override;
+    bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
 
     void backupNextFile();
 
@@ -148,7 +149,8 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
 }
 
 //===========================================================================
-bool DbBase::OnDbMetricStart(
+bool DbBase::onDbSeriesStart(
+    string_view query,
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -208,13 +210,13 @@ bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
 }
 
 //===========================================================================
-bool DbBase::OnDbProgress(RunMode mode, const DbProgressInfo & info) {
+bool DbBase::onDbProgress(RunMode mode, const DbProgressInfo & info) {
     if (m_backupMode != kRunStarting)
         return true;
 
     if (mode == kRunStopped) {
         m_backupMode = kRunRunning;
-        if (m_backer && !m_backer->OnDbProgress(m_backupMode, m_info)) {
+        if (m_backer && !m_backer->onDbProgress(m_backupMode, m_info)) {
             m_backupFiles.clear();
         }
         backupNextFile();
@@ -222,7 +224,7 @@ bool DbBase::OnDbProgress(RunMode mode, const DbProgressInfo & info) {
     }
 
     assert(mode == kRunStopping);
-    return m_backer ? m_backer->OnDbProgress(m_backupMode, m_info) : true;
+    return m_backer ? m_backer->onDbProgress(m_backupMode, m_info) : true;
 }
 
 //===========================================================================
@@ -245,7 +247,7 @@ void DbBase::backupNextFile() {
 
     blockCheckpoint(this, false);
     if (m_backer)
-        m_backer->OnDbProgress(kRunStopped, m_info);
+        m_backer->onDbProgress(kRunStopped, m_info);
     m_backupMode = kRunStopped;
     if (m_verbose)
         logMsgInfo() << "Backup completed";
@@ -261,7 +263,7 @@ bool DbBase::onFileRead(
     *bytesUsed = data.size();
     m_info.bytes += *bytesUsed;
     m_dstFile.append(data);
-    if (m_backer && !m_backer->OnDbProgress(m_backupMode, m_info)) {
+    if (m_backer && !m_backer->onDbProgress(m_backupMode, m_info)) {
         m_backupMode = kRunStopping;
         return false;
     }

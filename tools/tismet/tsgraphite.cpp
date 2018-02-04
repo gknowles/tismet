@@ -293,18 +293,18 @@ class Render : public IHttpRouteNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
 };
 
-class RenderMsgPack : IDbEnumNotify {
+class RenderAlternativeStorage : IDbEnumNotify {
 public:
-    RenderMsgPack(
+    RenderAlternativeStorage(
         unsigned reqId,
         TimePoint from,
         TimePoint until,
-        vector<string> & targets,
-        vector<UnsignedSet> & idSets
+        const vector<string_view> & targets
     );
 
 private:
-    bool OnDbMetricStart(
+    bool onDbSeriesStart(
+        string_view query,
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -312,7 +312,7 @@ private:
         TimePoint until,
         Duration interval
     ) override;
-    bool OnDbSample(TimePoint time, double value) override;
+    bool onDbSample(TimePoint time, double value) override;
 
     unsigned m_reqId{0};
     bool m_started{false};
@@ -324,18 +324,13 @@ private:
     Duration m_interval;
 };
 
-class RenderJson : IDbEnumNotify {
+class RenderJson : public IEvalNotify {
 public:
-    RenderJson(
-        unsigned reqId,
-        TimePoint from,
-        TimePoint until,
-        vector<string> & targets,
-        vector<UnsignedSet> & idSets
-    );
+    RenderJson(unsigned reqId);
 
 private:
-    bool OnDbMetricStart(
+    bool onDbSeriesStart(
+        string_view query,
         uint32_t id,
         string_view name,
         DbSampleType type,
@@ -343,15 +338,16 @@ private:
         TimePoint until,
         Duration interval
     ) override;
-    void OnDbMetricEnd(uint32_t id) override;
-    bool OnDbSample(TimePoint time, double value) override;
+    bool onDbSample(TimePoint time, double value) override;
+    void onDbSeriesEnd(uint32_t id) override;
+    void onEvalEnd() override;
+    void onEvalError(std::string_view errmsg) override;
 
     unsigned m_reqId{0};
     bool m_started{false};
     HttpResponse m_res;
 
     JBuilder m_bld{m_res.body()};
-    string_view m_pathExpr;
     TimePoint m_prevTime;
     Duration m_interval;
 };
@@ -363,26 +359,28 @@ private:
 //===========================================================================
 void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     string format;
-    vector<string> targets;
+    vector<string_view> targets;
     TimePoint from;
     TimePoint until;
     TimePoint now;
     Duration relFrom;
     Duration relUntil;
+    int maxPoints = 0;
 
     for (auto && param : req.query().parameters) {
         if (param.values.empty())
             continue;
+        auto value = param.values.front()->value;
         if (param.name == "format") {
-            format = param.values.front()->value;
+            format = value;
         } else if (param.name == "target") {
             for (auto && val : param.values)
                 targets.emplace_back(val.value);
         } else if (param.name == "now") {
-            auto t = strToInt64(param.values.front()->value);
+            auto t = strToInt64(value);
             now = Clock::from_time_t(t);
         } else if (param.name == "from") {
-            if (!parseTime(&from, &relFrom, param.values.front()->value)) {
+            if (!parseTime(&from, &relFrom, value)) {
                 return httpRouteReply(
                     reqId,
                     req,
@@ -391,7 +389,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
                 );
             }
         } else if (param.name == "until") {
-            if (!parseTime(&until, &relUntil, param.values.front()->value)) {
+            if (!parseTime(&until, &relUntil, value)) {
                 return httpRouteReply(
                     reqId,
                     req,
@@ -399,10 +397,19 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
                     "Invalid parameter: 'until'"
                 );
             }
+        } else if (param.name == "maxDataPoints") {
+            maxPoints = strToInt(value);
         }
     }
     if (targets.empty())
         return httpRouteReply(reqId, req, 400, "Missing parameter: 'target'");
+
+    if (!now)
+        now = Clock::now();
+    if (!from)
+        from = now + relFrom;
+    if (!until)
+        until = now + relUntil;
 
     auto ftype = tokenTableGetEnum(s_formatTbl, format.data(), kFormatInvalid);
     switch (ftype) {
@@ -410,8 +417,10 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         break;
     case kFormatMsgPack:
     case kFormatPickle:
-        ftype = kFormatMsgPack;
-        break;
+        {
+            RenderAlternativeStorage render(reqId, from, until, targets);
+            return;
+        }
     default:
         return httpRouteReply(
             reqId,
@@ -421,37 +430,88 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         );
     }
 
-    if (!now)
-        now = Clock::now();
-    if (!from)
-        from = now + relFrom;
-    if (!until)
-        until = now + relUntil;
 
-    auto h = tsDataHandle();
-    vector<UnsignedSet> idSets;
-    for (auto && target : targets) {
-        UnsignedSet & out = idSets.emplace_back();
-        dbFindMetrics(out, h, target);
-    }
-
-    if (ftype == kFormatMsgPack) {
-        RenderMsgPack render(reqId, from, until, targets, idSets);
-    } else {
-        assert(ftype == kFormatJson);
-        RenderJson render(reqId, from, until, targets, idSets);
-    }
+    auto render = new RenderJson(reqId);
+    execAdd(render, targets, from, until, maxPoints);
 }
 
 //===========================================================================
-// RenderMsgPack
+// RenderJson
 //===========================================================================
-RenderMsgPack::RenderMsgPack(
+RenderJson::RenderJson(unsigned reqId)
+    : m_reqId{reqId}
+{
+    m_res.addHeader(kHttpContentType, "application/json");
+    m_res.addHeader(kHttp_Status, "200");
+
+    m_bld.array();
+}
+
+//===========================================================================
+bool RenderJson::onDbSeriesStart(
+    string_view query,
+    uint32_t id,
+    string_view name,
+    DbSampleType type,
+    TimePoint from,
+    TimePoint until,
+    Duration interval
+) {
+    if (from == until)
+        return false;
+
+    m_bld.object();
+    m_bld.member("target", name);
+    m_bld.member("datapoints");
+    m_bld.array();
+    return true;
+}
+
+//===========================================================================
+bool RenderJson::onDbSample(TimePoint time, double value) {
+    m_bld.array();
+    if (isnan(value)) {
+        m_bld.value(nullptr);
+    } else {
+        m_bld.value(value);
+    }
+    m_bld.ivalue(Clock::to_time_t(time));
+    m_bld.end();
+    return true;
+}
+
+//===========================================================================
+void RenderJson::onDbSeriesEnd(uint32_t id) {
+    m_bld.end();
+    m_bld.end();
+}
+
+//===========================================================================
+void RenderJson::onEvalEnd() {
+    m_bld.end();
+    xferRest(m_res, m_started, m_reqId);
+    delete this;
+}
+
+//===========================================================================
+void RenderJson::onEvalError(string_view errmsg) {
+    if (m_started) {
+        httpRouteInternalError(m_reqId);
+    } else {
+        httpRouteReply(m_reqId, 400, errmsg);
+    }
+    delete this;
+}
+
+
+//===========================================================================
+// RenderAlternativeStorage
+//===========================================================================
+RenderAlternativeStorage::RenderAlternativeStorage(
     unsigned reqId,
     TimePoint from,
     TimePoint until,
-    vector<string> & targets,
-    vector<UnsignedSet> & idSets
+    const vector<string_view> & targets
 )
     : m_reqId{reqId}
 {
@@ -459,6 +519,12 @@ RenderMsgPack::RenderMsgPack(
     m_res.addHeader(kHttp_Status, "200");
 
     auto h = tsDataHandle();
+    vector<UnsignedSet> idSets;
+    for (auto && target : targets) {
+        UnsignedSet & out = idSets.emplace_back();
+        dbFindMetrics(out, h, string(target));
+    }
+
     UnsignedSet ids;
     size_t count{0};
     if (targets.size() == 1) {
@@ -484,7 +550,8 @@ RenderMsgPack::RenderMsgPack(
 }
 
 //===========================================================================
-bool RenderMsgPack::OnDbMetricStart(
+bool RenderAlternativeStorage::onDbSeriesStart(
+    string_view query,
     uint32_t id,
     string_view name,
     DbSampleType type,
@@ -507,7 +574,7 @@ bool RenderMsgPack::OnDbMetricStart(
 }
 
 //===========================================================================
-bool RenderMsgPack::OnDbSample(TimePoint time, double value) {
+bool RenderAlternativeStorage::onDbSample(TimePoint time, double value) {
     auto count = size_t{1};
     if (time != m_prevTime + m_interval)
         count = (time - m_prevTime) / m_interval;
@@ -517,71 +584,6 @@ bool RenderMsgPack::OnDbSample(TimePoint time, double value) {
     m_bld.value(value);
     m_prevTime = time;
     return true;
-}
-
-//===========================================================================
-// RenderJson
-//===========================================================================
-RenderJson::RenderJson(
-    unsigned reqId,
-    TimePoint from,
-    TimePoint until,
-    vector<string> & targets,
-    vector<UnsignedSet> & idSets
-)
-    : m_reqId{reqId}
-{
-    m_res.addHeader(kHttpContentType, "application/json");
-    m_res.addHeader(kHttp_Status, "200");
-
-    auto h = tsDataHandle();
-    UnsignedSet ids;
-    m_bld.array();
-    for (unsigned i = 0; i < targets.size(); ++i) {
-        m_pathExpr = targets[i];
-        auto & iset = idSets[i];
-        iset.erase(ids);
-        for (auto && id : idSets[i]) {
-            dbEnumSamples(this, h, id, from, until);
-        }
-        ids.insert(move(iset));
-    }
-    m_bld.end();
-    xferRest(m_res, m_started, reqId);
-}
-
-//===========================================================================
-bool RenderJson::OnDbMetricStart(
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint from,
-    TimePoint until,
-    Duration interval
-) {
-    if (from == until)
-        return false;
-
-    m_bld.object();
-    m_bld.member("target", name);
-    m_bld.member("datapoints");
-    m_bld.array();
-    return true;
-}
-
-//===========================================================================
-bool RenderJson::OnDbSample(TimePoint time, double value) {
-    m_bld.array();
-    m_bld.value(value);
-    m_bld.ivalue(Clock::to_time_t(time));
-    m_bld.end();
-    return true;
-}
-
-//===========================================================================
-void RenderJson::OnDbMetricEnd(uint32_t id) {
-    m_bld.end();
-    m_bld.end();
 }
 
 

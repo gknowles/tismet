@@ -7,6 +7,7 @@
 
 using namespace std;
 using namespace Dim;
+using namespace Query;
 
 
 /****************************************************************************
@@ -180,7 +181,7 @@ bool DbIndex::find(uint32_t & out, string_view name) const {
 //===========================================================================
 void DbIndex::find(
     UnsignedSet & out,
-    QueryInfo::PathSegment * segs,
+    PathSegment * segs,
     size_t numSegs,
     size_t basePos,
     const UnsignedSetWithCount * subset
@@ -196,7 +197,7 @@ void DbIndex::find(
     int pos = (int) basePos;
     for (int i = 0; i < numSegs; ++i) {
         auto & seg = segs[i];
-        if (seg.type == QueryInfo::kExact) {
+        if (seg.type == kExact) {
             assert(pos + i < m_segIds.size());
             auto it = m_segIds[pos + i].find(seg.prefix);
             if (it == m_segIds[pos + i].end())
@@ -206,7 +207,7 @@ void DbIndex::find(
                 ifewest = i;
                 fewest = &it->second;
             }
-        } else if (seg.type == QueryInfo::kDynamicAny) {
+        } else if (seg.type == kDynamicAny) {
             pos += seg.count - 1;
         }
     }
@@ -233,13 +234,13 @@ void DbIndex::find(
             continue;
         }
         auto & seg = segs[i];
-        if (seg.type == QueryInfo::kAny)
+        if (seg.type == kAny)
             continue;
-        if (seg.type == QueryInfo::kDynamicAny) {
+        if (seg.type == kDynamicAny) {
             pos += seg.count - 1;
             continue;
         }
-        assert(seg.type == QueryInfo::kCondition);
+        assert(seg.type == kCondition);
         UnsignedSet found;
         auto & sids = m_segIds[pos + i];
         auto it = sids.lower_bound(seg.prefix);
@@ -248,7 +249,7 @@ void DbIndex::find(
             auto vk = string_view{k}.substr(0, seg.prefix.size());
             if (vk != seg.prefix)
                 break;
-            if (queryMatchSegment(seg.node, k))
+            if (matchSegment(*seg.node, k))
                 found.insert(v.uset);
         }
         if (out.empty()) {
@@ -269,29 +270,29 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
     }
 
     QueryInfo qry;
-    if (!queryParse(qry, name)) {
+    if (!parse(qry, name)) {
         out.clear();
         return;
     }
-    if (qry.type == QueryInfo::kExact) {
+    if (qry.type == kExact) {
         uint32_t id;
         out.clear();
         if (find(id, name))
             out.insert(id);
         return;
     }
-    if (qry.type == QueryInfo::kAny) {
+    if (qry.type == kAny) {
         out = m_ids.uset;
         return;
     }
 
-    vector<QueryInfo::PathSegment> segs;
-    queryPathSegments(segs, qry);
+    vector<PathSegment> segs;
+    getPathSegments(&segs, qry);
     auto numSegs = segs.size();
     vector<unsigned> dyns;
     unsigned numStatic = 0;
     for (unsigned i = 0; i < numSegs; ++i) {
-        if (segs[i].type == QueryInfo::kDynamicAny) {
+        if (segs[i].type == kDynamicAny) {
             dyns.push_back(i);
         } else {
             numStatic += 1;

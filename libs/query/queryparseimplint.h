@@ -68,7 +68,7 @@ inline bool QueryParser::onFracNumChar (char ch) {
 
 //===========================================================================
 inline bool QueryParser::onFuncEnd () {
-    assert(m_nodes.back()->type == QueryInfo::kFunc);
+    assert(m_nodes.back()->type == Query::kFunc);
     m_nodes.pop_back();
     return true;
 }
@@ -96,7 +96,7 @@ inline bool QueryParser::onPathStart (const char * ptr) {
 
 //===========================================================================
 inline bool QueryParser::onPathEnd (const char * eptr) {
-    assert(m_nodes.back()->type == QueryInfo::kPath);
+    assert(m_nodes.back()->type == Query::kPath);
     endPath(m_query, m_nodes.back());
     m_nodes.pop_back();
     return true;
@@ -111,7 +111,7 @@ inline bool QueryParser::onPathSegStart (const char * ptr) {
 
 //===========================================================================
 inline bool QueryParser::onPathSegEnd (const char * eptr) {
-    assert(m_nodes.back()->type == QueryInfo::kPathSeg);
+    assert(m_nodes.back()->type == Query::kPathSeg);
     endSeg(m_query, m_nodes.back());
     m_nodes.pop_back();
     return true;
@@ -168,7 +168,7 @@ inline bool QueryParser::onSegStrListStart () {
 
 //===========================================================================
 inline bool QueryParser::onSegStrListEnd () {
-    assert(m_nodes.back()->type == QueryInfo::kSegStrChoice);
+    assert(m_nodes.back()->type == Query::kSegStrChoice);
     m_nodes.pop_back();
     return true;
 }
@@ -214,40 +214,40 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 
 //===========================================================================
 inline bool QueryParser::onFnAliasStart () {
-    return startFunc(QueryFunc::kAlias);
+    return startFunc(Query::Function::kAlias);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnDerivativeStart () {
-    return startFunc(QueryFunc::kDerivative);
+    return startFunc(Query::Function::kDerivative);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnKeepLastValueStart () {
-    return startFunc(QueryFunc::kKeepLastValue);
+    return startFunc(Query::Function::kKeepLastValue);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnMaximumAboveStart () {
-    return startFunc(QueryFunc::kMaximumAbove);
+    return startFunc(Query::Function::kMaximumAbove);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnNonNegativeDerivativeStart () {
-    return startFunc(QueryFunc::kNonNegativeDerivative);
+    return startFunc(Query::Function::kNonNegativeDerivative);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnScaleStart () {
-    return startFunc(QueryFunc::kScale);
+    return startFunc(Query::Function::kScale);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnSumStart () {
-    return startFunc(QueryFunc::kSum);
+    return startFunc(Query::Function::kSum);
 }
 
 //===========================================================================
 inline bool QueryParser::onFnTimeShiftStart () {
-    return startFunc(QueryFunc::kTimeShift);
+    return startFunc(Query::Function::kTimeShift);
 }

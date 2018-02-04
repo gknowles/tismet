@@ -7,7 +7,7 @@
 
 using namespace std;
 using namespace Dim;
-
+using namespace Query;
 
 /****************************************************************************
 *
@@ -26,49 +26,49 @@ const unsigned kQueryMaxSize = 8192;
 
 namespace {
 
-struct FuncNode : QueryInfo::Node {
-    QueryFunc::Type func;
+struct FuncNode : Node {
+    Function::Type func;
     List<Node> args;
 };
 
-struct PathNode : QueryInfo::Node {
+struct PathNode : Node {
     List<Node> segs;
 };
-struct PathSeg : QueryInfo::Node {
+struct PathSeg : Node {
     List<Node> nodes;
 };
-struct SegLiteral : QueryInfo::Node {
+struct SegLiteral : Node {
     string_view val;
 };
-struct SegBlot : QueryInfo::Node {
+struct SegBlot : Node {
     int count{0};
 };
-struct SegCharChoice : QueryInfo::Node {
+struct SegCharChoice : Node {
     static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
     bitset<256> vals;
 };
-struct SegStrChoice : QueryInfo::Node {
+struct SegStrChoice : Node {
     List<Node> literals;
 };
 
-struct NumNode : QueryInfo::Node {
+struct NumNode : Node {
     double val;
 };
-struct StringNode : QueryInfo::Node {
+struct StringNode : Node {
     string_view val;
 };
 
 const TokenTable::Token s_funcNames[] = {
-    { QueryFunc::kAlias,                  "alias" },
-    { QueryFunc::kDerivative,             "derivative" },
-    { QueryFunc::kKeepLastValue,          "keepLastValue" },
-    { QueryFunc::kMaximumAbove,           "maximumAbove" },
-    { QueryFunc::kNonNegativeDerivative,  "nonNegativeDerivative" },
-    { QueryFunc::kScale,                  "scale" },
-    { QueryFunc::kSum,                    "sum" },
-    { QueryFunc::kTimeShift,              "timeShift" },
+    { Function::kAlias,                  "alias" },
+    { Function::kDerivative,             "derivative" },
+    { Function::kKeepLastValue,          "keepLastValue" },
+    { Function::kMaximumAbove,           "maximumAbove" },
+    { Function::kNonNegativeDerivative,  "nonNegativeDerivative" },
+    { Function::kScale,                  "scale" },
+    { Function::kSum,                    "sum" },
+    { Function::kTimeShift,              "timeShift" },
 };
-static_assert(size(s_funcNames) == QueryFunc::kFuncTypes);
+static_assert(size(s_funcNames) == Function::kFuncTypes);
 const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 
 } // namespace
@@ -81,7 +81,7 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 ***/
 
 //===========================================================================
-static void appendNode (string & out, const SegStrChoice & node) {
+static void appendNode (string * out, const SegStrChoice & node) {
     vector<string_view> literals;
     for (auto && sv : node.literals) {
         literals.push_back(static_cast<const SegLiteral &>(sv).val);
@@ -92,85 +92,85 @@ static void appendNode (string & out, const SegStrChoice & node) {
 
     if (literals.size() < 2) {
         if (!literals.empty())
-            out += literals.front();
+            out->append(literals.front());
         return;
     }
 
-    out += '{';
+    out->push_back('{');
     auto ptr = literals.data();
     auto eptr = ptr + literals.size();
-    out += *ptr++;
+    out->append(*ptr++);
     while (ptr != eptr) {
-        out += ',';
-        out += *ptr++;
+        out->push_back(',');
+        out->append(*ptr++);
     }
-    out += '}';
+    out->push_back('}');
 }
 
 //===========================================================================
-static void appendNode (string & out, const QueryInfo::Node & node) {
+static void appendNode (string * out, const Node & node) {
     size_t first = true;
     switch (node.type) {
-    case QueryInfo::kPath:
+    case kPath:
         for (auto && seg : static_cast<const PathNode &>(node).segs) {
             if (first) {
                 first = false;
             } else {
-                out += '.';
+                out->push_back('.');
             }
             appendNode(out, seg);
         }
         break;
-    case QueryInfo::kPathSeg:
+    case kPathSeg:
         for (auto && sn : static_cast<const PathSeg &>(node).nodes)
             appendNode(out, sn);
         break;
-    case QueryInfo::kSegLiteral:
-        out += static_cast<const SegLiteral &>(node).val;
+    case kSegLiteral:
+        out->append(static_cast<const SegLiteral &>(node).val);
         break;
-    case QueryInfo::kSegBlot:
-        out += '*';
+    case kSegBlot:
+        out->push_back('*');
         break;
-    case QueryInfo::kSegDoubleBlot:
-        out += "**";
+    case kSegDoubleBlot:
+        out->append("**");
         break;
-    case QueryInfo::kSegCharChoice:
+    case kSegCharChoice:
         {
             auto & vals = static_cast<const SegCharChoice &>(node).vals;
-            out += '[';
+            out->push_back('[');
             for (unsigned i = 0; i < 256; ++i) {
                 if (vals.test(i))
-                    out += (unsigned char) i;
+                    out->push_back((unsigned char) i);
             }
-            out += ']';
+            out->push_back(']');
         }
         break;
-    case QueryInfo::kSegStrChoice:
+    case kSegStrChoice:
         appendNode(out, static_cast<const SegStrChoice &>(node));
         break;
-    case QueryInfo::kNum:
-        out += StrFrom<double>(static_cast<const NumNode &>(node).val);
+    case kNum:
+        out->append(StrFrom<double>(static_cast<const NumNode &>(node).val));
         break;
-    case QueryInfo::kString:
-        out += '"';
-        out += static_cast<const StringNode &>(node).val;
-        out += '"';
+    case kString:
+        out->push_back('"');
+        out->append(static_cast<const StringNode &>(node).val);
+        out->push_back('"');
         break;
-    case QueryInfo::kFunc:
-        out += tokenTableGetName(
+    case kFunc:
+        out->append(tokenTableGetName(
             s_funcNameTbl,
             static_cast<const FuncNode &>(node).func
-        );
-        out += '(';
+        ));
+        out->push_back('(');
         for (auto && arg : static_cast<const FuncNode &>(node).args) {
             if (first) {
                 first = false;
             } else {
-                out += ", ";
+                out->append(", ");
             }
             appendNode(out, arg);
         }
-        out += ')';
+        out->push_back(')');
         break;
     }
 }
@@ -183,7 +183,7 @@ static void appendNode (string & out, const QueryInfo::Node & node) {
 ***/
 
 //===========================================================================
-bool QueryParserBase::startFunc (QueryFunc::Type type) {
+bool QueryParserBase::startFunc (Function::Type type) {
     auto func = m_nodes.empty()
         ? addFunc(m_query, type)
         : addFuncArg(m_query, m_nodes.back(), type);
@@ -199,10 +199,10 @@ bool QueryParserBase::startFunc (QueryFunc::Type type) {
 ***/
 
 //===========================================================================
-QueryInfo::Node * addPath(QueryInfo * qi) {
+Node * addPath(QueryInfo * qi) {
     assert(!qi->node);
     qi->node = qi->heap.emplace<PathNode>();
-    qi->node->type = QueryInfo::kPath;
+    qi->node->type = kPath;
     return qi->node;
 }
 
@@ -215,15 +215,15 @@ static void removeRedundantSegments(PathNode * path) {
     // or more blot segments.
     auto node = static_cast<PathSeg *>(path->segs.front());
     while (auto next = static_cast<PathSeg *>(path->segs.next(node))) {
-        if (node->nodes.front()->type == QueryInfo::kSegDoubleBlot) {
+        if (node->nodes.front()->type == kSegDoubleBlot) {
             while (next->nodes.size() == 1
-                && next->nodes.front()->type == QueryInfo::kSegBlot
+                && next->nodes.front()->type == kSegBlot
             ) {
                 next = static_cast<PathSeg *>(path->segs.next(next));
                 if (!next)
                     return;
             }
-            if (next->nodes.front()->type == QueryInfo::kSegDoubleBlot)
+            if (next->nodes.front()->type == kSegDoubleBlot)
                 path->segs.unlink(node);
         }
         node = next;
@@ -231,74 +231,74 @@ static void removeRedundantSegments(PathNode * path) {
 }
 
 //===========================================================================
-void endPath(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kPath);
+void endPath(QueryInfo * qi, Node * node) {
+    assert(node->type == kPath);
     auto path = static_cast<PathNode *>(node);
     removeRedundantSegments(path);
 }
 
 //===========================================================================
-QueryInfo::Node * addSeg(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kPath);
+Node * addSeg(QueryInfo * qi, Node * node) {
+    assert(node->type == kPath);
     auto path = static_cast<PathNode *>(node);
     path->segs.link(qi->heap.emplace<PathSeg>());
     auto seg = path->segs.back();
-    seg->type = QueryInfo::kPathSeg;
+    seg->type = kPathSeg;
     return seg;
 }
 
 //===========================================================================
-void endSeg(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kPathSeg);
+void endSeg(QueryInfo * qi, Node * node) {
+    assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
     if (seg->nodes.size() == 1
-        && seg->nodes.front()->type == QueryInfo::kSegBlot
+        && seg->nodes.front()->type == kSegBlot
     ) {
         auto sn = static_cast<SegBlot *>(seg->nodes.front());
         if (sn->count == 2)
-            sn->type = QueryInfo::kSegDoubleBlot;
+            sn->type = kSegDoubleBlot;
     }
 }
 
 //===========================================================================
-QueryInfo::Node * addSegLiteral(
+Node * addSegLiteral(
     QueryInfo * qi,
-    QueryInfo::Node * node,
+    Node * node,
     string_view val
 ) {
-    assert(node->type == QueryInfo::kPathSeg);
+    assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
     seg->nodes.link(qi->heap.emplace<SegLiteral>());
     auto sn = static_cast<SegLiteral *>(seg->nodes.back());
-    sn->type = QueryInfo::kSegLiteral;
+    sn->type = kSegLiteral;
     sn->val = val;
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegBlot(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kPathSeg);
+Node * addSegBlot(QueryInfo * qi, Node * node) {
+    assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    if (!seg->nodes.empty() && seg->nodes.back()->type == QueryInfo::kSegBlot) {
+    if (!seg->nodes.empty() && seg->nodes.back()->type == kSegBlot) {
         auto sn = static_cast<SegBlot *>(seg->nodes.back());
         sn->count += 1;
         return nullptr;
     }
-    qi->type = QueryInfo::kCondition;
+    qi->type = kCondition;
     seg->nodes.link(qi->heap.emplace<SegBlot>());
     auto sn = static_cast<SegBlot *>(seg->nodes.back());
-    sn->type = QueryInfo::kSegBlot;
+    sn->type = kSegBlot;
     sn->count = 1;
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegChoices(
+Node * addSegChoices(
     QueryInfo * qi,
-    QueryInfo::Node * node,
+    Node * node,
     bitset<256> & vals
 ) {
-    assert(node->type == QueryInfo::kPathSeg);
+    assert(node->type == kPathSeg);
     if (auto cnt = vals.count(); cnt < 2) {
         if (!cnt)
             return nullptr;
@@ -312,102 +312,102 @@ QueryInfo::Node * addSegChoices(
         }
     }
     auto seg = static_cast<PathSeg *>(node);
-    qi->type = QueryInfo::kCondition;
+    qi->type = kCondition;
     seg->nodes.link(qi->heap.emplace<SegCharChoice>());
     auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
-    sn->type = QueryInfo::kSegCharChoice;
+    sn->type = kSegCharChoice;
     swap(sn->vals, vals);
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegStrChoices(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kPathSeg);
+Node * addSegStrChoices(QueryInfo * qi, Node * node) {
+    assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
     seg->nodes.link(qi->heap.emplace<SegStrChoice>());
     auto sn = seg->nodes.back();
-    sn->type = QueryInfo::kSegStrChoice;
+    sn->type = kSegStrChoice;
     return sn;
 }
 
 //===========================================================================
-QueryInfo::Node * addSegChoice(
+Node * addSegChoice(
     QueryInfo * qi,
-    QueryInfo::Node * node,
+    Node * node,
     std::string_view val
 ) {
-    assert(node->type == QueryInfo::kSegStrChoice);
+    assert(node->type == kSegStrChoice);
     auto sn = static_cast<SegStrChoice *>(node);
     if (!sn->literals.empty())
-        qi->type = QueryInfo::kCondition;
+        qi->type = kCondition;
     sn->literals.link(qi->heap.emplace<SegLiteral>());
     auto sv = static_cast<SegLiteral *>(sn->literals.back());
-    sv->type = QueryInfo::kSegLiteral;
+    sv->type = kSegLiteral;
     sv->val = val;
     return sv;
 }
 
 //===========================================================================
-QueryInfo::Node * addFunc(QueryInfo * qi, QueryFunc::Type type) {
+Node * addFunc(QueryInfo * qi, Function::Type type) {
     assert(!qi->node);
     auto func = qi->heap.emplace<FuncNode>();
     qi->node = func;
-    func->type = QueryInfo::kFunc;
+    func->type = kFunc;
     func->func = type;
     return func;
 }
 
 //===========================================================================
-QueryInfo::Node * addFuncArg(
+Node * addFuncArg(
     QueryInfo * qi,
-    QueryInfo::Node * node,
-    QueryFunc::Type type
+    Node * node,
+    Function::Type type
 ) {
-    assert(node->type == QueryInfo::kFunc);
+    assert(node->type == kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<FuncNode>());
     auto arg = static_cast<FuncNode *>(func->args.back());
-    arg->type = QueryInfo::kFunc;
+    arg->type = kFunc;
     arg->func = type;
     return arg;
 }
 
 //===========================================================================
-QueryInfo::Node * addPathArg(QueryInfo * qi, QueryInfo::Node * node) {
-    assert(node->type == QueryInfo::kFunc);
+Node * addPathArg(QueryInfo * qi, Node * node) {
+    assert(node->type == kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<PathNode>());
     auto arg = static_cast<PathNode *>(func->args.back());
-    arg->type = QueryInfo::kPath;
+    arg->type = kPath;
     return arg;
 }
 
 //===========================================================================
-QueryInfo::Node * addNumArg(
+Node * addNumArg(
     QueryInfo * qi,
-    QueryInfo::Node * node,
+    Node * node,
     double val
 ) {
-    assert(node->type == QueryInfo::kFunc);
+    assert(node->type == kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<NumNode>());
     auto arg = static_cast<NumNode *>(func->args.back());
-    arg->type = QueryInfo::kNum;
+    arg->type = kNum;
     arg->val = val;
     return arg;
 }
 
 //===========================================================================
-QueryInfo::Node * addStringArg(
+Node * addStringArg(
     QueryInfo * qi,
-    QueryInfo::Node * node,
+    Node * node,
     string_view val
 ) {
-    assert(node->type == QueryInfo::kFunc);
+    assert(node->type == kFunc);
     auto func = static_cast<FuncNode *>(node);
     func->args.link(qi->heap.emplace<StringNode>());
     auto arg = static_cast<StringNode *>(func->args.back());
-    arg->type = QueryInfo::kString;
+    arg->type = kString;
     arg->val = val;
     return arg;
 }
@@ -420,7 +420,7 @@ QueryInfo::Node * addStringArg(
 ***/
 
 //===========================================================================
-bool queryParse(QueryInfo & qry, string_view src) {
+bool Query::parse(QueryInfo & qry, string_view src) {
     assert(*src.end() == 0);
     qry = {};
     auto ptr = src.data();
@@ -433,21 +433,21 @@ bool queryParse(QueryInfo & qry, string_view src) {
 
     // normalize
     string text;
-    appendNode(text, *qry.node);
+    appendNode(&text, *qry.node);
     qry = {};
     qry.text = qry.heap.strdup(text.c_str());
     parser = QueryParser{&qry};
     bool success [[maybe_unused]] = parser.parse(qry.text);
     assert(success);
 
-    // check if query is QueryInfo::kAny
-    if (qry.node->type == QueryInfo::kPath) {
+    // check if query is kAny
+    if (qry.node->type == kPath) {
         auto path = static_cast<PathNode *>(qry.node);
         if (path->segs.size() == 1) {
             auto seg = static_cast<PathSeg *>(path->segs.front());
-            if (seg->nodes.front()->type == QueryInfo::kSegDoubleBlot) {
-                assert(qry.type == QueryInfo::kCondition);
-                qry.type = QueryInfo::kAny;
+            if (seg->nodes.front()->type == kSegDoubleBlot) {
+                assert(qry.type == kCondition);
+                qry.type = kAny;
             }
         }
     }
@@ -455,102 +455,148 @@ bool queryParse(QueryInfo & qry, string_view src) {
 }
 
 //===========================================================================
-void queryPathSegments(
-    vector<QueryInfo::PathSegment> & out,
+void Query::getPathSegments(
+    vector<PathSegment> * out,
     const QueryInfo & qry
 ) {
-    out.clear();
-    if (qry.node->type != QueryInfo::kPath)
+    out->clear();
+    if (qry.node->type != kPath)
         return;
     auto path = static_cast<const PathNode *>(qry.node);
     for (auto && seg : path->segs) {
-        QueryInfo::PathSegment si;
+        PathSegment si;
         auto & sn = static_cast<const PathSeg &>(seg);
         if (sn.nodes.size() > 1) {
-            si.type = QueryInfo::kCondition;
+            si.type = kCondition;
         } else {
             assert(sn.nodes.size() == 1);
             auto node = sn.nodes.front();
-            if (node->type == QueryInfo::kSegBlot) {
-                si.type = QueryInfo::kAny;
-            } else if (node->type == QueryInfo::kSegDoubleBlot) {
-                si.type = QueryInfo::kDynamicAny;
+            if (node->type == kSegBlot) {
+                si.type = kAny;
+            } else if (node->type == kSegDoubleBlot) {
+                si.type = kDynamicAny;
                 si.count = 0;
-            } else if (node->type == QueryInfo::kSegLiteral) {
-                si.type = QueryInfo::kExact;
+            } else if (node->type == kSegLiteral) {
+                si.type = kExact;
             } else {
-                si.type = QueryInfo::kCondition;
+                si.type = kCondition;
             }
         }
         si.node = &seg;
         auto lit = static_cast<const SegLiteral *>(sn.nodes.front());
-        if (lit->type == QueryInfo::kSegLiteral)
+        if (lit->type == kSegLiteral)
             si.prefix = lit->val;
-        out.push_back(si);
+        out->push_back(si);
     }
 }
 
 //===========================================================================
-static QueryInfo::MatchResult matchSegment(
-    const List<QueryInfo::Node> & nodes,
-    const QueryInfo::Node * node,
+static MatchResult matchSegment(
+    const List<Node> & nodes,
+    const Node * node,
     string_view val
 ) {
     if (!node)
-        return val.empty() ? QueryInfo::kMatch : QueryInfo::kNoMatch;
+        return val.empty() ? kMatch : kNoMatch;
 
     switch (node->type) {
-    case QueryInfo::kSegBlot:
+    case kSegBlot:
         // TODO: early out of val.size() < minimum required length
         for (; !val.empty(); val.remove_prefix(1)) {
             if (matchSegment(nodes, nodes.next(node), val))
-                return QueryInfo::kMatch;
+                return kMatch;
         }
         return matchSegment(nodes, nodes.next(node), val);
 
-    case QueryInfo::kSegDoubleBlot:
-        return QueryInfo::kMatchRest;
+    case kSegDoubleBlot:
+        return kMatchRest;
 
-    case QueryInfo::kSegCharChoice:
+    case kSegCharChoice:
         if (val.empty()
             || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
         ) {
-            return QueryInfo::kNoMatch;
+            return kNoMatch;
         }
         return matchSegment(nodes, nodes.next(node), val.substr(1));
 
-    case QueryInfo::kSegLiteral:
+    case kSegLiteral:
     {
         auto & lit = static_cast<const SegLiteral *>(node)->val;
         auto len = lit.size();
         if (lit != val.substr(0, len))
-            return QueryInfo::kNoMatch;
+            return kNoMatch;
         return matchSegment(nodes, nodes.next(node), val.substr(len));
     }
 
-    case QueryInfo::kSegStrChoice:
+    case kSegStrChoice:
         for (auto && sn : static_cast<const SegStrChoice *>(node)->literals) {
             auto & lit = static_cast<const SegLiteral &>(sn).val;
             auto len = lit.size();
             if (lit != val.substr(0, len))
                 continue;
             if (matchSegment(nodes, nodes.next(node), val.substr(len)))
-                return QueryInfo::kMatch;
+                return kMatch;
         }
-        return QueryInfo::kNoMatch;
+        return kNoMatch;
 
     default:
         assert(0 && "not a path segment node type");
-        return QueryInfo::kNoMatch;
+        return kNoMatch;
     }
 }
 
 //===========================================================================
-QueryInfo::MatchResult queryMatchSegment(
-    const QueryInfo::Node * node,
+MatchResult Query::matchSegment(
+    const Node & node,
     string_view val
 ) {
-    assert(node->type == QueryInfo::kPathSeg);
-    auto & nodes = static_cast<const PathSeg *>(node)->nodes;
-    return matchSegment(nodes, nodes.front(), val);
+    assert(node.type == kPathSeg);
+    auto & nodes = static_cast<const PathSeg &>(node).nodes;
+    return ::matchSegment(nodes, nodes.front(), val);
+}
+
+//===========================================================================
+NodeType Query::getType(const Node & node) {
+    return node.type;
+}
+
+//===========================================================================
+double Query::getNumber(const Node & node) {
+    if (node.type == kNum) {
+        return static_cast<const NumNode &>(node).val;
+    } else {
+        return NAN;
+    }
+}
+
+//===========================================================================
+string_view Query::getString(const Node & node) {
+    if (node.type == kString) {
+        return static_cast<const StringNode &>(node).val;
+    } else {
+        return {};
+    }
+}
+
+//===========================================================================
+bool Query::getFunction(
+    Function * out,
+    const Node & node
+) {
+    if (node.type != kFunc)
+        return false;
+
+    auto & fn = static_cast<const FuncNode &>(node);
+    out->type = fn.func;
+    out->args.clear();
+    for (auto && arg : fn.args)
+        out->args.push_back(&arg);
+    return true;
+}
+
+//===========================================================================
+string Query::toString(const Node & node) {
+    string out;
+    appendNode(&out, node);
+    return out;
 }

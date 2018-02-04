@@ -27,6 +27,10 @@
 # libs/db/dbview.cpp
 # libs/db/pch.cpp
 # libs/db/pch.h
+# libs/eval/eval.cpp
+# libs/eval/eval.h
+# libs/eval/pch.cpp
+# libs/eval/pch.h
 # libs/query/pch.cpp
 # libs/query/pch.h
 # libs/query/query.abnf
