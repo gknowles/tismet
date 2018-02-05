@@ -49,10 +49,11 @@ scl-char = scl-char-nd / "-"
 ;----------------------------------------------------------------------------
 arg-query = *WSP query *WSP { Start }
 arg-num = *WSP number *WSP { End }
-arg-string = *WSP DQUOTE string DQUOTE *WSP
+arg-string = *WSP (DQUOTE string DQUOTE / "'" string-ns "'") *WSP
 
 ; String
 string = *(%x20-21 / %x23-7E) { Start+, End+ }
+string-ns = *(%x20-26 / %x28-7E) { As string, Start+, End+ }
 
 ; Timestamp
 timestamp = 1*DIGIT { Char+ }
@@ -79,6 +80,10 @@ func = fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 func =/ fn-derivative
 fn-derivative = %s"derivative(" arg-query ")" { Start }
+func =/ fn-highestCurrent
+fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
+func =/ fn-highestMax
+fn-highestMax = %s"highestMax(" arg-query "," arg-num ")" { Start }
 func =/ fn-keepLastValue
 fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
 func =/ fn-maximumAbove

@@ -59,14 +59,16 @@ struct StringNode : Node {
 };
 
 const TokenTable::Token s_funcNames[] = {
-    { Function::kAlias,                  "alias" },
-    { Function::kDerivative,             "derivative" },
-    { Function::kKeepLastValue,          "keepLastValue" },
-    { Function::kMaximumAbove,           "maximumAbove" },
-    { Function::kNonNegativeDerivative,  "nonNegativeDerivative" },
-    { Function::kScale,                  "scale" },
-    { Function::kSum,                    "sum" },
-    { Function::kTimeShift,              "timeShift" },
+    { Function::kAlias,                 "alias" },
+    { Function::kDerivative,            "derivative" },
+    { Function::kHighestCurrent,        "highestCurrent" },
+    { Function::kHighestMax,            "highestMax" },
+    { Function::kKeepLastValue,         "keepLastValue" },
+    { Function::kMaximumAbove,          "maximumAbove" },
+    { Function::kNonNegativeDerivative, "nonNegativeDerivative" },
+    { Function::kScale,                 "scale" },
+    { Function::kSum,                   "sum" },
+    { Function::kTimeShift,             "timeShift" },
 };
 static_assert(size(s_funcNames) == Function::kFuncTypes);
 const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
@@ -579,7 +581,7 @@ string_view Query::getString(const Node & node) {
 }
 
 //===========================================================================
-bool Query::getFunction(
+bool Query::getFunc(
     Function * out,
     const Node & node
 ) {
@@ -592,6 +594,14 @@ bool Query::getFunction(
     for (auto && arg : fn.args)
         out->args.push_back(&arg);
     return true;
+}
+
+//===========================================================================
+const char * Query::getFuncName(
+    Query::Function::Type ftype,
+    const char * defVal
+) {
+    return tokenTableGetName(s_funcNameTbl, ftype, defVal);
 }
 
 //===========================================================================

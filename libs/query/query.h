@@ -70,6 +70,8 @@ struct Function {
     enum Type {
         kAlias,
         kDerivative,
+        kHighestCurrent,
+        kHighestMax,
         kKeepLastValue,
         kMaximumAbove,
         kNonNegativeDerivative,
@@ -113,7 +115,9 @@ double getNumber(const Node & node);
 std::string_view getString(const Node & node);
 
 // Returns false if not a function node
-bool getFunction(Function * out, const Node & node);
+bool getFunc(Function * out, const Node & node);
+
+const char * getFuncName(Query::Function::Type ftype, const char * defVal = "");
 
 std::string toString(const Node & node);
 

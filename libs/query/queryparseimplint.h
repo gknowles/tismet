@@ -223,6 +223,16 @@ inline bool QueryParser::onFnDerivativeStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnHighestCurrentStart () {
+    return startFunc(Query::Function::kHighestCurrent);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnHighestMaxStart () {
+    return startFunc(Query::Function::kHighestMax);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnKeepLastValueStart () {
     return startFunc(Query::Function::kKeepLastValue);
 }
