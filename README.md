@@ -47,7 +47,7 @@ testing.
 Tismet can run from the command line or as a service. The easiest way to
 install it as a service is:
 ~~~ batch
-sc create Tismet binPath= <installPath>\tismet.exe start= delayed-auto
+sc create Tismet binPath= <installPath>\tismet.exe start= auto depend= Tcpip/Afd
 ~~~
 
 When run, Tismet accesses directories relative to the executable:
