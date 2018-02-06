@@ -180,7 +180,7 @@ class FuncScale : public FuncNode {
 
 class FuncSum : public FuncNode {
     Apply onResultTask(ResultInfo & info) override;
-    ResultInfo m_out;
+    shared_ptr<SampleList> m_samples;
 };
 
 class FuncTimeShift : public FuncNode {
@@ -937,10 +937,12 @@ FuncNode::Apply FuncHighestCurrent::onResultTask(ResultInfo & info) {
 
     // last non-NAN sample in list
     auto best = (double) NAN;
-    for (int i = info.samples->count; i-- > 0;) {
-        best = info.samples->samples[i];
-        if (!isnan(best))
-            break;
+    if (info.samples) {
+        for (int i = info.samples->count; i-- > 0;) {
+            best = info.samples->samples[i];
+            if (!isnan(best))
+                break;
+        }
     }
 
     if (!isnan(best)) {
@@ -998,9 +1000,9 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
         }
     }
     if (!info.more) {
-        for (auto && out : m_best) {
-            out.second.more = true;
-            forwardResult(out.second);
+        for (auto i = m_best.rbegin(), ei = m_best.rend(); i != ei; ++i) {
+            i->second.more = true;
+            forwardResult(i->second);
         }
         ResultInfo out{};
         out.target = info.target;
@@ -1020,17 +1022,53 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
 //===========================================================================
 FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
     if (info.samples) {
-        if (!m_out.samples) {
-            m_out.samples = copySampleList(*info.samples);
-        } else if (m_out.samples->first == info.samples->first
-            && m_out.samples->count == info.samples->count
-            && m_out.samples->interval == info.samples->interval
-        ) {
-            auto optr = m_out.samples->samples;
-            auto ptr = info.samples->samples;
-            auto eptr = ptr + info.samples->count;
-            for (; ptr != eptr; ++ptr, ++optr)
-                *optr += *ptr;
+        if (!m_samples) {
+            m_samples = copySampleList(*info.samples);
+        } else if (m_samples->interval == info.samples->interval) {
+            auto resize = false;
+            auto interval = m_samples->interval;
+            auto slast = m_samples->first + m_samples->count * interval;
+            auto ilast = info.samples->first + info.samples->count * interval;
+            auto first = m_samples->first;
+            auto last = slast;
+            if (info.samples->first < m_samples->first) {
+                first = info.samples->first;
+                resize = true;
+            }
+            if (ilast > slast) {
+                last = ilast;
+                resize = true;
+            }
+            if (resize) {
+                auto tmp = allocSampleList(
+                    first,
+                    interval,
+                    (last - first) / interval
+                );
+                auto pos = 0;
+                for (; first < m_samples->first; first += interval, ++pos)
+                    tmp->samples[pos] = NAN;
+                auto spos = 0;
+                for (; first < slast; first += interval, ++pos, ++spos)
+                    tmp->samples[pos] = m_samples->samples[spos];
+                for (; first < last; first += interval, ++pos)
+                    tmp->samples[pos] = NAN;
+                m_samples = tmp;
+                slast = first;
+                first = m_samples->first;
+            }
+            auto ipos = 0;
+            auto pos = (info.samples->first - first) / interval;
+            first = info.samples->first;
+            for (; first < ilast; first += interval, ++pos, ++ipos) {
+                auto & sval = m_samples->samples[pos];
+                auto & ival = info.samples->samples[ipos];
+                if (isnan(sval)) {
+                    sval = ival;
+                } else if (!isnan(ival)) {
+                    sval += ival;
+                }
+            }
         } else {
             // TODO: normalize and consolidate incompatible lists
             logMsgError() << "summing incompatible series";
@@ -1038,11 +1076,12 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
     }
 
     if (!info.more) {
-        m_out.target = info.target;
-        m_out.name = addFuncName(m_type, info.target);
-        m_out.more = false;
-        forwardResult(m_out);
-        m_out.samples.reset();
+        ResultInfo out;
+        out.target = info.target;
+        out.name = addFuncName(m_type, info.target);
+        out.samples = move(m_samples);
+        out.more = false;
+        forwardResult(out);
     }
     return Apply::kSkip;
 }
