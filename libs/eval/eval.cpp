@@ -1031,7 +1031,7 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
             auto ilast = info.samples->first + info.samples->count * interval;
             auto first = m_samples->first;
             auto last = slast;
-            if (info.samples->first < m_samples->first) {
+            if (info.samples->first < first) {
                 first = info.samples->first;
                 resize = true;
             }
