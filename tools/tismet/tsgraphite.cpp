@@ -123,6 +123,7 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     bool started = false;
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/json");
+    res.addHeader(kHttpAccessControlAllowOrigin, "*");
     res.addHeader(kHttp_Status, "200");
     JBuilder bld(res.body());
     bld.array();
@@ -196,6 +197,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     bool started = false;
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/json");
+    res.addHeader(kHttpAccessControlAllowOrigin, "*");
     res.addHeader(kHttp_Status, "200");
     JBuilder bld(res.body());
     bld.array();
@@ -240,6 +242,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     bool started = false;
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/x-msgpack");
+    res.addHeader(kHttpAccessControlAllowOrigin, "*");
     res.addHeader(kHttp_Status, "200");
     MsgBuilder bld(res.body());
     auto count = ids.size() + bids.size();
@@ -442,6 +445,7 @@ RenderJson::RenderJson(unsigned reqId)
     : m_reqId{reqId}
 {
     m_res.addHeader(kHttpContentType, "application/json");
+    m_res.addHeader(kHttpAccessControlAllowOrigin, "*");
     m_res.addHeader(kHttp_Status, "200");
 
     m_bld.array();
@@ -516,6 +520,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     : m_reqId{reqId}
 {
     m_res.addHeader(kHttpContentType, "application/x-msgpack");
+    m_res.addHeader(kHttpAccessControlAllowOrigin, "*");
     m_res.addHeader(kHttp_Status, "200");
 
     auto h = tsDataHandle();
