@@ -56,7 +56,7 @@ public:
 public:
     virtual ~ResultNode();
 
-    virtual void onResult(const ResultInfo & info);
+    virtual void onResult(int resultId, const ResultInfo & info);
     void onTask() override;
 
     int m_unfinished{0};
@@ -74,6 +74,7 @@ protected:
 
 struct ResultRange {
     ResultNode * rn{nullptr};
+    int resultId{0};
     TimePoint first;
     TimePoint last;
 };
@@ -146,7 +147,7 @@ public:
 };
 
 class FuncAlias : public FuncNode {
-    void onResult(const ResultInfo & info) override;
+    void onResult(int resultId, const ResultInfo & info) override;
 };
 
 class FuncDerivative : public FuncNode {
@@ -167,7 +168,7 @@ class FuncKeepLastValue : public FuncNode {
 };
 
 class FuncMaximumAbove : public FuncNode {
-    void onResult(const ResultInfo & info) override;
+    void onResult(int resultId, const ResultInfo & info) override;
 };
 
 class FuncNonNegativeDerivative : public FuncNode {
@@ -189,12 +190,16 @@ class FuncTimeShift : public FuncNode {
 
 class Evaluate : public ResultNode, public ListBaseLink<> {
 public:
+    void onResult(int resultId, const ResultInfo & info) override;
     Apply onResultTask(ResultInfo & info) override;
 
     IEvalNotify * m_notify{nullptr};
     TimePoint m_first;
     TimePoint m_last;
     int m_maxPoints{0};
+
+    int m_curId{0};
+    vector<deque<ResultInfo>> m_idResults;
 };
 
 } // namespace
@@ -281,6 +286,7 @@ inline static Overlap getOverlap(
 static void addOutput(
     shared_ptr<SourceNode> src,
     ResultNode * rn,
+    int resultId,
     TimePoint first,
     TimePoint last
 ) {
@@ -300,16 +306,16 @@ static void addOutput(
         for (auto && [name, slist] : src->m_sampleLists) {
             info.name = name;
             info.samples = slist;
-            rn->onResult(info);
+            rn->onResult(resultId, info);
         }
         info.name = {};
         info.samples = {};
         info.more = false;
-        rn->onResult(info);
+        rn->onResult(resultId, info);
         return;
     }
 
-    src->m_outputs.push_back({rn, first, last});
+    src->m_outputs.push_back({rn, resultId, first, last});
     if (src->m_outputs.size() != 1)
         return;
 
@@ -347,8 +353,7 @@ static shared_ptr<SourceNode> addSource(
     ResultNode * rn,
     shared_ptr<SourceNode> src
 ) {
-    auto si = lower_bound(rn->m_sources.begin(), rn->m_sources.end(), src);
-    rn->m_sources.insert(si, src);
+    rn->m_sources.push_back(src);
     return src;
 }
 
@@ -479,7 +484,7 @@ void SourceNode::onTask() {
     if (ids.empty()) {
         scoped_lock<mutex> lk{m_outMut};
         for (auto && rr : m_outputs)
-            rr.rn->onResult(info);
+            rr.rn->onResult(rr.resultId, info);
         m_outputs.clear();
         return;
     }
@@ -506,7 +511,7 @@ void SourceNode::onTask() {
 
         scoped_lock<mutex> lk{m_outMut};
         for (auto && rr : m_outputs)
-            rr.rn->onResult(info);
+            rr.rn->onResult(rr.resultId, info);
         if (!more) {
             m_outputs.clear();
             return;
@@ -598,7 +603,7 @@ void ResultNode::addResult(const ResultInfo & info) {
 }
 
 //===========================================================================
-void ResultNode::onResult(const ResultInfo & info) {
+void ResultNode::onResult(int resultId, const ResultInfo & info) {
     addResult(info);
 }
 
@@ -707,7 +712,7 @@ void FuncNode::forwardResult(ResultInfo & info, bool unfinished) {
         info.more = (info.more || --m_unfinished);
     if (info.samples || !info.more) {
         for (auto && rr : m_outputs)
-            rr.rn->onResult(info);
+            rr.rn->onResult(rr.resultId, info);
         if (!info.more)
             m_outputs.clear();
     }
@@ -720,8 +725,9 @@ void FuncNode::onStart() {
         return;
 
     m_unfinished = (int) m_sources.size();
+    int id = 0;
     for (auto && sn : m_sources)
-        addOutput(sn, this, first, last);
+        addOutput(sn, this, id++, first, last);
 }
 
 //===========================================================================
@@ -750,7 +756,7 @@ FuncNode::Apply FuncNode::onFuncApply(ResultInfo & info) {
 ***/
 
 //===========================================================================
-void FuncAlias::onResult(const ResultInfo & info) {
+void FuncAlias::onResult(int resultId, const ResultInfo & info) {
     ResultInfo out{info};
     if (out.samples)
         out.name = m_args[0].string;
@@ -765,7 +771,7 @@ void FuncAlias::onResult(const ResultInfo & info) {
 ***/
 
 //===========================================================================
-void FuncMaximumAbove::onResult(const ResultInfo & info) {
+void FuncMaximumAbove::onResult(int resultId, const ResultInfo & info) {
     ResultInfo out{info};
     if (out.samples) {
         auto limit = m_args[0].number;
@@ -1094,6 +1100,32 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
 ***/
 
 //===========================================================================
+void Evaluate::onResult(int resultId, const ResultInfo & info) {
+    scoped_lock<mutex> lk{m_resMut};
+    if (resultId != m_curId) {
+        assert(resultId > m_curId);
+        m_idResults[resultId].push_back(info);
+        return;
+    }
+
+    m_results.push_back(info);
+    if (m_results.size() == 1)
+        taskPushCompute(this);
+    auto more = info.more;
+    while (!more) {
+        if (++m_curId == m_idResults.size())
+            break;
+        if (m_idResults[m_curId].empty()) {
+            more = true;
+        } else {
+            for (auto && ri : m_idResults[m_curId])
+                m_results.push_back(move(ri));
+            more = m_results.back().more;
+        }
+    }
+}
+
+//===========================================================================
 FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
     if (info.samples) {
         auto first = info.samples->first;
@@ -1176,9 +1208,11 @@ void execAdd(
     ex->m_first = first;
     ex->m_last = last;
     ex->m_maxPoints = (int) maxPoints;
+    int id = 0;
+    ex->m_idResults.resize(targets.size());
     for (auto && target : targets) {
         if (auto sn = addSource(ex, target)) {
-            addOutput(sn, ex, first, last);
+            addOutput(sn, ex, id++, first, last);
         } else {
             delete ex;
             notify->onEvalError("Invalid target parameter: " + string(target));
