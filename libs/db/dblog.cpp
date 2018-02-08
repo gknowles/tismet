@@ -493,47 +493,13 @@ uint64_t DbLog::beginTxn() {
     s_perfCurTxns += 1;
     s_perfVolatileTxns += 1;
 
-    // Count the begin transaction on the page were its log record started.
-    // This means the current page before logging (since logging can advance
-    // to the next page), UNLESS it's exactly at the end of the page. In that
-    // case the transaction actually starts on the next page, which is where
-    // we'll be after logging.
-    uint64_t txn = 0;
-    if (m_bufPos < m_pageSize) {
-        m_pages.back().beginTxns += 1;
-        txn = logBeginTxn(m_lastLocalTxn);
-    } else {
-        txn = logBeginTxn(m_lastLocalTxn);
-        m_pages.back().beginTxns += 1;
-    }
-
-    return txn;
+    return logBeginTxn(m_lastLocalTxn);
 }
 
 //===========================================================================
 void DbLog::commit(uint64_t txn) {
-    // Log the commit first, so the commit transaction is counted on the page
-    // it finished on.
     logCommit(txn);
     s_perfCurTxns -= 1;
-
-    auto lsn = getLsn(txn);
-    auto & commitTxns = m_pages.back().commitTxns;
-    for (auto & lsn_txns : commitTxns) {
-        if (lsn >= lsn_txns.first) {
-            lsn_txns.second += 1;
-            return;
-        }
-    }
-    auto i = m_pages.end() - commitTxns.size() - 1;
-    for (;; --i) {
-        auto & lsn_txns = commitTxns.emplace_back(i->firstLsn, 0);
-        if (lsn >= lsn_txns.first) {
-            lsn_txns.second += 1;
-            break;
-        }
-        assert(i != m_pages.begin());
-    }
 }
 
 //===========================================================================
@@ -719,16 +685,17 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     uint64_t last = 0;
     for (i = base; i != m_pages.end(); ++i) {
         auto & npi = *i;
-        if (npi.beginTxns
-            || !npi.commitTxns.empty()
-                && !(partialWrite && npi.firstLsn == pi.firstLsn)
-        ) {
+        if (npi.beginTxns || !npi.numLogs)
             break;
+        if (!npi.commitTxns.empty()) {
+            if (npi.commitTxns.size() != 1 || npi.commitTxns[0].second)
+                break;
+            assert(npi.firstLsn == npi.commitTxns[0].first);
         }
         if (!npi.numLogs) {
-            // The only page can have no logs on it is the very last page that
-            // timed out waiting for more logs with just the second half of the
-            // last log started on the previous page.
+            // The only page that can have no logs on it is a very last page
+            // that timed out waiting for more logs with just the second half
+            // of the last log started on the previous page.
             assert(i + 1 == m_pages.end());
             continue;
         }
@@ -859,7 +826,33 @@ void DbLog::prepareBuffer_LK(
 }
 
 //===========================================================================
-uint64_t DbLog::log(Record * log, size_t bytes) {
+void DbLog::countBeginTxn_LK() {
+    m_pages.back().beginTxns += 1;
+}
+
+//===========================================================================
+void DbLog::countCommitTxn_LK(uint64_t txn) {
+    auto lsn = getLsn(txn);
+    auto & commitTxns = m_pages.back().commitTxns;
+    for (auto & lsn_txns : commitTxns) {
+        if (lsn >= lsn_txns.first) {
+            lsn_txns.second += 1;
+            return;
+        }
+    }
+    auto i = m_pages.end() - commitTxns.size() - 1;
+    for (;; --i) {
+        auto & lsn_txns = commitTxns.emplace_back(i->firstLsn, 0);
+        if (lsn >= lsn_txns.first) {
+            lsn_txns.second += 1;
+            break;
+        }
+        assert(i != m_pages.begin());
+    }
+}
+
+//===========================================================================
+uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
     assert(bytes < m_pageSize - sizeof(PageHeader));
     assert(bytes == size(log));
 
@@ -868,10 +861,24 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
         m_bufAvailCv.wait(lk);
     auto lsn = ++m_lastLsn;
 
+    // Count begin transactions (txns == 1) on the page their log record
+    // started. This means the current page before logging (since logging can
+    // advance to the next page), UNLESS it's exactly at the end of the page.
+    // In that case the transaction actually starts on the next page, which is
+    // where we'll be after logging.
+    // Transaction commits (txns == -1) are counted after logging, so it's
+    // always on the page where they finished.
     if (m_bufPos == m_pageSize) {
         prepareBuffer_LK(log, 0, bytes);
+        if (txnType > 0) {
+            countBeginTxn_LK();
+        } else if (txnType < 0) {
+            countCommitTxn_LK(txn);
+        }
         return lsn;
     }
+    if (txnType > 0)
+        countBeginTxn_LK();
 
     size_t overflow = 0;
     if (auto avail = m_pageSize - m_bufPos; bytes > avail) {
@@ -889,6 +896,8 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
             m_bufStates[m_curBuf] = Buffer::PartialDirty;
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
+        if (txnType < 0)
+            countCommitTxn_LK(txn);
     } else {
         bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
         m_bufStates[m_curBuf] = Buffer::FullWriting;
@@ -901,6 +910,8 @@ uint64_t DbLog::log(Record * log, size_t bytes) {
             lp->lastPos -= (uint16_t) bytes;
             prepareBuffer_LK(log, bytes, overflow);
         }
+        if (txnType < 0)
+            countCommitTxn_LK(txn);
 
         lk.unlock();
         if (!writeInProgress)

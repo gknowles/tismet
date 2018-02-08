@@ -228,13 +228,15 @@ private:
     void logCommit(uint64_t txn);
 
     // returns LSN
-    uint64_t log(Record * log, size_t bytes);
+    uint64_t log(Record * log, size_t bytes, int txnType, uint64_t txn = 0);
 
     void prepareBuffer_LK(
         const Record * log,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
+    void countBeginTxn_LK();
+    void countCommitTxn_LK(uint64_t txn);
     void updatePages_LK(const PageInfo & pi, bool partialWrite);
     void checkpointPages();
     void checkpointStablePages();
