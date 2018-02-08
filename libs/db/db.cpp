@@ -32,7 +32,10 @@ public:
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
     bool backup(IDbProgressNotify * notify, string_view dst);
 
-    bool insertMetric(uint32_t & out, string_view name);
+    uint64_t acquireInstanceRef();
+    void releaseInstanceRef(uint64_t instance);
+
+    bool insertMetric(uint32_t * out, string_view name);
     void eraseMetric(uint32_t id);
     void updateMetric(
         uint32_t id,
@@ -40,13 +43,13 @@ public:
     );
 
     const char * getMetricName(uint32_t id) const;
-    bool getMetricInfo(MetricInfo & info, uint32_t id) const;
+    bool getMetricInfo(MetricInfo * info, uint32_t id) const;
 
-    bool findMetric(uint32_t & out, string_view name) const;
-    void findMetrics(UnsignedSet & out, string_view pattern) const;
+    bool findMetric(uint32_t * out, string_view name) const;
+    void findMetrics(UnsignedSet * out, string_view pattern) const;
 
     const char * getBranchName(uint32_t id) const;
-    void findBranches(UnsignedSet & out, string_view pattern) const;
+    void findBranches(UnsignedSet * out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, double value);
     size_t enumSamples(
@@ -90,12 +93,26 @@ private:
     vector<pair<Path, Path>> m_backupFiles;
     FileAppendQueue m_dstFile;
 
+    uint64_t m_instance{0};
     DbIndex m_leaf;
     DbIndex m_branch;
 
     DbPage m_page;
     DbData m_data;
     DbLog m_log; // MUST be last! (and destroyed first)
+};
+
+class DbContext : public HandleContent {
+public:
+    DbContext(DbHandle f);
+    ~DbContext();
+
+    DbHandle handle() const;
+    DbBase * db() const;
+
+private:
+    DbHandle m_f;
+    uint64_t m_instance{0};
 };
 
 } // namespace
@@ -108,6 +125,7 @@ private:
 ***/
 
 static HandleMap<DbHandle, DbBase> s_files;
+static HandleMap<DbContextHandle, DbContext> s_contexts;
 
 static auto & s_perfCreated = uperf("db metrics created");
 static auto & s_perfDeleted = uperf("db metrics deleted");
@@ -118,6 +136,16 @@ static auto & s_perfDeleted = uperf("db metrics deleted");
 *   Helpers
 *
 ***/
+
+//===========================================================================
+inline static DbBase * db(DbContextHandle h) {
+    return s_contexts.find(h)->db();
+}
+
+//===========================================================================
+inline static DbBase * db(DbHandle h) {
+    return s_files.find(h);
+}
 
 
 /****************************************************************************
@@ -284,25 +312,70 @@ void DbBase::onFileEnd(int64_t offset, FileHandle f) {
 
 /****************************************************************************
 *
+*   Contexts
+*
+***/
+
+//===========================================================================
+DbContextHandle::operator DbHandle() const {
+    return s_contexts.find(*this)->handle();
+}
+
+//===========================================================================
+DbContext::DbContext(DbHandle f)
+    : m_f{f}
+{
+    if (m_f)
+        m_instance = db()->acquireInstanceRef();
+}
+
+//===========================================================================
+DbContext::~DbContext() {
+    if (m_f)
+        db()->releaseInstanceRef(m_instance);
+}
+
+//===========================================================================
+DbHandle DbContext::handle() const {
+    return m_f;
+}
+
+//===========================================================================
+DbBase * DbContext::db() const {
+    return s_files.find(m_f);
+}
+
+
+/****************************************************************************
+*
 *   Metrics
 *
 ***/
 
 //===========================================================================
-bool DbBase::insertMetric(uint32_t & out, string_view name) {
+uint64_t DbBase::acquireInstanceRef() {
+    return m_instance;
+}
+
+//===========================================================================
+void DbBase::releaseInstanceRef(uint64_t instance) {
+}
+
+//===========================================================================
+bool DbBase::insertMetric(uint32_t * out, string_view name) {
     if (findMetric(out, name))
         return false;
 
     // get metric id
-    out = m_leaf.nextId();
+    *out = m_leaf.nextId();
 
     // update indexes
-    m_leaf.insert(out, name);
+    m_leaf.insert(*out, name);
     m_branch.insertBranches(name);
 
     // set info page
     DbTxn txn{m_log, m_page};
-    m_data.insertMetric(txn, out, name);
+    m_data.insertMetric(txn, *out, name);
     s_perfCreated += 1;
     return true;
 }
@@ -330,19 +403,19 @@ const char * DbBase::getMetricName(uint32_t id) const {
 }
 
 //===========================================================================
-bool DbBase::getMetricInfo(MetricInfo & info, uint32_t id) const {
+bool DbBase::getMetricInfo(MetricInfo * info, uint32_t id) const {
     auto self = const_cast<DbBase *>(this);
     DbTxn txn{self->m_log, self->m_page};
-    return m_data.getMetricInfo(txn, info, id);
+    return m_data.getMetricInfo(info, txn, id);
 }
 
 //===========================================================================
-bool DbBase::findMetric(uint32_t & out, string_view name) const {
+bool DbBase::findMetric(uint32_t * out, string_view name) const {
     return m_leaf.find(out, name);
 }
 
 //===========================================================================
-void DbBase::findMetrics(UnsignedSet & out, string_view pattern) const {
+void DbBase::findMetrics(UnsignedSet * out, string_view pattern) const {
     m_leaf.find(out, pattern);
 }
 
@@ -352,7 +425,7 @@ const char * DbBase::getBranchName(uint32_t id) const {
 }
 
 //===========================================================================
-void DbBase::findBranches(UnsignedSet & out, string_view pattern) const {
+void DbBase::findBranches(UnsignedSet * out, string_view pattern) const {
     m_branch.find(out, pattern);
 }
 
@@ -443,53 +516,72 @@ bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
 }
 
 //===========================================================================
-bool dbInsertMetric(uint32_t & out, DbHandle h, string_view name) {
-    return s_files.find(h)->insertMetric(out, name);
+DbContextHandle dbOpenContext(DbHandle f) {
+    if (!s_files.find(f)) {
+        return {};
+    } else {
+        return s_contexts.insert(new DbContext(f));
+    }
+}
+
+//===========================================================================
+void dbCloseContext(DbContextHandle h) {
+    s_contexts.erase(h);
+}
+
+//===========================================================================
+bool dbInsertMetric(uint32_t * out, DbHandle h, string_view name) {
+    return db(h)->insertMetric(out, name);
 }
 
 //===========================================================================
 void dbEraseMetric(DbHandle h, uint32_t id) {
-    s_files.find(h)->eraseMetric(id);
+    db(h)->eraseMetric(id);
 }
 
 //===========================================================================
 void dbUpdateMetric(DbHandle h, uint32_t id, const MetricInfo & info) {
-    s_files.find(h)->updateMetric(id, info);
+    db(h)->updateMetric(id, info);
 }
 
 //===========================================================================
 const char * dbGetMetricName(DbHandle h, uint32_t id) {
-    return s_files.find(h)->getMetricName(id);
+    return db(h)->getMetricName(id);
 }
 
 //===========================================================================
-bool dbGetMetricInfo(MetricInfo & info, DbHandle h, uint32_t id) {
-    return s_files.find(h)->getMetricInfo(info, id);
+bool dbGetMetricInfo(MetricInfo * info, DbHandle h, uint32_t id) {
+    return db(h)->getMetricInfo(info, id);
 }
 
 //===========================================================================
-bool dbFindMetric(uint32_t & out, DbHandle h, string_view name) {
-    return s_files.find(h)->findMetric(out, name);
+bool dbFindMetric(uint32_t * out, DbHandle h, string_view name) {
+    return db(h)->findMetric(out, name);
 }
 
 //===========================================================================
-void dbFindMetrics(UnsignedSet & out, DbHandle h, string_view name) {
-    s_files.find(h)->findMetrics(out, name);
+void dbFindMetrics(UnsignedSet * out, DbHandle h, string_view name) {
+    db(h)->findMetrics(out, name);
 }
 
 //===========================================================================
 const char * dbGetBranchName(DbHandle h, uint32_t id) {
-    return s_files.find(h)->getBranchName(id);
+    return db(h)->getBranchName(id);
 }
 
 //===========================================================================
-void dbFindBranches(UnsignedSet & out, DbHandle h, string_view name) {
-    s_files.find(h)->findBranches(out, name);
+void dbFindBranches(UnsignedSet * out, DbHandle h, string_view name) {
+    db(h)->findBranches(out, name);
 }
 
 //===========================================================================
-void dbUpdateSample(DbHandle h, uint32_t id, TimePoint time, double value) {
-    s_files.find(h)->updateSample(id, time, value);
+void dbUpdateSample(
+    DbHandle h,
+    uint32_t id,
+    TimePoint time,
+    double value
+) {
+    db(h)->updateSample(id, time, value);
 }
 
 //===========================================================================
@@ -500,5 +592,5 @@ size_t dbEnumSamples(
     TimePoint first,
     TimePoint last
 ) {
-    return s_files.find(h)->enumSamples(notify, id, first, last);
+    return db(h)->enumSamples(notify, id, first, last);
 }

@@ -27,27 +27,30 @@ static SockMgrHandle s_mgr;
 namespace {
 
 class RecordConn : public ICarbonSocketNotify {
-    string_view m_name;
     string m_buf;
 public:
     // Inherited via ICarbonSocketNotify
-    uint32_t onCarbonMetric(string_view name) override;
-    void onCarbonValue(uint32_t id, TimePoint time, double value) override;
+    void onCarbonValue(
+        string_view name,
+        TimePoint time,
+        double value,
+        uint32_t idHint
+    ) override;
 };
 
 } // namespace
 
 //===========================================================================
-uint32_t RecordConn::onCarbonMetric(string_view name) {
-    uint32_t id;
-    tsDataInsertMetric(&id, name);
-    return id;
-}
-
-//===========================================================================
-void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
-    assert(id);
-    tsDataUpdateSample(id, time, value);
+void RecordConn::onCarbonValue(
+    string_view name,
+    TimePoint time,
+    double value,
+    uint32_t id
+) {
+    auto ctx = tsDataOpenContext();
+    tsDataInsertMetric(&id, ctx, name);
+    dbUpdateSample(ctx, id, time, value);
+    dbCloseContext(ctx);
 }
 
 

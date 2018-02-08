@@ -168,26 +168,26 @@ const char * DbIndex::name(uint32_t id) const {
 }
 
 //===========================================================================
-bool DbIndex::find(uint32_t & out, string_view name) const {
+bool DbIndex::find(uint32_t * out, string_view name) const {
     auto i = m_metricIds.find(name);
     if (i == m_metricIds.end()) {
-        out = 0;
+        *out = 0;
         return false;
     }
-    out = i->second.first;
+    *out = i->second.first;
     return true;
 }
 
 //===========================================================================
 void DbIndex::find(
-    UnsignedSet & out,
+    UnsignedSet * out,
     PathSegment * segs,
     size_t numSegs,
     size_t basePos,
     const UnsignedSetWithCount * subset
 ) const {
     assert(basePos + numSegs < m_lenIds.size());
-    out.clear();
+    out->clear();
     if (!numSegs || subset && subset->count == 0)
         return;
 
@@ -212,10 +212,10 @@ void DbIndex::find(
         }
     }
     if (fewest) {
-        out = fewest->uset;
+        *out = fewest->uset;
         if (subset && fewest != subset) {
-            out.intersect(subset->uset);
-            if (out.empty())
+            out->intersect(subset->uset);
+            if (out->empty())
                 return;
         }
     }
@@ -224,11 +224,11 @@ void DbIndex::find(
         if (i == ifewest)
             continue;
         if (auto usetw = usets[i]) {
-            if (out.empty()) {
-                out = usetw->uset;
+            if (out->empty()) {
+                *out = usetw->uset;
             } else {
-                out.intersect(usetw->uset);
-                if (out.empty())
+                out->intersect(usetw->uset);
+                if (out->empty())
                     return;
             }
             continue;
@@ -252,37 +252,37 @@ void DbIndex::find(
             if (matchSegment(*seg.node, k))
                 found.insert(v.uset);
         }
-        if (out.empty()) {
-            out = move(found);
+        if (out->empty()) {
+            *out = move(found);
         } else {
-            out.intersect(move(found));
+            out->intersect(move(found));
         }
-        if (out.empty())
+        if (out->empty())
             return;
     }
 }
 
 //===========================================================================
-void DbIndex::find(UnsignedSet & out, string_view name) const {
+void DbIndex::find(UnsignedSet * out, string_view name) const {
     if (name.empty()) {
-        out = m_ids.uset;
+        *out = m_ids.uset;
         return;
     }
 
     QueryInfo qry;
     if (!parse(qry, name)) {
-        out.clear();
+        out->clear();
         return;
     }
     if (qry.type == kExact) {
         uint32_t id;
-        out.clear();
-        if (find(id, name))
-            out.insert(id);
+        out->clear();
+        if (find(&id, name))
+            out->insert(id);
         return;
     }
     if (qry.type == kAny) {
-        out = m_ids.uset;
+        *out = m_ids.uset;
         return;
     }
 
@@ -300,7 +300,7 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
     }
     if (numStatic >= m_lenIds.size()) {
         // query requires more segments than any metric has
-        out.clear();
+        out->clear();
         return;
     }
 
@@ -331,7 +331,7 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
         return;
 
     UnsignedSetWithCount prefixIds;
-    out.swap(prefixIds.uset);
+    out->swap(prefixIds.uset);
     prefixIds.count = prefixIds.uset.size();
     auto segbase = segs.data() + prefix;
     auto seglen = segs.size() - prefix;
@@ -345,10 +345,10 @@ void DbIndex::find(UnsignedSet & out, string_view name) const {
             ssptr = &prefixIds;
 
         UnsignedSet found;
-        find(found, segbase, seglen, prefix, ssptr);
+        find(&found, segbase, seglen, prefix, ssptr);
         if (prefix)
             found.intersect(ssptr == &lens ? prefixIds.uset : lens.uset);
-        out.insert(move(found));
+        out->insert(move(found));
 
         for (unsigned i = 0;;) {
             auto & seg = segs[dyns[i]];

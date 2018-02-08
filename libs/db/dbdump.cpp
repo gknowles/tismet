@@ -86,16 +86,17 @@ bool DumpWriter::onDbSample(TimePoint time, double val) {
 void dbWriteDump(
     IDbProgressNotify * notify,
     ostream & os,
-    DbHandle h,
+    DbHandle f,
     string_view wildname
 ) {
     UnsignedSet ids;
-    dbFindMetrics(ids, h, wildname);
+    auto ctx = dbOpenContext(f);
+    dbFindMetrics(&ids, ctx, wildname);
     os << kDumpVersion << '\n';
     DbProgressInfo info;
     DumpWriter out(os, info);
     for (auto && id : ids) {
-        dbEnumSamples(&out, h, id);
+        dbEnumSamples(&out, ctx, id);
         info.metrics += 1;
         if (notify)
             notify->onDbProgress(kRunRunning, info);
@@ -106,6 +107,7 @@ void dbWriteDump(
         info.bytes = info.totalBytes;
     if (notify)
         notify->onDbProgress(kRunStopped, info);
+    dbCloseContext(ctx);
 }
 
 
@@ -123,13 +125,14 @@ class DbWriter
 {
 public:
     DbWriter(IDbProgressNotify * notify, DbHandle h);
+    ~DbWriter();
 
     // Inherited via ICarbonNotify
-    uint32_t onCarbonMetric(string_view name) override;
     void onCarbonValue(
-        uint32_t id,
+        string_view name,
         TimePoint time,
-        double value
+        double value,
+        uint32_t hintId
     ) override;
 
     // Inherited via IFileReadNotify
@@ -142,7 +145,7 @@ public:
     void onFileEnd(int64_t offset, FileHandle f) override;
 
 private:
-    DbHandle m_db;
+    DbContextHandle m_cxt;
     IDbProgressNotify * m_notify{nullptr};
     DbProgressInfo m_info;
 };
@@ -150,26 +153,27 @@ private:
 } // namespace
 
 //===========================================================================
-DbWriter::DbWriter(IDbProgressNotify * notify, DbHandle h)
-    : m_db{h}
-    , m_notify{notify}
-{}
+DbWriter::DbWriter(IDbProgressNotify * notify, DbHandle f)
+    : m_notify{notify}
+{
+    m_cxt = dbOpenContext(f);
+}
 
 //===========================================================================
-uint32_t DbWriter::onCarbonMetric(string_view name) {
-    uint32_t id;
-    dbInsertMetric(id, m_db, name);
-    return id;
+DbWriter::~DbWriter() {
+    dbCloseContext(m_cxt);
 }
 
 //===========================================================================
 void DbWriter::onCarbonValue(
-    uint32_t id,
+    string_view name,
     TimePoint time,
-    double value
+    double value,
+    uint32_t id
 ) {
     m_info.samples += 1;
-    dbUpdateSample(m_db, id, time, (float) value);
+    dbInsertMetric(&id, m_cxt, name);
+    dbUpdateSample(m_cxt, id, time, (float) value);
 }
 
 //===========================================================================

@@ -94,7 +94,6 @@ public:
     void onTask() override;
 
     shared_ptr<char[]> m_source;
-    unordered_map<shared_ptr<char[]>, shared_ptr<SampleList>> m_sampleLists;
     vector<SourceRange> m_ranges;
 
     mutable mutex m_outMut;
@@ -190,10 +189,13 @@ class FuncTimeShift : public FuncNode {
 
 class Evaluate : public ResultNode, public ListBaseLink<> {
 public:
+    ~Evaluate();
+
     void onResult(int resultId, const ResultInfo & info) override;
     Apply onResultTask(ResultInfo & info) override;
 
     IEvalNotify * m_notify{nullptr};
+    DbContextHandle m_ctx;
     TimePoint m_first;
     TimePoint m_last;
     int m_maxPoints{0};
@@ -302,12 +304,6 @@ static void addOutput(
     ) {
         ResultInfo info;
         info.target = src->m_source;
-        info.more = true;
-        for (auto && [name, slist] : src->m_sampleLists) {
-            info.name = name;
-            info.samples = slist;
-            rn->onResult(resultId, info);
-        }
         info.name = {};
         info.samples = {};
         info.more = false;
@@ -478,7 +474,7 @@ void SourceNode::onTask() {
         return;
 
     UnsignedSet ids;
-    dbFindMetrics(ids, s_db, m_source.get());
+    dbFindMetrics(&ids, s_db, m_source.get());
     ResultInfo info;
     info.target = m_source;
     if (ids.empty()) {
@@ -1100,6 +1096,11 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
 ***/
 
 //===========================================================================
+Evaluate::~Evaluate() {
+    dbCloseContext(m_ctx);
+}
+
+//===========================================================================
 void Evaluate::onResult(int resultId, const ResultInfo & info) {
     scoped_lock<mutex> lk{m_resMut};
     if (resultId != m_curId) {
@@ -1204,6 +1205,7 @@ void execAdd(
     auto ex = new Evaluate;
     s_execs.link(ex);
     ex->m_notify = notify;
+    ex->m_ctx = dbOpenContext(s_db);
     ex->m_unfinished = (int) targets.size();
     ex->m_first = first;
     ex->m_last = last;

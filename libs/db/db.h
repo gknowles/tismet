@@ -73,11 +73,20 @@ DbStats dbQueryStats(DbHandle h);
 *
 ***/
 
+// Metric context prevents metric ids from changing their meaning (i.e. being
+// reassigned to different metrics) during the life of the context.
+struct DbContextHandle : Dim::HandleBase {
+    operator DbHandle() const;
+};
+
+DbContextHandle dbOpenContext(DbHandle h);
+void dbCloseContext(DbContextHandle h);
+
 // returns true if found
-bool dbFindMetric(uint32_t & out, DbHandle h, std::string_view name);
+bool dbFindMetric(uint32_t * out, DbHandle h, std::string_view name);
 
 void dbFindMetrics(
-    Dim::UnsignedSet & out,
+    Dim::UnsignedSet * out,
     DbHandle h,
     std::string_view pattern = {}  // empty name for all
 );
@@ -91,13 +100,13 @@ struct MetricInfo {
     Dim::TimePoint first;
 };
 bool dbGetMetricInfo(
-    MetricInfo & info,
+    MetricInfo * info,
     DbHandle h,
     uint32_t id
 );
 
 // returns true if inserted, false if it already existed, sets out either way
-bool dbInsertMetric(uint32_t & out, DbHandle h, std::string_view name);
+bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
 
 void dbEraseMetric(DbHandle h, uint32_t id);
 
@@ -110,7 +119,7 @@ void dbUpdateMetric(
 
 // returns all branches containing metrics that match the pattern
 void dbFindBranches(
-    Dim::UnsignedSet & out,
+    Dim::UnsignedSet * out,
     DbHandle h,
     std::string_view pattern = {}  // empty name for all
 );

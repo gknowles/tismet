@@ -466,7 +466,7 @@ public:
         uint32_t id,
         const MetricInfo & info
     );
-    bool getMetricInfo(const DbTxn & txn, MetricInfo & info, uint32_t id) const;
+    bool getMetricInfo(MetricInfo * info, const DbTxn & txn, uint32_t id) const;
 
     void updateSample(
         DbTxn & txn,

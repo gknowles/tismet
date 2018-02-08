@@ -470,8 +470,8 @@ void DbData::updateMetric(
 
 //===========================================================================
 bool DbData::getMetricInfo(
+    MetricInfo * info,
     const DbTxn & txn,
-    MetricInfo & info,
     uint32_t id
 ) const {
     if (id >= m_metricPos.size()) {
@@ -484,16 +484,16 @@ bool DbData::getMetricInfo(
         return false;
     }
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    info.name = mp->name;
+    info->name = mp->name;
     if (!mi.pageFirstTime) {
-        info.first = {};
+        info->first = {};
     } else {
         auto last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
-        info.first = last - mp->retention + mp->interval;
+        info->first = last - mp->retention + mp->interval;
     }
-    info.type = mp->sampleType;
-    info.retention = mp->retention;
-    info.interval = mp->interval;
+    info->type = mp->sampleType;
+    info->retention = mp->retention;
+    info->interval = mp->interval;
     return true;
 }
 

@@ -113,29 +113,30 @@ namespace {
 
 class RecordConn : public ICarbonSocketNotify {
 public:
-    uint32_t onCarbonMetric(string_view name) override;
-    void onCarbonValue(uint32_t id, TimePoint time, double value) override;
+    void onCarbonValue(
+        string_view name,
+        TimePoint time,
+        double value,
+        uint32_t idHint
+    ) override;
 private:
-    string_view m_name;
     string m_buf;
 };
 
 } // namespace
 
 //===========================================================================
-uint32_t RecordConn::onCarbonMetric(string_view name) {
-    m_name = name;
-    return 1;
-}
-
-//===========================================================================
-void RecordConn::onCarbonValue(uint32_t id, TimePoint time, double value) {
-    assert(id == 1);
+void RecordConn::onCarbonValue(
+        string_view name,
+        TimePoint time,
+        double value,
+        uint32_t idHint
+) {
     if (appStopping())
         return;
 
     m_buf.clear();
-    carbonWrite(m_buf, m_name, time, (float) value);
+    carbonWrite(m_buf, name, time, (float) value);
     s_bytesWritten += m_buf.size();
     if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes) {
         s_bytesWritten -= m_buf.size();

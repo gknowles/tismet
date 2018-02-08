@@ -9,11 +9,14 @@ void tsPerfInitialize();
 
 // Data
 void tsDataInitialize();
-DbHandle tsDataHandle();
 void tsDataBackup(IDbProgressNotify * notify);
-bool tsDataInsertMetric(uint32_t * id, std::string_view name);
-void tsDataUpdateMetric(uint32_t id, const MetricInfo & info);
-void tsDataUpdateSample(uint32_t id, Dim::TimePoint time, double value);
+DbHandle tsDataHandle();
+DbContextHandle tsDataOpenContext();
+bool tsDataInsertMetric(
+    uint32_t * id,
+    DbContextHandle ctx,
+    std::string_view name
+);
 
 // Backup
 void tsBackupInitialize();

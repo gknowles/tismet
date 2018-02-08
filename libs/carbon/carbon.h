@@ -37,11 +37,11 @@ public:
     // add more input data, may trigger any number of onCarbon*() callbacks
     bool append(std::string_view data);
 
-    virtual uint32_t onCarbonMetric(std::string_view name) = 0;
     virtual void onCarbonValue(
-        uint32_t id,
+        std::string_view name,
         Dim::TimePoint time,
-        double value
+        double value,
+        uint32_t idHint = 0
     ) = 0;
 
 private:

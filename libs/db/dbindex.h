@@ -47,12 +47,12 @@ public:
 
     const char * name(uint32_t id) const;
 
-    bool find(uint32_t & out, std::string_view name) const;
-    void find(Dim::UnsignedSet & out, std::string_view name) const;
+    bool find(uint32_t * out, std::string_view name) const;
+    void find(Dim::UnsignedSet * out, std::string_view name) const;
 
 private:
     void find(
-        Dim::UnsignedSet & out,
+        Dim::UnsignedSet * out,
         Query::PathSegment * segs,
         size_t numSegs,
         size_t pos,

@@ -71,8 +71,7 @@ bool ICarbonNotify::append(string_view src) {
             return true;
         }
         s_perfUpdates += 1;
-        auto id = onCarbonMetric(upd.name);
-        onCarbonValue(id, upd.time, upd.value);
+        onCarbonValue(upd.name, upd.time, upd.value);
     }
 
     s_perfErrors += 1;

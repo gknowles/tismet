@@ -109,13 +109,13 @@ class MetricIndex : public IHttpRouteNotify {
 
 //===========================================================================
 void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
-    auto h = tsDataHandle();
+    auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(ids, h);
+    dbFindMetrics(&ids, ctx);
     vector<string_view> names;
     names.reserve(ids.size());
     for (auto && id : ids) {
-        if (auto name = dbGetMetricName(h, id))
+        if (auto name = dbGetMetricName(ctx, id))
             names.push_back(name);
     }
     sort(names.begin(), names.end());
@@ -133,6 +133,7 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     bld.end();
     xferRest(res, started, reqId);
+    dbCloseContext(ctx);
 }
 
 
@@ -188,11 +189,11 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
 
 //===========================================================================
 void MetricFind::jsonReply(unsigned reqId, string_view target) {
-    auto h = tsDataHandle();
+    auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(ids, h, target);
+    dbFindMetrics(&ids, ctx, target);
     UnsignedSet bids;
-    dbFindBranches(bids, h, target);
+    dbFindBranches(&bids, ctx, target);
 
     bool started = false;
     HttpResponse res;
@@ -202,7 +203,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     JBuilder bld(res.body());
     bld.array();
     for (auto && bid : bids) {
-        if (auto name = dbGetBranchName(h, bid)) {
+        if (auto name = dbGetBranchName(ctx, bid)) {
             auto namev = string_view{name};
             if (auto pos = namev.find_last_of('.'); pos != namev.npos)
                 namev.remove_prefix(pos + 1);
@@ -215,8 +216,8 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     }
     for (auto && id : ids) {
         MetricInfo info;
-        auto name = dbGetMetricName(h, id);
-        if (name && dbGetMetricInfo(info, h, id)) {
+        auto name = dbGetMetricName(ctx, id);
+        if (name && dbGetMetricInfo(&info, ctx, id)) {
             auto namev = string_view{name};
             if (auto pos = namev.find_last_of('.'); pos != namev.npos)
                 namev.remove_prefix(pos + 1);
@@ -229,15 +230,16 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     }
     bld.end();
     xferRest(res, started, reqId);
+    dbCloseContext(ctx);
 }
 
 //===========================================================================
 void MetricFind::msgpackReply(unsigned reqId, string_view target) {
-    auto h = tsDataHandle();
+    auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(ids, h, target);
+    dbFindMetrics(&ids, ctx, target);
     UnsignedSet bids;
-    dbFindBranches(bids, h, target);
+    dbFindBranches(&bids, ctx, target);
 
     bool started = false;
     HttpResponse res;
@@ -248,7 +250,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     auto count = ids.size() + bids.size();
     bld.array(count);
     for (auto && bid : bids) {
-        if (auto name = dbGetBranchName(h, bid)) {
+        if (auto name = dbGetBranchName(ctx, bid)) {
             auto namev = string_view{name};
             started = xferIfFull(res, started, reqId, namev.size() + 16);
             bld.map(2);
@@ -258,8 +260,8 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     }
     for (auto && id : ids) {
         MetricInfo info;
-        auto name = dbGetMetricName(h, id);
-        if (name && dbGetMetricInfo(info, h, id)) {
+        auto name = dbGetMetricName(ctx, id);
+        if (name && dbGetMetricInfo(&info, ctx, id)) {
             auto namev = string_view{name};
             started = xferIfFull(res, started, reqId, namev.size() + 32);
             auto withInterval = (bool) info.first;
@@ -281,6 +283,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     }
     assert(bld.depth() == 0);
     xferRest(res, started, reqId);
+    dbCloseContext(ctx);
 }
 
 
@@ -351,7 +354,6 @@ private:
     HttpResponse m_res;
 
     JBuilder m_bld{m_res.body()};
-    TimePoint m_prevTime;
     Duration m_interval;
 };
 
@@ -523,11 +525,11 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     m_res.addHeader(kHttpAccessControlAllowOrigin, "*");
     m_res.addHeader(kHttp_Status, "200");
 
-    auto h = tsDataHandle();
+    auto ctx = tsDataOpenContext();
     vector<UnsignedSet> idSets;
     for (auto && target : targets) {
         UnsignedSet & out = idSets.emplace_back();
-        dbFindMetrics(out, h, string(target));
+        dbFindMetrics(&out, ctx, string(target));
     }
 
     UnsignedSet ids;
@@ -546,12 +548,13 @@ RenderAlternativeStorage::RenderAlternativeStorage(
         auto & iset = idSets[i];
         iset.erase(ids);
         for (auto && id : idSets[i]) {
-            count = dbEnumSamples(this, h, id, from, until);
+            count = dbEnumSamples(this, ctx, id, from, until);
         }
         ids.insert(move(iset));
     }
     assert(m_bld.depth() == 0);
     xferRest(m_res, m_started, reqId);
+    dbCloseContext(ctx);
 }
 
 //===========================================================================

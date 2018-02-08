@@ -84,19 +84,22 @@ Duration ExpireTimer::timeUntilCheck() {
 
 //===========================================================================
 Duration ExpireTimer::onTimer(TimePoint now) {
+    auto ctx = dbOpenContext(s_db);
     if (m_ids.empty())
-        dbFindMetrics(m_ids, s_db);
+        dbFindMetrics(&m_ids, ctx);
 
     if (!m_ids.empty()) {
         auto id = m_ids.pop_front();
         MetricInfo info;
-        if (dbGetMetricInfo(info, s_db, id)) {
+        if (dbGetMetricInfo(&info, ctx, id)) {
             if (now >= info.first + 2 * info.retention) {
                 s_perfExpired += 1;
-                dbEraseMetric(s_db, id);
+                dbEraseMetric(ctx, id);
             }
         }
     }
+
+    dbCloseContext(ctx);
 
     if (!m_ids.empty())
         return 1ms;
@@ -200,12 +203,6 @@ void tsDataInitialize() {
 }
 
 //===========================================================================
-DbHandle tsDataHandle() {
-    assert(s_db);
-    return s_db;
-}
-
-//===========================================================================
 void tsDataBackup(IDbProgressNotify * notify) {
     string path;
     appDataPath(&path, "backup/metrics");
@@ -213,9 +210,21 @@ void tsDataBackup(IDbProgressNotify * notify) {
 }
 
 //===========================================================================
-bool tsDataInsertMetric(uint32_t * id, string_view name) {
+DbHandle tsDataHandle() {
     assert(s_db);
-    if (!dbInsertMetric(*id, s_db, name))
+    return s_db;
+}
+
+//===========================================================================
+DbContextHandle tsDataOpenContext() {
+    assert(s_db);
+    return dbOpenContext(s_db);
+}
+
+//===========================================================================
+bool tsDataInsertMetric(uint32_t * id, DbContextHandle ctx, string_view name) {
+    assert(ctx);
+    if (!dbInsertMetric(id, ctx, name))
         return false;
 
     for (auto && rule : s_rules) {
@@ -224,21 +233,9 @@ bool tsDataInsertMetric(uint32_t * id, string_view name) {
             info.type = rule.type;
             info.retention = rule.retention;
             info.interval = rule.interval;
-            dbUpdateMetric(s_db, *id, info);
+            dbUpdateMetric(ctx, *id, info);
             break;
         }
     }
     return true;
-}
-
-//===========================================================================
-void tsDataUpdateMetric(uint32_t id, const MetricInfo & info) {
-    assert(s_db);
-    dbUpdateMetric(s_db, id, info);
-}
-
-//===========================================================================
-void tsDataUpdateSample(uint32_t id, TimePoint time, double value) {
-    assert(s_db);
-    dbUpdateSample(s_db, id, time, value);
 }

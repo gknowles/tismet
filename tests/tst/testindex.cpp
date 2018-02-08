@@ -39,7 +39,7 @@ static void findTest(
 ) {
 
     UnsignedSet out;
-    index.find(out, query);
+    index.find(&out, query);
     ostringstream os;
     os << out;
     auto found = os.str();
@@ -89,7 +89,7 @@ void Test::onTestRun() {
 
     UnsignedSet ids;
     uint32_t id;
-    index.find(id, "a.m.y.z");
+    index.find(&id, "a.m.y.z");
     EXPECT(id == 3);
 
     EXPECT_FIND("a.*.*.z", "2-3");
