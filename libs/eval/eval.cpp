@@ -1195,7 +1195,7 @@ void evalInitialize(DbHandle f) {
 }
 
 //===========================================================================
-void execAdd(
+void evalAdd(
     IEvalNotify * notify,
     const vector<string_view> & targets,
     TimePoint first,

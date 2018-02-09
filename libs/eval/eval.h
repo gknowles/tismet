@@ -22,7 +22,7 @@ struct IEvalNotify : IDbEnumNotify {
     virtual void onEvalEnd() {}
     virtual void onEvalError(std::string_view errmsg) = 0;
 };
-void execAdd(
+void evalAdd(
     IEvalNotify * notify,
     const std::vector<std::string_view> & targets,
     Dim::TimePoint from,

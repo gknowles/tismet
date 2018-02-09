@@ -421,7 +421,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
 
 
     auto render = new RenderJson(reqId);
-    execAdd(render, targets, from, until, maxPoints);
+    evalAdd(render, targets, from, until, maxPoints);
 }
 
 //===========================================================================
