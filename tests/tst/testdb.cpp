@@ -43,8 +43,6 @@ static Test s_test;
 
 //===========================================================================
 void Test::onTestRun() {
-    cout << "db started..." << endl;
-
     int line = 0;
 
     TimePoint start = Clock::from_time_t(900'000'000);
@@ -192,6 +190,4 @@ void Test::onTestRun() {
     dbInsertMetric(&id, ctx, "replacement.metric.1");
     dbCloseContext(ctx);
     dbClose(h);
-
-    cout << "db ended..." << endl;
 }
