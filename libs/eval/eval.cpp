@@ -77,6 +77,7 @@ struct ResultRange {
     int resultId{0};
     TimePoint first;
     TimePoint last;
+    Duration minInterval;
 };
 
 class SourceNode : public ITaskNotify {
@@ -89,6 +90,9 @@ public:
 
 public:
     bool outputRange(TimePoint * first, TimePoint * last) const;
+
+    // Returns false when !info.more
+    bool outputResult(const ResultInfo & info);
 
     virtual void onStart();
     void onTask() override;
@@ -190,7 +194,7 @@ public:
     DbContextHandle m_ctx;
     TimePoint m_first;
     TimePoint m_last;
-    int m_maxPoints{0};
+    Duration m_minInterval;
 
     int m_curId{0};
     vector<deque<ResultInfo>> m_idResults;
@@ -282,7 +286,8 @@ static void addOutput(
     ResultNode * rn,
     int resultId,
     TimePoint first,
-    TimePoint last
+    TimePoint last,
+    Duration minInterval
 ) {
     unique_lock<mutex> lk{src->m_outMut};
     auto ri = lower_bound(
@@ -303,7 +308,7 @@ static void addOutput(
         return;
     }
 
-    src->m_outputs.push_back({rn, resultId, first, last});
+    src->m_outputs.push_back({rn, resultId, first, last, minInterval});
     if (src->m_outputs.size() != 1)
         return;
 
@@ -405,7 +410,6 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     }
     fnode->m_source = src;
     fnode->m_type = qf.type;
-    fnode->m_unfinished = (int) qf.args.size();
     s_sources[src.get()] = fnode;
     ResultInfo info;
     info.target = src;
@@ -428,6 +432,35 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
         }
     }
     return addSource(rn, fnode);
+}
+
+//===========================================================================
+static shared_ptr<SampleList> allocSampleList(
+    TimePoint first,
+    Duration interval,
+    size_t count
+) {
+    auto vptr = new char[
+        offsetof(SampleList, samples) + count * sizeof(*SampleList::samples)
+    ];
+    auto list = new(vptr) SampleList{first, interval, (uint32_t) count};
+    return shared_ptr<SampleList>(list);
+}
+
+//===========================================================================
+static shared_ptr<SampleList> allocSampleList(const SampleList & samples) {
+    return allocSampleList(samples.first, samples.interval, samples.count);
+}
+
+//===========================================================================
+static shared_ptr<SampleList> copySampleList(const SampleList & samples) {
+    auto out = allocSampleList(samples);
+    memcpy(
+        out->samples,
+        samples.samples,
+        out->count * sizeof(*out->samples)
+    );
+    return out;
 }
 
 
@@ -455,6 +488,101 @@ bool SourceNode::outputRange(TimePoint * first, TimePoint * last) const {
 }
 
 //===========================================================================
+static shared_ptr<SampleList> consolidateAvg(
+    shared_ptr<SampleList> samples,
+    Duration minInterval
+) {
+    auto baseInterval = samples->interval;
+    if (baseInterval >= minInterval)
+        return samples;
+
+    auto sps = (minInterval.count() + baseInterval.count() - 1)
+        / baseInterval.count();
+    auto maxInterval = sps * baseInterval;
+    auto first = samples->first + maxInterval - baseInterval;
+    first -= first.time_since_epoch() % maxInterval;
+    auto skip = (first - samples->first) / baseInterval;
+    auto count = samples->count - skip;
+    auto out = allocSampleList(
+        first,
+        maxInterval,
+        (count + sps - 1) / sps
+    );
+
+    auto sum = samples->samples[skip];
+    auto num = 1;
+    auto nans = isnan(sum) ? 1 : 0;
+    auto optr = out->samples;
+    for (auto i = skip + 1; i < samples->count; ++i) {
+        auto val = samples->samples[i];
+        if (num == sps) {
+            *optr++ = nans == num ? NAN : sum / (num - nans);
+            num = 1;
+            if (isnan(val)) {
+                sum = 0;
+                nans = 1;
+            } else {
+                sum = val;
+                nans = 0;
+            }
+        } else {
+            num += 1;
+            if (isnan(val)) {
+                nans += 1;
+            } else {
+                sum += val;
+            }
+        }
+    }
+    *optr++ = (nans == num) ? NAN : sum / (num - nans);
+    return out;
+}
+
+//===========================================================================
+bool SourceNode::outputResult(const ResultInfo & info) {
+    scoped_lock<mutex> lk{m_outMut};
+    if (m_outputs.empty())
+        return info.more;
+
+    auto baseInterval = info.samples
+        ? info.samples->interval
+        : Duration::max();
+    auto maxInterval = baseInterval;
+    auto nextMin = Duration::max();
+    for (auto && rr : m_outputs) {
+        if (rr.minInterval > maxInterval) {
+            if (rr.minInterval < nextMin)
+                nextMin = rr.minInterval;
+            continue;
+        }
+        rr.rn->onResult(rr.resultId, info);
+    }
+
+    while (nextMin != Duration::max()) {
+        ResultInfo out{info};
+        out.samples = consolidateAvg(info.samples, nextMin);
+        auto minInterval = maxInterval;
+        maxInterval = out.samples->interval;
+
+        nextMin = Duration::max();
+        for (auto && rr : m_outputs) {
+            if (rr.minInterval > maxInterval) {
+                if (rr.minInterval < nextMin)
+                    nextMin = rr.minInterval;
+                continue;
+            }
+            if (rr.minInterval < minInterval)
+                continue;
+            rr.rn->onResult(rr.resultId, out);
+        }
+    }
+
+    if (!info.more)
+        m_outputs.clear();
+    return info.more;
+}
+
+//===========================================================================
 void SourceNode::onStart() {
     taskPushCompute(this);
 }
@@ -470,10 +598,7 @@ void SourceNode::onTask() {
     ResultInfo info;
     info.target = m_source;
     if (ids.empty()) {
-        scoped_lock<mutex> lk{m_outMut};
-        for (auto && rr : m_outputs)
-            rr.rn->onResult(rr.resultId, info);
-        m_outputs.clear();
+        outputResult(info);
         return;
     }
 
@@ -497,13 +622,8 @@ void SourceNode::onTask() {
             info.samples = reader.m_samples;
         }
 
-        scoped_lock<mutex> lk{m_outMut};
-        for (auto && rr : m_outputs)
-            rr.rn->onResult(rr.resultId, info);
-        if (!more) {
-            m_outputs.clear();
+        if (!outputResult(info))
             return;
-        }
     }
 }
 
@@ -513,19 +633,6 @@ void SourceNode::onTask() {
 *   SampleReader
 *
 ***/
-
-//===========================================================================
-static shared_ptr<SampleList> allocSampleList(
-    TimePoint first,
-    Duration interval,
-    size_t count
-) {
-    auto vptr = new char[
-        offsetof(SampleList, samples) + count * sizeof(*SampleList::samples)
-    ];
-    auto list = new(vptr) SampleList{first, interval, (uint32_t) count};
-    return shared_ptr<SampleList>(list);
-}
 
 //===========================================================================
 SampleReader::SampleReader(SourceNode * node)
@@ -657,22 +764,6 @@ static shared_ptr<char[]> addFuncName(
     return out;
 }
 
-//===========================================================================
-static shared_ptr<SampleList> allocSampleList(const SampleList & samples) {
-    return allocSampleList(samples.first, samples.interval, samples.count);
-}
-
-//===========================================================================
-static shared_ptr<SampleList> copySampleList(const SampleList & samples) {
-    auto out = allocSampleList(samples);
-    memcpy(
-        out->samples,
-        samples.samples,
-        out->count * sizeof(*out->samples)
-    );
-    return out;
-}
-
 
 /****************************************************************************
 *
@@ -687,15 +778,10 @@ FuncNode::~FuncNode() {
 
 //===========================================================================
 void FuncNode::forwardResult(ResultInfo & info, bool unfinished) {
-    scoped_lock<mutex> lk{m_outMut};
     if (unfinished)
         info.more = (info.more || --m_unfinished);
-    if (info.samples || !info.more) {
-        for (auto && rr : m_outputs)
-            rr.rn->onResult(rr.resultId, info);
-        if (!info.more)
-            m_outputs.clear();
-    }
+    if (info.samples || !info.more)
+        outputResult(info);
 }
 
 //===========================================================================
@@ -707,7 +793,7 @@ void FuncNode::onStart() {
     m_unfinished = (int) m_sources.size();
     int id = 0;
     for (auto && sn : m_sources)
-        addOutput(sn, this, id++, first, last);
+        addOutput(sn, this, id++, first, last, {});
 }
 
 //===========================================================================
@@ -1193,12 +1279,13 @@ void evalAdd(
     ex->m_unfinished = (int) targets.size();
     ex->m_first = first;
     ex->m_last = last;
-    ex->m_maxPoints = (int) maxPoints;
+    if (maxPoints)
+        ex->m_minInterval = (last - first) / maxPoints;
     int id = 0;
     ex->m_idResults.resize(targets.size());
     for (auto && target : targets) {
         if (auto sn = addSource(ex, target)) {
-            addOutput(sn, ex, id++, first, last);
+            addOutput(sn, ex, id++, first, last, ex->m_minInterval);
         } else {
             delete ex;
             notify->onEvalError("Invalid target parameter: " + string(target));
