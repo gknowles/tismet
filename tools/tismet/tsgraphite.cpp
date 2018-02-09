@@ -215,9 +215,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
         }
     }
     for (auto && id : ids) {
-        MetricInfo info;
-        auto name = dbGetMetricName(ctx, id);
-        if (name && dbGetMetricInfo(&info, ctx, id)) {
+        if (auto name = dbGetMetricName(ctx, id)) {
             auto namev = string_view{name};
             if (auto pos = namev.find_last_of('.'); pos != namev.npos)
                 namev.remove_prefix(pos + 1);
@@ -259,26 +257,12 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
         }
     }
     for (auto && id : ids) {
-        MetricInfo info;
-        auto name = dbGetMetricName(ctx, id);
-        if (name && dbGetMetricInfo(&info, ctx, id)) {
+        if (auto name = dbGetMetricName(ctx, id)) {
             auto namev = string_view{name};
             started = xferIfFull(res, started, reqId, namev.size() + 32);
-            auto withInterval = (bool) info.first;
-            bld.map(2 + withInterval);
+            bld.map(2);
             bld.element("path", namev);
             bld.element("is_leaf", true);
-            if (withInterval) {
-                auto start = Clock::to_time_t(info.first);
-                auto end = Clock::to_time_t(
-                    info.first + info.retention - info.interval
-                );
-                bld.element("intervals");
-                bld.array(1);
-                bld.array(2);
-                bld.uvalue(start);
-                bld.uvalue(end);
-            }
         }
     }
     assert(bld.depth() == 0);
