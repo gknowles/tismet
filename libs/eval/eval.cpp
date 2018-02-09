@@ -100,7 +100,7 @@ public:
     vector<ResultRange> m_outputs;
 };
 
-class SampleReader : public IDbEnumNotify {
+class SampleReader : public IDbDataNotify {
 public:
     SampleReader(SourceNode * node);
 
@@ -108,15 +108,7 @@ public:
     shared_ptr<SampleList> m_samples;
 
 private:
-    bool onDbSeriesStart(
-        string_view target,
-        uint32_t id,
-        string_view name,
-        DbSampleType type,
-        TimePoint first,
-        TimePoint last,
-        Duration interval
-    ) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(TimePoint time, double value) override;
 
     UnsignedSet m_done;
@@ -541,24 +533,16 @@ SampleReader::SampleReader(SourceNode * node)
 {}
 
 //===========================================================================
-bool SampleReader::onDbSeriesStart(
-    string_view target,
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint first,
-    TimePoint last,
-    Duration interval
-) {
-    auto count = (last - first) / interval;
+bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
+    auto count = (info.last - info.first) / info.interval;
     if (!count)
         return false;
-    m_name = toSharedString(name);
-    m_samples = allocSampleList(first, interval, count);
-    m_samples->metricId = id;
+    m_name = toSharedString(info.name);
+    m_samples = allocSampleList(info.first, info.interval, count);
+    m_samples->metricId = info.id;
     m_pos = 0;
-    m_time = first;
-    m_interval = interval;
+    m_time = info.first;
+    m_interval = info.interval;
     return true;
 }
 
@@ -1131,15 +1115,15 @@ FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
     if (info.samples) {
         auto first = info.samples->first;
         auto last = first + info.samples->count * info.samples->interval;
-        if (!m_notify->onDbSeriesStart(
-            info.target.get(),
-            info.samples->metricId,
-            info.name.get(),
-            kSampleTypeFloat64,
-            first,
-            last,
-            info.samples->interval
-        )) {
+        DbSeriesInfo dsi;
+        dsi.target = info.target.get();
+        dsi.id = info.samples->metricId;
+        dsi.name = info.name.get();
+        dsi.type = kSampleTypeFloat64;
+        dsi.first = first;
+        dsi.last = last;
+        dsi.interval = info.samples->interval;
+        if (!m_notify->onDbSeriesStart(dsi)) {
             m_notify->onEvalEnd();
             return Apply::kDestroy;
         }

@@ -17,7 +17,7 @@
 
 void evalInitialize(DbHandle db);
 
-struct IEvalNotify : IDbEnumNotify {
+struct IEvalNotify : IDbDataNotify {
     // Called after the last series for the query has ended.
     virtual void onEvalEnd() {}
     virtual void onEvalError(std::string_view errmsg) = 0;

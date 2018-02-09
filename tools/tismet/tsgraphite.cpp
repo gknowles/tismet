@@ -283,7 +283,7 @@ class Render : public IHttpRouteNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
 };
 
-class RenderAlternativeStorage : IDbEnumNotify {
+class RenderAlternativeStorage : IDbDataNotify {
 public:
     RenderAlternativeStorage(
         unsigned reqId,
@@ -293,15 +293,7 @@ public:
     );
 
 private:
-    bool onDbSeriesStart(
-        string_view query,
-        uint32_t id,
-        string_view name,
-        DbSampleType type,
-        TimePoint from,
-        TimePoint until,
-        Duration interval
-    ) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(TimePoint time, double value) override;
 
     unsigned m_reqId{0};
@@ -319,15 +311,7 @@ public:
     RenderJson(unsigned reqId);
 
 private:
-    bool onDbSeriesStart(
-        string_view query,
-        uint32_t id,
-        string_view name,
-        DbSampleType type,
-        TimePoint from,
-        TimePoint until,
-        Duration interval
-    ) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
     void onEvalEnd() override;
@@ -438,20 +422,12 @@ RenderJson::RenderJson(unsigned reqId)
 }
 
 //===========================================================================
-bool RenderJson::onDbSeriesStart(
-    string_view query,
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint from,
-    TimePoint until,
-    Duration interval
-) {
-    if (from == until)
+bool RenderJson::onDbSeriesStart(const DbSeriesInfo & info) {
+    if (info.first == info.last)
         return false;
 
     m_bld.object();
-    m_bld.member("target", name);
+    m_bld.member("target", info.name);
     m_bld.member("datapoints");
     m_bld.array();
     return true;
@@ -531,9 +507,8 @@ RenderAlternativeStorage::RenderAlternativeStorage(
         m_pathExpr = targets[i];
         auto & iset = idSets[i];
         iset.erase(ids);
-        for (auto && id : idSets[i]) {
-            count = dbEnumSamples(this, ctx, id, from, until);
-        }
+        for (auto && id : idSets[i])
+            dbEnumSamples(this, ctx, id, from, until);
         ids.insert(move(iset));
     }
     assert(m_bld.depth() == 0);
@@ -542,26 +517,18 @@ RenderAlternativeStorage::RenderAlternativeStorage(
 }
 
 //===========================================================================
-bool RenderAlternativeStorage::onDbSeriesStart(
-    string_view query,
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint from,
-    TimePoint until,
-    Duration interval
-) {
+bool RenderAlternativeStorage::onDbSeriesStart(const DbSeriesInfo & info) {
     m_bld.map(6);
-    m_bld.element("name", name);
+    m_bld.element("name", info.name);
     m_bld.element("pathExpression", m_pathExpr);
-    m_bld.element("start", Clock::to_time_t(from));
-    m_bld.element("end", Clock::to_time_t(until));
-    m_bld.element("step", duration_cast<seconds>(interval).count());
+    m_bld.element("start", Clock::to_time_t(info.first));
+    m_bld.element("end", Clock::to_time_t(info.last));
+    m_bld.element("step", duration_cast<seconds>(info.interval).count());
     m_bld.element("values");
-    auto count = (until - from) / interval;
+    auto count = (info.last - info.first) / info.interval;
     m_bld.array(count);
-    m_prevTime = from - interval;
-    m_interval = interval;
+    m_prevTime = info.first - info.interval;
+    m_interval = info.interval;
     return true;
 }
 

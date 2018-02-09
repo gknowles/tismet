@@ -453,7 +453,7 @@ public:
     // After open metrics and samples can be updated and queried
     bool openForUpdate(
         DbTxn & txn,
-        IDbEnumNotify * notify,
+        IDbDataNotify * notify,
         std::string_view name,
         DbOpenFlags flags
     );
@@ -464,9 +464,13 @@ public:
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
-        const MetricInfo & info
+        const DbMetricInfo & info
     );
-    bool getMetricInfo(MetricInfo * info, const DbTxn & txn, uint32_t id) const;
+    void getMetricInfo(
+        IDbDataNotify * notify,
+        const DbTxn & txn,
+        uint32_t id
+    ) const;
 
     void updateSample(
         DbTxn & txn,
@@ -474,9 +478,9 @@ public:
         Dim::TimePoint time,
         double value
     );
-    size_t enumSamples(
+    void enumSamples(
         DbTxn & txn,
-        IDbEnumNotify * notify,
+        IDbDataNotify * notify,
         uint32_t id,
         Dim::TimePoint first,
         Dim::TimePoint last
@@ -540,7 +544,7 @@ private:
 
     bool loadMetrics(
         DbTxn & txn,
-        IDbEnumNotify * notify,
+        IDbDataNotify * notify,
         uint32_t pgno
     );
     void metricDestructPage(DbTxn & txn, uint32_t pgno);

@@ -69,7 +69,7 @@ Duration SampleTimer::onTimer(TimePoint now) {
         *optr = 0;
         uint32_t id;
         tsDataInsertMetric(&id, ctx, name);
-        MetricInfo info = {};
+        DbMetricInfo info = {};
         switch (val.type) {
         case PerfType::kFloat: info.type = kSampleTypeFloat32; break;
         case PerfType::kInt: info.type = kSampleTypeInt32; break;

@@ -19,7 +19,7 @@ namespace {
 
 class DbBase
     : public HandleContent
-    , IDbEnumNotify
+    , IDbDataNotify
     , IDbProgressNotify
     , IFileReadNotify
 {
@@ -39,11 +39,11 @@ public:
     void eraseMetric(uint32_t id);
     void updateMetric(
         uint32_t id,
-        const MetricInfo & info
+        const DbMetricInfo & info
     );
 
     const char * getMetricName(uint32_t id) const;
-    bool getMetricInfo(MetricInfo * info, uint32_t id) const;
+    void getMetricInfo(IDbDataNotify * notify, uint32_t id) const;
 
     bool findMetric(uint32_t * out, string_view name) const;
     void findMetrics(UnsignedSet * out, string_view pattern) const;
@@ -52,24 +52,16 @@ public:
     void findBranches(UnsignedSet * out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, double value);
-    size_t enumSamples(
-        IDbEnumNotify * notify,
+    void enumSamples(
+        IDbDataNotify * notify,
         uint32_t id,
         TimePoint first,
         TimePoint last
     );
 
 private:
-    // Inherited via IDbEnumNotify
-    bool onDbSeriesStart(
-        string_view query,
-        uint32_t id,
-        string_view name,
-        DbSampleType type,
-        TimePoint from,
-        TimePoint until,
-        Duration interval
-    ) override;
+    // Inherited via IDbDataNotify
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
 
     // Inherited via IDbProgressNotify
     bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
@@ -178,17 +170,9 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
 }
 
 //===========================================================================
-bool DbBase::onDbSeriesStart(
-    string_view query,
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint from,
-    TimePoint until,
-    Duration interval
-) {
-    m_leaf.insert(id, name);
-    m_branch.insertBranches(name);
+bool DbBase::onDbSeriesStart(const DbSeriesInfo & info) {
+    m_leaf.insert(info.id, info.name);
+    m_branch.insertBranches(info.name);
     return true;
 }
 
@@ -404,7 +388,7 @@ void DbBase::eraseMetric(uint32_t id) {
 }
 
 //===========================================================================
-void DbBase::updateMetric(uint32_t id, const MetricInfo & info) {
+void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
     DbTxn txn{m_log, m_page};
     m_data.updateMetric(txn, id, info);
 }
@@ -416,10 +400,10 @@ const char * DbBase::getMetricName(uint32_t id) const {
 }
 
 //===========================================================================
-bool DbBase::getMetricInfo(MetricInfo * info, uint32_t id) const {
+void DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
     auto self = const_cast<DbBase *>(this);
     DbTxn txn{self->m_log, self->m_page};
-    return m_data.getMetricInfo(info, txn, id);
+    return m_data.getMetricInfo(notify, txn, id);
 }
 
 //===========================================================================
@@ -460,14 +444,14 @@ void DbBase::updateSample(uint32_t id, TimePoint time, double value) {
 }
 
 //===========================================================================
-size_t DbBase::enumSamples(
-    IDbEnumNotify * notify,
+void DbBase::enumSamples(
+    IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
     TimePoint last
 ) {
     DbTxn txn{m_log, m_page};
-    return m_data.enumSamples(txn, notify, id, first, last);
+    m_data.enumSamples(txn, notify, id, first, last);
 }
 
 
@@ -557,7 +541,7 @@ void dbEraseMetric(DbHandle h, uint32_t id) {
 }
 
 //===========================================================================
-void dbUpdateMetric(DbHandle h, uint32_t id, const MetricInfo & info) {
+void dbUpdateMetric(DbHandle h, uint32_t id, const DbMetricInfo & info) {
     db(h)->updateMetric(id, info);
 }
 
@@ -567,8 +551,8 @@ const char * dbGetMetricName(DbHandle h, uint32_t id) {
 }
 
 //===========================================================================
-bool dbGetMetricInfo(MetricInfo * info, DbHandle h, uint32_t id) {
-    return db(h)->getMetricInfo(info, id);
+void dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id) {
+    db(h)->getMetricInfo(notify, id);
 }
 
 //===========================================================================
@@ -602,12 +586,12 @@ void dbUpdateSample(
 }
 
 //===========================================================================
-size_t dbEnumSamples(
-    IDbEnumNotify * notify,
+void dbEnumSamples(
+    IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,
     TimePoint first,
     TimePoint last
 ) {
-    return db(h)->enumSamples(notify, id, first, last);
+    db(h)->enumSamples(notify, id, first, last);
 }

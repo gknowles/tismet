@@ -9,6 +9,9 @@
 #include "core/core.h"
 #include "file/file.h"
 
+// forward declarations
+struct IDbDataNotify;
+
 
 /****************************************************************************
 *
@@ -92,15 +95,8 @@ void dbFindMetrics(
 );
 const char * dbGetMetricName(DbHandle h, uint32_t id);
 
-struct MetricInfo {
-    std::string_view name;
-    DbSampleType type{kSampleTypeInvalid};
-    Dim::Duration retention;
-    Dim::Duration interval;
-    Dim::TimePoint first;
-};
-bool dbGetMetricInfo(
-    MetricInfo * info,
+void dbGetMetricInfo(
+    IDbDataNotify * notify,
     DbHandle h,
     uint32_t id
 );
@@ -110,11 +106,17 @@ bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
 
 void dbEraseMetric(DbHandle h, uint32_t id);
 
+struct DbMetricInfo {
+    std::string_view name;
+    DbSampleType type{kSampleTypeInvalid};
+    Dim::Duration retention;
+    Dim::Duration interval;
+};
 // Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
-    const MetricInfo & info
+    const DbMetricInfo & info
 );
 
 // returns all branches containing metrics that match the pattern
@@ -139,20 +141,21 @@ void dbUpdateSample(
     double value
 );
 
-struct IDbEnumNotify {
-    virtual ~IDbEnumNotify() {}
+struct DbSeriesInfo {
+    std::string_view target; // query series is from, empty for metrics
+    uint32_t id{0}; // for metrics, the metric id, otherwise 0
+    std::string_view name; // such as metric name or alias
+    DbSampleType type{kSampleTypeInvalid};
+    Dim::TimePoint first;
+    Dim::TimePoint last; // time of first interval after the end
+    Dim::Duration interval;
+};
+struct IDbDataNotify {
+    virtual ~IDbDataNotify() = default;
 
     // Called once before any calls to onDbSample, return false to abort the
     // enum, otherwise it continues to the samples.
-    virtual bool onDbSeriesStart(
-        std::string_view target, // query series is from, empty for metrics
-        uint32_t id, // for metrics, the metric id, otherwise 0
-        std::string_view name, // such as metric name or alias
-        DbSampleType type,
-        Dim::TimePoint first,
-        Dim::TimePoint last,
-        Dim::Duration interval
-    ) { return true; }
+    virtual bool onDbSeriesStart(const DbSeriesInfo & info) { return true; }
 
     virtual void onDbSeriesEnd(uint32_t id) {}
 
@@ -160,8 +163,8 @@ struct IDbEnumNotify {
     // otherwise it continues to the next sample.
     virtual bool onDbSample(Dim::TimePoint time, double value) { return false; }
 };
-size_t dbEnumSamples(
-    IDbEnumNotify * notify,
+void dbEnumSamples(
+    IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,
     Dim::TimePoint first = {},

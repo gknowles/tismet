@@ -26,19 +26,11 @@ const char kDumpVersion[] = "Tismet Dump Version 2017.1";
 
 namespace {
 
-class DumpWriter : public IDbEnumNotify {
+class DumpWriter : public IDbDataNotify {
 public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
-    bool onDbSeriesStart(
-        string_view query,
-        uint32_t id,
-        string_view name,
-        DbSampleType type,
-        TimePoint from,
-        TimePoint until,
-        Duration interval
-    ) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(TimePoint time, double val) override;
 
 private:
@@ -57,16 +49,8 @@ DumpWriter::DumpWriter(ostream & os, DbProgressInfo & info)
 {}
 
 //===========================================================================
-bool DumpWriter::onDbSeriesStart(
-    string_view query,
-    uint32_t id,
-    string_view name,
-    DbSampleType type,
-    TimePoint from,
-    TimePoint until,
-    Duration interval
-) {
-    m_name = name;
+bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
+    m_name = info.name;
     return true;
 }
 

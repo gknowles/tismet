@@ -200,6 +200,28 @@ constexpr size_t samplesPerPage(DbSampleType type, size_t pageSize) {
         / sampleTypeSize(type);
 }
 
+//===========================================================================
+static void noSamples(
+    IDbDataNotify * notify,
+    uint32_t id,
+    string_view name,
+    DbSampleType stype,
+    TimePoint first,
+    Duration interval
+) {
+    if (notify) {
+        DbSeriesInfo info{};
+        info.id = id;
+        info.name = name;
+        info.type = stype;
+        info.first = first;
+        info.last = first;
+        info.interval = interval;
+        if (notify->onDbSeriesStart(info))
+            notify->onDbSeriesEnd(id);
+    }
+}
+
 
 /****************************************************************************
 *
@@ -221,7 +243,7 @@ void DbData::openForApply(size_t pageSize, DbOpenFlags flags) {
 //===========================================================================
 bool DbData::openForUpdate(
     DbTxn & txn,
-    IDbEnumNotify * notify,
+    IDbDataNotify * notify,
     string_view name,
     DbOpenFlags flags
 ) {
@@ -301,7 +323,7 @@ void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
 //===========================================================================
 bool DbData::loadMetrics (
     DbTxn & txn,
-    IDbEnumNotify * notify,
+    IDbDataNotify * notify,
     uint32_t pgno
 ) {
     if (!pgno)
@@ -323,17 +345,14 @@ bool DbData::loadMetrics (
     if (p->type == kPageTypeMetric) {
         auto mp = reinterpret_cast<const MetricPage*>(p);
         if (notify) {
-            if (!notify->onDbSeriesStart(
-                {},
-                mp->hdr.id,
-                mp->name,
-                mp->sampleType,
-                {},
-                {},
-                mp->interval
-            )) {
+            DbSeriesInfo info;
+            info.id = mp->hdr.id;
+            info.name = mp->name;
+            info.type = mp->sampleType;
+            info.last = info.first + mp->retention;
+            info.interval = mp->interval;
+            if (!notify->onDbSeriesStart(info))
                 return false;
-            }
         }
         if (appStopping())
             return false;
@@ -436,17 +455,16 @@ bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    const MetricInfo & from
+    const DbMetricInfo & from
 ) {
     assert(id < m_metricPos.size());
     assert(from.name.empty());
-    assert(!from.first);
 
     // TODO: validate interval, retention, and sample type
 
     auto & mi = m_metricPos[id];
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    MetricInfo info = {};
+    DbMetricInfo info = {};
     info.retention = from.retention.count() ? from.retention : mp->retention;
     info.interval = from.interval.count() ? from.interval : mp->interval;
     info.type = from.type ? from.type : mp->sampleType;
@@ -469,32 +487,31 @@ void DbData::updateMetric(
 }
 
 //===========================================================================
-bool DbData::getMetricInfo(
-    MetricInfo * info,
+void DbData::getMetricInfo(
+    IDbDataNotify * notify,
     const DbTxn & txn,
     uint32_t id
 ) const {
-    if (id >= m_metricPos.size()) {
-        info = {};
-        return false;
-    }
+    if (id >= m_metricPos.size())
+        return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
     auto & mi = m_metricPos[id];
-    if (!mi.infoPage) {
-        info = {};
-        return false;
-    }
+    if (!mi.infoPage)
+        return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
+
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    info->name = mp->name;
+    DbSeriesInfo info;
+    info.id = id;
+    info.name = mp->name;
+    info.type = mp->sampleType;
     if (!mi.pageFirstTime) {
-        info->first = {};
+        info.last = info.first + mp->retention;
     } else {
-        auto last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
-        info->first = last - mp->retention + mp->interval;
+        info.last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
+        info.first = info.last - mp->retention;
     }
-    info->type = mp->sampleType;
-    info->retention = mp->retention;
-    info->interval = mp->interval;
-    return true;
+    info.interval = mp->interval;
+    if (notify->onDbSeriesStart(info))
+        notify->onDbSeriesEnd(id);
 }
 
 //===========================================================================
@@ -953,34 +970,9 @@ void DbData::applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
 }
 
 //===========================================================================
-static size_t noSamples(
-    IDbEnumNotify * notify,
-    uint32_t id,
-    string_view name,
-    DbSampleType stype,
-    TimePoint first,
-    Duration interval
-) {
-    if (notify) {
-        if (notify->onDbSeriesStart(
-            {},
-            id,
-            name,
-            stype,
-            first,
-            first,
-            interval
-        )) {
-            notify->onDbSeriesEnd(id);
-        }
-    }
-    return 0;
-}
-
-//===========================================================================
-size_t DbData::enumSamples(
+void DbData::enumSamples(
     DbTxn & txn,
-    IDbEnumNotify * notify,
+    IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
     TimePoint last
@@ -1024,6 +1016,11 @@ size_t DbData::enumSamples(
             spno = 0;
     }
 
+    DbSeriesInfo dsi;
+    dsi.id = id;
+    dsi.name = name;
+    dsi.type = stype;
+    dsi.interval = mi.interval;
     unsigned count = 0;
     for (;;) {
         if (!spno) {
@@ -1053,20 +1050,13 @@ size_t DbData::enumSamples(
                 auto value = getSample(sp, vpos);
                 if (!isnan(value)) {
                     if (!count++) {
-                        if (!notify->onDbSeriesStart(
-                            {},
-                            id,
-                            name,
-                            stype,
-                            first,
-                            last + mi.interval,
-                            mi.interval
-                        )) {
-                            return count;
-                        }
+                        dsi.first = first;
+                        dsi.last = last + mi.interval;
+                        if (!notify->onDbSeriesStart(dsi))
+                            return;
                     }
                     if (!notify->onDbSample(first, value))
-                        return count;
+                        return;
                 }
             }
         }
@@ -1082,7 +1072,6 @@ size_t DbData::enumSamples(
     } else {
         notify->onDbSeriesEnd(id);
     }
-    return count;
 }
 
 

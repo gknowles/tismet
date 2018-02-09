@@ -49,12 +49,14 @@ static vector<MetricRule> s_rules;
 
 namespace {
 
-class ExpireTimer : public ITimerNotify, public ITaskNotify {
+class ExpireTimer : public ITimerNotify, public IDbDataNotify {
 public:
     void updateInterval(Duration interval);
 
 private:
     Duration onTimer(TimePoint now) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+
     Duration timeUntilCheck();
 
     UnsignedSet m_ids;
@@ -84,27 +86,29 @@ Duration ExpireTimer::timeUntilCheck() {
 
 //===========================================================================
 Duration ExpireTimer::onTimer(TimePoint now) {
-    auto ctx = dbOpenContext(s_db);
     if (m_ids.empty())
-        dbFindMetrics(&m_ids, ctx);
+        dbFindMetrics(&m_ids, s_db);
 
     if (!m_ids.empty()) {
         auto id = m_ids.pop_front();
-        MetricInfo info;
-        if (dbGetMetricInfo(&info, ctx, id)) {
-            if (now >= info.first + 2 * info.retention) {
-                s_perfExpired += 1;
-                dbEraseMetric(ctx, id);
-            }
-        }
+        dbGetMetricInfo(this, s_db, id);
+        return kTimerInfinite;
     }
 
-    dbCloseContext(ctx);
-
-    if (!m_ids.empty())
-        return 1ms;
-
     return timeUntilCheck();
+}
+
+//===========================================================================
+bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
+    auto now = Clock::now();
+    if (now >= info.first + 2 * (info.last - info.first)) {
+        s_perfExpired += 1;
+        dbEraseMetric(s_db, info.id);
+    }
+
+    auto wait = m_ids.empty() ? timeUntilCheck() : 1ms;
+    timerUpdate(this, wait);
+    return true;
 }
 
 
@@ -229,7 +233,7 @@ bool tsDataInsertMetric(uint32_t * id, DbContextHandle ctx, string_view name) {
 
     for (auto && rule : s_rules) {
         if (regex_search(name.begin(), name.end(), rule.pattern)) {
-            MetricInfo info = {};
+            DbMetricInfo info = {};
             info.type = rule.type;
             info.retention = rule.retention;
             info.interval = rule.interval;

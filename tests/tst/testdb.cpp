@@ -68,7 +68,7 @@ void Test::onTestRun() {
     unsigned count = 0;
     count += dbInsertMetric(&id, ctx, name);
     EXPECT("metrics inserted" && count == 1);
-    MetricInfo info;
+    DbMetricInfo info;
     info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(6.5 * pgt);
     info.interval = 1min;
