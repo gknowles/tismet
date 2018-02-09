@@ -93,6 +93,7 @@ private:
     vector<pair<Path, Path>> m_backupFiles;
     FileAppendQueue m_dstFile;
 
+    mutable shared_mutex m_indexMut;
     uint64_t m_instance{0};
     DbIndex m_leaf;
     DbIndex m_branch;
@@ -354,24 +355,34 @@ DbBase * DbContext::db() const {
 
 //===========================================================================
 uint64_t DbBase::acquireInstanceRef() {
-    return m_instance;
+    scoped_lock<shared_mutex> lk{m_indexMut};
+    return m_leaf.acquireInstanceRef();
 }
 
 //===========================================================================
 void DbBase::releaseInstanceRef(uint64_t instance) {
+    scoped_lock<shared_mutex> lk{m_indexMut};
+    m_leaf.releaseInstanceRef(instance);
 }
 
 //===========================================================================
 bool DbBase::insertMetric(uint32_t * out, string_view name) {
-    if (findMetric(out, name))
-        return false;
+    {
+        shared_lock<shared_mutex> lk{m_indexMut};
+        if (findMetric(out, name))
+            return false;
+    }
 
-    // get metric id
-    *out = m_leaf.nextId();
+    {
+        scoped_lock<shared_mutex> lk{m_indexMut};
 
-    // update indexes
-    m_leaf.insert(*out, name);
-    m_branch.insertBranches(name);
+        // get metric id
+        *out = m_leaf.nextId();
+
+        // update indexes
+        m_leaf.insert(*out, name);
+        m_branch.insertBranches(name);
+    }
 
     // set info page
     DbTxn txn{m_log, m_page};
@@ -385,6 +396,7 @@ void DbBase::eraseMetric(uint32_t id) {
     DbTxn txn{m_log, m_page};
     string name;
     if (m_data.eraseMetric(txn, name, id)) {
+        scoped_lock<shared_mutex> lk{m_indexMut};
         m_leaf.erase(name);
         m_branch.eraseBranches(name);
         s_perfDeleted += 1;
@@ -399,6 +411,7 @@ void DbBase::updateMetric(uint32_t id, const MetricInfo & info) {
 
 //===========================================================================
 const char * DbBase::getMetricName(uint32_t id) const {
+    shared_lock<shared_mutex> lk{m_indexMut};
     return m_leaf.name(id);
 }
 
@@ -411,21 +424,25 @@ bool DbBase::getMetricInfo(MetricInfo * info, uint32_t id) const {
 
 //===========================================================================
 bool DbBase::findMetric(uint32_t * out, string_view name) const {
+    shared_lock<shared_mutex> lk{m_indexMut};
     return m_leaf.find(out, name);
 }
 
 //===========================================================================
 void DbBase::findMetrics(UnsignedSet * out, string_view pattern) const {
+    shared_lock<shared_mutex> lk{m_indexMut};
     m_leaf.find(out, pattern);
 }
 
 //===========================================================================
 const char * DbBase::getBranchName(uint32_t id) const {
+    shared_lock<shared_mutex> lk{m_indexMut};
     return m_branch.name(id);
 }
 
 //===========================================================================
 void DbBase::findBranches(UnsignedSet * out, string_view pattern) const {
+    shared_lock<shared_mutex> lk{m_indexMut};
     m_branch.find(out, pattern);
 }
 

@@ -32,6 +32,8 @@ public:
     ~DbIndex();
 
     void clear();
+    uint64_t acquireInstanceRef();
+    void releaseInstanceRef(uint64_t instance);
 
     void insert(uint32_t id, std::string_view name, bool branch = false);
     void erase(std::string_view name);
@@ -65,6 +67,14 @@ private:
     std::unordered_map<std::string_view, std::pair<uint32_t, unsigned>>
         m_metricIds;
     UnsignedSetWithCount m_ids;
+
+    Dim::UnsignedSet m_unusedIds;
+    uint64_t m_instance;
+    struct InstanceInfo {
+        int refCount{0};
+        Dim::UnsignedSet ids;
+    };
+    std::map<uint64_t, InstanceInfo> m_reservedIds;
 
     // metric ids by name length as measured in segments
     std::vector<UnsignedSetWithCount> m_lenIds;

@@ -38,6 +38,27 @@ void DbIndex::clear() {
 }
 
 //===========================================================================
+uint64_t DbIndex::acquireInstanceRef() {
+    auto & info = m_reservedIds[m_instance];
+    info.refCount += 1;
+    return m_instance;
+}
+
+//===========================================================================
+void DbIndex::releaseInstanceRef(uint64_t instance) {
+    auto & info = m_reservedIds[m_instance];
+    if (!--info.refCount) {
+        auto i = m_reservedIds.begin();
+        while (i != m_reservedIds.end()) {
+            if (i->second.refCount)
+                return;
+            m_unusedIds.insert(move(i->second.ids));
+            i = m_reservedIds.erase(i);
+        }
+    }
+}
+
+//===========================================================================
 void DbIndex::insertBranches(string_view name) {
     for (;;) {
         auto pos = name.find_last_of('.');
@@ -74,6 +95,7 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
     }
     m_ids.uset.insert(id);
     m_ids.count += 1;
+    m_unusedIds.erase(id);
     strSplit(&m_tmpSegs, name, '.');
     auto numSegs = m_tmpSegs.size();
     if (m_lenIds.size() <= numSegs) {
@@ -118,8 +140,15 @@ void DbIndex::erase(string_view name) {
     m_metricIds.erase(i);
     m_idNames[id] = nullptr;
 
+    m_instance += 1;
     m_ids.uset.erase(id);
     m_ids.count -= 1;
+    if (m_reservedIds.empty()) {
+        m_unusedIds.insert(id);
+    } else {
+        m_reservedIds.rbegin()->second.ids.insert(id);
+    }
+
     vector<string_view> segs;
     strSplit(&segs, name, '.');
     auto numSegs = segs.size();
@@ -149,7 +178,9 @@ void DbIndex::erase(string_view name) {
 
 //===========================================================================
 uint32_t DbIndex::nextId() const {
-    if (!m_ids.count) {
+    if (!m_unusedIds.empty()) {
+        return *m_unusedIds.begin();
+    } else if (!m_ids.count) {
         return 1;
     } else {
         auto ids = *m_ids.uset.ranges().begin();
