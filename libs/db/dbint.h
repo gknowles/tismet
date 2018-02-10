@@ -460,7 +460,7 @@ public:
     DbStats queryStats();
 
     void insertMetric(DbTxn & txn, uint32_t id, std::string_view name);
-    bool eraseMetric(DbTxn & txn, std::string & outName, uint32_t id);
+    bool eraseMetric(std::string * outName, DbTxn & txn, uint32_t id);
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
@@ -478,7 +478,7 @@ public:
         Dim::TimePoint time,
         double value
     );
-    void enumSamples(
+    void getSamples(
         DbTxn & txn,
         IDbDataNotify * notify,
         uint32_t id,

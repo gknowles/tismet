@@ -508,7 +508,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
         auto & iset = idSets[i];
         iset.erase(ids);
         for (auto && id : idSets[i])
-            dbEnumSamples(this, ctx, id, from, until);
+            dbGetSamples(this, ctx, id, from, until);
         ids.insert(move(iset));
     }
     assert(m_bld.depth() == 0);

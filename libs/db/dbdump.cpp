@@ -80,7 +80,7 @@ void dbWriteDump(
     DbProgressInfo info;
     DumpWriter out(os, info);
     for (auto && id : ids) {
-        dbEnumSamples(&out, ctx, id);
+        dbGetSamples(&out, ctx, id);
         info.metrics += 1;
         if (notify)
             notify->onDbProgress(kRunRunning, info);

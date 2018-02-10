@@ -441,9 +441,9 @@ void DbData::applyMetricInit(
 }
 
 //===========================================================================
-bool DbData::eraseMetric(DbTxn & txn, string & name, uint32_t id) {
+bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     if (uint32_t pgno = m_metricPos[id].infoPage) {
-        name = txn.viewPage<MetricPage>(pgno)->name;
+        *name = txn.viewPage<MetricPage>(pgno)->name;
         auto rp = txn.viewPage<RadixPage>(kMetricIndexPageNum);
         radixErase(txn, rp->hdr, id, id + 1);
         return true;
@@ -970,7 +970,7 @@ void DbData::applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
 }
 
 //===========================================================================
-void DbData::enumSamples(
+void DbData::getSamples(
     DbTxn & txn,
     IDbDataNotify * notify,
     uint32_t id,

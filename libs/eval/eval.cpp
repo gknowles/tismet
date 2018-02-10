@@ -616,7 +616,7 @@ void SourceNode::onTask() {
             info.name = {};
             info.samples = {};
         } else {
-            dbEnumSamples(&reader, s_db, id, first, last);
+            dbGetSamples(&reader, s_db, id, first, last);
             info.more = more;
             info.name = reader.m_name;
             info.samples = reader.m_samples;

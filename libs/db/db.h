@@ -163,7 +163,7 @@ struct IDbDataNotify {
     // otherwise it continues to the next sample.
     virtual bool onDbSample(Dim::TimePoint time, double value) { return false; }
 };
-void dbEnumSamples(
+void dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,

@@ -17,6 +17,26 @@ using namespace Dim;
 
 namespace {
 
+enum DbReqType {
+    kGetMetric,
+    kGetSamples,
+    kEraseMetric,
+    kInsertMetric,
+    kUpdateMetric,
+    kUpdateSample,
+};
+struct DbReq {
+    DbReqType type;
+    string name;
+    DbSampleType sampleType;
+    Duration retention;
+    Duration interval;
+    IDbDataNotify * notify;
+    TimePoint first;
+    TimePoint last;
+    double value;
+};
+
 class DbBase
     : public HandleContent
     , IDbDataNotify
@@ -52,7 +72,7 @@ public:
     void findBranches(UnsignedSet * out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, double value);
-    void enumSamples(
+    void getSamples(
         IDbDataNotify * notify,
         uint32_t id,
         TimePoint first,
@@ -60,6 +80,8 @@ public:
     );
 
 private:
+    void transact(uint32_t id, DbReq && req);
+
     // Inherited via IDbDataNotify
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
 
@@ -77,6 +99,8 @@ private:
     ) override;
     void onFileEnd(int64_t offset, FileHandle f) override;
 
+    mutex m_dataMut;
+    unordered_map<uint32_t, deque<DbReq>> m_requests;
     bool m_verbose{false};
 
     RunMode m_backupMode{kRunStopped};
@@ -333,6 +357,64 @@ DbBase * DbContext::db() const {
 
 /****************************************************************************
 *
+*   Transactions
+*
+***/
+
+//===========================================================================
+void DbBase::transact(uint32_t id, DbReq && req) {
+    unique_lock<mutex> lk{m_dataMut};
+    auto & reqs = m_requests[id];
+    reqs.push_back(move(req));
+    if (reqs.size() != 1)
+        return;
+
+    while (!reqs.empty()) {
+        req = move(reqs.front());
+        lk.unlock();
+
+        DbTxn txn{m_log, m_page};
+        switch (req.type) {
+        case kGetMetric:
+            m_data.getMetricInfo(req.notify, txn, id);
+            break;
+        case kGetSamples:
+            m_data.getSamples(txn, req.notify, id, req.first, req.last);
+            break;
+        case kEraseMetric:
+            if (m_data.eraseMetric(&req.name, txn, id)) {
+                scoped_lock<shared_mutex> lk{m_indexMut};
+                m_leaf.erase(req.name);
+                m_branch.eraseBranches(req.name);
+                s_perfDeleted += 1;
+            }
+            break;
+        case kInsertMetric:
+            m_data.insertMetric(txn, id, req.name);
+            s_perfCreated += 1;
+            break;
+        case kUpdateMetric:
+            {
+                DbMetricInfo info;
+                info.type = req.sampleType;
+                info.retention = req.retention;
+                info.interval = req.interval;
+                m_data.updateMetric(txn, id, info);
+            }
+            break;
+        case kUpdateSample:
+            m_data.updateSample(txn, id, req.first, req.value);
+            break;
+        }
+
+        lk.lock();
+        reqs.pop_front();
+    }
+}
+
+
+/****************************************************************************
+*
 *   Metrics
 *
 ***/
@@ -353,12 +435,14 @@ void DbBase::releaseInstanceRef(uint64_t instance) {
 bool DbBase::insertMetric(uint32_t * out, string_view name) {
     {
         shared_lock<shared_mutex> lk{m_indexMut};
-        if (findMetric(out, name))
+        if (m_leaf.find(out, name))
             return false;
     }
 
     {
         scoped_lock<shared_mutex> lk{m_indexMut};
+        if (m_leaf.find(out, name))
+            return false;
 
         // get metric id
         *out = m_leaf.nextId();
@@ -369,28 +453,28 @@ bool DbBase::insertMetric(uint32_t * out, string_view name) {
     }
 
     // set info page
-    DbTxn txn{m_log, m_page};
-    m_data.insertMetric(txn, *out, name);
-    s_perfCreated += 1;
+    DbReq req;
+    req.type = kInsertMetric;
+    req.name = name;
+    transact(*out, move(req));
     return true;
 }
 
 //===========================================================================
 void DbBase::eraseMetric(uint32_t id) {
-    DbTxn txn{m_log, m_page};
-    string name;
-    if (m_data.eraseMetric(txn, name, id)) {
-        scoped_lock<shared_mutex> lk{m_indexMut};
-        m_leaf.erase(name);
-        m_branch.eraseBranches(name);
-        s_perfDeleted += 1;
-    }
+    DbReq req;
+    req.type = kEraseMetric;
+    transact(id, move(req));
 }
 
 //===========================================================================
 void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
-    DbTxn txn{m_log, m_page};
-    m_data.updateMetric(txn, id, info);
+    DbReq req;
+    req.type = kUpdateMetric;
+    req.sampleType = info.type;
+    req.retention = info.retention;
+    req.interval = info.interval;
+    transact(id, move(req));
 }
 
 //===========================================================================
@@ -402,8 +486,10 @@ const char * DbBase::getMetricName(uint32_t id) const {
 //===========================================================================
 void DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
     auto self = const_cast<DbBase *>(this);
-    DbTxn txn{self->m_log, self->m_page};
-    return m_data.getMetricInfo(notify, txn, id);
+    DbReq req;
+    req.type = kGetMetric;
+    req.notify = notify;
+    self->transact(id, move(req));
 }
 
 //===========================================================================
@@ -439,19 +525,26 @@ void DbBase::findBranches(UnsignedSet * out, string_view pattern) const {
 
 //===========================================================================
 void DbBase::updateSample(uint32_t id, TimePoint time, double value) {
-    DbTxn txn{m_log, m_page};
-    m_data.updateSample(txn, id, time, value);
+    DbReq req;
+    req.type = kUpdateSample;
+    req.first = time;
+    req.value = value;
+    transact(id, move(req));
 }
 
 //===========================================================================
-void DbBase::enumSamples(
+void DbBase::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
     TimePoint last
 ) {
-    DbTxn txn{m_log, m_page};
-    m_data.enumSamples(txn, notify, id, first, last);
+    DbReq req;
+    req.type = kGetSamples;
+    req.notify = notify;
+    req.first = first;
+    req.last = last;
+    transact(id, move(req));
 }
 
 
@@ -586,12 +679,12 @@ void dbUpdateSample(
 }
 
 //===========================================================================
-void dbEnumSamples(
+void dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,
     TimePoint first,
     TimePoint last
 ) {
-    db(h)->enumSamples(notify, id, first, last);
+    db(h)->getSamples(notify, id, first, last);
 }
