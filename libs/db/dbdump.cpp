@@ -75,12 +75,12 @@ void dbWriteDump(
 ) {
     UnsignedSet ids;
     auto ctx = dbOpenContext(f);
-    dbFindMetrics(&ids, ctx, wildname);
+    dbFindMetrics(&ids, f, wildname);
     os << kDumpVersion << '\n';
     DbProgressInfo info;
     DumpWriter out(os, info);
     for (auto && id : ids) {
-        dbGetSamples(&out, ctx, id);
+        dbGetSamples(&out, f, id);
         info.metrics += 1;
         if (notify)
             notify->onDbProgress(kRunRunning, info);
@@ -129,8 +129,9 @@ public:
     void onFileEnd(int64_t offset, FileHandle f) override;
 
 private:
-    DbContextHandle m_cxt;
     IDbProgressNotify * m_notify{nullptr};
+    DbHandle m_f;
+    DbContextHandle m_cxt;
     DbProgressInfo m_info;
 };
 
@@ -139,8 +140,9 @@ private:
 //===========================================================================
 DbWriter::DbWriter(IDbProgressNotify * notify, DbHandle f)
     : m_notify{notify}
+    , m_f{f}
 {
-    m_cxt = dbOpenContext(f);
+    m_cxt = dbOpenContext(m_f);
 }
 
 //===========================================================================
@@ -156,8 +158,8 @@ void DbWriter::onCarbonValue(
     uint32_t id
 ) {
     m_info.samples += 1;
-    dbInsertMetric(&id, m_cxt, name);
-    dbUpdateSample(m_cxt, id, time, (float) value);
+    dbInsertMetric(&id, m_f, name);
+    dbUpdateSample(m_f, id, time, (float) value);
 }
 
 //===========================================================================

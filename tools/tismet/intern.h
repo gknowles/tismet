@@ -14,7 +14,7 @@ DbHandle tsDataHandle();
 DbContextHandle tsDataOpenContext();
 bool tsDataInsertMetric(
     uint32_t * id,
-    DbContextHandle ctx,
+    DbHandle h,
     std::string_view name
 );
 

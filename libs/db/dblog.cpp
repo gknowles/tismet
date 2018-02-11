@@ -113,6 +113,19 @@ static auto & s_perfPartialWrites = uperf("db wal writes (partial)");
 
 /****************************************************************************
 *
+*   Helpers
+*
+***/
+
+//===========================================================================
+static TaskQueueHandle logQueue() {
+    static TaskQueueHandle s_hq = taskCreateQueue("Log IO", 2);
+    return s_hq;
+}
+
+
+/****************************************************************************
+*
 *   DbLog::TaskInfo
 *
 ***/
@@ -583,7 +596,7 @@ void DbLog::checkpointStableCommit() {
             lastPgno * m_pageSize,
             &hdr,
             offsetof(PageHeader, pgno) + sizeof(hdr.pgno),
-            taskComputeQueue()
+            logQueue()
         );
     }
 }
@@ -654,7 +667,7 @@ void DbLog::flushWriteBuffer() {
     memcpy(nlp, lp, bytes);
 
     lk.unlock();
-    fileWrite(this, m_flog, offset, nlp, bytes, taskComputeQueue());
+    fileWrite(this, m_flog, offset, nlp, bytes, logQueue());
 }
 
 //===========================================================================
@@ -769,7 +782,7 @@ void DbLog::onFileWrite(
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
     } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
-        fileWrite(this, m_flog, offset, olp, m_pageSize, taskComputeQueue());
+        fileWrite(this, m_flog, offset, olp, m_pageSize, logQueue());
     }
     delete[] buf;
 }
@@ -915,7 +928,7 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
 
         lk.unlock();
         if (!writeInProgress)
-            fileWrite(this, m_flog, offset, lp, m_pageSize, taskComputeQueue());
+            fileWrite(this, m_flog, offset, lp, m_pageSize, logQueue());
     }
     return lsn;
 }

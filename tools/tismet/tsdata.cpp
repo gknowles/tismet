@@ -226,9 +226,9 @@ DbContextHandle tsDataOpenContext() {
 }
 
 //===========================================================================
-bool tsDataInsertMetric(uint32_t * id, DbContextHandle ctx, string_view name) {
+bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
     assert(ctx);
-    if (!dbInsertMetric(id, ctx, name))
+    if (!dbInsertMetric(id, f, name))
         return false;
 
     for (auto && rule : s_rules) {
@@ -237,7 +237,7 @@ bool tsDataInsertMetric(uint32_t * id, DbContextHandle ctx, string_view name) {
             info.type = rule.type;
             info.retention = rule.retention;
             info.interval = rule.interval;
-            dbUpdateMetric(ctx, *id, info);
+            dbUpdateMetric(f, *id, info);
             break;
         }
     }

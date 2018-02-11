@@ -109,13 +109,14 @@ class MetricIndex : public IHttpRouteNotify {
 
 //===========================================================================
 void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
+    auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(&ids, ctx);
+    dbFindMetrics(&ids, f);
     vector<string_view> names;
     names.reserve(ids.size());
     for (auto && id : ids) {
-        if (auto name = dbGetMetricName(ctx, id))
+        if (auto name = dbGetMetricName(f, id))
             names.push_back(name);
     }
     sort(names.begin(), names.end());
@@ -189,11 +190,12 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
 
 //===========================================================================
 void MetricFind::jsonReply(unsigned reqId, string_view target) {
+    auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(&ids, ctx, target);
+    dbFindMetrics(&ids, f, target);
     UnsignedSet bids;
-    dbFindBranches(&bids, ctx, target);
+    dbFindBranches(&bids, f, target);
 
     bool started = false;
     HttpResponse res;
@@ -203,7 +205,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     JBuilder bld(res.body());
     bld.array();
     for (auto && bid : bids) {
-        if (auto name = dbGetBranchName(ctx, bid)) {
+        if (auto name = dbGetBranchName(f, bid)) {
             auto namev = string_view{name};
             if (auto pos = namev.find_last_of('.'); pos != namev.npos)
                 namev.remove_prefix(pos + 1);
@@ -215,7 +217,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
         }
     }
     for (auto && id : ids) {
-        if (auto name = dbGetMetricName(ctx, id)) {
+        if (auto name = dbGetMetricName(f, id)) {
             auto namev = string_view{name};
             if (auto pos = namev.find_last_of('.'); pos != namev.npos)
                 namev.remove_prefix(pos + 1);
@@ -233,11 +235,12 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
 
 //===========================================================================
 void MetricFind::msgpackReply(unsigned reqId, string_view target) {
+    auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     UnsignedSet ids;
-    dbFindMetrics(&ids, ctx, target);
+    dbFindMetrics(&ids, f, target);
     UnsignedSet bids;
-    dbFindBranches(&bids, ctx, target);
+    dbFindBranches(&bids, f, target);
 
     bool started = false;
     HttpResponse res;
@@ -248,7 +251,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     auto count = ids.size() + bids.size();
     bld.array(count);
     for (auto && bid : bids) {
-        if (auto name = dbGetBranchName(ctx, bid)) {
+        if (auto name = dbGetBranchName(f, bid)) {
             auto namev = string_view{name};
             started = xferIfFull(res, started, reqId, namev.size() + 16);
             bld.map(2);
@@ -257,7 +260,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
         }
     }
     for (auto && id : ids) {
-        if (auto name = dbGetMetricName(ctx, id)) {
+        if (auto name = dbGetMetricName(f, id)) {
             auto namev = string_view{name};
             started = xferIfFull(res, started, reqId, namev.size() + 32);
             bld.map(2);
@@ -485,11 +488,12 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     m_res.addHeader(kHttpAccessControlAllowOrigin, "*");
     m_res.addHeader(kHttp_Status, "200");
 
+    auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     vector<UnsignedSet> idSets;
     for (auto && target : targets) {
         UnsignedSet & out = idSets.emplace_back();
-        dbFindMetrics(&out, ctx, string(target));
+        dbFindMetrics(&out, f, string(target));
     }
 
     UnsignedSet ids;
@@ -508,7 +512,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
         auto & iset = idSets[i];
         iset.erase(ids);
         for (auto && id : idSets[i])
-            dbGetSamples(this, ctx, id, from, until);
+            dbGetSamples(this, f, id, from, until);
         ids.insert(move(iset));
     }
     assert(m_bld.depth() == 0);

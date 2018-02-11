@@ -71,19 +71,12 @@ void DbIndex::insertBranches(string_view name) {
 }
 
 //===========================================================================
-static unique_ptr<char[]> strdup(string_view * inout) {
-    auto ptr = make_unique<char[]>(inout->size() + 1);
-    memcpy(ptr.get(), inout->data(), inout->size());
-    ptr[inout->size()] = 0;
-    *inout = string_view{ptr.get(), inout->size()};
-    return move(ptr);
-}
-
-//===========================================================================
 void DbIndex::insert(uint32_t id, string_view name, bool branch) {
     if (id >= m_idNames.size())
         m_idNames.resize(id + 1);
-    m_idNames[id] = strdup(&name);
+    auto ptr = strDup(name);
+    name = string_view{ptr.get(), name.size()};
+    m_idNames[id] = move(ptr);
     auto ib = m_metricIds.insert({name, {id, 1}});
     if (!ib.second) {
         if (branch) {
@@ -109,7 +102,8 @@ void DbIndex::insert(uint32_t id, string_view name, bool branch) {
         auto seg = m_tmpSegs[i];
         auto cur = m_segIds[i].find(seg);
         if (cur == m_segIds[i].end()) {
-            auto ptr = strdup(&seg).release();
+            auto ptr = strDup(seg).release();
+            seg = string_view{ptr, seg.size()};
             m_segNames[i][seg] = ptr;
             cur = m_segIds[i].insert({seg, {}}).first;
         }

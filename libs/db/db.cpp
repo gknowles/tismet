@@ -81,6 +81,7 @@ public:
 
 private:
     void transact(uint32_t id, DbReq && req);
+    void apply(uint32_t id, DbReq && req);
 
     // Inherited via IDbDataNotify
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
@@ -125,7 +126,7 @@ public:
     ~DbContext();
 
     DbHandle handle() const;
-    DbBase * db() const;
+    void release_RL();
 
 private:
     DbHandle m_f;
@@ -141,6 +142,7 @@ private:
 *
 ***/
 
+static shared_mutex s_mut;
 static HandleMap<DbHandle, DbBase> s_files;
 static HandleMap<DbContextHandle, DbContext> s_contexts;
 
@@ -156,11 +158,13 @@ static auto & s_perfDeleted = uperf("db metrics deleted");
 
 //===========================================================================
 inline static DbBase * db(DbContextHandle h) {
-    return s_contexts.find(h)->db();
+    shared_lock<shared_mutex> lk{s_mut};
+    return s_files.find(s_contexts.find(h)->handle());
 }
 
 //===========================================================================
 inline static DbBase * db(DbHandle h) {
+    shared_lock<shared_mutex> lk{s_mut};
     return s_files.find(h);
 }
 
@@ -326,22 +330,16 @@ void DbBase::onFileEnd(int64_t offset, FileHandle f) {
 ***/
 
 //===========================================================================
-DbContextHandle::operator DbHandle() const {
-    return s_contexts.find(*this)->handle();
-}
-
-//===========================================================================
 DbContext::DbContext(DbHandle f)
     : m_f{f}
 {
-    if (m_f)
-        m_instance = db()->acquireInstanceRef();
+    if (auto * file = db(handle()))
+        m_instance = file->acquireInstanceRef();
 }
 
 //===========================================================================
 DbContext::~DbContext() {
-    if (m_f)
-        db()->releaseInstanceRef(m_instance);
+    assert(!m_instance);
 }
 
 //===========================================================================
@@ -350,8 +348,10 @@ DbHandle DbContext::handle() const {
 }
 
 //===========================================================================
-DbBase * DbContext::db() const {
-    return s_files.find(m_f);
+void DbContext::release_RL() {
+    if (auto * file = s_files.find(handle()))
+        file->releaseInstanceRef(m_instance);
+    m_instance = 0;
 }
 
 
@@ -360,6 +360,43 @@ DbBase * DbContext::db() const {
 *   Transactions
 *
 ***/
+
+//===========================================================================
+void DbBase::apply(uint32_t id, DbReq && req) {
+    DbTxn txn{m_log, m_page};
+    switch (req.type) {
+    case kGetMetric:
+        m_data.getMetricInfo(req.notify, txn, id);
+        break;
+    case kGetSamples:
+        m_data.getSamples(txn, req.notify, id, req.first, req.last);
+        break;
+    case kEraseMetric:
+        if (m_data.eraseMetric(&req.name, txn, id)) {
+            scoped_lock<shared_mutex> lk{m_indexMut};
+            m_leaf.erase(req.name);
+            m_branch.eraseBranches(req.name);
+            s_perfDeleted += 1;
+        }
+        break;
+    case kInsertMetric:
+        m_data.insertMetric(txn, id, req.name);
+        s_perfCreated += 1;
+        break;
+    case kUpdateMetric:
+        {
+            DbMetricInfo info;
+            info.type = req.sampleType;
+            info.retention = req.retention;
+            info.interval = req.interval;
+            m_data.updateMetric(txn, id, info);
+        }
+        break;
+    case kUpdateSample:
+        m_data.updateSample(txn, id, req.first, req.value);
+        break;
+    }
+}
 
 //===========================================================================
 void DbBase::transact(uint32_t id, DbReq && req) {
@@ -372,44 +409,11 @@ void DbBase::transact(uint32_t id, DbReq && req) {
     while (!reqs.empty()) {
         req = move(reqs.front());
         lk.unlock();
-
-        DbTxn txn{m_log, m_page};
-        switch (req.type) {
-        case kGetMetric:
-            m_data.getMetricInfo(req.notify, txn, id);
-            break;
-        case kGetSamples:
-            m_data.getSamples(txn, req.notify, id, req.first, req.last);
-            break;
-        case kEraseMetric:
-            if (m_data.eraseMetric(&req.name, txn, id)) {
-                scoped_lock<shared_mutex> lk{m_indexMut};
-                m_leaf.erase(req.name);
-                m_branch.eraseBranches(req.name);
-                s_perfDeleted += 1;
-            }
-            break;
-        case kInsertMetric:
-            m_data.insertMetric(txn, id, req.name);
-            s_perfCreated += 1;
-            break;
-        case kUpdateMetric:
-            {
-                DbMetricInfo info;
-                info.type = req.sampleType;
-                info.retention = req.retention;
-                info.interval = req.interval;
-                m_data.updateMetric(txn, id, info);
-            }
-            break;
-        case kUpdateSample:
-            m_data.updateSample(txn, id, req.first, req.value);
-            break;
-        }
-
+        apply(id, move(req));
         lk.lock();
         reqs.pop_front();
     }
+    m_requests.erase(id);
 }
 
 
@@ -560,12 +564,14 @@ DbHandle dbOpen(string_view name, size_t pageSize, DbOpenFlags flags) {
     if (!db->open(name, pageSize, flags))
         return DbHandle{};
 
+    scoped_lock<shared_mutex> lk{s_mut};
     auto h = s_files.insert(db.release());
     return h;
 }
 
 //===========================================================================
 void dbClose(DbHandle h) {
+    scoped_lock<shared_mutex> lk{s_mut};
     s_files.erase(h);
 }
 
@@ -591,36 +597,43 @@ DbSampleType fromString(std::string_view src, DbSampleType def) {
 
 //===========================================================================
 void dbConfigure(DbHandle h, const DbConfig & conf) {
-    s_files.find(h)->configure(conf);
+    db(h)->configure(conf);
 }
 
 //===========================================================================
 DbStats dbQueryStats(DbHandle h) {
-    return s_files.find(h)->queryStats();
+    return db(h)->queryStats();
 }
 
 //===========================================================================
 void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable) {
-    s_files.find(h)->blockCheckpoint(notify, enable);
+    db(h)->blockCheckpoint(notify, enable);
 }
 
 //===========================================================================
 bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
-    return s_files.find(h)->backup(notify, dst);
+    return db(h)->backup(notify, dst);
 }
 
 //===========================================================================
 DbContextHandle dbOpenContext(DbHandle f) {
+    auto ptr = make_unique<DbContext>(f);
+
+    scoped_lock<shared_mutex> lk{s_mut};
     if (!s_files.find(f)) {
         return {};
     } else {
-        return s_contexts.insert(new DbContext(f));
+        return s_contexts.insert(ptr.release());
     }
 }
 
 //===========================================================================
 void dbCloseContext(DbContextHandle h) {
-    s_contexts.erase(h);
+    scoped_lock<shared_mutex> lk{s_mut};
+    if (auto ctx = s_contexts.release(h)) {
+        ctx->release_RL();
+        delete ctx;
+    }
 }
 
 //===========================================================================

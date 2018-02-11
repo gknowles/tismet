@@ -78,9 +78,7 @@ DbStats dbQueryStats(DbHandle h);
 
 // Metric context prevents metric ids from changing their meaning (i.e. being
 // reassigned to different metrics) during the life of the context.
-struct DbContextHandle : Dim::HandleBase {
-    operator DbHandle() const;
-};
+struct DbContextHandle : Dim::HandleBase {};
 
 DbContextHandle dbOpenContext(DbHandle h);
 void dbCloseContext(DbContextHandle h);
