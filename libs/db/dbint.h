@@ -586,19 +586,22 @@ private:
     bool radixFind(DbTxn & txn, uint32_t * out, uint32_t root, size_t pos);
 
     size_t samplesPerPage(DbSampleType type) const;
-    MetricPosition & loadMetricPos(DbTxn & txn, uint32_t id);
-    MetricPosition & loadMetricPos(
+    MetricPosition getMetricPos(uint32_t id) const;
+    void setMetricPos(uint32_t id, const MetricPosition & mi);
+    MetricPosition loadMetricPos(DbTxn & txn, uint32_t id);
+    MetricPosition loadMetricPos(
         DbTxn & txn,
         uint32_t id,
         Dim::TimePoint time
     );
 
     bool m_verbose{false};
-    std::vector<MetricPosition> m_metricPos;
-
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
+
+    mutable std::shared_mutex m_mut;
+    std::vector<MetricPosition> m_metricPos;
+    unsigned m_numMetrics = 0;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
-    unsigned m_numMetrics = 0;
 };
