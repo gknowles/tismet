@@ -227,7 +227,7 @@ DbContextHandle tsDataOpenContext() {
 
 //===========================================================================
 bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
-    assert(ctx);
+    assert(f);
     if (!dbInsertMetric(id, f, name))
         return false;
 
