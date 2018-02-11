@@ -108,7 +108,7 @@ private:
     DbProgressInfo m_info;
     IDbProgressNotify * m_backer{nullptr};
     vector<pair<Path, Path>> m_backupFiles;
-    FileAppendQueue m_dstFile;
+    FileAppendStream m_dstFile;
 
     mutable shared_mutex m_indexMut;
     uint64_t m_instance{0};
@@ -272,7 +272,7 @@ bool DbBase::onDbProgress(RunMode mode, const DbProgressInfo & info) {
 void DbBase::backupNextFile() {
     if (!m_backupFiles.empty()) {
         auto [dst, src] = m_backupFiles.front();
-        if (m_dstFile.open(dst, FileAppendQueue::kTrunc)) {
+        if (m_dstFile.open(dst, FileAppendStream::kTrunc)) {
             if (m_info.totalBytes == size_t(-1)) {
                 m_info.totalBytes = fileSize(src);
             } else {

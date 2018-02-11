@@ -127,7 +127,6 @@
 # vendor/dimapp/libs/cppconf/dimcli_userconfig.h
 # vendor/dimapp/libs/file/file.cpp
 # vendor/dimapp/libs/file/file.h
-# vendor/dimapp/libs/file/fileio.h
 # vendor/dimapp/libs/file/filemon.h
 # vendor/dimapp/libs/file/path.cpp
 # vendor/dimapp/libs/file/path.h

@@ -394,7 +394,7 @@ private:
     // Inherited via ITaskNotify
     void onTask() override;
 
-    FileAppendQueue m_file{100, 2, envMemoryConfig().pageSize};
+    FileAppendStream m_file{100, 2, envMemoryConfig().pageSize};
     MetricSource m_mets;
 };
 
@@ -413,7 +413,7 @@ bool FileJob::start(Cli & cli) {
     if (!fname)
         return cli.badUsage("No value given for <output file[.txt]>");
     if (fname.view() != "-") {
-        if (!m_file.open(fname.defaultExt("txt"), FileAppendQueue::kTrunc)) {
+        if (!m_file.open(fname.defaultExt("txt"), FileAppendStream::kTrunc)) {
             return cli.fail(
                 EX_DATAERR,
                 fname.str() + ": open <outputFile[.txt]> failed"

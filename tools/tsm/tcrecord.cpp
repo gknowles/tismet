@@ -19,7 +19,7 @@ namespace {
 
 struct CmdOpts {
     Path ofile;
-    FileAppendQueue::OpenExisting openMode;
+    FileAppendStream::OpenExisting openMode;
 
     uint64_t maxBytes;
     unsigned maxSecs;
@@ -46,7 +46,7 @@ static uint64_t s_samplesWritten;
 static uint64_t s_bytesWritten;
 static TimePoint s_startTime;
 
-static FileAppendQueue s_file;
+static FileAppendStream s_file;
 
 
 //===========================================================================
@@ -225,12 +225,12 @@ CmdOpts::CmdOpts() {
         .desc("Max samples to record, 0 for unlimited");
 
     cli.group("Output Options").sortKey("2");
-    cli.opt(&openMode, "", FileAppendQueue::kFail)
+    cli.opt(&openMode, "", FileAppendStream::kFail)
         .flagValue(true);
-    cli.opt(&openMode, "truncate.", FileAppendQueue::kTrunc)
+    cli.opt(&openMode, "truncate.", FileAppendStream::kTrunc)
         .desc("Truncate output file, if it exists.")
         .flagValue();
-    cli.opt(&openMode, "append.", FileAppendQueue::kAppend)
+    cli.opt(&openMode, "append.", FileAppendStream::kAppend)
         .desc("Append to output file, if it exists.")
         .flagValue();
 }
