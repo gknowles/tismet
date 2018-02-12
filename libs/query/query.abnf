@@ -15,9 +15,9 @@ query = path / func { Function }
 ;----------------------------------------------------------------------------
 ; Path
 ;----------------------------------------------------------------------------
-path = path-seg *("." path-seg) { Start+, End+ }
-path-seg = 1*(seg-literal / seg-blot / seg-char-list / seg-str-list)
-    { Start+, End+ }
+path = path-seg *("." path-seg) { Start, End }
+path-seg = 1*(seg-literal / seg-blot / seg-char-list / seg-seg-list)
+    { Start, End }
 
 ; *
 seg-literal = 1*scl-char { Start+, End+ }
@@ -32,9 +32,10 @@ scl-dash = "-" { Char+, As scl-single }
 scl-range-end = scl-char-nd { Char+ }
 
 ; {,,,}
-seg-str-list = "{" [seg-str-wsval] 1*("," seg-str-wsval) "}" { Start, End }
-seg-str-wsval = *WSP seg-str-val *WSP
-seg-str-val = 1*scl-char { Start+, End+ }
+seg-seg-list = "{" ssl-segs "}"
+ssl-segs = *WSP [path-seg] *WSP 1*(ssl-comma *WSP path-seg *WSP)
+    { Start, End, Function }
+ssl-comma = "," { End }
 
 scl-char-nd = ALPHA / DIGIT
     / "!" / DQUOTE / "#" / "$" / "%" / "&" / "'"
@@ -78,22 +79,32 @@ zero = "0"
 ;----------------------------------------------------------------------------
 func = fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
+
 func =/ fn-derivative
 fn-derivative = %s"derivative(" arg-query ")" { Start }
+
 func =/ fn-highestCurrent
 fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-highestMax
 fn-highestMax = %s"highestMax(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-keepLastValue
 fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
+
 func =/ fn-maximumAbove
 fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-nonNegativeDerivative
 fn-nonNegativeDerivative =
     %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
+
 func =/ fn-scale
 fn-scale = %s"scale(" arg-query "," arg-num ")" { Start }
-func =/ fn-sum
-fn-sum = (%s"sum" / %s"sumSeries") "(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-sum / fn-sumSeries
+fn-sum = (%s"sum") "(" arg-query *( "," arg-query ) ")" { Start }
+fn-sumSeries = (%s"sumSeries") "(" arg-query *( "," arg-query ) ")" { Start, As fn-sum }
+
 func =/ fn-timeShift
 fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }

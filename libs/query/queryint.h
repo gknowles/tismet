@@ -25,24 +25,20 @@ struct Query::Node : Dim::ListBaseLink<> {
 Query::Node * addPath(Query::QueryInfo * qi);
 void endPath(Query::QueryInfo * qi, Query::Node * node);
 Query::Node * addSeg(Query::QueryInfo * qi, Query::Node * path);
-void endSeg(Query::QueryInfo * qi, Query::Node * node);
+void endSeg(Query::QueryInfo * qi, Query::Node * node, Query::Node * parent);
+Query::Node * addSegEmpty(Query::QueryInfo * qi, Query::Node * seg);
 Query::Node * addSegLiteral(
     Query::QueryInfo * qi,
     Query::Node * seg,
     std::string_view val
 );
 Query::Node * addSegBlot(Query::QueryInfo * qi, Query::Node * seg);
-Query::Node * addSegChoices(
+Query::Node * addSegCharChoices(
     Query::QueryInfo * qi,
     Query::Node * seg,
-    std::bitset<256> & vals
+    Dim::UnsignedSet & vals
 );
-Query::Node * addSegStrChoices(Query::QueryInfo * qi, Query::Node * seg);
-Query::Node * addSegChoice(
-    Query::QueryInfo * qi,
-    Query::Node * seg,
-    std::string_view val
-);
+Query::Node * addSegSegChoices(Query::QueryInfo * qi, Query::Node * seg);
 Query::Node * addFunc(Query::QueryInfo * qi, Query::Function::Type type);
 Query::Node * addFuncArg(
     Query::QueryInfo * qi,

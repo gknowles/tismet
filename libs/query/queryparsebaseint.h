@@ -23,6 +23,8 @@ struct QueryParserBase {
     const char * m_start{nullptr};
     const char * m_end{nullptr};
 
+    bool m_pathSeg{false};
+
     bool m_minus{false};
     int64_t m_int{0};
     int m_frac{0};
@@ -30,7 +32,7 @@ struct QueryParserBase {
     int m_exp{0};
 
     unsigned char m_charStart{0};
-    std::bitset<256> m_chars;
+    Dim::UnsignedSet m_chars;
 
     // Functions
     QueryParserBase(Query::QueryInfo * qry) : m_query{qry} {}

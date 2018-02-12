@@ -39,7 +39,9 @@ static void parseTest(
     Query::QueryInfo qry;
     bool result = Query::parse(qry, src);
     EXPECT(result);
-    EXPECT(qry.text == normal);
+    if (result) {
+        EXPECT(qry.text == normal);
+    }
 }
 
 
@@ -65,12 +67,14 @@ static Test s_test;
 void Test::onTestRun() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
+    EXPECT_PARSE("a{,b}", "a{,b}");
+    EXPECT_PARSE("a{ [12] , cd[34] }", "a{cd[34],[12]}");
+    EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
+    EXPECT_PARSE("sum(sum(a))", "sum(sum(a))");
     EXPECT_PARSE("**", "**");
     EXPECT_PARSE("**.**.*.**.a.*.**", "*.**.a.*.**");
     EXPECT_PARSE("a**b.**c.**.d.***.e", "a*b.*c.**.d.*.e");
-    EXPECT_PARSE("sum(sum(a))", "sum(sum(a))");
     EXPECT_PARSE("a[b]c[de]f", "abc[de]f");
-    EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
     EXPECT_PARSE("a[62-41]", "a[12346]");
     EXPECT_PARSE("a.b.c", "a.b.c");
 

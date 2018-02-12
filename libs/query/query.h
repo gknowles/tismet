@@ -36,6 +36,10 @@ enum MatchResult {
 
     // matches this segment and also any number of following segments
     kMatchRest = 2,
+
+    // INTERNAL USE ONLY
+    // a prefix of the string is a match
+    kNoCompleteMatch = -1,
 };
 enum NodeType {
     kFunc,
@@ -45,11 +49,12 @@ enum NodeType {
 
     // Internal node types
     kPathSeg,
+    kSegEmpty,
     kSegLiteral,
     kSegBlot,
     kSegDoubleBlot,
     kSegCharChoice,
-    kSegStrChoice,
+    kSegSegChoice,
 };
 
 struct Node;

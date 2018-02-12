@@ -86,7 +86,7 @@ inline bool QueryParser::onMinusEnd () {
 }
 
 //===========================================================================
-inline bool QueryParser::onPathStart (const char * ptr) {
+inline bool QueryParser::onPathStart () {
     auto path = m_nodes.empty()
         ? addPath(m_query)
         : addPathArg(m_query, m_nodes.back());
@@ -95,7 +95,7 @@ inline bool QueryParser::onPathStart (const char * ptr) {
 }
 
 //===========================================================================
-inline bool QueryParser::onPathEnd (const char * eptr) {
+inline bool QueryParser::onPathEnd () {
     assert(m_nodes.back()->type == Query::kPath);
     endPath(m_query, m_nodes.back());
     m_nodes.pop_back();
@@ -103,31 +103,32 @@ inline bool QueryParser::onPathEnd (const char * eptr) {
 }
 
 //===========================================================================
-inline bool QueryParser::onPathSegStart (const char * ptr) {
+inline bool QueryParser::onPathSegStart () {
     auto seg = addSeg(m_query, m_nodes.back());
     m_nodes.push_back(seg);
     return true;
 }
 
 //===========================================================================
-inline bool QueryParser::onPathSegEnd (const char * eptr) {
-    assert(m_nodes.back()->type == Query::kPathSeg);
-    endSeg(m_query, m_nodes.back());
+inline bool QueryParser::onPathSegEnd () {
+    auto i = m_nodes.rbegin();
+    assert((*i)->type == Query::kPathSeg);
+    endSeg(m_query, *i, *(i + 1));
     m_nodes.pop_back();
+    m_pathSeg = true;
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclRangeEndChar (char last) {
-    for (unsigned ch = m_charStart + 1; ch <= (unsigned) last; ++ch)
-        m_chars.set(ch);
+    m_chars.insert(m_charStart + 1, last);
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclSingleChar (char ch) {
     m_charStart = ch;
-    m_chars.set((unsigned) ch);
+    m_chars.insert((unsigned) ch);
     return true;
 }
 
@@ -139,7 +140,8 @@ inline bool QueryParser::onSegBlotEnd () {
 
 //===========================================================================
 inline bool QueryParser::onSegCharListEnd () {
-    addSegChoices(m_query, m_nodes.back(), m_chars);
+    addSegCharChoices(m_query, m_nodes.back(), m_chars);
+    m_chars.clear();
     return true;
 }
 
@@ -160,32 +162,28 @@ inline bool QueryParser::onSegLiteralEnd (const char * eptr) {
 }
 
 //===========================================================================
-inline bool QueryParser::onSegStrListStart () {
-    auto sl = addSegStrChoices(m_query, m_nodes.back());
+inline bool QueryParser::onSslSegsStart () {
+    auto sl = addSegSegChoices(m_query, m_nodes.back());
     m_nodes.push_back(sl);
     return true;
 }
 
 //===========================================================================
-inline bool QueryParser::onSegStrListEnd () {
-    assert(m_nodes.back()->type == Query::kSegStrChoice);
+inline bool QueryParser::onSslSegsEnd () {
+    assert(m_nodes.back()->type == Query::kSegSegChoice);
+    onSslCommaEnd();
     m_nodes.pop_back();
     return true;
 }
 
 //===========================================================================
-inline bool QueryParser::onSegStrValStart (const char * ptr) {
-    m_start = ptr;
-    return true;
-}
-
-//===========================================================================
-inline bool QueryParser::onSegStrValEnd (const char * eptr) {
-    addSegChoice(
-        m_query,
-        m_nodes.back(),
-        std::string_view(m_start, eptr - m_start)
-    );
+inline bool QueryParser::onSslCommaEnd () {
+    if (!m_pathSeg) {
+        onPathSegStart();
+        addSegEmpty(m_query, m_nodes.back());
+        onPathSegEnd();
+    }
+    m_pathSeg = false;
     return true;
 }
 

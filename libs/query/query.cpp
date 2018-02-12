@@ -37,6 +37,8 @@ struct PathNode : Node {
 struct PathSeg : Node {
     List<Node> nodes;
 };
+struct SegEmpty : Node {
+};
 struct SegLiteral : Node {
     string_view val;
 };
@@ -45,10 +47,10 @@ struct SegBlot : Node {
 };
 struct SegCharChoice : Node {
     static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
-    bitset<256> vals;
+    UnsignedSet vals;
 };
-struct SegStrChoice : Node {
-    List<Node> literals;
+struct SegSegChoice : Node {
+    List<Node> segs;
 };
 
 struct NumNode : Node {
@@ -82,29 +84,91 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 *
 ***/
 
-//===========================================================================
-static void appendNode (string * out, const SegStrChoice & node) {
-    vector<string_view> literals;
-    for (auto && sv : node.literals) {
-        literals.push_back(static_cast<const SegLiteral &>(sv).val);
-    }
-    sort(literals.begin(), literals.end());
-    auto it = unique(literals.begin(), literals.end());
-    literals.erase(it, literals.end());
+static void appendNode (string * out, const Node & node);
+static bool operator< (const Node & a, const Node & b);
 
-    if (literals.size() < 2) {
-        if (!literals.empty())
-            out->append(literals.front());
+//===========================================================================
+static bool operator< (const List<Node> & a, const List<Node> & b) {
+    return lexicographical_compare(
+        a.begin(),
+        a.end(),
+        b.begin(),
+        b.end(),
+        [](auto & a, auto & b) { return a < b; }
+    );
+}
+
+//===========================================================================
+static bool operator< (const Node & a, const Node & b) {
+    if (a.type != b.type)
+        return a.type < b.type;
+
+    switch (a.type) {
+    case kPath:
+        return static_cast<const PathNode &>(a).segs
+            < static_cast<const PathNode &>(b).segs;
+    case kPathSeg:
+        return static_cast<const PathSeg &>(a).nodes
+            < static_cast<const PathSeg &>(b).nodes;
+    case kSegEmpty:
+        return false;
+    case kSegLiteral:
+        return static_cast<const SegLiteral &>(a).val
+            < static_cast<const SegLiteral &>(b).val;
+    case kSegBlot:
+        return false;
+    case kSegDoubleBlot:
+        return false;
+    case kSegCharChoice:
+        return static_cast<const SegCharChoice &>(a).vals
+            < static_cast<const SegCharChoice &>(b).vals;
+    case kSegSegChoice:
+        return static_cast<const SegSegChoice &>(a).segs
+            < static_cast<const SegSegChoice &>(b).segs;
+    case kNum:
+        return static_cast<const NumNode &>(a).val
+            < static_cast<const NumNode &>(b).val;
+    case kString:
+        return static_cast<const StringNode &>(a).val
+            < static_cast<const StringNode &>(b).val;
+    case kFunc:
+        {
+            auto & af = static_cast<const FuncNode &>(a);
+            auto & bf = static_cast<const FuncNode &>(b);
+            if (af.func != bf.func)
+                return af.func < bf.func;
+            return af.args < bf.args;
+        }
+    }
+
+    assert(!"Unknown node type");
+    return false;
+}
+
+//===========================================================================
+static void appendNode (string * out, const SegSegChoice & node) {
+    vector<const PathSeg *> segs;
+    for (auto && sn : node.segs) {
+        segs.push_back(static_cast<const PathSeg *>(&sn));
+    }
+    auto cmp = [](auto & a, auto & b) { return *a < *b; };
+    sort(segs.begin(), segs.end(), cmp);
+    auto it = unique(segs.begin(), segs.end(), not_fn(cmp));
+    segs.erase(it, segs.end());
+
+    if (segs.size() < 2) {
+        if (!segs.empty())
+            appendNode(out, *segs.front());
         return;
     }
 
     out->push_back('{');
-    auto ptr = literals.data();
-    auto eptr = ptr + literals.size();
-    out->append(*ptr++);
+    auto ptr = segs.data();
+    auto eptr = ptr + segs.size();
+    appendNode(out, **ptr++);
     while (ptr != eptr) {
         out->push_back(',');
-        out->append(*ptr++);
+        appendNode(out, **ptr++);
     }
     out->push_back('}');
 }
@@ -127,6 +191,8 @@ static void appendNode (string * out, const Node & node) {
         for (auto && sn : static_cast<const PathSeg &>(node).nodes)
             appendNode(out, sn);
         break;
+    case kSegEmpty:
+        break;
     case kSegLiteral:
         out->append(static_cast<const SegLiteral &>(node).val);
         break;
@@ -137,18 +203,13 @@ static void appendNode (string * out, const Node & node) {
         out->append("**");
         break;
     case kSegCharChoice:
-        {
-            auto & vals = static_cast<const SegCharChoice &>(node).vals;
-            out->push_back('[');
-            for (unsigned i = 0; i < 256; ++i) {
-                if (vals.test(i))
-                    out->push_back((unsigned char) i);
-            }
-            out->push_back(']');
-        }
+        out->push_back('[');
+        for (auto && i : static_cast<const SegCharChoice &>(node).vals)
+            out->push_back((unsigned char) i);
+        out->push_back(']');
         break;
-    case kSegStrChoice:
-        appendNode(out, static_cast<const SegStrChoice &>(node));
+    case kSegSegChoice:
+        appendNode(out, static_cast<const SegSegChoice &>(node));
         break;
     case kNum:
         out->append(StrFrom<double>(static_cast<const NumNode &>(node).val));
@@ -241,7 +302,7 @@ void endPath(QueryInfo * qi, Node * node) {
 
 //===========================================================================
 Node * addSeg(QueryInfo * qi, Node * node) {
-    assert(node->type == kPath);
+    assert(node->type == kPath || node->type == kSegSegChoice);
     auto path = static_cast<PathNode *>(node);
     path->segs.link(qi->heap.emplace<PathSeg>());
     auto seg = path->segs.back();
@@ -250,16 +311,27 @@ Node * addSeg(QueryInfo * qi, Node * node) {
 }
 
 //===========================================================================
-void endSeg(QueryInfo * qi, Node * node) {
+void endSeg(QueryInfo * qi, Node * node, Node * parent) {
     assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    if (seg->nodes.size() == 1
+    if (parent->type == kPath
+        && seg->nodes.size() == 1
         && seg->nodes.front()->type == kSegBlot
     ) {
         auto sn = static_cast<SegBlot *>(seg->nodes.front());
         if (sn->count == 2)
             sn->type = kSegDoubleBlot;
     }
+}
+
+//===========================================================================
+Node * addSegEmpty(QueryInfo * qi, Node * node) {
+    assert(node->type == kPathSeg);
+    auto seg = static_cast<PathSeg *>(node);
+    seg->nodes.link(qi->heap.emplace<SegEmpty>());
+    auto sn = static_cast<SegEmpty *>(seg->nodes.back());
+    sn->type = kSegEmpty;
+    return sn;
 }
 
 //===========================================================================
@@ -295,58 +367,36 @@ Node * addSegBlot(QueryInfo * qi, Node * node) {
 }
 
 //===========================================================================
-Node * addSegChoices(
+Node * addSegCharChoices(
     QueryInfo * qi,
     Node * node,
-    bitset<256> & vals
+    UnsignedSet & vals
 ) {
     assert(node->type == kPathSeg);
-    if (auto cnt = vals.count(); cnt < 2) {
+    if (auto cnt = vals.size(); cnt < 2) {
         if (!cnt)
             return nullptr;
-        for (unsigned i = 0; i < vals.size(); ++i) {
-            if (vals.test(i)) {
-                vals.reset(i);
-                char * lit = qi->heap.alloc(1, 1);
-                *lit = (unsigned char) i;
-                return addSegLiteral(qi, node, string_view{lit, 1});
-            }
-        }
+        char * lit = qi->heap.alloc(1, 1);
+        *lit = (unsigned char) *vals.begin();
+        return addSegLiteral(qi, node, string_view{lit, 1});
     }
     auto seg = static_cast<PathSeg *>(node);
     qi->type = kCondition;
     seg->nodes.link(qi->heap.emplace<SegCharChoice>());
     auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
     sn->type = kSegCharChoice;
-    swap(sn->vals, vals);
+    sn->vals.swap(vals);
     return sn;
 }
 
 //===========================================================================
-Node * addSegStrChoices(QueryInfo * qi, Node * node) {
+Node * addSegSegChoices(QueryInfo * qi, Node * node) {
     assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    seg->nodes.link(qi->heap.emplace<SegStrChoice>());
+    seg->nodes.link(qi->heap.emplace<SegSegChoice>());
     auto sn = seg->nodes.back();
-    sn->type = kSegStrChoice;
+    sn->type = kSegSegChoice;
     return sn;
-}
-
-//===========================================================================
-Node * addSegChoice(
-    QueryInfo * qi,
-    Node * node,
-    std::string_view val
-) {
-    assert(node->type == kSegStrChoice);
-    auto sn = static_cast<SegStrChoice *>(node);
-    if (!sn->literals.empty())
-        qi->type = kCondition;
-    sn->literals.link(qi->heap.emplace<SegLiteral>());
-    auto sv = static_cast<SegLiteral *>(sn->literals.back());
-    sv->type = kSegLiteral;
-    sv->val = val;
-    return sv;
 }
 
 //===========================================================================
@@ -494,32 +544,36 @@ void Query::getPathSegments(
 
 //===========================================================================
 static MatchResult matchSegment(
+    size_t * unused,
     const List<Node> & nodes,
     const Node * node,
     string_view val
 ) {
-    if (!node)
-        return val.empty() ? kMatch : kNoMatch;
+    auto type = node ? node->type : kSegEmpty;
 
-    switch (node->type) {
+    switch (type) {
+    case kSegEmpty:
+        *unused = val.size();
+        return val.empty() ? kMatch : kNoCompleteMatch;
+
     case kSegBlot:
         // TODO: early out of val.size() < minimum required length
         for (; !val.empty(); val.remove_prefix(1)) {
-            if (matchSegment(nodes, nodes.next(node), val))
+            if (matchSegment(unused, nodes, nodes.next(node), val) >= kMatch)
                 return kMatch;
         }
-        return matchSegment(nodes, nodes.next(node), val);
+        return matchSegment(unused, nodes, nodes.next(node), val);
 
     case kSegDoubleBlot:
         return kMatchRest;
 
     case kSegCharChoice:
         if (val.empty()
-            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
+            || !static_cast<const SegCharChoice *>(node)->vals.find(val[0])
         ) {
             return kNoMatch;
         }
-        return matchSegment(nodes, nodes.next(node), val.substr(1));
+        return matchSegment(unused, nodes, nodes.next(node), val.substr(1));
 
     case kSegLiteral:
     {
@@ -527,17 +581,28 @@ static MatchResult matchSegment(
         auto len = lit.size();
         if (lit != val.substr(0, len))
             return kNoMatch;
-        return matchSegment(nodes, nodes.next(node), val.substr(len));
+        return matchSegment(unused, nodes, nodes.next(node), val.substr(len));
     }
 
-    case kSegStrChoice:
-        for (auto && sn : static_cast<const SegStrChoice *>(node)->literals) {
-            auto & lit = static_cast<const SegLiteral &>(sn).val;
-            auto len = lit.size();
-            if (lit != val.substr(0, len))
+    case kSegSegChoice:
+        for (auto && sn : static_cast<const SegSegChoice *>(node)->segs) {
+            auto & seg = static_cast<const PathSeg &>(sn);
+            if (kNoMatch == matchSegment(
+                unused,
+                seg.nodes,
+                seg.nodes.front(),
+                val
+            )) {
                 continue;
-            if (matchSegment(nodes, nodes.next(node), val.substr(len)))
+            }
+            if (kNoMatch != matchSegment(
+                unused,
+                nodes,
+                nodes.next(node),
+                val.substr(0, val.size() - *unused)
+            )) {
                 return kMatch;
+            }
         }
         return kNoMatch;
 
@@ -554,7 +619,9 @@ MatchResult Query::matchSegment(
 ) {
     assert(node.type == kPathSeg);
     auto & nodes = static_cast<const PathSeg &>(node).nodes;
-    return ::matchSegment(nodes, nodes.front(), val);
+    size_t unused;
+    auto match = ::matchSegment(&unused, nodes, nodes.front(), val);
+    return (match >= kMatch) ? match : kNoMatch;
 }
 
 //===========================================================================
