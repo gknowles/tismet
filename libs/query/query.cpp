@@ -47,7 +47,7 @@ struct SegBlot : Node {
 };
 struct SegCharChoice : Node {
     static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
-    UnsignedSet vals;
+    bitset<256> vals;
 };
 struct SegSegChoice : Node {
     List<Node> segs;
@@ -96,6 +96,12 @@ static bool operator< (const List<Node> & a, const List<Node> & b) {
         b.end(),
         [](auto & a, auto & b) { return a < b; }
     );
+}
+
+//===========================================================================
+template<size_t N>
+static bool operator< (const bitset<N> & a, const bitset<N> & b) {
+    return memcmp(&a, &b, sizeof(a)) < 0;
 }
 
 //===========================================================================
@@ -203,10 +209,15 @@ static void appendNode (string * out, const Node & node) {
         out->append("**");
         break;
     case kSegCharChoice:
-        out->push_back('[');
-        for (auto && i : static_cast<const SegCharChoice &>(node).vals)
-            out->push_back((unsigned char) i);
-        out->push_back(']');
+        {
+            auto & vals = static_cast<const SegCharChoice &>(node).vals;
+            out->push_back('[');
+            for (auto i = 0; i < vals.size(); ++i) {
+                if (vals.test(i))
+                    out->push_back((unsigned char) i);
+            }
+            out->push_back(']');
+        }
         break;
     case kSegSegChoice:
         appendNode(out, static_cast<const SegSegChoice &>(node));
@@ -370,22 +381,26 @@ Node * addSegBlot(QueryInfo * qi, Node * node) {
 Node * addSegCharChoices(
     QueryInfo * qi,
     Node * node,
-    UnsignedSet & vals
+    bitset<256> & vals
 ) {
     assert(node->type == kPathSeg);
-    if (auto cnt = vals.size(); cnt < 2) {
+    if (auto cnt = vals.count(); cnt < 2) {
         if (!cnt)
             return nullptr;
         char * lit = qi->heap.alloc(1, 1);
-        *lit = (unsigned char) *vals.begin();
-        return addSegLiteral(qi, node, string_view{lit, 1});
+        for (int i = 0; i < vals.size(); ++i) {
+            if (vals.test(i)) {
+                *lit = (unsigned char) i;
+                return addSegLiteral(qi, node, string_view{lit, 1});
+            }
+        }
     }
     auto seg = static_cast<PathSeg *>(node);
     qi->type = kCondition;
     seg->nodes.link(qi->heap.emplace<SegCharChoice>());
     auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
     sn->type = kSegCharChoice;
-    sn->vals.swap(vals);
+    swap(sn->vals, vals);
     return sn;
 }
 
@@ -569,7 +584,7 @@ static MatchResult matchSegment(
 
     case kSegCharChoice:
         if (val.empty()
-            || !static_cast<const SegCharChoice *>(node)->vals.find(val[0])
+            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
         ) {
             return kNoMatch;
         }

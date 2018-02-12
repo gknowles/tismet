@@ -121,14 +121,15 @@ inline bool QueryParser::onPathSegEnd () {
 
 //===========================================================================
 inline bool QueryParser::onSclRangeEndChar (char last) {
-    m_chars.insert(m_charStart + 1, last);
+    for (unsigned i = m_charStart + 1; i <= (unsigned) last; ++i)
+        m_chars.set(i);
     return true;
 }
 
 //===========================================================================
 inline bool QueryParser::onSclSingleChar (char ch) {
     m_charStart = ch;
-    m_chars.insert((unsigned) ch);
+    m_chars.set((unsigned) ch);
     return true;
 }
 
@@ -141,7 +142,7 @@ inline bool QueryParser::onSegBlotEnd () {
 //===========================================================================
 inline bool QueryParser::onSegCharListEnd () {
     addSegCharChoices(m_query, m_nodes.back(), m_chars);
-    m_chars.clear();
+    m_chars.reset();
     return true;
 }
 

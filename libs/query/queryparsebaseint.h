@@ -32,7 +32,7 @@ struct QueryParserBase {
     int m_exp{0};
 
     unsigned char m_charStart{0};
-    Dim::UnsignedSet m_chars;
+    std::bitset<256> m_chars;
 
     // Functions
     QueryParserBase(Query::QueryInfo * qry) : m_query{qry} {}

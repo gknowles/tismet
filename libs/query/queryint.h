@@ -36,7 +36,7 @@ Query::Node * addSegBlot(Query::QueryInfo * qi, Query::Node * seg);
 Query::Node * addSegCharChoices(
     Query::QueryInfo * qi,
     Query::Node * seg,
-    Dim::UnsignedSet & vals
+    std::bitset<256> & vals
 );
 Query::Node * addSegSegChoices(Query::QueryInfo * qi, Query::Node * seg);
 Query::Node * addFunc(Query::QueryInfo * qi, Query::Function::Type type);
