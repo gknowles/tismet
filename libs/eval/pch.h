@@ -25,6 +25,7 @@
 #include <mutex>
 #include <queue>
 #include <set>
+#include <shared_mutex>
 #include <unordered_map>
 
 // Platform headers

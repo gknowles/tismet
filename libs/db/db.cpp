@@ -63,7 +63,7 @@ public:
     );
 
     const char * getMetricName(uint32_t id) const;
-    void getMetricInfo(IDbDataNotify * notify, uint32_t id) const;
+    bool getMetricInfo(IDbDataNotify * notify, uint32_t id) const;
 
     bool findMetric(uint32_t * out, string_view name) const;
     void findMetrics(UnsignedSet * out, string_view pattern) const;
@@ -72,7 +72,7 @@ public:
     void findBranches(UnsignedSet * out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, double value);
-    void getSamples(
+    bool getSamples(
         IDbDataNotify * notify,
         uint32_t id,
         TimePoint first,
@@ -80,7 +80,8 @@ public:
     );
 
 private:
-    void transact(uint32_t id, DbReq && req);
+    // Returns true if it completed synchronously
+    bool transact(uint32_t id, DbReq && req);
     void apply(uint32_t id, DbReq && req);
 
     // Inherited via IDbDataNotify
@@ -399,12 +400,12 @@ void DbBase::apply(uint32_t id, DbReq && req) {
 }
 
 //===========================================================================
-void DbBase::transact(uint32_t id, DbReq && req) {
+bool DbBase::transact(uint32_t id, DbReq && req) {
     unique_lock<mutex> lk{m_dataMut};
     auto & reqs = m_requests[id];
     reqs.push_back(move(req));
     if (reqs.size() != 1)
-        return;
+        return false;
 
     while (!reqs.empty()) {
         req = move(reqs.front());
@@ -414,6 +415,7 @@ void DbBase::transact(uint32_t id, DbReq && req) {
         reqs.pop_front();
     }
     m_requests.erase(id);
+    return true;
 }
 
 
@@ -488,12 +490,12 @@ const char * DbBase::getMetricName(uint32_t id) const {
 }
 
 //===========================================================================
-void DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
+bool DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
     auto self = const_cast<DbBase *>(this);
     DbReq req;
     req.type = kGetMetric;
     req.notify = notify;
-    self->transact(id, move(req));
+    return self->transact(id, move(req));
 }
 
 //===========================================================================
@@ -537,7 +539,7 @@ void DbBase::updateSample(uint32_t id, TimePoint time, double value) {
 }
 
 //===========================================================================
-void DbBase::getSamples(
+bool DbBase::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
@@ -548,7 +550,7 @@ void DbBase::getSamples(
     req.notify = notify;
     req.first = first;
     req.last = last;
-    transact(id, move(req));
+    return transact(id, move(req));
 }
 
 
@@ -657,8 +659,8 @@ const char * dbGetMetricName(DbHandle h, uint32_t id) {
 }
 
 //===========================================================================
-void dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id) {
-    db(h)->getMetricInfo(notify, id);
+bool dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id) {
+    return db(h)->getMetricInfo(notify, id);
 }
 
 //===========================================================================
@@ -692,12 +694,12 @@ void dbUpdateSample(
 }
 
 //===========================================================================
-void dbGetSamples(
+bool dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,
     TimePoint first,
     TimePoint last
 ) {
-    db(h)->getSamples(notify, id, first, last);
+    return db(h)->getSamples(notify, id, first, last);
 }

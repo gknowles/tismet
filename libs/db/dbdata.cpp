@@ -1094,7 +1094,7 @@ void DbData::getSamples(
                         if (!notify->onDbSeriesStart(dsi))
                             return;
                     }
-                    if (!notify->onDbSample(first, value))
+                    if (!notify->onDbSample(id, first, value))
                         return;
                 }
             }

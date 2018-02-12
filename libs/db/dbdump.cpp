@@ -31,7 +31,7 @@ public:
     explicit DumpWriter(ostream & os, DbProgressInfo & info);
 
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(TimePoint time, double val) override;
+    bool onDbSample(uint32_t id, TimePoint time, double val) override;
 
 private:
     string_view m_name;
@@ -55,7 +55,7 @@ bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
 }
 
 //===========================================================================
-bool DumpWriter::onDbSample(TimePoint time, double val) {
+bool DumpWriter::onDbSample(uint32_t id, TimePoint time, double val) {
     m_buf.clear();
     carbonWrite(m_buf, m_name, time, val);
     m_os << m_buf;

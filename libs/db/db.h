@@ -93,7 +93,8 @@ void dbFindMetrics(
 );
 const char * dbGetMetricName(DbHandle h, uint32_t id);
 
-void dbGetMetricInfo(
+// Returns true if it completed synchronously
+bool dbGetMetricInfo(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id
@@ -159,9 +160,14 @@ struct IDbDataNotify {
 
     // Called for each matching sample, return false to abort the enum,
     // otherwise it continues to the next sample.
-    virtual bool onDbSample(Dim::TimePoint time, double value) { return false; }
+    virtual bool onDbSample(
+        uint32_t id,
+        Dim::TimePoint time,
+        double value
+    ) { return false; }
 };
-void dbGetSamples(
+// Returns true if it completed synchronously
+bool dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id,

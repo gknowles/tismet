@@ -66,7 +66,6 @@ protected:
     virtual Apply onResultTask(ResultInfo & info);
 
     void stopSources();
-    void addResult(const ResultInfo & info);
 
     mutex m_resMut;
     deque<ResultInfo> m_results;
@@ -80,6 +79,29 @@ struct ResultRange {
     Duration minInterval;
 };
 
+class SampleReader : public IDbDataNotify {
+public:
+    SampleReader(SourceNode * node);
+    void read(shared_ptr<char[]> target, TimePoint first, TimePoint last);
+
+private:
+    void readMore();
+
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSample(uint32_t id, TimePoint time, double value) override;
+    void onDbSeriesEnd(uint32_t id) override;
+
+    SourceNode & m_node;
+    thread::id m_tid;
+    ResultInfo m_result;
+    TimePoint m_first;
+    TimePoint m_last;
+    UnsignedSet m_unfinished;
+
+    size_t m_pos{0};
+    TimePoint m_time;
+};
+
 class SourceNode : public ITaskNotify {
 public:
     struct OutputRangeResult {
@@ -89,6 +111,8 @@ public:
     };
 
 public:
+    SourceNode();
+
     bool outputRange(TimePoint * first, TimePoint * last) const;
 
     // Returns false when !info.more
@@ -102,24 +126,9 @@ public:
 
     mutable mutex m_outMut;
     vector<ResultRange> m_outputs;
-};
-
-class SampleReader : public IDbDataNotify {
-public:
-    SampleReader(SourceNode * node);
-
-    shared_ptr<char[]> m_name;
-    shared_ptr<SampleList> m_samples;
 
 private:
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(TimePoint time, double value) override;
-
-    UnsignedSet m_done;
-    SourceNode & m_node;
-    size_t m_pos{0};
-    TimePoint m_time;
-    Duration m_interval;
+    SampleReader m_reader;
 };
 
 struct FuncArg {
@@ -185,6 +194,7 @@ class FuncTimeShift : public FuncNode {
 
 class Evaluate : public ResultNode, public ListBaseLink<> {
 public:
+    Evaluate();
     ~Evaluate();
 
     void onResult(int resultId, const ResultInfo & info) override;
@@ -210,6 +220,8 @@ public:
 ***/
 
 static DbHandle s_db;
+
+static shared_mutex s_mut;
 static unordered_map<string_view, shared_ptr<SourceNode>> s_sources;
 static List<Evaluate> s_execs;
 
@@ -352,8 +364,10 @@ static shared_ptr<SourceNode> addSource(
 
 //===========================================================================
 static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
+    shared_lock<shared_mutex> lk{s_mut};
     if (auto si = s_sources.find(srcv); si != s_sources.end())
         return addSource(rn, si->second);
+    lk.unlock();
 
     auto src = toSharedString(srcv);
     Query::QueryInfo qi;
@@ -364,7 +378,10 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     if (type == Query::kPath) {
         auto sn = make_shared<SourceNode>();
         sn->m_source = src;
-        s_sources[src.get()] = sn;
+        {
+            scoped_lock<shared_mutex> lk{s_mut};
+            s_sources[src.get()] = sn;
+        }
         return addSource(rn, sn);
     }
 
@@ -410,7 +427,10 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     }
     fnode->m_source = src;
     fnode->m_type = qf.type;
-    s_sources[src.get()] = fnode;
+    {
+        scoped_lock<shared_mutex> lk{s_mut};
+        s_sources[src.get()] = fnode;
+    }
     ResultInfo info;
     info.target = src;
     for (auto && arg : qf.args) {
@@ -469,6 +489,11 @@ static shared_ptr<SampleList> copySampleList(const SampleList & samples) {
 *   SourceNode
 *
 ***/
+
+//===========================================================================
+SourceNode::SourceNode()
+    : m_reader(this)
+{}
 
 //===========================================================================
 bool SourceNode::outputRange(TimePoint * first, TimePoint * last) const {
@@ -535,6 +560,7 @@ static shared_ptr<SampleList> consolidateAvg(
         }
     }
     *optr++ = (nans == num) ? NAN : sum / (num - nans);
+    assert(optr == out->samples + out->count);
     return out;
 }
 
@@ -593,38 +619,7 @@ void SourceNode::onTask() {
     if (!outputRange(&first, &last))
         return;
 
-    UnsignedSet ids;
-    dbFindMetrics(&ids, s_db, m_source.get());
-    ResultInfo info;
-    info.target = m_source;
-    if (ids.empty()) {
-        outputResult(info);
-        return;
-    }
-
-    SampleReader reader(this);
-    auto i = ids.begin(),
-        ei = ids.end();
-    UnsignedSet done;
-    for (;;) {
-        auto id = *i;
-        bool more = (++i != ei);
-        if (!done.insert(id)) {
-            if (more)
-                continue;
-            info.more = more;
-            info.name = {};
-            info.samples = {};
-        } else {
-            dbGetSamples(&reader, s_db, id, first, last);
-            info.more = more;
-            info.name = reader.m_name;
-            info.samples = reader.m_samples;
-        }
-
-        if (!outputResult(info))
-            return;
-    }
+    m_reader.read(m_source, first, last);
 }
 
 
@@ -640,27 +635,85 @@ SampleReader::SampleReader(SourceNode * node)
 {}
 
 //===========================================================================
+void SampleReader::read(
+    shared_ptr<char[]> target,
+    TimePoint first,
+    TimePoint last
+) {
+    assert(m_unfinished.empty());
+    m_result = {};
+    m_result.target = target;
+    m_first = first;
+    m_last = last;
+    dbFindMetrics(&m_unfinished, s_db, target.get());
+    if (m_unfinished.empty()) {
+        m_node.outputResult(m_result);
+        return;
+    }
+    readMore();
+}
+
+//===========================================================================
+void SampleReader::readMore() {
+    m_tid = this_thread::get_id();
+    for (;;) {
+        auto id = m_unfinished.pop_front();
+        if (!dbGetSamples(this, s_db, id, m_first, m_last))
+            return;
+        if (m_unfinished.empty())
+            break;
+    }
+    m_tid = {};
+}
+
+//===========================================================================
 bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
     auto count = (info.last - info.first) / info.interval;
     if (!count)
         return false;
-    m_name = toSharedString(info.name);
-    m_samples = allocSampleList(info.first, info.interval, count);
-    m_samples->metricId = info.id;
+    m_result.name = toSharedString(info.name);
+    m_result.samples = allocSampleList(info.first, info.interval, count);
+    m_result.samples->metricId = info.id;
     m_pos = 0;
     m_time = info.first;
-    m_interval = info.interval;
     return true;
 }
 
 //===========================================================================
-bool SampleReader::onDbSample(TimePoint time, double value) {
-    for (; m_time < time; m_time += m_interval, ++m_pos)
-        m_samples->samples[m_pos] = NAN;
-    m_samples->samples[m_pos] = value;
-    m_time += m_interval;
+bool SampleReader::onDbSample(uint32_t id, TimePoint time, double value) {
+    auto samples = m_result.samples->samples;
+    auto interval = m_result.samples->interval;
+    for (; m_time < time; m_time += interval, ++m_pos)
+        samples[m_pos] = NAN;
+    samples[m_pos] = value;
+    m_time += interval;
     m_pos += 1;
     return true;
+}
+
+//===========================================================================
+void SampleReader::onDbSeriesEnd(uint32_t id) {
+    if (m_result.samples) {
+        auto samples = m_result.samples->samples;
+        auto interval = m_result.samples->interval;
+        auto count = m_result.samples->count;
+        auto last = m_result.samples->first + count * interval;
+        for (; m_time < last; m_time += interval, ++m_pos)
+            samples[m_pos] = NAN;
+        assert(m_pos == count);
+    }
+
+    m_result.more = !m_unfinished.empty();
+    auto more = m_node.outputResult(m_result);
+    m_result.name = {};
+    m_result.samples = {};
+    if (!more) {
+        m_unfinished.clear();
+        return;
+    }
+
+    if (m_tid != this_thread::get_id())
+        readMore();
 }
 
 
@@ -682,16 +735,11 @@ void ResultNode::stopSources() {
 }
 
 //===========================================================================
-void ResultNode::addResult(const ResultInfo & info) {
+void ResultNode::onResult(int resultId, const ResultInfo & info) {
     scoped_lock<mutex> lk{m_resMut};
     m_results.push_back(info);
     if (m_results.size() == 1)
         taskPushCompute(this);
-}
-
-//===========================================================================
-void ResultNode::onResult(int resultId, const ResultInfo & info) {
-    addResult(info);
 }
 
 //===========================================================================
@@ -910,6 +958,7 @@ FuncNode::Apply FuncDerivative::onFuncApply(ResultInfo & info) {
     for (; ptr != eptr; ++ptr) {
         *optr++ = ptr[1] - ptr[0];
     }
+    assert(optr == out->samples + out->count);
     info.samples = out;
     return Apply::kForward;
 }
@@ -946,6 +995,7 @@ FuncNode::Apply FuncNonNegativeDerivative::onFuncApply(ResultInfo & info) {
             prev = next;
         }
     }
+    assert(optr == out->samples + out->count);
     info.samples = out;
     return Apply::kForward;
 }
@@ -970,6 +1020,7 @@ FuncNode::Apply FuncScale::onFuncApply(ResultInfo & info) {
     for (; ptr != eptr; ++ptr) {
         *optr++ = *ptr * factor;
     }
+    assert(optr == out->samples + out->count);
     info.samples = out;
     return Apply::kForward;
 }
@@ -1066,7 +1117,7 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
     if (found) {
         if (m_best.size() < allowed) {
             m_best.emplace(best, info);
-        } else if (auto i = m_best.begin();  i->first < best) {
+        } else if (auto i = m_best.begin();  best > i->first) {
             m_best.erase(i);
             m_best.emplace(best, info);
         }
@@ -1125,6 +1176,7 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
                     tmp->samples[pos] = m_samples->samples[spos];
                 for (; first < last; first += interval, ++pos)
                     tmp->samples[pos] = NAN;
+                assert(pos == (int) tmp->count);
                 m_samples = tmp;
                 slast = first;
                 first = m_samples->first;
@@ -1141,6 +1193,7 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
                     sval += ival;
                 }
             }
+            assert(pos <= m_samples->count);
         } else {
             // TODO: normalize and consolidate incompatible lists
             logMsgError() << "summing incompatible series";
@@ -1166,8 +1219,17 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
 ***/
 
 //===========================================================================
+Evaluate::Evaluate() {
+    unique_lock<shared_mutex> lk{s_mut};
+    s_execs.link(this);
+}
+
+//===========================================================================
 Evaluate::~Evaluate() {
     dbCloseContext(m_ctx);
+
+    unique_lock<shared_mutex> lk{s_mut};
+    s_execs.unlink(this);
 }
 
 //===========================================================================
@@ -1214,13 +1276,13 @@ FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
             return Apply::kDestroy;
         }
         auto samp = info.samples->samples;
-        for (; first < last; first += info.samples->interval, ++samp) {
-            if (!m_notify->onDbSample(first, *samp)) {
+        for (; first < last; first += dsi.interval, ++samp) {
+            if (!m_notify->onDbSample(dsi.id, first, *samp)) {
                 m_notify->onEvalEnd();
                 return Apply::kDestroy;
             }
         }
-        m_notify->onDbSeriesEnd(info.samples->metricId);
+        m_notify->onDbSeriesEnd(dsi.id);
     }
     if (info.more)
         return Apply::kSkip;
@@ -1248,6 +1310,7 @@ static ShutdownNotify s_cleanup;
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
+    shared_lock<shared_mutex> lk{s_mut};
     assert(s_execs.empty());
 }
 
@@ -1273,7 +1336,6 @@ void evalAdd(
     size_t maxPoints
 ) {
     auto ex = new Evaluate;
-    s_execs.link(ex);
     ex->m_notify = notify;
     ex->m_ctx = dbOpenContext(s_db);
     ex->m_unfinished = (int) targets.size();

@@ -297,7 +297,7 @@ public:
 
 private:
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(TimePoint time, double value) override;
+    bool onDbSample(uint32_t id, TimePoint time, double value) override;
 
     unsigned m_reqId{0};
     bool m_started{false};
@@ -315,7 +315,7 @@ public:
 
 private:
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(TimePoint time, double value) override;
+    bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
     void onEvalEnd() override;
     void onEvalError(std::string_view errmsg) override;
@@ -437,7 +437,7 @@ bool RenderJson::onDbSeriesStart(const DbSeriesInfo & info) {
 }
 
 //===========================================================================
-bool RenderJson::onDbSample(TimePoint time, double value) {
+bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
     m_bld.array();
     if (isnan(value)) {
         m_bld.value(nullptr);
@@ -537,7 +537,11 @@ bool RenderAlternativeStorage::onDbSeriesStart(const DbSeriesInfo & info) {
 }
 
 //===========================================================================
-bool RenderAlternativeStorage::onDbSample(TimePoint time, double value) {
+bool RenderAlternativeStorage::onDbSample(
+    uint32_t id,
+    TimePoint time,
+    double value
+) {
     auto count = size_t{1};
     if (time != m_prevTime + m_interval)
         count = (time - m_prevTime) / m_interval;
