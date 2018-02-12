@@ -142,7 +142,7 @@ private:
     uint64_t m_flushLsn{0};
     Dim::TaskProxy m_flushTask;
 
-    DbWriteView m_vdata;
+    DbReadView m_vdata;
     Dim::FileHandle m_fdata;
     DbWriteView m_vwork;
     Dim::FileHandle m_fwork;
