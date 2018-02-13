@@ -69,7 +69,7 @@ private:
     UnsignedSetWithCount m_ids;
 
     Dim::UnsignedSet m_unusedIds;
-    uint64_t m_instance;
+    uint64_t m_instance{0};
     struct InstanceInfo {
         int refCount{0};
         Dim::UnsignedSet ids;

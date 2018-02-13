@@ -37,7 +37,6 @@ static void findTest(
     string_view query,
     string_view result
 ) {
-
     UnsignedSet out;
     index.find(&out, query);
     ostringstream os;
@@ -73,6 +72,20 @@ void Test::onTestRun() {
     int line = 0;
 
     DbIndex index;
+
+    index.clear();
+    index.insert(1, "a");
+    index.insert(2, "b");
+    index.insert(3, "ab");
+    index.insert(4, "ad");
+    index.insert(5, "abc");
+    index.insert(6, "abd");
+    EXPECT_FIND("a{b,c}", "3");
+    EXPECT_FIND("{a,c}b", "3");
+    EXPECT_FIND("{a,b}", "1-2");
+    EXPECT_FIND("{a[bd],b}", "2-4");
+
+    index.clear();
     index.insert(1, "a.z");
     index.insert(2, "a.b.m.z");
     index.insert(3, "a.m.y.z");

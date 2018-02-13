@@ -23,9 +23,17 @@ DbIndex::~DbIndex() {
 
 //===========================================================================
 void DbIndex::clear() {
+    m_nextBranchId = 0;
+    m_branchErasures = false;
+    m_idNames.clear();
     m_metricIds.clear();
     m_ids.uset.clear();
     m_ids.count = 0;
+
+    m_unusedIds.clear();
+    m_instance = 0;
+    m_reservedIds.clear();
+
     m_lenIds.clear();
     m_segIds.clear();
     for (auto && sn : m_segNames) {
@@ -33,8 +41,8 @@ void DbIndex::clear() {
             delete[] kv.second;
         }
     }
-    m_nextBranchId = 0;
-    m_branchErasures = false;
+    m_segNames.clear();
+    m_tmpSegs.clear();
 }
 
 //===========================================================================

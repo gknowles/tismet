@@ -84,7 +84,6 @@ const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
 *
 ***/
 
-static void appendNode (string * out, const Node & node);
 static bool operator< (const Node & a, const Node & b);
 
 //===========================================================================
@@ -149,104 +148,6 @@ static bool operator< (const Node & a, const Node & b) {
 
     assert(!"Unknown node type");
     return false;
-}
-
-//===========================================================================
-static void appendNode (string * out, const SegSegChoice & node) {
-    vector<const PathSeg *> segs;
-    for (auto && sn : node.segs) {
-        segs.push_back(static_cast<const PathSeg *>(&sn));
-    }
-    auto cmp = [](auto & a, auto & b) { return *a < *b; };
-    sort(segs.begin(), segs.end(), cmp);
-    auto it = unique(segs.begin(), segs.end(), not_fn(cmp));
-    segs.erase(it, segs.end());
-
-    if (segs.size() < 2) {
-        if (!segs.empty())
-            appendNode(out, *segs.front());
-        return;
-    }
-
-    out->push_back('{');
-    auto ptr = segs.data();
-    auto eptr = ptr + segs.size();
-    appendNode(out, **ptr++);
-    while (ptr != eptr) {
-        out->push_back(',');
-        appendNode(out, **ptr++);
-    }
-    out->push_back('}');
-}
-
-//===========================================================================
-static void appendNode (string * out, const Node & node) {
-    size_t first = true;
-    switch (node.type) {
-    case kPath:
-        for (auto && seg : static_cast<const PathNode &>(node).segs) {
-            if (first) {
-                first = false;
-            } else {
-                out->push_back('.');
-            }
-            appendNode(out, seg);
-        }
-        break;
-    case kPathSeg:
-        for (auto && sn : static_cast<const PathSeg &>(node).nodes)
-            appendNode(out, sn);
-        break;
-    case kSegEmpty:
-        break;
-    case kSegLiteral:
-        out->append(static_cast<const SegLiteral &>(node).val);
-        break;
-    case kSegBlot:
-        out->push_back('*');
-        break;
-    case kSegDoubleBlot:
-        out->append("**");
-        break;
-    case kSegCharChoice:
-        {
-            auto & vals = static_cast<const SegCharChoice &>(node).vals;
-            out->push_back('[');
-            for (auto i = 0; i < vals.size(); ++i) {
-                if (vals.test(i))
-                    out->push_back((unsigned char) i);
-            }
-            out->push_back(']');
-        }
-        break;
-    case kSegSegChoice:
-        appendNode(out, static_cast<const SegSegChoice &>(node));
-        break;
-    case kNum:
-        out->append(StrFrom<double>(static_cast<const NumNode &>(node).val));
-        break;
-    case kString:
-        out->push_back('"');
-        out->append(static_cast<const StringNode &>(node).val);
-        out->push_back('"');
-        break;
-    case kFunc:
-        out->append(tokenTableGetName(
-            s_funcNameTbl,
-            static_cast<const FuncNode &>(node).func
-        ));
-        out->push_back('(');
-        for (auto && arg : static_cast<const FuncNode &>(node).args) {
-            if (first) {
-                first = false;
-            } else {
-                out->append(", ");
-            }
-            appendNode(out, arg);
-        }
-        out->push_back(')');
-        break;
-    }
 }
 
 
@@ -395,8 +296,9 @@ Node * addSegCharChoices(
             }
         }
     }
-    auto seg = static_cast<PathSeg *>(node);
+
     qi->type = kCondition;
+    auto seg = static_cast<PathSeg *>(node);
     seg->nodes.link(qi->heap.emplace<SegCharChoice>());
     auto sn = static_cast<SegCharChoice *>(seg->nodes.back());
     sn->type = kSegCharChoice;
@@ -407,6 +309,7 @@ Node * addSegCharChoices(
 //===========================================================================
 Node * addSegSegChoices(QueryInfo * qi, Node * node) {
     assert(node->type == kPathSeg);
+    qi->type = kCondition;
     auto seg = static_cast<PathSeg *>(node);
     seg->nodes.link(qi->heap.emplace<SegSegChoice>());
     auto sn = seg->nodes.back();
@@ -482,6 +385,216 @@ Node * addStringArg(
 
 /****************************************************************************
 *
+*   Conversion to string
+*
+***/
+
+static void appendNode (string * out, const Node & node);
+
+//===========================================================================
+static void appendNode (string * out, const SegSegChoice & node) {
+    vector<const PathSeg *> segs;
+    for (auto && sn : node.segs) {
+        segs.push_back(static_cast<const PathSeg *>(&sn));
+    }
+    auto cmp = [](auto & a, auto & b) { return *a < *b; };
+    sort(segs.begin(), segs.end(), cmp);
+    auto it = unique(segs.begin(), segs.end(), not_fn(cmp));
+    segs.erase(it, segs.end());
+
+    if (segs.size() < 2) {
+        if (!segs.empty())
+            appendNode(out, *segs.front());
+        return;
+    }
+
+    out->push_back('{');
+    auto ptr = segs.data();
+    auto eptr = ptr + segs.size();
+    appendNode(out, **ptr++);
+    while (ptr != eptr) {
+        out->push_back(',');
+        appendNode(out, **ptr++);
+    }
+    out->push_back('}');
+}
+
+//===========================================================================
+static void appendNode (string * out, const Node & node) {
+    size_t first = true;
+    switch (node.type) {
+    case kPath:
+        for (auto && seg : static_cast<const PathNode &>(node).segs) {
+            if (first) {
+                first = false;
+            } else {
+                out->push_back('.');
+            }
+            appendNode(out, seg);
+        }
+        break;
+    case kPathSeg:
+        for (auto && sn : static_cast<const PathSeg &>(node).nodes)
+            appendNode(out, sn);
+        break;
+    case kSegEmpty:
+        break;
+    case kSegLiteral:
+        out->append(static_cast<const SegLiteral &>(node).val);
+        break;
+    case kSegBlot:
+        out->push_back('*');
+        break;
+    case kSegDoubleBlot:
+        out->append("**");
+        break;
+    case kSegCharChoice:
+        {
+            auto & vals = static_cast<const SegCharChoice &>(node).vals;
+            out->push_back('[');
+            for (auto i = 0; i < vals.size(); ++i) {
+                if (vals.test(i))
+                    out->push_back((unsigned char) i);
+            }
+            out->push_back(']');
+        }
+        break;
+    case kSegSegChoice:
+        appendNode(out, static_cast<const SegSegChoice &>(node));
+        break;
+    case kNum:
+        out->append(StrFrom<double>(static_cast<const NumNode &>(node).val));
+        break;
+    case kString:
+        out->push_back('"');
+        out->append(static_cast<const StringNode &>(node).val);
+        out->push_back('"');
+        break;
+    case kFunc:
+        out->append(tokenTableGetName(
+            s_funcNameTbl,
+            static_cast<const FuncNode &>(node).func
+        ));
+        out->push_back('(');
+        for (auto && arg : static_cast<const FuncNode &>(node).args) {
+            if (first) {
+                first = false;
+            } else {
+                out->append(", ");
+            }
+            appendNode(out, arg);
+        }
+        out->push_back(')');
+        break;
+    }
+}
+
+//===========================================================================
+string Query::toString(const Node & node) {
+    string out;
+    appendNode(&out, node);
+    return out;
+}
+
+
+/****************************************************************************
+*
+*   Matching
+*
+***/
+
+static MatchResult matchSegment(
+    const List<Node> & nodes,
+    const Node * node,
+    string_view val
+);
+
+//===========================================================================
+static MatchResult matchSegment(
+    const List<Node> & nodes,
+    const SegSegChoice * node,
+    string_view val
+) {
+    auto & segs = node->segs;
+    // TODO: stop at minimum required length of the following string
+    for (int i = 0; i <= val.size(); ++i) {
+        for (auto && sn : segs) {
+            auto & seg = static_cast<const PathSeg &>(sn);
+            if (!matchSegment(seg.nodes, seg.nodes.front(), val.substr(0, i)))
+                continue;
+            if (matchSegment(nodes, nodes.next(node), val.substr(i)))
+                return kMatch;
+        }
+    }
+    return kNoMatch;
+}
+
+//===========================================================================
+static MatchResult matchSegment(
+    const List<Node> & nodes,
+    const Node * node,
+    string_view val
+) {
+    auto type = node ? node->type : kSegEmpty;
+
+    switch (type) {
+    case kSegEmpty:
+        return val.empty() ? kMatch : kNoMatch;
+
+    case kSegBlot:
+        // TODO: stop at minimum required length of the following string
+        for (; !val.empty(); val.remove_prefix(1)) {
+            if (matchSegment(nodes, nodes.next(node), val))
+                return kMatch;
+        }
+        return matchSegment(nodes, nodes.next(node), val);
+
+    case kSegDoubleBlot:
+        return kMatchRest;
+
+    case kSegCharChoice:
+        if (val.empty()
+            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
+        ) {
+            return kNoMatch;
+        }
+        return matchSegment(nodes, nodes.next(node), val.substr(1));
+
+    case kSegLiteral:
+    {
+        auto & lit = static_cast<const SegLiteral *>(node)->val;
+        auto len = lit.size();
+        if (lit != val.substr(0, len))
+            return kNoMatch;
+        return matchSegment(nodes, nodes.next(node), val.substr(len));
+    }
+
+    case kSegSegChoice:
+        return matchSegment(
+            nodes,
+            static_cast<const SegSegChoice *>(node),
+            val
+        );
+
+    default:
+        assert(0 && "not a path segment node type");
+        return kNoMatch;
+    }
+}
+
+//===========================================================================
+MatchResult Query::matchSegment(
+    const Node & node,
+    string_view val
+) {
+    assert(node.type == kPathSeg);
+    auto & nodes = static_cast<const PathSeg &>(node).nodes;
+    return ::matchSegment(nodes, nodes.front(), val);
+}
+
+
+/****************************************************************************
+*
 *   Public API
 *
 ***/
@@ -499,8 +612,7 @@ bool Query::parse(QueryInfo & qry, string_view src) {
     assert(qry.node);
 
     // normalize
-    string text;
-    appendNode(&text, *qry.node);
+    string text = toString(*qry.node);
     qry = {};
     qry.text = qry.heap.strdup(text.c_str());
     parser = QueryParser{&qry};
@@ -558,88 +670,6 @@ void Query::getPathSegments(
 }
 
 //===========================================================================
-static MatchResult matchSegment(
-    size_t * unused,
-    const List<Node> & nodes,
-    const Node * node,
-    string_view val
-) {
-    auto type = node ? node->type : kSegEmpty;
-
-    switch (type) {
-    case kSegEmpty:
-        *unused = val.size();
-        return val.empty() ? kMatch : kNoCompleteMatch;
-
-    case kSegBlot:
-        // TODO: early out of val.size() < minimum required length
-        for (; !val.empty(); val.remove_prefix(1)) {
-            if (matchSegment(unused, nodes, nodes.next(node), val) >= kMatch)
-                return kMatch;
-        }
-        return matchSegment(unused, nodes, nodes.next(node), val);
-
-    case kSegDoubleBlot:
-        return kMatchRest;
-
-    case kSegCharChoice:
-        if (val.empty()
-            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
-        ) {
-            return kNoMatch;
-        }
-        return matchSegment(unused, nodes, nodes.next(node), val.substr(1));
-
-    case kSegLiteral:
-    {
-        auto & lit = static_cast<const SegLiteral *>(node)->val;
-        auto len = lit.size();
-        if (lit != val.substr(0, len))
-            return kNoMatch;
-        return matchSegment(unused, nodes, nodes.next(node), val.substr(len));
-    }
-
-    case kSegSegChoice:
-        for (auto && sn : static_cast<const SegSegChoice *>(node)->segs) {
-            auto & seg = static_cast<const PathSeg &>(sn);
-            if (kNoMatch == matchSegment(
-                unused,
-                seg.nodes,
-                seg.nodes.front(),
-                val
-            )) {
-                continue;
-            }
-            if (kNoMatch != matchSegment(
-                unused,
-                nodes,
-                nodes.next(node),
-                val.substr(0, val.size() - *unused)
-            )) {
-                return kMatch;
-            }
-        }
-        return kNoMatch;
-
-    default:
-        assert(0 && "not a path segment node type");
-        return kNoMatch;
-    }
-}
-
-//===========================================================================
-MatchResult Query::matchSegment(
-    const Node & node,
-    string_view val
-) {
-    assert(node.type == kPathSeg);
-    auto & nodes = static_cast<const PathSeg &>(node).nodes;
-    size_t unused;
-    auto match = ::matchSegment(&unused, nodes, nodes.front(), val);
-    return (match >= kMatch) ? match : kNoMatch;
-}
-
-//===========================================================================
 NodeType Query::getType(const Node & node) {
     return node.type;
 }
@@ -684,11 +714,4 @@ const char * Query::getFuncName(
     const char * defVal
 ) {
     return tokenTableGetName(s_funcNameTbl, ftype, defVal);
-}
-
-//===========================================================================
-string Query::toString(const Node & node) {
-    string out;
-    appendNode(&out, node);
-    return out;
 }
