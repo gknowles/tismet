@@ -35,7 +35,7 @@ public:
     uint64_t acquireInstanceRef();
     void releaseInstanceRef(uint64_t instance);
 
-    void insert(uint32_t id, std::string_view name, bool branch = false);
+    void insert(uint32_t id, std::string_view name);
     void erase(std::string_view name);
 
     // A branch is the string consisting of one or more segments prefixing

@@ -74,26 +74,28 @@ void DbIndex::insertBranches(string_view name) {
             return;
         name.remove_suffix(name.size() - pos);
         auto id = m_branchErasures ? nextId() : ++m_nextBranchId;
-        insert(id, name, true);
+        if (auto i = m_metricIds.find(name); i != m_metricIds.end()) {
+            i->second.second += 1;
+        } else {
+            insert(id, name);
+        }
     }
 }
 
 //===========================================================================
-void DbIndex::insert(uint32_t id, string_view name, bool branch) {
-    if (id >= m_idNames.size())
-        m_idNames.resize(id + 1);
+void DbIndex::insert(uint32_t id, string_view name) {
     auto ptr = strDup(name);
     name = string_view{ptr.get(), name.size()};
-    m_idNames[id] = move(ptr);
     auto ib = m_metricIds.insert({name, {id, 1}});
     if (!ib.second) {
-        if (branch) {
-            ib.first->second.second += 1;
-        } else {
-            logMsgCrash() << "Metric multiply defined, " << name;
-        }
+        logMsgCrash() << "Metric multiply defined, " << name;
         return;
     }
+
+    if (id >= m_idNames.size())
+        m_idNames.resize(id + 1);
+    m_idNames[id] = move(ptr);
+
     m_ids.uset.insert(id);
     m_ids.count += 1;
     m_unusedIds.erase(id);
