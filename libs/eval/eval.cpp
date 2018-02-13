@@ -668,9 +668,11 @@ void SampleReader::readMore() {
 
 //===========================================================================
 bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
+    if (!info.type)
+        return true;
     auto count = (info.last - info.first) / info.interval;
     if (!count)
-        return false;
+        return true;
     m_result.name = toSharedString(info.name);
     m_result.samples = allocSampleList(info.first, info.interval, count);
     m_result.samples->metricId = info.id;

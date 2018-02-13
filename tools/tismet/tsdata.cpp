@@ -100,6 +100,9 @@ Duration ExpireTimer::onTimer(TimePoint now) {
 
 //===========================================================================
 bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
+    if (!info.type)
+        return true;
+
     auto now = Clock::now();
     if (now >= info.first + 2 * (info.last - info.first)) {
         s_perfExpired += 1;
