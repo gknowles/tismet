@@ -8,6 +8,7 @@
 using namespace std;
 using namespace std::chrono;
 using namespace Dim;
+using namespace Eval;
 
 
 /****************************************************************************
@@ -17,180 +18,6 @@ using namespace Dim;
 ***/
 
 namespace {
-
-class SourceNode;
-
-struct SourceRange {
-    TimePoint first;
-    TimePoint last;
-
-    TimePoint lastUsed;
-};
-
-struct SampleList {
-    TimePoint first;
-    Duration interval;
-    uint32_t count{0};
-    uint32_t metricId{0};
-
-    // EXTENDS BEYOND END OF STRUCT
-    double samples[1];
-};
-
-struct ResultInfo {
-    shared_ptr<char[]> target;
-    shared_ptr<char[]> name;
-    shared_ptr<SampleList> samples;
-    bool more{false};
-};
-
-class ResultNode : public ITaskNotify {
-public:
-    enum class Apply {
-        kForward,
-        kSkip,
-        kFinished,
-        kDestroy
-    };
-
-public:
-    virtual ~ResultNode();
-
-    virtual void onResult(int resultId, const ResultInfo & info);
-    void onTask() override;
-
-    int m_unfinished{0};
-    vector<shared_ptr<SourceNode>> m_sources;
-
-protected:
-    virtual Apply onResultTask(ResultInfo & info);
-
-    void stopSources();
-
-    mutex m_resMut;
-    deque<ResultInfo> m_results;
-};
-
-struct ResultRange {
-    ResultNode * rn{nullptr};
-    int resultId{0};
-    TimePoint first;
-    TimePoint last;
-    Duration minInterval;
-};
-
-class SampleReader : public IDbDataNotify {
-public:
-    SampleReader(SourceNode * node);
-    void read(shared_ptr<char[]> target, TimePoint first, TimePoint last);
-
-private:
-    void readMore();
-
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(uint32_t id, TimePoint time, double value) override;
-    void onDbSeriesEnd(uint32_t id) override;
-
-    SourceNode & m_node;
-    thread::id m_tid;
-    ResultInfo m_result;
-    TimePoint m_first;
-    TimePoint m_last;
-    UnsignedSet m_unfinished;
-
-    size_t m_pos{0};
-    TimePoint m_time;
-};
-
-class SourceNode : public ITaskNotify {
-public:
-    struct OutputRangeResult {
-        TimePoint first;
-        TimePoint last;
-        bool found;
-    };
-
-public:
-    SourceNode();
-
-    bool outputRange(TimePoint * first, TimePoint * last) const;
-
-    // Returns false when !info.more
-    bool outputResult(const ResultInfo & info);
-
-    virtual void onStart();
-    void onTask() override;
-
-    shared_ptr<char[]> m_source;
-    vector<SourceRange> m_ranges;
-
-    mutable mutex m_outMut;
-    vector<ResultRange> m_outputs;
-
-private:
-    SampleReader m_reader;
-};
-
-struct FuncArg {
-    shared_ptr<char[]> string;
-    double number;
-};
-
-class FuncNode : public ResultNode, public SourceNode {
-public:
-    ~FuncNode ();
-
-    void forwardResult(ResultInfo & info, bool unfinished = false);
-
-    void onStart() override;
-    Apply onResultTask(ResultInfo & info) override;
-    virtual Apply onFuncApply(ResultInfo & info);
-
-    Query::Function::Type m_type;
-    vector<FuncArg> m_args;
-};
-
-class FuncAlias : public FuncNode {
-    void onResult(int resultId, const ResultInfo & info) override;
-};
-
-class FuncDerivative : public FuncNode {
-    Apply onFuncApply(ResultInfo & info) override;
-};
-
-class FuncHighestCurrent : public FuncNode {
-    Apply onResultTask(ResultInfo & info) override;
-    multimap<double, ResultInfo> m_best;
-};
-class FuncHighestMax : public FuncNode {
-    Apply onResultTask(ResultInfo & info) override;
-    multimap<double, ResultInfo> m_best;
-};
-
-class FuncKeepLastValue : public FuncNode {
-    Apply onFuncApply(ResultInfo & info) override;
-};
-
-class FuncMaximumAbove : public FuncNode {
-    void onResult(int resultId, const ResultInfo & info) override;
-};
-
-class FuncNonNegativeDerivative : public FuncNode {
-    Apply onFuncApply(ResultInfo & info) override;
-};
-
-class FuncScale : public FuncNode {
-    Apply onFuncApply(ResultInfo & info) override;
-};
-
-class FuncSum : public FuncNode {
-    Apply onResultTask(ResultInfo & info) override;
-    shared_ptr<SampleList> m_samples;
-};
-
-class FuncTimeShift : public FuncNode {
-    Apply onFuncApply(ResultInfo & info) override;
-};
 
 class Evaluate : public ResultNode, public ListBaseLink<> {
 public:
@@ -224,6 +51,7 @@ static DbHandle s_db;
 static shared_mutex s_mut;
 static unordered_map<string_view, shared_ptr<SourceNode>> s_sources;
 static List<Evaluate> s_execs;
+static IFactory<FuncNode> * s_funcFacts[Query::Function::kFuncTypes];
 
 
 /****************************************************************************
@@ -390,38 +218,9 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     if (!Query::getFunc(&qf, *qi.node))
         return {};
     shared_ptr<FuncNode> fnode;
-    switch (qf.type) {
-    case Query::Function::kAlias:
-        fnode = make_shared<FuncAlias>();
-        break;
-    case Query::Function::kDerivative:
-        fnode = make_shared<FuncDerivative>();
-        break;
-    case Query::Function::kHighestCurrent:
-        fnode = make_shared<FuncHighestCurrent>();
-        break;
-    case Query::Function::kHighestMax:
-        fnode = make_shared<FuncHighestMax>();
-        break;
-    case Query::Function::kKeepLastValue:
-        fnode = make_shared<FuncKeepLastValue>();
-        break;
-    case Query::Function::kMaximumAbove:
-        fnode = make_shared<FuncMaximumAbove>();
-        break;
-    case Query::Function::kNonNegativeDerivative:
-        fnode = make_shared<FuncNonNegativeDerivative>();
-        break;
-    case Query::Function::kScale:
-        fnode = make_shared<FuncScale>();
-        break;
-    case Query::Function::kSum:
-        fnode = make_shared<FuncSum>();
-        break;
-    case Query::Function::kTimeShift:
-        fnode = make_shared<FuncTimeShift>();
-        break;
-    default:
+    if (auto fact = s_funcFacts[qf.type]) {
+        fnode = fact->onFactoryCreate();
+    } else {
         assert(!"Unsupported function");
         return {};
     }
@@ -451,11 +250,21 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
             return {};
         }
     }
+    if (!fnode->onFuncBind())
+        return {};
     return addSource(rn, fnode);
 }
 
+
+/****************************************************************************
+*
+*   SampleList
+*
+***/
+
 //===========================================================================
-static shared_ptr<SampleList> allocSampleList(
+// static
+shared_ptr<SampleList> SampleList::alloc(
     TimePoint first,
     Duration interval,
     size_t count
@@ -468,13 +277,15 @@ static shared_ptr<SampleList> allocSampleList(
 }
 
 //===========================================================================
-static shared_ptr<SampleList> allocSampleList(const SampleList & samples) {
-    return allocSampleList(samples.first, samples.interval, samples.count);
+// static
+shared_ptr<SampleList> SampleList::alloc(const SampleList & samples) {
+    return alloc(samples.first, samples.interval, samples.count);
 }
 
 //===========================================================================
-static shared_ptr<SampleList> copySampleList(const SampleList & samples) {
-    auto out = allocSampleList(samples);
+// static
+shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
+    auto out = alloc(samples);
     memcpy(
         out->samples,
         samples.samples,
@@ -528,7 +339,7 @@ static shared_ptr<SampleList> consolidateAvg(
     first -= first.time_since_epoch() % maxInterval;
     auto skip = (first - samples->first) / baseInterval;
     auto count = samples->count - skip;
-    auto out = allocSampleList(
+    auto out = SampleList::alloc(
         first,
         maxInterval,
         (count + sps - 1) / sps
@@ -674,7 +485,7 @@ bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!count)
         return true;
     m_result.name = toSharedString(info.name);
-    m_result.samples = allocSampleList(info.first, info.interval, count);
+    m_result.samples = SampleList::alloc(info.first, info.interval, count);
     m_result.samples->metricId = info.id;
     m_pos = 0;
     m_time = info.first;
@@ -785,38 +596,6 @@ ResultNode::Apply ResultNode::onResultTask(ResultInfo & info) {
 
 /****************************************************************************
 *
-*   Function helpers
-*
-***/
-
-//===========================================================================
-static shared_ptr<char[]> addFuncName(
-    Query::Function::Type ftype,
-    const shared_ptr<char[]> & prev
-) {
-    auto fname = string_view(Query::getFuncName(ftype, "UNKNOWN"));
-    auto prevLen = strlen(prev.get());
-    auto newLen = prevLen + fname.size() + 2;
-    auto out = shared_ptr<char[]>(new char[newLen + 1]);
-    auto ptr = out.get();
-    memcpy(ptr, fname.data(), fname.size());
-    ptr += fname.size();
-    *ptr++ = '(';
-    memcpy(ptr, prev.get(), prevLen);
-    if (newLen <= 1000) {
-        ptr += prevLen;
-        *ptr++ = ')';
-        *ptr = 0;
-    } else {
-        out[996] = out[997] = out[998] = '.';
-        out[999] = 0;
-    }
-    return out;
-}
-
-
-/****************************************************************************
-*
 *   FuncNode
 *
 ***/
@@ -859,358 +638,14 @@ FuncNode::Apply FuncNode::onResultTask(ResultInfo & info) {
 }
 
 //===========================================================================
+bool FuncNode::onFuncBind() {
+    return true;
+}
+
+//===========================================================================
 FuncNode::Apply FuncNode::onFuncApply(ResultInfo & info) {
     assert(!"onFuncApply not implemented");
     return Apply::kDestroy;
-}
-
-
-/****************************************************************************
-*
-*   FuncAlias
-*
-***/
-
-//===========================================================================
-void FuncAlias::onResult(int resultId, const ResultInfo & info) {
-    ResultInfo out{info};
-    if (out.samples)
-        out.name = m_args[0].string;
-    forwardResult(out, true);
-}
-
-
-/****************************************************************************
-*
-*   FuncMaximumAbove
-*
-***/
-
-//===========================================================================
-void FuncMaximumAbove::onResult(int resultId, const ResultInfo & info) {
-    ResultInfo out{info};
-    if (out.samples) {
-        auto limit = m_args[0].number;
-        auto ptr = info.samples->samples;
-        auto eptr = ptr + info.samples->count;
-        if (find_if(ptr, eptr, [&](auto val){ return val > limit; }) == eptr) {
-            out.name = {};
-            out.samples = {};
-        }
-    }
-    forwardResult(out, true);
-}
-
-
-/****************************************************************************
-*
-*   FuncKeepLastValue
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncKeepLastValue::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto limit = m_args.empty() ? 0 : (int) m_args[0].number;
-    auto base = info.samples->samples;
-    auto eptr = base + info.samples->count;
-    int nans = 0;
-    for (; base != eptr; ++base) {
-        if (!isnan(*base))
-            break;
-    }
-    for (auto ptr = base; ptr != eptr; ++ptr) {
-        if (isnan(*ptr)) {
-            if (!nans++)
-                base = ptr - 1;
-        } else if (nans) {
-            if (!limit || nans <= limit) {
-                auto val = *base++;
-                for (; base != ptr; ++base)
-                    *base = val;
-            }
-            nans = 0;
-        }
-    }
-    if (nans && (!limit || nans <= limit)) {
-        auto val = *base++;
-        for (; base != eptr; ++base)
-            *base = val;
-    }
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncDerivative
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncDerivative::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto out = allocSampleList(*info.samples);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count - 1;
-    *optr++ = NAN;
-    for (; ptr != eptr; ++ptr) {
-        *optr++ = ptr[1] - ptr[0];
-    }
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncNonNegativeDerivative
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncNonNegativeDerivative::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto limit = m_args.empty() ? HUGE_VAL : m_args[0].number;
-
-    auto out = allocSampleList(*info.samples);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count;
-    *optr++ = NAN;
-    auto prev = (double) NAN;
-    for (ptr += 1; ptr != eptr; ++ptr) {
-        if (*ptr > limit) {
-            prev = *optr++ = NAN;
-        } else if (*ptr >= prev) {
-            auto next = *ptr;
-            *optr++ = *ptr - prev;
-            prev = next;
-        } else {
-            auto next = *ptr;
-            *optr++ = *ptr + (limit - prev + 1);
-            prev = next;
-        }
-    }
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncScale
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncScale::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto factor = m_args[0].number;
-
-    auto out = allocSampleList(*info.samples);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count;
-    for (; ptr != eptr; ++ptr) {
-        *optr++ = *ptr * factor;
-    }
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncTimeShift
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncTimeShift::onFuncApply(ResultInfo & info) {
-    auto tmp = string(m_args[0].string.get());
-    if (tmp[0] != '+' && tmp[0] != '-')
-        tmp = "-" + tmp;
-    Duration shift;
-    if (!parse(&shift, tmp.c_str()))
-        return Apply::kFinished;
-
-    info.name = addFuncName(m_type, info.name);
-    info.samples = copySampleList(*info.samples);
-    info.samples->first += shift;
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncHighestCurrent
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncHighestCurrent::onResultTask(ResultInfo & info) {
-    auto allowed = m_args[0].number;
-
-    // last non-NAN sample in list
-    auto best = (double) NAN;
-    if (info.samples) {
-        for (int i = info.samples->count; i-- > 0;) {
-            best = info.samples->samples[i];
-            if (!isnan(best))
-                break;
-        }
-    }
-
-    if (!isnan(best)) {
-        if (m_best.size() < allowed) {
-            m_best.emplace(best, info);
-        } else if (auto i = m_best.begin();  i->first < best) {
-            m_best.erase(i);
-            m_best.emplace(best, info);
-        }
-    }
-    if (!info.more) {
-        for (auto && out : m_best) {
-            out.second.more = true;
-            forwardResult(out.second);
-        }
-        ResultInfo out{};
-        out.target = info.target;
-        forwardResult(out);
-        m_best.clear();
-    }
-    return Apply::kSkip;
-}
-
-
-/****************************************************************************
-*
-*   FuncHighestMax
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
-    auto allowed = m_args[0].number;
-
-    // largest non-NAN sample in list
-    auto best = -numeric_limits<double>::infinity();
-    bool found = false;
-    if (info.samples) {
-        auto ptr = info.samples->samples;
-        auto eptr = ptr + info.samples->count;
-        for (; ptr != eptr; ++ptr) {
-            if (*ptr > best) {
-                best = *ptr;
-                found = true;
-            }
-        }
-    }
-
-    if (found) {
-        if (m_best.size() < allowed) {
-            m_best.emplace(best, info);
-        } else if (auto i = m_best.begin();  best > i->first) {
-            m_best.erase(i);
-            m_best.emplace(best, info);
-        }
-    }
-    if (!info.more) {
-        for (auto i = m_best.rbegin(), ei = m_best.rend(); i != ei; ++i) {
-            i->second.more = true;
-            forwardResult(i->second);
-        }
-        ResultInfo out{};
-        out.target = info.target;
-        forwardResult(out);
-        m_best.clear();
-    }
-    return Apply::kSkip;
-}
-
-
-/****************************************************************************
-*
-*   FuncSum
-*
-***/
-
-//===========================================================================
-FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
-    if (info.samples) {
-        if (!m_samples) {
-            m_samples = copySampleList(*info.samples);
-        } else if (m_samples->interval == info.samples->interval) {
-            auto resize = false;
-            auto interval = m_samples->interval;
-            auto slast = m_samples->first + m_samples->count * interval;
-            auto ilast = info.samples->first + info.samples->count * interval;
-            auto first = m_samples->first;
-            auto last = slast;
-            if (info.samples->first < first) {
-                first = info.samples->first;
-                resize = true;
-            }
-            if (ilast > slast) {
-                last = ilast;
-                resize = true;
-            }
-            if (resize) {
-                auto tmp = allocSampleList(
-                    first,
-                    interval,
-                    (last - first) / interval
-                );
-                auto pos = 0;
-                for (; first < m_samples->first; first += interval, ++pos)
-                    tmp->samples[pos] = NAN;
-                auto spos = 0;
-                for (; first < slast; first += interval, ++pos, ++spos)
-                    tmp->samples[pos] = m_samples->samples[spos];
-                for (; first < last; first += interval, ++pos)
-                    tmp->samples[pos] = NAN;
-                assert(pos == (int) tmp->count);
-                m_samples = tmp;
-                slast = first;
-                first = m_samples->first;
-            }
-            auto ipos = 0;
-            auto pos = (info.samples->first - first) / interval;
-            first = info.samples->first;
-            for (; first < ilast; first += interval, ++pos, ++ipos) {
-                auto & sval = m_samples->samples[pos];
-                auto & ival = info.samples->samples[ipos];
-                if (isnan(sval)) {
-                    sval = ival;
-                } else if (!isnan(ival)) {
-                    sval += ival;
-                }
-            }
-            assert(pos <= m_samples->count);
-        } else {
-            // TODO: normalize and consolidate incompatible lists
-            logMsgError() << "summing incompatible series";
-        }
-    }
-
-    if (!info.more) {
-        ResultInfo out;
-        out.target = info.target;
-        out.name = addFuncName(m_type, info.target);
-        out.samples = move(m_samples);
-        out.more = false;
-        forwardResult(out);
-    }
-    return Apply::kSkip;
 }
 
 
@@ -1319,6 +754,21 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 
 /****************************************************************************
 *
+*   Internal API
+*
+***/
+
+//===========================================================================
+void Eval::registerFunc(
+    Query::Function::Type type,
+    IFactory<FuncNode> * fact
+) {
+    s_funcFacts[type] = fact;
+}
+
+
+/****************************************************************************
+*
 *   Public API
 *
 ***/
@@ -1327,6 +777,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 void evalInitialize(DbHandle f) {
     shutdownMonitor(&s_cleanup);
     s_db = f;
+    initializeFuncs();
 }
 
 //===========================================================================

@@ -18,7 +18,6 @@
 #include <cassert>
 #include <cmath>
 #include <condition_variable>
-#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -31,3 +30,4 @@
 // Platform headers
 // External library internal headers
 // Internal headers
+#include "intern.h"

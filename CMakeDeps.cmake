@@ -29,6 +29,8 @@
 # libs/db/pch.h
 # libs/eval/eval.cpp
 # libs/eval/eval.h
+# libs/eval/evalfuncs.cpp
+# libs/eval/intern.h
 # libs/eval/pch.cpp
 # libs/eval/pch.h
 # libs/query/pch.cpp
