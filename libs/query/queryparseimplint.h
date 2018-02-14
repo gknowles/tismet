@@ -211,52 +211,27 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 *
 ***/
 
-//===========================================================================
-inline bool QueryParser::onFnAliasStart () {
-    return startFunc(Query::Function::kAlias);
-}
+#define FUNC(name) \
+    inline bool QueryParser::onFn ## name ## Start () { \
+        return startFunc(Query::Function::k ## name); \
+    }
 
-//===========================================================================
-inline bool QueryParser::onFnDerivativeStart () {
-    return startFunc(Query::Function::kDerivative);
-}
+FUNC(Alias);
+FUNC(Derivative);
+FUNC(DrawAsInfinite);
+FUNC(HighestCurrent);
+FUNC(HighestMax);
+FUNC(KeepLastValue);
+FUNC(MaximumAbove);
+FUNC(MaxSeries);
+FUNC(MinSeries);
+FUNC(MovingAverage);
+FUNC(NonNegativeDerivative);
+FUNC(RemoveAboveValue);
+FUNC(RemoveBelowValue);
+FUNC(Scale);
+FUNC(ScaleToSeconds);
+FUNC(Sum);
+FUNC(TimeShift);
 
-//===========================================================================
-inline bool QueryParser::onFnHighestCurrentStart () {
-    return startFunc(Query::Function::kHighestCurrent);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnHighestMaxStart () {
-    return startFunc(Query::Function::kHighestMax);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnKeepLastValueStart () {
-    return startFunc(Query::Function::kKeepLastValue);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnMaximumAboveStart () {
-    return startFunc(Query::Function::kMaximumAbove);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnNonNegativeDerivativeStart () {
-    return startFunc(Query::Function::kNonNegativeDerivative);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnScaleStart () {
-    return startFunc(Query::Function::kScale);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnSumStart () {
-    return startFunc(Query::Function::kSum);
-}
-
-//===========================================================================
-inline bool QueryParser::onFnTimeShiftStart () {
-    return startFunc(Query::Function::kTimeShift);
-}
+#undef FUNC

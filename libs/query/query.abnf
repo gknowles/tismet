@@ -83,6 +83,9 @@ fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 func =/ fn-derivative
 fn-derivative = %s"derivative(" arg-query ")" { Start }
 
+func =/ fn-drawAsInfinite
+fn-drawAsInfinite = %s"drawAsInfinite(" arg-query ")" { Start }
+
 func =/ fn-highestCurrent
 fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
 
@@ -95,12 +98,31 @@ fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
 func =/ fn-maximumAbove
 fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
 
+func =/ fn-maxSeries
+fn-maxSeries = %s"maxSeries(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-minSeries
+fn-minSeries = %s"minSeries(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-movingAverage
+fn-movingAverage =
+    %s"movingAverage(" arg-query "," arg-string [ "," arg-num ] ")" { Start }
+
 func =/ fn-nonNegativeDerivative
 fn-nonNegativeDerivative =
     %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
 
+func =/ fn-removeAboveValue
+fn-removeAboveValue = %s"removeAboveValue(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-removeBelowValue
+fn-removeBelowValue = %s"removeBelowValue(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-scale
 fn-scale = %s"scale(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-scaleToSeconds
+fn-scaleToSeconds = %s"scaleToSeconds(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-sum / fn-sumSeries
 fn-sum = (%s"sum") "(" arg-query *( "," arg-query ) ")" { Start }
