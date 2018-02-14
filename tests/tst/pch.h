@@ -15,6 +15,7 @@
 #include "carbon/carbon.h"
 #include "db/db.h"
 #include "db/dbindex.h"
+#include "eval/eval.h"
 #include "query/query.h"
 
 // Standard headers

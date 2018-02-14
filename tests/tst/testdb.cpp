@@ -89,7 +89,7 @@ void Test::onTestRun() {
     dbUpdateSample(h, id, start, 3.0);
     dbUpdateSample(h, id, start + 1min, 4.0);
     dbUpdateSample(h, id, start - 1min, 2.0);
-    // add to start of new page 2
+    // add to first of new page 2
     dbUpdateSample(h, id, start + pgt - 1min, 5.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);

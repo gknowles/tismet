@@ -48,6 +48,7 @@
 # tests/tst/pch.h
 # tests/tst/testcarbon.cpp
 # tests/tst/testdb.cpp
+# tests/tst/testeval.cpp
 # tests/tst/testindex.cpp
 # tests/tst/testmain.cpp
 # tests/tst/testquery.cpp
