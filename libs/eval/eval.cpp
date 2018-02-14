@@ -481,14 +481,17 @@ void SampleReader::readMore() {
 bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!info.type)
         return true;
-    auto count = (info.last - info.first) / info.interval;
+    auto first = m_first - m_first.time_since_epoch() % info.interval;
+    auto last = m_last - m_last.time_since_epoch() % info.interval;
+    auto count = (last - first) / info.interval;
     if (!count)
         return true;
+
     m_result.name = toSharedString(info.name);
-    m_result.samples = SampleList::alloc(info.first, info.interval, count);
+    m_result.samples = SampleList::alloc(first, info.interval, count);
     m_result.samples->metricId = info.id;
     m_pos = 0;
-    m_time = info.first;
+    m_time = first;
     return true;
 }
 
@@ -763,6 +766,7 @@ void Eval::registerFunc(
     Query::Function::Type type,
     IFactory<FuncNode> * fact
 ) {
+    assert(!s_funcFacts[type]);
     s_funcFacts[type] = fact;
 }
 

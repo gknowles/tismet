@@ -32,6 +32,7 @@ template<Function::Type FT, typename T>
 class FuncImpl : public FuncNode {
 public:
     inline static Register<T> s_register{FT};
+public:
 };
 
 } // namespace
@@ -98,10 +99,13 @@ void FuncAlias::onResult(int resultId, const ResultInfo & info) {
 
 /****************************************************************************
 *
-*   FuncMaximumAbove
+*   Filter - exclude sample lists from results
 *
 ***/
 
+//===========================================================================
+// maximumAbove
+//===========================================================================
 namespace {
 class FuncMaximumAbove
     : public FuncImpl<Function::kMaximumAbove, FuncMaximumAbove>
@@ -128,112 +132,182 @@ void FuncMaximumAbove::onResult(int resultId, const ResultInfo & info) {
 
 /****************************************************************************
 *
-*   FuncKeepLastValue
+*   Transform - make changes within a single SampleList
 *
 ***/
 
 namespace {
-class FuncKeepLastValue
-    : public FuncImpl<Function::kKeepLastValue, FuncKeepLastValue>
-{
-    Apply onFuncApply(ResultInfo & info) override;
+template<Function::Type FT, typename T>
+class Transform : public FuncImpl<FT, T> {
+    FuncNode::Apply onFuncApply(ResultInfo & info) override;
+
+    virtual void onTransformStart(Duration interval) {}
+    virtual void onTransform(
+        double * optr,
+        const double * ptr,
+        const double * eptr
+    ) = 0;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncKeepLastValue::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
+template<Function::Type FT, typename T>
+FuncNode::Apply Transform<FT, T>::onFuncApply(ResultInfo & info) {
+    info.name = addFuncName(this->m_type, info.name);
 
-    auto limit = m_args.empty() ? 0 : (int) m_args[0].number;
-    auto base = info.samples->samples;
-    auto eptr = base + info.samples->count;
+    auto out = SampleList::alloc(*info.samples);
+    onTransformStart(out->interval);
+    auto optr = out->samples;
+    auto ptr = info.samples->samples;
+    auto eptr = ptr + info.samples->count;
+    onTransform(optr, ptr, eptr);
+    info.samples = out;
+    return FuncNode::Apply::kForward;
+}
+
+//===========================================================================
+// derivative
+//===========================================================================
+namespace {
+class FuncDerivative
+    : public Transform<Function::kDerivative, FuncDerivative>
+{
+    void onTransform(
+        double * optr,
+        const double * ptr,
+        const double * eptr
+    ) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncDerivative::onTransform(
+    double * optr,
+    const double * ptr,
+    const double * eptr
+) {
+    *optr++ = NAN;
+    for (; ptr != eptr - 1; ++ptr) {
+        *optr++ = ptr[1] - ptr[0];
+    }
+}
+
+//===========================================================================
+// keepLastValue
+//===========================================================================
+namespace {
+class FuncKeepLastValue
+    : public Transform<Function::kKeepLastValue, FuncKeepLastValue>
+{
+    bool onFuncBind() override;
+    void onTransform(
+        double * optr,
+        const double * ptr,
+        const double * eptr
+    ) override;
+
+    double m_limit;
+};
+} // namespace
+
+//===========================================================================
+bool FuncKeepLastValue::onFuncBind() {
+    m_limit = m_args.empty() ? 0 : (int) m_args[0].number;
+    return true;
+}
+
+//===========================================================================
+void FuncKeepLastValue::onTransform(
+    double * optr,
+    const double * ptr,
+    const double * eptr
+) {
+    auto base = ptr;
     int nans = 0;
     for (; base != eptr; ++base) {
         if (!isnan(*base))
             break;
+        *optr++ = *base;
     }
-    for (auto ptr = base; ptr != eptr; ++ptr) {
+    for (ptr = base; ptr != eptr; ++ptr) {
         if (isnan(*ptr)) {
-            if (!nans++)
-                base = ptr - 1;
+            if (!nans++) {
+                for (; base != ptr - 1; ++base)
+                    *optr++ = *base;
+            }
         } else if (nans) {
-            if (!limit || nans <= limit) {
-                auto val = *base++;
+            if (!m_limit || nans <= m_limit) {
+                auto val = *base;
                 for (; base != ptr; ++base)
-                    *base = val;
+                    *optr++ = val;
             }
             nans = 0;
         }
     }
-    if (nans && (!limit || nans <= limit)) {
-        auto val = *base++;
-        for (; base != eptr; ++base)
-            *base = val;
+    if (nans && (!m_limit || nans <= m_limit)) {
+        auto val = *base;
+        for (; base != ptr; ++base)
+            *optr++ = val;
+    } else {
+        for (; base != ptr; ++base)
+            *optr++ = *base;
     }
-    return Apply::kForward;
 }
-
-
-/****************************************************************************
-*
-*   FuncDerivative
-*
-***/
-
-namespace {
-class FuncDerivative : public FuncImpl<Function::kDerivative, FuncDerivative> {
-    Apply onFuncApply(ResultInfo & info) override;
-};
-} // namespace
 
 //===========================================================================
-FuncNode::Apply FuncDerivative::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto out = SampleList::alloc(*info.samples);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count - 1;
-    *optr++ = NAN;
-    for (; ptr != eptr; ++ptr) {
-        *optr++ = ptr[1] - ptr[0];
-    }
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return Apply::kForward;
-}
-
-
-/****************************************************************************
-*
-*   FuncNonNegativeDerivative
-*
-***/
-
+// movingAverage
+//===========================================================================
 namespace {
-class FuncNonNegativeDerivative
-    : public FuncImpl<
-        Function::kNonNegativeDerivative,
-        FuncNonNegativeDerivative>
+class FuncMovingAverage
+    : public Transform<
+        Function::kMovingAverage,
+        FuncMovingAverage>
 {
-    Apply onFuncApply(ResultInfo & info) override;
+    bool onFuncBind() override;
+    void onTransformStart(Duration interval) override;
+    void onTransform(
+        double * optr,
+        const double * ptr,
+        const double * eptr
+    ) override;
+
+    double m_points;
+    Duration m_interval;
+    int m_count;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncNonNegativeDerivative::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
+bool FuncMovingAverage::onFuncBind() {
+    auto arg0 = m_args[0].string.get();
+    if (parse(&m_interval, arg0)) {
+        m_points = NAN;
+    } else {
+        m_points = m_count = strToInt(arg0);
+        if (!m_count)
+            m_count = 1;
+    }
+    return true;
+}
 
-    auto limit = m_args.empty() ? HUGE_VAL : m_args[0].number;
+//===========================================================================
+void FuncMovingAverage::onTransformStart(Duration interval) {
+    if (isnan(m_points)) {
+        m_count = int(m_interval / interval);
+        if (!m_count)
+            m_count = 1;
+    }
+}
 
-    auto out = SampleList::alloc(*info.samples);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count;
-    *optr++ = NAN;
-    auto prev = (double) NAN;
-    for (ptr += 1; ptr != eptr; ++ptr) {
-        if (*ptr > limit) {
+//===========================================================================
+void FuncMovingAverage::onTransform(
+    double * optr,
+    const double * ptr,
+    const double * eptr
+) {
+    auto prev = *optr++ = NAN;
+    for (ptr += 1; ptr != eptr - 1; ++ptr) {
+        if (isnan(*ptr) || *ptr > m_count) {
             prev = *optr++ = NAN;
         } else if (*ptr >= prev) {
             auto next = *ptr;
@@ -241,44 +315,163 @@ FuncNode::Apply FuncNonNegativeDerivative::onFuncApply(ResultInfo & info) {
             prev = next;
         } else {
             auto next = *ptr;
-            *optr++ = *ptr + (limit - prev + 1);
+            *optr++ = *ptr + (m_count - prev + 1);
             prev = next;
         }
     }
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return Apply::kForward;
+}
+
+//===========================================================================
+// nonNegativeDerivative
+//===========================================================================
+namespace {
+class FuncNonNegativeDerivative
+    : public Transform<
+        Function::kNonNegativeDerivative,
+        FuncNonNegativeDerivative>
+{
+    bool onFuncBind() override;
+    void onTransform(
+        double * optr,
+        const double * ptr,
+        const double * eptr
+    ) override;
+
+    double m_limit;
+};
+} // namespace
+
+//===========================================================================
+bool FuncNonNegativeDerivative::onFuncBind() {
+    m_limit = m_args.empty() ? HUGE_VAL : m_args[0].number;
+    return true;
+}
+
+//===========================================================================
+void FuncNonNegativeDerivative::onTransform(
+    double * optr,
+    const double * ptr,
+    const double * eptr
+) {
+    auto prev = *optr++ = NAN;
+    for (ptr += 1; ptr != eptr; ++ptr) {
+        if (isnan(*ptr) || isnan(prev) || *ptr > m_limit) {
+            *optr++ = NAN;
+            prev = *ptr;
+        } else if (*ptr >= prev) {
+            *optr++ = *ptr - prev;
+            prev = *ptr;
+        } else if (isinf(m_limit)) {
+            *optr++ = NAN;
+            prev = *ptr;
+        } else {
+            *optr++ = *ptr + (m_limit - prev + 1);
+            prev = *ptr;
+        }
+    }
 }
 
 
 /****************************************************************************
 *
-*   FuncScale
+*   Convert - changes to individual samples
 *
 ***/
 
 namespace {
-class FuncScale : public FuncImpl<Function::kScale, FuncScale> {
-    Apply onFuncApply(ResultInfo & info) override;
+template<Function::Type FT, typename T>
+class Convert : public FuncImpl<FT, T> {
+    FuncNode::Apply onFuncApply(ResultInfo & info) override;
+
+    virtual double onConvert(double value) = 0;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncScale::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(m_type, info.name);
-
-    auto factor = m_args[0].number;
+template<Function::Type FT, typename T>
+FuncNode::Apply Convert<FT, T>::onFuncApply(ResultInfo & info) {
+    info.name = addFuncName(this->m_type, info.name);
 
     auto out = SampleList::alloc(*info.samples);
     auto optr = out->samples;
     auto ptr = info.samples->samples;
     auto eptr = ptr + info.samples->count;
-    for (; ptr != eptr; ++ptr) {
-        *optr++ = *ptr * factor;
-    }
+    for (; ptr != eptr; ++ptr)
+        *optr++ = onConvert(*ptr);
     assert(optr == out->samples + out->count);
     info.samples = out;
-    return Apply::kForward;
+    return FuncNode::Apply::kForward;
+}
+
+//===========================================================================
+// drawAsInfinite
+//===========================================================================
+namespace {
+class FuncDrawAsInfinite
+    : public Convert<Function::kDrawAsInfinite, FuncDrawAsInfinite>
+{
+    double onConvert(double value) override;
+};
+} // namespace
+
+//===========================================================================
+double FuncDrawAsInfinite::onConvert(double value) {
+    if (value == 0) {
+        return 0;
+    } else if (value > 0) {
+        return HUGE_VAL;
+    } else {
+        return NAN;
+    }
+}
+
+//===========================================================================
+// removeAboveValue
+//===========================================================================
+namespace {
+class FuncRemoveAboveValue
+    : public Convert<Function::kRemoveAboveValue, FuncRemoveAboveValue>
+{
+    double onConvert(double value) override;
+};
+} // namespace
+
+//===========================================================================
+double FuncRemoveAboveValue::onConvert(double value) {
+    auto limit = m_args[0].number;
+    return value > limit ? NAN : value;
+}
+
+//===========================================================================
+// removeBelowValue
+//===========================================================================
+namespace {
+class FuncRemoveBelowValue
+    : public Convert<Function::kRemoveBelowValue, FuncRemoveBelowValue>
+{
+    double onConvert(double value) override;
+};
+} // namespace
+
+//===========================================================================
+double FuncRemoveBelowValue::onConvert(double value) {
+    auto limit = m_args[0].number;
+    return value < limit ? NAN : value;
+}
+
+//===========================================================================
+// scale
+//===========================================================================
+namespace {
+class FuncScale : public Convert<Function::kScale, FuncScale> {
+    double onConvert(double value) override;
+};
+} // namespace
+
+//===========================================================================
+double FuncScale::onConvert(double value) {
+    auto factor = m_args[0].number;
+    return value * factor;
 }
 
 
@@ -416,19 +609,24 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
 
 /****************************************************************************
 *
-*   FuncSum
+*   Aggregate - combined samples for a single time interval
 *
 ***/
 
 namespace {
-class FuncSum : public FuncImpl<Function::kSum, FuncSum> {
-    Apply onResultTask(ResultInfo & info) override;
+template<Function::Type FT, typename T>
+class Aggregate : public FuncImpl<FT, T> {
+    FuncNode::Apply onResultTask(ResultInfo & info) override;
+
+    virtual void onAggregate(double & agg, double newVal) = 0;
+protected:
     shared_ptr<SampleList> m_samples;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
+template<Function::Type FT, typename T>
+FuncNode::Apply Aggregate<FT, T>::onResultTask(ResultInfo & info) {
     if (info.samples) {
         if (!m_samples) {
             m_samples = SampleList::dup(*info.samples);
@@ -471,12 +669,8 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
             first = info.samples->first;
             for (; first < ilast; first += interval, ++pos, ++ipos) {
                 auto & sval = m_samples->samples[pos];
-                auto & ival = info.samples->samples[ipos];
-                if (isnan(sval)) {
-                    sval = ival;
-                } else if (!isnan(ival)) {
-                    sval += ival;
-                }
+                auto ival = info.samples->samples[ipos];
+                onAggregate(sval, ival);
             }
             assert(pos <= m_samples->count);
         } else {
@@ -488,12 +682,60 @@ FuncNode::Apply FuncSum::onResultTask(ResultInfo & info) {
     if (!info.more) {
         ResultInfo out;
         out.target = info.target;
-        out.name = addFuncName(m_type, info.target);
+        out.name = addFuncName(this->m_type, info.target);
         out.samples = move(m_samples);
         out.more = false;
-        forwardResult(out);
+        this->forwardResult(out);
     }
-    return Apply::kSkip;
+    return FuncNode::Apply::kSkip;
+}
+
+//===========================================================================
+// sum
+//===========================================================================
+namespace {
+class FuncSum : public Aggregate<Function::kSum, FuncSum> {
+    void onAggregate(double & agg, double newVal) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncSum::onAggregate(double & agg, double newVal) {
+    if (isnan(agg)) {
+        agg = newVal;
+    } else if (!isnan(newVal)) {
+        agg += newVal;
+    }
+}
+
+//===========================================================================
+// maxSeries
+//===========================================================================
+namespace {
+class FuncMaxSeries : public Aggregate<Function::kMaxSeries, FuncMaxSeries> {
+    void onAggregate(double & agg, double newVal) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncMaxSeries::onAggregate(double & agg, double newVal) {
+    if (isnan(agg) || newVal > agg)
+        agg = newVal;
+}
+
+//===========================================================================
+// minSeries
+//===========================================================================
+namespace {
+class FuncMinSeries : public Aggregate<Function::kMinSeries, FuncMinSeries> {
+    void onAggregate(double & agg, double newVal) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncMinSeries::onAggregate(double & agg, double newVal) {
+    if (isnan(agg) || newVal < agg)
+        agg = newVal;
 }
 
 
