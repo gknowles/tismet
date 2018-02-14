@@ -165,8 +165,9 @@ void DbIndex::erase(string_view name) {
         if (--ids.count == 0) {
             m_segIds[i].erase(key);
             auto cur = m_segNames[i].find(key);
-            delete[] cur->second;
+            auto ptr = cur->second;
             m_segNames[i].erase(cur);
+            delete[] ptr;
         }
     }
     numSegs = m_segIds.size();
