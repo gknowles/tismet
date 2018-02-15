@@ -66,41 +66,8 @@ protected:
     std::deque<ResultInfo> m_results;
 };
 
-class SampleReader : public IDbDataNotify {
+class SourceNode {
 public:
-    SampleReader(SourceNode * node);
-    void read(
-        std::shared_ptr<char[]> target,
-        Dim::TimePoint first,
-        Dim::TimePoint last
-    );
-
-private:
-    void readMore();
-
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
-    bool onDbSample(uint32_t id, Dim::TimePoint time, double value) override;
-    void onDbSeriesEnd(uint32_t id) override;
-
-    SourceNode & m_node;
-    std::thread::id m_tid;
-    ResultInfo m_result;
-    Dim::TimePoint m_first;
-    Dim::TimePoint m_last;
-    Dim::UnsignedSet m_unfinished;
-
-    size_t m_pos{0};
-    Dim::TimePoint m_time;
-};
-
-class SourceNode : public Dim::ITaskNotify {
-public:
-    struct SourceRange {
-        Dim::TimePoint first;
-        Dim::TimePoint last;
-
-        Dim::TimePoint lastUsed;
-    };
     struct ResultRange {
         ResultNode * rn{nullptr};
         int resultId{0};
@@ -110,24 +77,32 @@ public:
     };
 
 public:
-    SourceNode();
+    virtual ~SourceNode();
+    void init(std::shared_ptr<char[]> name);
 
+    void addOutput(
+        ResultNode * rn,
+        int resultId,
+        Dim::TimePoint first,
+        Dim::TimePoint last,
+        Dim::Duration minInterval
+    );
+    void removeOutput(ResultNode * rn);
+
+protected:
+    std::shared_ptr<char[]> sourceName() const { return m_source; }
     bool outputRange(Dim::TimePoint * first, Dim::TimePoint * last) const;
 
     // Returns false when !info.more
     bool outputResult(const ResultInfo & info);
 
-    virtual void onStart();
-    void onTask() override;
+private:
+    virtual void onStart() = 0;
 
     std::shared_ptr<char[]> m_source;
-    std::vector<SourceRange> m_ranges;
 
     mutable std::mutex m_outMut;
     std::vector<ResultRange> m_outputs;
-
-private:
-    SampleReader m_reader;
 };
 
 struct FuncArg {
@@ -137,8 +112,10 @@ struct FuncArg {
 
 class FuncNode : public ResultNode, public SourceNode {
 public:
-    ~FuncNode();
+    void init(std::shared_ptr<char[]> sourceName);
+    bool bind(std::vector<FuncArg> && args);
 
+protected:
     void forwardResult(ResultInfo & info, bool unfinished = false);
 
     void onStart() override;
@@ -146,9 +123,14 @@ public:
 
     // validate and/or process arguments
     virtual bool onFuncBind();
+    virtual void onFuncAdjustRange(
+        Dim::TimePoint * first,
+        Dim::TimePoint * last
+    );
     virtual Apply onFuncApply(ResultInfo & info);
 
-    Query::Function::Type m_type;
+    virtual Query::Function::Type type() const = 0;
+
     std::vector<FuncArg> m_args;
 };
 

@@ -33,6 +33,7 @@ class FuncImpl : public FuncNode {
 public:
     inline static Register<T> s_register{FT};
 public:
+    Query::Function::Type type() const override { return FT; }
 };
 
 } // namespace
@@ -153,7 +154,7 @@ class Transform : public FuncImpl<FT, T> {
 //===========================================================================
 template<Function::Type FT, typename T>
 FuncNode::Apply Transform<FT, T>::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(this->m_type, info.name);
+    info.name = addFuncName(this->type(), info.name);
 
     auto out = SampleList::alloc(*info.samples);
     onTransformStart(out->interval);
@@ -279,11 +280,16 @@ class FuncMovingAverage
 
 //===========================================================================
 bool FuncMovingAverage::onFuncBind() {
-    auto arg0 = m_args[0].string.get();
-    if (parse(&m_interval, arg0)) {
-        m_points = NAN;
+    if (auto arg0 = m_args[0].string.get()) {
+        if (parse(&m_interval, arg0)) {
+            m_points = NAN;
+        } else {
+            m_points = m_count = strToInt(arg0);
+            if (!m_count)
+                m_count = 1;
+        }
     } else {
-        m_points = m_count = strToInt(arg0);
+        m_points = m_count = (int) m_args[0].number;
         if (!m_count)
             m_count = 1;
     }
@@ -391,7 +397,7 @@ class Convert : public FuncImpl<FT, T> {
 //===========================================================================
 template<Function::Type FT, typename T>
 FuncNode::Apply Convert<FT, T>::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(this->m_type, info.name);
+    info.name = addFuncName(this->type(), info.name);
 
     auto out = SampleList::alloc(*info.samples);
     auto optr = out->samples;
@@ -497,7 +503,7 @@ FuncNode::Apply FuncTimeShift::onFuncApply(ResultInfo & info) {
     if (!parse(&shift, tmp.c_str()))
         return Apply::kFinished;
 
-    info.name = addFuncName(m_type, info.name);
+    info.name = addFuncName(type(), info.name);
     info.samples = SampleList::dup(*info.samples);
     info.samples->first += shift;
     return Apply::kForward;
@@ -683,7 +689,7 @@ FuncNode::Apply Aggregate<FT, T>::onResultTask(ResultInfo & info) {
     if (!info.more) {
         ResultInfo out;
         out.target = info.target;
-        out.name = addFuncName(this->m_type, info.target);
+        out.name = addFuncName(this->type(), info.target);
         out.samples = move(m_samples);
         out.more = false;
         this->forwardResult(out);

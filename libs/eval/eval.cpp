@@ -19,6 +19,27 @@ using namespace Eval;
 
 namespace {
 
+class DbDataNode : public SourceNode, ITaskNotify, IDbDataNotify {
+private:
+    void readMore();
+
+    void onStart() override;
+    void onTask() override;
+
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSample(uint32_t id, TimePoint time, double value) override;
+    void onDbSeriesEnd(uint32_t id) override;
+
+    thread::id m_tid;
+    ResultInfo m_result;
+    TimePoint m_first;
+    TimePoint m_last;
+    UnsignedSet m_unfinished;
+
+    size_t m_pos{0};
+    TimePoint m_time;
+};
+
 class Evaluate : public ResultNode, public ListBaseLink<> {
 public:
     Evaluate();
@@ -121,59 +142,6 @@ inline static Overlap getOverlap(
 }
 
 //===========================================================================
-static void addOutput(
-    shared_ptr<SourceNode> src,
-    ResultNode * rn,
-    int resultId,
-    TimePoint first,
-    TimePoint last,
-    Duration minInterval
-) {
-    unique_lock<mutex> lk{src->m_outMut};
-    auto ri = lower_bound(
-        src->m_ranges.begin(),
-        src->m_ranges.end(),
-        first,
-        [](auto & a, auto & b){ return a.last < b; }
-    );
-    if (ri != src->m_ranges.end()
-        && first >= ri->first && last <= ri->last
-    ) {
-        ResultInfo info;
-        info.target = src->m_source;
-        info.name = {};
-        info.samples = {};
-        info.more = false;
-        rn->onResult(resultId, info);
-        return;
-    }
-
-    src->m_outputs.push_back({rn, resultId, first, last, minInterval});
-    if (src->m_outputs.size() != 1)
-        return;
-
-    lk.unlock();
-    src->onStart();
-}
-
-//===========================================================================
-static void removeOutput(SourceNode * src, ResultNode * rn) {
-    scoped_lock<mutex> lk{src->m_outMut};
-    auto ptr = src->m_outputs.data(),
-        eptr = ptr + src->m_outputs.size();
-    while (ptr != eptr) {
-        if (ptr->rn == rn) {
-            if (--eptr == ptr)
-                break;
-            *ptr = *eptr;
-        } else {
-            ptr += 1;
-        }
-    }
-    src->m_outputs.resize(eptr - src->m_outputs.data());
-}
-
-//===========================================================================
 static shared_ptr<char[]> toSharedString(string_view src) {
     auto sp = shared_ptr<char[]>(new char[src.size() + 1]);
     memcpy(sp.get(), src.data(), src.size());
@@ -204,8 +172,8 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
 
     auto type = Query::getType(*qi.node);
     if (type == Query::kPath) {
-        auto sn = make_shared<SourceNode>();
-        sn->m_source = src;
+        auto sn = make_shared<DbDataNode>();
+        sn->init(src);
         {
             scoped_lock<shared_mutex> lk{s_mut};
             s_sources[src.get()] = sn;
@@ -220,18 +188,16 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     shared_ptr<FuncNode> fnode;
     if (auto fact = s_funcFacts[qf.type]) {
         fnode = fact->onFactoryCreate();
+        fnode->init(src);
     } else {
         assert(!"Unsupported function");
         return {};
     }
-    fnode->m_source = src;
-    fnode->m_type = qf.type;
     {
         scoped_lock<shared_mutex> lk{s_mut};
         s_sources[src.get()] = fnode;
     }
-    ResultInfo info;
-    info.target = src;
+    vector<FuncArg> fargs;
     for (auto && arg : qf.args) {
         switch (Query::getType(*arg)) {
         case Query::kPath:
@@ -240,17 +206,17 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
                 return {};
             break;
         case Query::kNum:
-            fnode->m_args.emplace_back().number = Query::getNumber(*arg);
+            fargs.emplace_back().number = Query::getNumber(*arg);
             break;
         case Query::kString:
-            fnode->m_args.emplace_back().string =
+            fargs.emplace_back().string =
                 toSharedString(Query::getString(*arg));
             break;
         default:
             return {};
         }
     }
-    if (!fnode->onFuncBind())
+    if (!fnode->bind(move(fargs)))
         return {};
     return addSource(rn, fnode);
 }
@@ -302,9 +268,48 @@ shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
 ***/
 
 //===========================================================================
-SourceNode::SourceNode()
-    : m_reader(this)
-{}
+SourceNode::~SourceNode() {
+    assert(m_outputs.empty());
+}
+
+//===========================================================================
+void SourceNode::init(shared_ptr<char[]> name) {
+    m_source = name;
+}
+
+//===========================================================================
+void SourceNode::addOutput(
+    ResultNode * rn,
+    int resultId,
+    TimePoint first,
+    TimePoint last,
+    Duration minInterval
+) {
+    unique_lock<mutex> lk{m_outMut};
+    m_outputs.push_back({rn, resultId, first, last, minInterval});
+    if (m_outputs.size() != 1)
+        return;
+
+    lk.unlock();
+    onStart();
+}
+
+//===========================================================================
+void SourceNode::removeOutput(ResultNode * rn) {
+    scoped_lock<mutex> lk{m_outMut};
+    auto ptr = m_outputs.data(),
+        eptr = ptr + m_outputs.size();
+    while (ptr != eptr) {
+        if (ptr->rn == rn) {
+            if (--eptr == ptr)
+                break;
+            *ptr = *eptr;
+        } else {
+            ptr += 1;
+        }
+    }
+    m_outputs.resize(eptr - m_outputs.data());
+}
 
 //===========================================================================
 bool SourceNode::outputRange(TimePoint * first, TimePoint * last) const {
@@ -419,53 +424,39 @@ bool SourceNode::outputResult(const ResultInfo & info) {
     return info.more;
 }
 
-//===========================================================================
-void SourceNode::onStart() {
-    taskPushCompute(this);
-}
-
-//===========================================================================
-void SourceNode::onTask() {
-    TimePoint first, last;
-    if (!outputRange(&first, &last))
-        return;
-
-    m_reader.read(m_source, first, last);
-}
-
 
 /****************************************************************************
 *
-*   SampleReader
+*   DbDataNode
 *
 ***/
 
 //===========================================================================
-SampleReader::SampleReader(SourceNode * node)
-    : m_node(*node)
-{}
+void DbDataNode::onStart() {
+    taskPushCompute(this);
+}
 
 //===========================================================================
-void SampleReader::read(
-    shared_ptr<char[]> target,
-    TimePoint first,
-    TimePoint last
-) {
+void DbDataNode::onTask() {
+    TimePoint first, last;
+    if (!outputRange(&first, &last))
+        return;
+
     assert(m_unfinished.empty());
     m_result = {};
-    m_result.target = target;
+    m_result.target = sourceName();
     m_first = first;
     m_last = last;
-    dbFindMetrics(&m_unfinished, s_db, target.get());
+    dbFindMetrics(&m_unfinished, s_db, m_result.target.get());
     if (m_unfinished.empty()) {
-        m_node.outputResult(m_result);
+        outputResult(m_result);
         return;
     }
     readMore();
 }
 
 //===========================================================================
-void SampleReader::readMore() {
+void DbDataNode::readMore() {
     m_tid = this_thread::get_id();
     for (;;) {
         auto id = m_unfinished.pop_front();
@@ -478,7 +469,7 @@ void SampleReader::readMore() {
 }
 
 //===========================================================================
-bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
+bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!info.type)
         return true;
     auto first = m_first - m_first.time_since_epoch() % info.interval;
@@ -496,19 +487,21 @@ bool SampleReader::onDbSeriesStart(const DbSeriesInfo & info) {
 }
 
 //===========================================================================
-bool SampleReader::onDbSample(uint32_t id, TimePoint time, double value) {
+bool DbDataNode::onDbSample(uint32_t id, TimePoint time, double value) {
     auto samples = m_result.samples->samples;
     auto interval = m_result.samples->interval;
     for (; m_time < time; m_time += interval, ++m_pos)
         samples[m_pos] = NAN;
-    samples[m_pos] = value;
-    m_time += interval;
-    m_pos += 1;
+    if (m_pos < m_result.samples->count) {
+        samples[m_pos] = value;
+        m_time += interval;
+        m_pos += 1;
+    }
     return true;
 }
 
 //===========================================================================
-void SampleReader::onDbSeriesEnd(uint32_t id) {
+void DbDataNode::onDbSeriesEnd(uint32_t id) {
     if (m_result.samples) {
         auto samples = m_result.samples->samples;
         auto interval = m_result.samples->interval;
@@ -520,7 +513,7 @@ void SampleReader::onDbSeriesEnd(uint32_t id) {
     }
 
     m_result.more = !m_unfinished.empty();
-    auto more = m_node.outputResult(m_result);
+    auto more = outputResult(m_result);
     m_result.name = {};
     m_result.samples = {};
     if (!more) {
@@ -547,7 +540,7 @@ ResultNode::~ResultNode() {
 //===========================================================================
 void ResultNode::stopSources() {
     for (auto && sn : m_sources)
-        removeOutput(sn.get(), this);
+        sn->removeOutput(this);
 }
 
 //===========================================================================
@@ -604,8 +597,14 @@ ResultNode::Apply ResultNode::onResultTask(ResultInfo & info) {
 ***/
 
 //===========================================================================
-FuncNode::~FuncNode() {
-    assert(m_outputs.empty());
+void FuncNode::init(std::shared_ptr<char[]> sourceName) {
+    SourceNode::init(sourceName);
+}
+
+//===========================================================================
+bool FuncNode::bind(vector<FuncArg> && args) {
+    m_args = move(args);
+    return onFuncBind();
 }
 
 //===========================================================================
@@ -622,10 +621,11 @@ void FuncNode::onStart() {
     if (!outputRange(&first, &last))
         return;
 
+    onFuncAdjustRange(&first, &last);
     m_unfinished = (int) m_sources.size();
     int id = 0;
     for (auto && sn : m_sources)
-        addOutput(sn, this, id++, first, last, {});
+        sn->addOutput(this, id++, first, last, {});
 }
 
 //===========================================================================
@@ -644,6 +644,10 @@ FuncNode::Apply FuncNode::onResultTask(ResultInfo & info) {
 bool FuncNode::onFuncBind() {
     return true;
 }
+
+//===========================================================================
+void FuncNode::onFuncAdjustRange(TimePoint * first, TimePoint * last)
+{}
 
 //===========================================================================
 FuncNode::Apply FuncNode::onFuncApply(ResultInfo & info) {
@@ -804,7 +808,7 @@ void evalAdd(
     ex->m_idResults.resize(targets.size());
     for (auto && target : targets) {
         if (auto sn = addSource(ex, target)) {
-            addOutput(sn, ex, id++, first, last, ex->m_minInterval);
+            sn->addOutput(ex, id++, first, last, ex->m_minInterval);
         } else {
             delete ex;
             notify->onEvalError("Invalid target parameter: " + string(target));
