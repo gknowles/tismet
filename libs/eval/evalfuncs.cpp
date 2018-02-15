@@ -353,7 +353,8 @@ void FuncNonNegativeDerivative::onTransform(
     const double * ptr,
     const double * eptr
 ) {
-    auto prev = *optr++ = NAN;
+    *optr++ = NAN;
+    auto prev = *ptr;
     for (ptr += 1; ptr != eptr; ++ptr) {
         if (isnan(*ptr) || isnan(prev) || *ptr > m_limit) {
             *optr++ = NAN;

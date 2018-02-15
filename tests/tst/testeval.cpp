@@ -196,10 +196,12 @@ UnitTest & UnitTest::out(
 
 //===========================================================================
 void UnitTest::onTest(DbHandle h) {
+    UnsignedSet ids;
+    dbFindMetrics(&ids, h);
+    for (auto && id : ids)
+        dbEraseMetric(h, id);
     for (auto && s : m_in) {
         uint32_t id;
-        if (dbFindMetric(&id, h, s.name))
-            dbEraseMetric(h, id);
         dbInsertMetric(&id, h, s.name);
         DbMetricInfo info{};
         info.interval = s.interval;
@@ -284,7 +286,7 @@ void UnitTest::onEvalEnd() {
 // keepLastValue
 //===========================================================================
 static auto s_keepLastValue = UnitTest()
-    .query("keepLastValue([1-5].value, 2)", 0, 20)
+    .query("keepLastValue(*.value, 2)", 0, 20)
     .in("1.value", 0, 1s, {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
     .in("2.value", 0, 1s, {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10,NAN,12,NAN,14,NAN,16,NAN,18,NAN,20})
     .in("3.value", 0, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
@@ -302,6 +304,38 @@ static auto s_keepLastValue = UnitTest()
         {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,18,18});
 
 //===========================================================================
+// maxSeries
+//===========================================================================
+static auto s_maxSeries = UnitTest()
+    .query("maxSeries(*.value)", 0, 6)
+    .in("1.value", 0, 1s, {NAN, 0, 1, 2, 3, NAN})
+    .in("2.value", 0, 1s, {0, 1, 2, 3, NAN, NAN})
+    .in("3.value", 0, 1s, {1, 2, 3, NAN, 0, NAN})
+    .out("maxSeries(*.value)", 0, 1s, {1, 2, 3, 3, 3, NAN});
+
+//===========================================================================
+// minSeries
+//===========================================================================
+static auto s_minSeries = UnitTest()
+    .query("minSeries(*.value)", 0, 6)
+    .in("1.value", 0, 1s, {NAN, 0, 1, 2, 3, NAN})
+    .in("2.value", 0, 1s, {0, 1, 2, 3, NAN, NAN})
+    .in("3.value", 0, 1s, {1, 2, 3, NAN, 0, NAN})
+    .out("minSeries(*.value)", 0, 1s, {0, 0, 1, 2, 0, NAN});
+
+//===========================================================================
+// movingAverage
+//===========================================================================
+//static auto s_movingAverage = UnitTest()
+//    .query("movingAverage(*.value, 5)", 0, 10)
+//    .in("1.value", 100, 1s, {0})
+//    .in("2.value", 0, 1s, {NAN, NAN, NAN, NAN, NAN, 0, 1, 2, 3, 4, 5})
+//    .in("3.value", 1, 1s, {10, 11, 12, 13, 14, 15, 16, 17, 18, 19})
+//    .out("movingAverage(2.value)", 0, 1s, {NAN,NAN,NAN,NAN,NAN,0,0.5,1,1.5,2})
+//    .out("movingAverage(3.value)", 0, 1s,
+//        {10,10.5,11,11.5,12,12.5,13,13.5,14,14.5,15,15.5});
+
+//===========================================================================
 // nonNegativeDerivative
 //===========================================================================
 static auto s_nonNegativeDerivative = UnitTest()
@@ -309,6 +343,11 @@ static auto s_nonNegativeDerivative = UnitTest()
     .in("1.value", 0, 1s, {NAN,1,2,3,4,5,NAN,3,2,1})
     .out("nonNegativeDerivative(1.value)", 0, 1s,
         {NAN,NAN,1,1,1,1,NAN,NAN,NAN,NAN});
+static auto s_nonNegativeDerivative_max = UnitTest()
+    .query("nonNegativeDerivative(1.value, 5)", 0, 10)
+    .in("1.value", 0, 1s, {0,1,2,3,4,5,0,1,2,3})
+    .out("nonNegativeDerivative(1.value)", 0, 1s,
+        {NAN,1,1,1,1,1,1,1,1,1});
 
 
 /****************************************************************************
