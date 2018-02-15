@@ -105,12 +105,12 @@ func =/ fn-minSeries
 fn-minSeries = %s"minSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-movingAverage
-fn-movingAverage =
-    %s"movingAverage(" arg-query "," arg-string [ "," arg-num ] ")" { Start }
+fn-movingAverage = %s"movingAverage("
+    arg-query "," (arg-string / arg-num) [ "," arg-num ] ")" { Start }
 
 func =/ fn-nonNegativeDerivative
-fn-nonNegativeDerivative =
-    %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
+fn-nonNegativeDerivative = %s"nonNegativeDerivative("
+    arg-query [ "," arg-num ] ")" { Start }
 
 func =/ fn-removeAboveValue
 fn-removeAboveValue = %s"removeAboveValue(" arg-query "," arg-num ")" { Start }
@@ -125,8 +125,9 @@ func =/ fn-scaleToSeconds
 fn-scaleToSeconds = %s"scaleToSeconds(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-sum / fn-sumSeries
-fn-sum = (%s"sum") "(" arg-query *( "," arg-query ) ")" { Start }
-fn-sumSeries = (%s"sumSeries") "(" arg-query *( "," arg-query ) ")" { Start, As fn-sum }
+fn-sum = %s"sum(" arg-query *( "," arg-query ) ")" { Start }
+fn-sumSeries = %s"sumSeries("
+    arg-query *( "," arg-query ) ")" { Start, As fn-sum }
 
 func =/ fn-timeShift
 fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }
