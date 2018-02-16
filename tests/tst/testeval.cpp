@@ -34,13 +34,13 @@ struct Series {
 
 class UnitTest : public ListBaseLink<>, IEvalNotify {
 public:
-    UnitTest(int line = __LINE__);
+    UnitTest(string_view name, int line = __LINE__);
     UnitTest(const UnitTest & from);
 
     UnitTest & query(
         string_view query,
         time_t first,
-        time_t last,
+        unsigned querySeconds,
         unsigned maxPoints = numeric_limits<time_t>::max()
     );
     UnitTest & in(
@@ -57,12 +57,15 @@ public:
     );
     void onTest(DbHandle h);
 
+    const string & name() const { return m_name; }
+
 private:
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onEvalError(string_view errmsg) override;
     void onEvalEnd() override;
 
+    string m_name;
     int m_line;
     string m_query;
     TimePoint m_first;
@@ -131,15 +134,17 @@ static bool operator<(const Series & a, const Series & b) {
 ***/
 
 //===========================================================================
-UnitTest::UnitTest(int line)
-    : m_line{line}
+UnitTest::UnitTest(string_view name, int line)
+    : m_name{name}
+    , m_line{line}
 {
     s_unitTests.link(this);
 }
 
 //===========================================================================
 UnitTest::UnitTest(const UnitTest & from)
-    : m_line{from.m_line}
+    : m_name{from.m_name}
+    , m_line{from.m_line}
     , m_query(from.m_query)
     , m_first{from.m_first}
     , m_last{from.m_last}
@@ -154,12 +159,12 @@ UnitTest::UnitTest(const UnitTest & from)
 UnitTest & UnitTest::query(
     string_view query,
     time_t first,
-    time_t last,
+    unsigned querySeconds,
     unsigned maxPoints
 ) {
     m_query = query;
     m_first = Clock::from_time_t(first);
-    m_last = Clock::from_time_t(last);
+    m_last = m_first + (seconds) (querySeconds - 1);
     m_maxPoints = maxPoints;
     return *this;
 }
@@ -245,7 +250,7 @@ bool UnitTest::onDbSeriesStart(const DbSeriesInfo & info) {
     s.first = m_first - m_first.time_since_epoch() % info.interval;
     s.interval = info.interval;
     if (info.interval > 0s) {
-        auto count = (m_last - m_first) / info.interval;
+        auto count = (m_last - m_first) / info.interval + 1;
         s.samples.resize(count, NAN);
     }
     return true;
@@ -255,7 +260,7 @@ bool UnitTest::onDbSeriesStart(const DbSeriesInfo & info) {
 bool UnitTest::onDbSample(uint32_t id, TimePoint time, double value) {
     auto & s = m_found.back();
     auto pos = (time - s.first) / s.interval;
-    assert(pos < (int) s.samples.size());
+    assert(pos >= 0 && pos < (int) s.samples.size());
     s.samples[pos] = value;
     return true;
 }
@@ -285,28 +290,31 @@ void UnitTest::onEvalEnd() {
 //===========================================================================
 // keepLastValue
 //===========================================================================
-static auto s_keepLastValue = UnitTest()
-    .query("keepLastValue(*.value, 2)", 0, 20)
-    .in("1.value", 0, 1s, {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
-    .in("2.value", 0, 1s, {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10,NAN,12,NAN,14,NAN,16,NAN,18,NAN,20})
-    .in("3.value", 0, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
-    .in("4.value", 0, 1s, {1,2,3,4,NAN,6,NAN,NAN,9,10,11,NAN,13,NAN,NAN,NAN,NAN,18,19,20})
-    .in("5.value", 0, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,NAN,NAN})
-    .out("keepLastValue(1.value)", 0, 1s,
+static auto s_keepLastValue = UnitTest("keepLastValue")
+    .query("keepLastValue(*.value, 2)", 1, 20)
+    .in("1.value", 1, 1s, {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
+    .out("keepLastValue(1.value)", 1, 1s,
         {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
-    .out("keepLastValue(2.value)", 0, 1s,
+    .in("2.value", 1, 1s, {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10,NAN,12,NAN,14,NAN,16,NAN,18,NAN,20})
+    .out("keepLastValue(2.value)", 1, 1s,
         {NAN,2,2,4,4,6,6,8,8,10,10,12,12,14,14,16,16,18,18,20})
-    .out("keepLastValue(3.value)", 0, 1s,
+    .in("3.value", 1, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
+    .out("keepLastValue(3.value)", 1, 1s,
         {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
-    .out("keepLastValue(4.value)", 0, 1s,
+    .in("4.value", 1, 1s, {1,2,3,4,NAN,6,NAN,NAN,9,10,11,NAN,13,NAN,NAN,NAN,NAN,18,19,20})
+    .out("keepLastValue(4.value)", 1, 1s,
         {1,2,3,4,4,6,6,6,9,10,11,11,13,NAN,NAN,NAN,NAN,18,19,20})
-    .out("keepLastValue(5.value)", 0, 1s,
-        {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,18,18});
+    .in("5.value", 1, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,NAN,NAN})
+    .out("keepLastValue(5.value)", 1, 1s,
+        {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,18,18})
+    .in("6.value", 0, 1s, {1,NAN,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3})
+    .out("keepLastValue(6.value)", 1, 1s,
+        {1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3});
 
 //===========================================================================
 // maxSeries
 //===========================================================================
-static auto s_maxSeries = UnitTest()
+static auto s_maxSeries = UnitTest("maxSeries")
     .query("maxSeries(*.value)", 0, 6)
     .in("1.value", 0, 1s, {NAN, 0, 1, 2, 3, NAN})
     .in("2.value", 0, 1s, {0, 1, 2, 3, NAN, NAN})
@@ -316,7 +324,7 @@ static auto s_maxSeries = UnitTest()
 //===========================================================================
 // minSeries
 //===========================================================================
-static auto s_minSeries = UnitTest()
+static auto s_minSeries = UnitTest("minSeries")
     .query("minSeries(*.value)", 0, 6)
     .in("1.value", 0, 1s, {NAN, 0, 1, 2, 3, NAN})
     .in("2.value", 0, 1s, {0, 1, 2, 3, NAN, NAN})
@@ -326,27 +334,30 @@ static auto s_minSeries = UnitTest()
 //===========================================================================
 // movingAverage
 //===========================================================================
-//static auto s_movingAverage = UnitTest()
+//static auto s_movingAverage = UnitTest("movingAverage")
 //    .query("movingAverage(*.value, 5)", 0, 10)
 //    .in("1.value", 100, 1s, {0})
 //    .in("2.value", 0, 1s, {NAN, NAN, NAN, NAN, NAN, 0, 1, 2, 3, 4, 5})
-//    .in("3.value", 1, 1s, {10, 11, 12, 13, 14, 15, 16, 17, 18, 19})
 //    .out("movingAverage(2.value)", 0, 1s, {NAN,NAN,NAN,NAN,NAN,0,0.5,1,1.5,2})
+//    .in("3.value", 1, 1s, {10, 11, 12, 13, 14, 15, 16, 17, 18, 19})
 //    .out("movingAverage(3.value)", 0, 1s,
 //        {10,10.5,11,11.5,12,12.5,13,13.5,14,14.5,15,15.5});
 
 //===========================================================================
 // nonNegativeDerivative
 //===========================================================================
-static auto s_nonNegativeDerivative = UnitTest()
-    .query("nonNegativeDerivative(1.value)", 0, 10)
-    .in("1.value", 0, 1s, {NAN,1,2,3,4,5,NAN,3,2,1})
-    .out("nonNegativeDerivative(1.value)", 0, 1s,
-        {NAN,NAN,1,1,1,1,NAN,NAN,NAN,NAN});
-static auto s_nonNegativeDerivative_max = UnitTest()
-    .query("nonNegativeDerivative(1.value, 5)", 0, 10)
-    .in("1.value", 0, 1s, {0,1,2,3,4,5,0,1,2,3})
-    .out("nonNegativeDerivative(1.value)", 0, 1s,
+static auto s_nonNegativeDerivative = UnitTest("nonNegativeDerivative")
+    .query("nonNegativeDerivative(*.value)", 1, 10)
+    .in("1.value", 1, 1s, {NAN,1,2,3,4,5,NAN,3,2,1})
+    .in("2.value", 0, 1s, {1, 2, 3})
+    .out("nonNegativeDerivative(1.value)", 1, 1s,
+        {NAN,NAN,1,1,1,1,NAN,NAN,NAN,NAN})
+    .out("nonNegativeDerivative(2.value)", 1, 1s,
+        {1,1,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN});
+static auto s_nonNegativeDerivative_max = UnitTest("nonNegativeDerivative_max")
+    .query("nonNegativeDerivative(1.value, 5)", 1, 10)
+    .in("1.value", 1, 1s, {0,1,2,3,4,5,0,1,2,3})
+    .out("nonNegativeDerivative(1.value)", 1, 1s,
         {NAN,1,1,1,1,1,1,1,1,1});
 
 
@@ -360,13 +371,29 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("eval", "Function evaluation tests.", true) {}
+    Test() : ITest("eval", "Function evaluation tests.") {}
+    void onTestDefine(Cli & cli) override;
     void onTestRun() override;
+
+private:
+    vector<string> m_subtests;
+    bool m_verbose{false};
 };
 
 } // namespace
 
 static Test s_test;
+
+//===========================================================================
+void Test::onTestDefine(Cli & cli) {
+    auto & subs = cli.optVec(&m_subtests, "[subtests]")
+        .desc("Specific function tests to run, defaults to all.");
+    for (auto && ut : s_unitTests) {
+        subs.choice(ut.name(), ut.name());
+    }
+    cli.opt(&m_verbose, "v verbose")
+        .desc("Display test progress");
+}
 
 //===========================================================================
 void Test::onTestRun() {
@@ -385,8 +412,23 @@ void Test::onTestRun() {
         return;
 
     evalInitialize(h);
-    for (auto && ut : s_unitTests)
+    unordered_map<string, bool> tests;
+    for (auto && sub : m_subtests)
+        tests[sub] = false;
+    for (auto && ut : s_unitTests) {
+        if (!tests.empty()) {
+            if (!tests.count(ut.name()))
+                continue;
+            tests[ut.name()] = true;
+        }
+        if (m_verbose)
+            cout << ut.name() << "...\n";
         ut.onTest(h);
+    }
+    for (auto && [name, found] : tests) {
+        if (!found)
+            logMsgError() << "unknown test: " << name;
+    }
 
     dbClose(h);
 }

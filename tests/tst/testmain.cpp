@@ -22,20 +22,20 @@ static List<ITest> & tests() {
 }
 
 //===========================================================================
-ITest::ITest (std::string_view name, std::string_view desc, bool verbose)
+ITest::ITest (std::string_view name, std::string_view desc)
     : m_name{name}
 {
     Cli cli;
     cli.command(string(name))
         .desc(string(desc))
         .action([&](Cli & cli) { this->onTestRun(); return true; });
-    if (verbose) {
-        cli.opt<bool>(&m_verbose, "v verbose")
-            .desc("Display additional information during test");
-    }
 
     tests().link(this);
 }
+
+//===========================================================================
+void ITest::onTestDefine(Cli & cli)
+{}
 
 
 /****************************************************************************
@@ -64,6 +64,10 @@ static void app(int argc, char * argv[]) {
     cli.command("all")
         .desc("Run all tests.")
         .action(allCmd);
+    for (auto && test : tests()) {
+        cli.command(string(test.name()));
+        test.onTestDefine(cli);
+    }
     if (!cli.exec(argc, argv))
         return appSignalUsageError();
     if (cli.runCommand() == "help")
@@ -90,7 +94,8 @@ static void app(int argc, char * argv[]) {
 int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF
         | _CRTDBG_LEAK_CHECK_DF
-//        | _CRTDBG_DELAY_FREE_MEM_DF
+        | _CRTDBG_DELAY_FREE_MEM_DF
+        //| _CRTDBG_CHECK_ALWAYS_DF
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 

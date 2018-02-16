@@ -33,13 +33,23 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("db", "Database manipulation tests.", true) {}
+    Test() : ITest("db", "Database manipulation tests.") {}
+    void onTestDefine(Cli & cli) override;
     void onTestRun() override;
+
+private:
+    bool m_verbose{false};
 };
 
 } // namespace
 
 static Test s_test;
+
+//===========================================================================
+void Test::onTestDefine(Cli & cli) {
+    cli.opt<bool>(&m_verbose, "v verbose")
+        .desc("Display additional information during test");
+}
 
 //===========================================================================
 void Test::onTestRun() {
