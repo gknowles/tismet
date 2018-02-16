@@ -483,7 +483,8 @@ public:
         IDbDataNotify * notify,
         uint32_t id,
         Dim::TimePoint first,
-        Dim::TimePoint last
+        Dim::TimePoint last,
+        unsigned presamples
     );
 
     void applyZeroInit(void * ptr);

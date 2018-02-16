@@ -17,7 +17,7 @@ class SourceNode;
 struct SampleList {
     Dim::TimePoint first;
     Dim::Duration interval;
-    uint32_t count{0};
+    unsigned count{0};
     uint32_t metricId{0};
 
     // EXTENDS BEYOND END OF STRUCT
@@ -71,27 +71,29 @@ public:
     struct ResultRange {
         ResultNode * rn{nullptr};
         int resultId{0};
+        Dim::Duration minInterval;
         Dim::TimePoint first;
         Dim::TimePoint last;
-        Dim::Duration minInterval;
+
+        // "pre" is a request for samples from before the start of the result
+        // range that are needed to make it consistent. These are requested by
+        // functions such as movingAverage and derivative.
+        Dim::Duration pretime;
+        unsigned presamples{0};
     };
 
 public:
     virtual ~SourceNode();
     void init(std::shared_ptr<char[]> name);
 
-    void addOutput(
-        ResultNode * rn,
-        int resultId,
-        Dim::TimePoint first,
-        Dim::TimePoint last,
-        Dim::Duration minInterval
-    );
+    void addOutput(const ResultRange & rr);
     void removeOutput(ResultNode * rn);
 
 protected:
     std::shared_ptr<char[]> sourceName() const { return m_source; }
-    bool outputRange(Dim::TimePoint * first, Dim::TimePoint * last) const;
+
+    // Sets first, last, pretime, and presamples
+    bool outputRange(ResultRange * rr) const;
 
     // Returns false when !info.more
     bool outputResult(const ResultInfo & info);
@@ -124,8 +126,8 @@ protected:
     // validate and/or process arguments
     virtual bool onFuncBind();
     virtual void onFuncAdjustRange(
-        Dim::TimePoint * first,
-        Dim::TimePoint * last
+        Dim::Duration * pretime,
+        unsigned * presamples
     );
     virtual Apply onFuncApply(ResultInfo & info);
 

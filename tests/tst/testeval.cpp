@@ -223,7 +223,7 @@ void UnitTest::onTest(DbHandle h) {
     m_errmsg.clear();
     m_done = false;
     auto targets = vector<string_view>{m_query};
-    evalAdd(this, targets, m_first, m_last, m_maxPoints);
+    evaluate(this, targets, m_first, m_last, m_maxPoints);
 
     unique_lock<mutex> lk{s_mut};
     while (!m_done)

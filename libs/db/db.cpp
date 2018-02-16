@@ -34,6 +34,7 @@ struct DbReq {
     IDbDataNotify * notify;
     TimePoint first;
     TimePoint last;
+    unsigned presamples;
     double value;
 };
 
@@ -76,7 +77,8 @@ public:
         IDbDataNotify * notify,
         uint32_t id,
         TimePoint first,
-        TimePoint last
+        TimePoint last,
+        unsigned presamples
     );
 
 private:
@@ -370,7 +372,14 @@ void DbBase::apply(uint32_t id, DbReq && req) {
         m_data.getMetricInfo(req.notify, txn, id);
         break;
     case kGetSamples:
-        m_data.getSamples(txn, req.notify, id, req.first, req.last);
+        m_data.getSamples(
+            txn,
+            req.notify,
+            id,
+            req.first,
+            req.last,
+            req.presamples
+        );
         break;
     case kEraseMetric:
         if (m_data.eraseMetric(&req.name, txn, id)) {
@@ -543,13 +552,15 @@ bool DbBase::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
-    TimePoint last
+    TimePoint last,
+    unsigned presamples
 ) {
     DbReq req;
     req.type = kGetSamples;
     req.notify = notify;
     req.first = first;
     req.last = last;
+    req.presamples = presamples;
     return transact(id, move(req));
 }
 
@@ -699,7 +710,8 @@ bool dbGetSamples(
     DbHandle h,
     uint32_t id,
     TimePoint first,
-    TimePoint last
+    TimePoint last,
+    unsigned presamples
 ) {
-    return db(h)->getSamples(notify, id, first, last);
+    return db(h)->getSamples(notify, id, first, last, presamples);
 }

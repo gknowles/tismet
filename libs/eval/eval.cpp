@@ -30,10 +30,10 @@ private:
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
 
+    ResultRange m_range;
+
     thread::id m_tid;
     ResultInfo m_result;
-    TimePoint m_first;
-    TimePoint m_last;
     UnsignedSet m_unfinished;
 
     size_t m_pos{0};
@@ -278,15 +278,9 @@ void SourceNode::init(shared_ptr<char[]> name) {
 }
 
 //===========================================================================
-void SourceNode::addOutput(
-    ResultNode * rn,
-    int resultId,
-    TimePoint first,
-    TimePoint last,
-    Duration minInterval
-) {
+void SourceNode::addOutput(const ResultRange & rr) {
     unique_lock<mutex> lk{m_outMut};
-    m_outputs.push_back({rn, resultId, first, last, minInterval});
+    m_outputs.push_back(rr);
     if (m_outputs.size() != 1)
         return;
 
@@ -312,18 +306,20 @@ void SourceNode::removeOutput(ResultNode * rn) {
 }
 
 //===========================================================================
-bool SourceNode::outputRange(TimePoint * first, TimePoint * last) const {
-    *first = TimePoint::max();
-    *last = TimePoint::min();
+bool SourceNode::outputRange(ResultRange * out) const {
+    out->first = TimePoint::max();
+    out->last = TimePoint::min();
+    out->pretime = {};
+    out->presamples = 0;
 
     scoped_lock<mutex> lk{m_outMut};
     if (m_outputs.empty())
         return false;
     for (auto && rr : m_outputs) {
-        if (*first > rr.first)
-            *first = rr.first;
-        if (*last < rr.last)
-            *last = rr.last;
+        out->first = min(out->first, rr.first);
+        out->last = max(out->last, rr.last);
+        out->pretime = max(out->pretime, rr.pretime);
+        out->presamples = max(out->presamples, rr.presamples);
     }
     return true;
 }
@@ -438,15 +434,12 @@ void DbDataNode::onStart() {
 
 //===========================================================================
 void DbDataNode::onTask() {
-    TimePoint first, last;
-    if (!outputRange(&first, &last))
+    if (!outputRange(&m_range))
         return;
 
     assert(m_unfinished.empty());
     m_result = {};
     m_result.target = sourceName();
-    m_first = first;
-    m_last = last;
     dbFindMetrics(&m_unfinished, s_db, m_result.target.get());
     if (m_unfinished.empty()) {
         outputResult(m_result);
@@ -460,8 +453,16 @@ void DbDataNode::readMore() {
     m_tid = this_thread::get_id();
     for (;;) {
         auto id = m_unfinished.pop_front();
-        if (!dbGetSamples(this, s_db, id, m_first, m_last))
+        if (!dbGetSamples(
+            this,
+            s_db,
+            id,
+            m_range.first - m_range.pretime,
+            m_range.last,
+            m_range.presamples
+        )) {
             return;
+        }
         if (m_unfinished.empty())
             break;
     }
@@ -472,8 +473,15 @@ void DbDataNode::readMore() {
 bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!info.type)
         return true;
-    auto first = m_first - m_first.time_since_epoch() % info.interval;
-    auto last = m_last - m_last.time_since_epoch() % info.interval;
+
+    auto first = m_range.first
+        - m_range.first.time_since_epoch() % info.interval
+        - m_range.pretime
+        - m_range.presamples * info.interval;
+    auto last = m_range.last
+        + info.interval
+        - m_range.last.time_since_epoch() % info.interval;
+    assert(first <= info.first && last >= info.last);
     auto count = (last - first) / info.interval;
     if (!count)
         return true;
@@ -617,15 +625,17 @@ void FuncNode::forwardResult(ResultInfo & info, bool unfinished) {
 
 //===========================================================================
 void FuncNode::onStart() {
-    TimePoint first, last;
-    if (!outputRange(&first, &last))
+    ResultRange rr;
+    if (!outputRange(&rr))
         return;
 
-    onFuncAdjustRange(&first, &last);
+    onFuncAdjustRange(&rr.pretime, &rr.presamples);
     m_unfinished = (int) m_sources.size();
-    int id = 0;
-    for (auto && sn : m_sources)
-        sn->addOutput(this, id++, first, last, {});
+    rr.rn = this;
+    for (auto && sn : m_sources) {
+        sn->addOutput(rr);
+        rr.resultId += 1;
+    }
 }
 
 //===========================================================================
@@ -646,7 +656,10 @@ bool FuncNode::onFuncBind() {
 }
 
 //===========================================================================
-void FuncNode::onFuncAdjustRange(TimePoint * first, TimePoint * last)
+void FuncNode::onFuncAdjustRange(
+    Duration * pretime,
+    unsigned * presamples
+)
 {}
 
 //===========================================================================
@@ -685,9 +698,8 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
         return;
     }
 
+    bool pushTask = m_results.empty();
     m_results.push_back(info);
-    if (m_results.size() == 1)
-        taskPushCompute(this);
     auto more = info.more;
     while (!more) {
         if (++m_curId == m_idResults.size())
@@ -700,28 +712,31 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
             more = m_results.back().more;
         }
     }
+    if (pushTask)
+        taskPushCompute(this);
 }
 
 //===========================================================================
 FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
     if (info.samples) {
-        auto first = info.samples->first;
-        auto last = first + info.samples->count * info.samples->interval;
         DbSeriesInfo dsi;
         dsi.target = info.target.get();
         dsi.id = info.samples->metricId;
         dsi.name = info.name.get();
         dsi.type = kSampleTypeFloat64;
-        dsi.first = first;
-        dsi.last = last;
         dsi.interval = info.samples->interval;
+        dsi.first = m_first - m_first.time_since_epoch() % dsi.interval;
+        auto presamples = (dsi.first - info.samples->first) / dsi.interval;
+        auto count = info.samples->count - presamples;
+        dsi.last = dsi.first + count * info.samples->interval;
         if (!m_notify->onDbSeriesStart(dsi)) {
             m_notify->onEvalEnd();
             return Apply::kDestroy;
         }
-        auto samp = info.samples->samples;
-        for (; first < last; first += dsi.interval, ++samp) {
-            if (!m_notify->onDbSample(dsi.id, first, *samp)) {
+        auto samp = info.samples->samples + presamples;
+        auto time = dsi.first;
+        for (; time < dsi.last; time += dsi.interval, ++samp) {
+            if (!m_notify->onDbSample(dsi.id, time, *samp)) {
                 m_notify->onEvalEnd();
                 return Apply::kDestroy;
             }
@@ -789,7 +804,7 @@ void evalInitialize(DbHandle f) {
 }
 
 //===========================================================================
-void evalAdd(
+void evaluate(
     IEvalNotify * notify,
     const vector<string_view> & targets,
     TimePoint first,
@@ -804,11 +819,16 @@ void evalAdd(
     ex->m_last = last;
     if (maxPoints)
         ex->m_minInterval = (last - first) / maxPoints;
-    int id = 0;
     ex->m_idResults.resize(targets.size());
+    SourceNode::ResultRange rr;
+    rr.rn = ex;
+    rr.first = first;
+    rr.last = last;
+    rr.minInterval = ex->m_minInterval;
     for (auto && target : targets) {
         if (auto sn = addSource(ex, target)) {
-            sn->addOutput(ex, id++, first, last, ex->m_minInterval);
+            sn->addOutput(rr);
+            rr.resultId += 1;
         } else {
             delete ex;
             notify->onEvalError("Invalid target parameter: " + string(target));

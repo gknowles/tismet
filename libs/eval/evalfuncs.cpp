@@ -34,6 +34,14 @@ public:
     inline static Register<T> s_register{FT};
 public:
     Query::Function::Type type() const override { return FT; }
+    void onFuncAdjustRange(Duration * pretime, unsigned * presamples) override;
+
+protected:
+    Duration m_pretime;
+    unsigned m_presamples{0};
+
+private:
+    Duration m_oldPretime;
 };
 
 } // namespace
@@ -74,6 +82,24 @@ static shared_ptr<char[]> addFuncName(
         out[999] = 0;
     }
     return out;
+}
+
+
+/****************************************************************************
+*
+*   FuncImpl
+*
+***/
+
+//===========================================================================
+template<Function::Type FT, typename T>
+void FuncImpl<FT, T>::onFuncAdjustRange(
+    Duration * pretime,
+    unsigned * presamples
+) {
+    m_oldPretime = *pretime;
+    *pretime += m_pretime;
+    *presamples += m_presamples;
 }
 
 
@@ -173,6 +199,7 @@ namespace {
 class FuncDerivative
     : public Transform<Function::kDerivative, FuncDerivative>
 {
+    bool onFuncBind() override;
     void onTransform(
         double * optr,
         const double * ptr,
@@ -180,6 +207,12 @@ class FuncDerivative
     ) override;
 };
 } // namespace
+
+//===========================================================================
+bool FuncDerivative::onFuncBind() {
+    m_presamples = 1;
+    return true;
+}
 
 //===========================================================================
 void FuncDerivative::onTransform(
@@ -214,6 +247,7 @@ class FuncKeepLastValue
 //===========================================================================
 bool FuncKeepLastValue::onFuncBind() {
     m_limit = m_args.empty() ? 0 : (int) m_args[0].number;
+    m_presamples = 1;
     return true;
 }
 
@@ -265,6 +299,10 @@ class FuncMovingAverage
         FuncMovingAverage>
 {
     bool onFuncBind() override;
+    void onFuncAdjustRange(
+        Duration * pretime,
+        unsigned * presamples
+    ) override;
     void onTransformStart(Duration interval) override;
     void onTransform(
         double * optr,
@@ -294,6 +332,14 @@ bool FuncMovingAverage::onFuncBind() {
             m_count = 1;
     }
     return true;
+}
+
+//===========================================================================
+void FuncMovingAverage::onFuncAdjustRange(
+    Duration * pretime,
+    unsigned * presamples
+) {
+
 }
 
 //===========================================================================
@@ -350,6 +396,7 @@ class FuncNonNegativeDerivative
 //===========================================================================
 bool FuncNonNegativeDerivative::onFuncBind() {
     m_limit = m_args.empty() ? HUGE_VAL : m_args[0].number;
+    m_presamples = 1;
     return true;
 }
 

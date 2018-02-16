@@ -1013,7 +1013,8 @@ void DbData::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
-    TimePoint last
+    TimePoint last,
+    unsigned presamples
 ) {
     auto mi = loadMetricPos(txn, id);
     if (!mi.infoPage)
@@ -1025,6 +1026,8 @@ void DbData::getSamples(
     // round time to metric's sampling interval
     first -= first.time_since_epoch() % mi.interval;
     last -= last.time_since_epoch() % mi.interval;
+    // expand range to include presamples
+    first -= presamples * mi.interval;
 
     if (!mi.lastPage)
         return noSamples(notify, id, name, stype, first, mi.interval);

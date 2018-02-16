@@ -172,7 +172,8 @@ bool dbGetSamples(
     DbHandle h,
     uint32_t id,
     Dim::TimePoint first = {},
-    Dim::TimePoint last = Dim::TimePoint::max()
+    Dim::TimePoint last = Dim::TimePoint::max(),
+    unsigned presamples = 0
 );
 
 
