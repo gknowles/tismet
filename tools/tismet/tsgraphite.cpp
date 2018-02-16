@@ -441,6 +441,12 @@ bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
     m_bld.array();
     if (isnan(value)) {
         m_bld.value(nullptr);
+    } else if (isinf(value)) {
+        if (value < 0) {
+            m_bld.value(numeric_limits<double>::min());
+        } else {
+            m_bld.value(numeric_limits<double>::max());
+        }
     } else {
         m_bld.value(value);
     }
