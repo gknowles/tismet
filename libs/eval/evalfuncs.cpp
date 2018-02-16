@@ -34,7 +34,12 @@ public:
     inline static Register<T> s_register{FT};
 public:
     Query::Function::Type type() const override { return FT; }
-    void onFuncAdjustRange(Duration * pretime, unsigned * presamples) override;
+    void onFuncAdjustRange(
+        TimePoint * first,
+        TimePoint * last,
+        Duration * pretime,
+        unsigned * presamples
+    ) override;
 
 protected:
     Duration m_pretime;
@@ -94,6 +99,8 @@ static shared_ptr<char[]> addFuncName(
 //===========================================================================
 template<Function::Type FT, typename T>
 void FuncImpl<FT, T>::onFuncAdjustRange(
+    TimePoint * first,
+    TimePoint * last,
     Duration * pretime,
     unsigned * presamples
 ) {
@@ -299,10 +306,6 @@ class FuncMovingAverage
         FuncMovingAverage>
 {
     bool onFuncBind() override;
-    void onFuncAdjustRange(
-        Duration * pretime,
-        unsigned * presamples
-    ) override;
     void onTransformStart(Duration interval) override;
     void onTransform(
         double * optr,
@@ -332,14 +335,6 @@ bool FuncMovingAverage::onFuncBind() {
             m_count = 1;
     }
     return true;
-}
-
-//===========================================================================
-void FuncMovingAverage::onFuncAdjustRange(
-    Duration * pretime,
-    unsigned * presamples
-) {
-
 }
 
 //===========================================================================
@@ -537,22 +532,47 @@ double FuncScale::onConvert(double value) {
 
 namespace {
 class FuncTimeShift : public FuncImpl<Function::kTimeShift, FuncTimeShift> {
+    bool onFuncBind() override;
+    void onFuncAdjustRange(
+        TimePoint * first,
+        TimePoint * last,
+        Duration * pretime,
+        unsigned * presamples
+    ) override;
     Apply onFuncApply(ResultInfo & info) override;
+
+    Duration m_shift;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncTimeShift::onFuncApply(ResultInfo & info) {
+bool FuncTimeShift::onFuncBind() {
     auto tmp = string(m_args[0].string.get());
     if (tmp[0] != '+' && tmp[0] != '-')
         tmp = "-" + tmp;
-    Duration shift;
-    if (!parse(&shift, tmp.c_str()))
-        return Apply::kFinished;
+    if (!parse(&m_shift, tmp.c_str()))
+        return false;
+    return true;
+}
 
+//===========================================================================
+void FuncTimeShift::onFuncAdjustRange(
+    TimePoint * first,
+    TimePoint * last,
+    Duration * pretime,
+    unsigned * presamples
+) {
+    *first += m_shift;
+    *last += m_shift;
+}
+
+//===========================================================================
+FuncNode::Apply FuncTimeShift::onFuncApply(ResultInfo & info) {
     info.name = addFuncName(type(), info.name);
     info.samples = SampleList::dup(*info.samples);
-    info.samples->first += shift;
+    auto & first = info.samples->first;
+    first -= m_shift;
+    first -= first.time_since_epoch() % info.samples->interval;
     return Apply::kForward;
 }
 

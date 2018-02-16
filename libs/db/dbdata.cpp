@@ -1030,7 +1030,7 @@ void DbData::getSamples(
     first -= presamples * mi.interval;
 
     if (!mi.lastPage)
-        return noSamples(notify, id, name, stype, first, mi.interval);
+        return noSamples(notify, id, name, stype, last, mi.interval);
 
     auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
     auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
@@ -1039,7 +1039,7 @@ void DbData::getSamples(
     if (last > lastSampleTime)
         last = lastSampleTime;
     if (first >= last)
-        return noSamples(notify, id, name, stype, first, mi.interval);
+        return noSamples(notify, id, name, stype, last, mi.interval);
 
     auto vpp = samplesPerPage(mi.sampleType);
     auto pageInterval = vpp * mi.interval;
@@ -1110,7 +1110,7 @@ void DbData::getSamples(
         radixFind(txn, &spno, mi.infoPage, sppos);
     }
     if (!count) {
-        return noSamples(notify, id, name, stype, first, mi.interval);
+        return noSamples(notify, id, name, stype, last, mi.interval);
     } else {
         notify->onDbSeriesEnd(id);
     }

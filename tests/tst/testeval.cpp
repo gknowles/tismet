@@ -349,9 +349,9 @@ static auto s_minSeries = UnitTest("minSeries")
 static auto s_nonNegativeDerivative = UnitTest("nonNegativeDerivative")
     .query("nonNegativeDerivative(*.value)", 1, 10)
     .in("1.value", 1, 1s, {NAN,1,2,3,4,5,NAN,3,2,1})
-    .in("2.value", 0, 1s, {1, 2, 3})
     .out("nonNegativeDerivative(1.value)", 1, 1s,
         {NAN,NAN,1,1,1,1,NAN,NAN,NAN,NAN})
+    .in("2.value", 0, 1s, {1, 2, 3})
     .out("nonNegativeDerivative(2.value)", 1, 1s,
         {1,1,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN});
 static auto s_nonNegativeDerivative_max = UnitTest("nonNegativeDerivative_max")
@@ -359,6 +359,18 @@ static auto s_nonNegativeDerivative_max = UnitTest("nonNegativeDerivative_max")
     .in("1.value", 1, 1s, {0,1,2,3,4,5,0,1,2,3})
     .out("nonNegativeDerivative(1.value)", 1, 1s,
         {NAN,1,1,1,1,1,1,1,1,1});
+
+//===========================================================================
+// timeShift
+//===========================================================================
+static auto s_timeShift = UnitTest("timeShift")
+    .query("timeShift(*.value, '2s')", 100, 5)
+    .in("1.value", 95, 1s, {-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9})
+    .out("timeShift(1.value)", 100, 1s,
+        {-2,-1,0,1,2})
+    .in("2.value", 103, 1s, {0,1,2,3,4})
+    .out("timeShift(2.value)", 100, 1s,
+        {NAN,NAN,NAN,NAN,NAN});
 
 
 /****************************************************************************

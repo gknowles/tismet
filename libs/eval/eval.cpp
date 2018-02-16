@@ -479,10 +479,10 @@ bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
         - m_range.pretime
         - m_range.presamples * info.interval;
     auto last = m_range.last
-        + info.interval
-        - m_range.last.time_since_epoch() % info.interval;
-    assert(first <= info.first && last >= info.last);
+        - m_range.last.time_since_epoch() % info.interval
+        + info.interval;
     auto count = (last - first) / info.interval;
+    assert(first <= info.first && last >= info.last);
     if (!count)
         return true;
 
@@ -629,7 +629,7 @@ void FuncNode::onStart() {
     if (!outputRange(&rr))
         return;
 
-    onFuncAdjustRange(&rr.pretime, &rr.presamples);
+    onFuncAdjustRange(&rr.first, &rr.last, &rr.pretime, &rr.presamples);
     m_unfinished = (int) m_sources.size();
     rr.rn = this;
     for (auto && sn : m_sources) {
@@ -657,6 +657,8 @@ bool FuncNode::onFuncBind() {
 
 //===========================================================================
 void FuncNode::onFuncAdjustRange(
+    TimePoint * first,
+    TimePoint * last,
     Duration * pretime,
     unsigned * presamples
 )

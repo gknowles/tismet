@@ -126,6 +126,8 @@ protected:
     // validate and/or process arguments
     virtual bool onFuncBind();
     virtual void onFuncAdjustRange(
+        Dim::TimePoint * first,
+        Dim::TimePoint * last,
         Dim::Duration * pretime,
         unsigned * presamples
     );
