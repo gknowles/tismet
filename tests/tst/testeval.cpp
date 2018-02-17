@@ -361,6 +361,20 @@ static auto s_nonNegativeDerivative_max = UnitTest("nonNegativeDerivative_max")
         {NAN,1,1,1,1,1,1,1,1,1});
 
 //===========================================================================
+// scaleToSeconds
+//===========================================================================
+static auto s_scaleToSeconds = UnitTest("scaleToSeconds")
+    .query("scaleToSeconds(*.value, 30)", 0, 600)
+    .in("1.value", 0, 60s, {1,2,3,4,5,6,7,8,9,10})
+    .out("scaleToSeconds(1.value)",0,60s, {0.5,1,1.5,2,2.5,3,3.5,4,4.5,5})
+    .in("2.value", 0, 60s, {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10})
+    .out("scaleToSeconds(2.value)",0,60s, {NAN,1,NAN,2,NAN,3,NAN,4,NAN,5})
+    .in("3.value", 0, 60s, {1,2,NAN,NAN,NAN,6,7,8,9,10})
+    .out("scaleToSeconds(3.value)",0,60s, {0.5,1,NAN,NAN,NAN,3,3.5,4,4.5,5})
+    .in("4.value", 0, 60s, {1,2,3,4,5,6,7,8,9,NAN})
+    .out("scaleToSeconds(4.value)",0,60s, {0.5,1,1.5,2,2.5,3,3.5,4,4.5,NAN});
+
+//===========================================================================
 // timeShift
 //===========================================================================
 static auto s_timeShift = UnitTest("timeShift")

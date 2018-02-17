@@ -433,6 +433,7 @@ class Convert : public FuncImpl<FT, T> {
     FuncNode::Apply onFuncApply(ResultInfo & info) override;
 
     virtual double onConvert(double value) = 0;
+    virtual void onConvertStart(Duration interval) {}
 };
 } // namespace
 
@@ -442,6 +443,7 @@ FuncNode::Apply Convert<FT, T>::onFuncApply(ResultInfo & info) {
     info.name = addFuncName(this->type(), info.name);
 
     auto out = SampleList::alloc(*info.samples);
+    onConvertStart(out->interval);
     auto optr = out->samples;
     auto ptr = info.samples->samples;
     auto eptr = ptr + info.samples->count;
@@ -521,6 +523,30 @@ class FuncScale : public Convert<Function::kScale, FuncScale> {
 double FuncScale::onConvert(double value) {
     auto factor = m_args[0].number;
     return value * factor;
+}
+
+//===========================================================================
+// scaleToSeconds
+//===========================================================================
+namespace {
+class FuncScaleToSeconds
+    : public Convert<Function::kScaleToSeconds, FuncScaleToSeconds>
+{
+    double onConvert(double value) override;
+    void onConvertStart(Duration interval) override;
+
+    double m_factor;
+};
+} // namespace
+
+//===========================================================================
+void FuncScaleToSeconds::onConvertStart(Duration interval) {
+    m_factor = m_args[0].number / duration_cast<seconds>(interval).count();
+}
+
+//===========================================================================
+double FuncScaleToSeconds::onConvert(double value) {
+    return value * m_factor;
 }
 
 
