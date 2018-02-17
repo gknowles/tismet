@@ -9,7 +9,7 @@ Tismet Configuration File.
   <DisableShutdownTimeout value="0"/>
   <DisableInactiveTimeout value="0"/>
   <Port value="41000"/>
-  <EnableAppWindow value="1"/>
+  <EnableGui value="1"/>
 
   <WorkMemoryMaxAge value="5min"/>
   <WorkMemoryScanInterval value="1min"/>
