@@ -80,7 +80,7 @@ const TokenTable::Token s_funcNames[] = {
     { Function::kTimeShift,             "timeShift" },
 };
 static_assert(size(s_funcNames) == Function::kFuncTypes);
-const TokenTable s_funcNameTbl{s_funcNames, size(s_funcNames)};
+const TokenTable s_funcNameTbl{s_funcNames};
 
 } // namespace
 

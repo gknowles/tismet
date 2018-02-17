@@ -32,7 +32,7 @@ static TokenTable::Token s_formats[] = {
     { kFormatMsgPack, "msgpack" },
     { kFormatPickle, "pickle" },
 };
-static TokenTable s_formatTbl{s_formats, size(s_formats)};
+static TokenTable s_formatTbl{s_formats};
 
 
 /****************************************************************************

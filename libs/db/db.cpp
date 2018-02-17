@@ -596,7 +596,7 @@ static TokenTable::Token s_sampleTypes[] = {
     { kSampleTypeInt32,     "int32" },
 };
 static_assert(size(s_sampleTypes) == kSampleTypes - 1);
-static TokenTable s_sampleTypeTbl{s_sampleTypes, size(s_sampleTypes)};
+static TokenTable s_sampleTypeTbl{s_sampleTypes};
 
 //===========================================================================
 const char * toString(DbSampleType type, const char def[]) {
