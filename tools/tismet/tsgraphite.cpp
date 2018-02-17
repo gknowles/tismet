@@ -306,7 +306,7 @@ private:
     MsgBuilder m_bld{m_res.body()};
     string_view m_pathExpr;
     TimePoint m_prevTime;
-    Duration m_interval;
+    Duration m_interval{};
 };
 
 class RenderJson : public IEvalNotify {
@@ -325,7 +325,7 @@ private:
     HttpResponse m_res;
 
     JBuilder m_bld{m_res.body()};
-    Duration m_interval;
+    Duration m_interval{};
 };
 
 } // namespace
@@ -339,8 +339,8 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     TimePoint from;
     TimePoint until;
     TimePoint now;
-    Duration relFrom;
-    Duration relUntil;
+    Duration relFrom = {};
+    Duration relUntil = {};
     int maxPoints = 0;
 
     for (auto && param : req.query().parameters) {

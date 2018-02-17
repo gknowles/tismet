@@ -135,8 +135,8 @@ private:
     bool m_verbose{false};
 
     bool m_pageScanEnabled{true};
-    Dim::Duration m_pageMaxAge;
-    Dim::Duration m_pageScanInterval;
+    Dim::Duration m_pageMaxAge{};
+    Dim::Duration m_pageScanInterval{};
     std::deque<uint64_t> m_stableLsns;
     uint64_t m_stableLsn{0};
     uint64_t m_flushLsn{0};

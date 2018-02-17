@@ -28,7 +28,7 @@ namespace {
 struct Series {
     string name;
     TimePoint first;
-    Duration interval;
+    Duration interval{};
     vector<double> samples;
 };
 

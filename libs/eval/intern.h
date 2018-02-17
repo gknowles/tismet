@@ -16,7 +16,7 @@ class SourceNode;
 
 struct SampleList {
     Dim::TimePoint first;
-    Dim::Duration interval;
+    Dim::Duration interval{};
     unsigned count{0};
     uint32_t metricId{0};
 
@@ -69,16 +69,16 @@ protected:
 class SourceNode {
 public:
     struct ResultRange {
-        ResultNode * rn{nullptr};
-        int resultId{0};
-        Dim::Duration minInterval;
+        ResultNode * rn{};
+        int resultId{};
+        Dim::Duration minInterval{};
         Dim::TimePoint first;
         Dim::TimePoint last;
 
         // "pre" is a request for samples from before the start of the result
         // range that are needed to make it consistent. These are requested by
         // functions such as movingAverage and derivative.
-        Dim::Duration pretime;
+        Dim::Duration pretime{};
         unsigned presamples{0};
     };
 

@@ -42,11 +42,11 @@ public:
     ) override;
 
 protected:
-    Duration m_pretime;
+    Duration m_pretime{};
     unsigned m_presamples{0};
 
 private:
-    Duration m_oldPretime;
+    Duration m_oldPretime{};
 };
 
 } // namespace
@@ -313,9 +313,9 @@ class FuncMovingAverage
         const double * eptr
     ) override;
 
-    double m_points;
-    Duration m_interval;
-    int m_count;
+    double m_points{};
+    Duration m_interval{};
+    int m_count{};
 };
 } // namespace
 
@@ -541,7 +541,7 @@ class FuncTimeShift : public FuncImpl<Function::kTimeShift, FuncTimeShift> {
     ) override;
     Apply onFuncApply(ResultInfo & info) override;
 
-    Duration m_shift;
+    Duration m_shift{};
 };
 } // namespace
 

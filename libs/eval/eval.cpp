@@ -52,7 +52,7 @@ public:
     DbContextHandle m_ctx;
     TimePoint m_first;
     TimePoint m_last;
-    Duration m_minInterval;
+    Duration m_minInterval{};
 
     int m_curId{0};
     vector<deque<ResultInfo>> m_idResults;
