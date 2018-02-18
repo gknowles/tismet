@@ -17,7 +17,8 @@ Tismet Configuration File.
   <CheckpointMaxInterval value="1h"/>
   <MetricExpirationCheckInterval value="0h"/>
   <MetricDefaults>
-    <Rule pattern="^tismet\." retention="90d" interval="60s" type="int32"/>
+    <Rule pattern="^tismet\.db_" retention="90d" interval="60s" type="int32"/>
+    <Rule pattern="^tismet\." retention="0d"/>
     <Rule pattern=".*" retention="30d" interval="60s" type="float64"/>
   </MetricDefaults>
 

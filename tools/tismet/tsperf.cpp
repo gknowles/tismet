@@ -51,13 +51,10 @@ Duration SampleTimer::onTimer(TimePoint now) {
     auto ctx = tsDataOpenContext();
     perfGetValues(&m_vals);
     for (auto && val : m_vals) {
-        if (val.name.substr(0, 3) != "db ")
-            continue;
-        auto rname = val.name.substr(3);
-        auto name = (char *) alloca(rname.size() + size(s_prefix));
+        auto name = (char *) alloca(val.name.size() + size(s_prefix));
         memcpy(name, s_prefix, size(s_prefix) - 1);
         auto optr = name + size(s_prefix) - 1;
-        for (auto && ch : val.name.substr(3)) {
+        for (auto && ch : val.name) {
             if (strchr(s_allowedChars, ch)) {
                 *optr++ = ch;
             } else {
@@ -69,7 +66,8 @@ Duration SampleTimer::onTimer(TimePoint now) {
             optr -= 1;
         *optr = 0;
         uint32_t id;
-        tsDataInsertMetric(&id, f, name);
+        if (!tsDataInsertMetric(&id, f, name))
+            continue;
         DbMetricInfo info = {};
         switch (val.type) {
         case PerfType::kFloat: info.type = kSampleTypeFloat32; break;

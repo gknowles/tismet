@@ -12,6 +12,8 @@ void tsDataInitialize();
 void tsDataBackup(IDbProgressNotify * notify);
 DbHandle tsDataHandle();
 DbContextHandle tsDataOpenContext();
+
+// Returns false if the metric is not being stored
 bool tsDataInsertMetric(
     uint32_t * id,
     DbHandle h,

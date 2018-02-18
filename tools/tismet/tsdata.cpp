@@ -18,6 +18,7 @@ using namespace Dim;
 
 static DbHandle s_db;
 static auto & s_perfExpired = uperf("db metrics expired");
+static auto & s_perfIgnored = uperf("db samples ignored (rule)");
 
 
 /****************************************************************************
@@ -158,10 +159,22 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
             logMsgError() << "invalid metric rule pattern, " << val;
             continue;
         }
-        val = attrValue(&xrule, "type", "");
-        rule.type = fromString(val, kSampleTypeInvalid);
+        val = attrValue(&xrule, "type");
+        if (!val) {
+            rule.type = kSampleTypeInvalid;
+        } else {
+            rule.type = fromString(val, kSampleTypeInvalid);
+            if (rule.type == kSampleTypeInvalid) {
+                logMsgError() << "unknown metric rule type, " << val;
+                continue;
+            }
+        }
         (void) parse(&rule.retention, attrValue(&xrule, "retention", ""));
-        (void) parse(&rule.interval, attrValue(&xrule, "interval", ""));
+        if (!rule.retention.count()) {
+            rule.interval = {};
+        } else {
+            (void) parse(&rule.interval, attrValue(&xrule, "interval", ""));
+        }
         s_rules.push_back(rule);
     }
 }
@@ -231,18 +244,27 @@ DbContextHandle tsDataOpenContext() {
 //===========================================================================
 bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
     assert(f);
-    if (!dbInsertMetric(id, f, name))
-        return false;
+    if (dbFindMetric(id, f, name))
+        return true;
 
+    DbMetricInfo info = {};
+    bool found = false;
     for (auto && rule : s_rules) {
         if (regex_search(name.begin(), name.end(), rule.pattern)) {
-            DbMetricInfo info = {};
+            found = true;
             info.type = rule.type;
             info.retention = rule.retention;
             info.interval = rule.interval;
-            dbUpdateMetric(f, *id, info);
             break;
         }
     }
+    if (found && !info.retention.count()) {
+        if (name.substr(0, 7) != "tismet.")
+            s_perfIgnored += 1;
+        return false;
+    }
+    dbInsertMetric(id, f, name);
+    if (found)
+        dbUpdateMetric(f, *id, info);
     return true;
 }

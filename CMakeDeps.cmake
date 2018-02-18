@@ -186,13 +186,13 @@
 # vendor/dimapp/libs/win/pch.cpp
 # vendor/dimapp/libs/win/pch.h
 # vendor/dimapp/libs/win/winaddress.cpp
-# vendor/dimapp/libs/win/winapp.cpp
 # vendor/dimapp/libs/win/winconsole.cpp
 # vendor/dimapp/libs/win/winenv.cpp
 # vendor/dimapp/libs/win/winerror.cpp
 # vendor/dimapp/libs/win/winevent.cpp
 # vendor/dimapp/libs/win/winfile.cpp
 # vendor/dimapp/libs/win/winfilemon.cpp
+# vendor/dimapp/libs/win/wingui.cpp
 # vendor/dimapp/libs/win/winint.h
 # vendor/dimapp/libs/win/winiocp.cpp
 # vendor/dimapp/libs/win/winplatform.cpp

@@ -70,8 +70,8 @@ void CarbonTask::onTask() {
     auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     uint32_t id;
-    tsDataInsertMetric(&id, f, m_name.get());
-    dbUpdateSample(f, id, m_time, m_value);
+    if (tsDataInsertMetric(&id, f, m_name.get()))
+        dbUpdateSample(f, id, m_time, m_value);
     dbCloseContext(ctx);
     delete this;
 }
