@@ -92,67 +92,27 @@ bool DbPage::open(
     size_t pageSize,
     DbOpenFlags flags
 ) {
-    m_verbose = flags & fDbOpenVerbose;
-    if (m_verbose)
-        logMsgInfo() << "Open data files";
-    if (openWork(workfile, pageSize) && openData(datafile))
-        return true;
-
-    close();
-    return false;
-}
-
-//===========================================================================
-bool DbPage::openWork(string_view workfile, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
     assert(pageSize >= kMinPageSize);
     assert(kViewSize % fileViewAlignment() == 0);
 
-    m_fwork = fileOpen(
-        workfile,
-        File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking | File::fRandom
-    );
-    if (!m_fwork)
+    m_verbose = flags & fDbOpenVerbose;
+    if (m_verbose)
+        logMsgInfo() << "Open data files";
+    if (!openData(datafile, pageSize))
         return false;
-    auto len = fileSize(m_fwork);
-    ZeroPage zp{};
-    if (!len) {
-        zp.hdr.type = (DbPageType) kPageTypeZero;
-        memcpy(zp.signature, kWorkFileSig, sizeof(zp.signature));
-        zp.pageSize = (unsigned) pageSize;
-        fileWriteWait(m_fwork, 0, &zp, sizeof(zp));
-        len = pageSize;
-    } else {
-        fileReadWait(&zp, sizeof(zp), m_fwork, 0);
-    }
-    if (memcmp(zp.signature, kWorkFileSig, sizeof(zp.signature)) != 0) {
-        logMsgError() << "Bad signature in " << workfile;
-        return false;
-    }
-    m_pageSize = zp.pageSize;
-    if (m_pageSize < kMinPageSize || kViewSize % m_pageSize != 0) {
-        logMsgError() << "Invalid page size in " << workfile;
-        return false;
-    }
-    m_workPages = len / m_pageSize;
-    s_perfPages += (unsigned) m_workPages;
-    m_freeWorkPages.insert(1, (unsigned) m_workPages - 1);
-    s_perfFreePages += (unsigned) m_workPages - 1;
-    if (!m_vwork.open(m_fwork, kViewSize, m_pageSize)) {
-        logMsgError() << "Open view failed for " << workfile;
+    if (!openWork(workfile)) {
+        close();
         return false;
     }
 
-    m_stableLsns.clear();
-    m_stableLsns.push_back(0);
     return true;
 }
 
 //===========================================================================
-bool DbPage::openData(string_view datafile) {
+bool DbPage::openData(string_view datafile, size_t pageSize) {
     m_fdata = fileOpen(
         datafile,
         File::fCreat | File::fReadWrite | File::fDenyWrite
@@ -164,6 +124,11 @@ bool DbPage::openData(string_view datafile) {
     if (!len) {
         DbPageHeader hdr = {};
         fileWriteWait(m_fdata, 0, &hdr, sizeof(hdr));
+        m_pageSize = pageSize;
+    } else {
+        m_pageSize = DbData::queryPageSize(m_fdata);
+        if (!m_pageSize)
+            m_pageSize = pageSize;
     }
     if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
         logMsgError() << "Open view failed for " << datafile;
@@ -180,6 +145,52 @@ bool DbPage::openData(string_view datafile) {
     }
     m_pages.resize(lastPage + 1);
 
+    return true;
+}
+
+//===========================================================================
+bool DbPage::openWork(string_view workfile) {
+    m_fwork = fileOpen(
+        workfile,
+        File::fCreat | File::fTemp | File::fReadWrite | File::fDenyWrite
+            | File::fBlocking | File::fRandom
+    );
+    if (!m_fwork)
+        return false;
+    auto len = fileSize(m_fwork);
+    ZeroPage zp{};
+    if (!len) {
+        zp.hdr.type = (DbPageType) kPageTypeZero;
+        memcpy(zp.signature, kWorkFileSig, sizeof(zp.signature));
+        zp.pageSize = (unsigned) m_pageSize;
+        fileWriteWait(m_fwork, 0, &zp, sizeof(zp));
+        len = m_pageSize;
+    } else {
+        fileReadWait(&zp, sizeof(zp), m_fwork, 0);
+    }
+    if (zp.pageSize != m_pageSize) {
+        logMsgError() << "Mismatched page size in " << workfile;
+        return false;
+    }
+    if (memcmp(zp.signature, kWorkFileSig, sizeof(zp.signature)) != 0) {
+        logMsgError() << "Bad signature in " << workfile;
+        return false;
+    }
+    if (m_pageSize < kMinPageSize || kViewSize % m_pageSize != 0) {
+        logMsgError() << "Invalid page size in " << workfile;
+        return false;
+    }
+    m_workPages = len / m_pageSize;
+    s_perfPages += (unsigned) m_workPages;
+    m_freeWorkPages.insert(1, (unsigned) m_workPages - 1);
+    s_perfFreePages += (unsigned) m_workPages - 1;
+    if (!m_vwork.open(m_fwork, kViewSize, m_pageSize)) {
+        logMsgError() << "Open view failed for " << workfile;
+        return false;
+    }
+
+    m_stableLsns.clear();
+    m_stableLsns.push_back(0);
     return true;
 }
 
@@ -216,7 +227,10 @@ void DbPage::close() {
     m_vdata.close();
     fileClose(m_fdata);
     m_vwork.close();
+
+    // TODO: resize to number of dirty pages at start of last checkpoint
     fileResize(m_fwork, m_pageSize);
+
     fileClose(m_fwork);
     s_perfPages -= (unsigned) m_workPages;
     s_perfFreePages -= (unsigned) m_freeWorkPages.size();

@@ -230,6 +230,21 @@ static void noSamples(
 ***/
 
 //===========================================================================
+// static
+size_t DbData::queryPageSize(FileHandle f) {
+    if (!f)
+        return 0;
+    ZeroPage zp;
+    if (auto bytes = fileReadWait(&zp, sizeof(zp), f, 0); bytes != sizeof(zp))
+        return 0;
+    if (zp.hdr.type != zp.s_pageType)
+        return 0;
+    if (memcmp(zp.signature, kDataFileSig, sizeof(zp.signature)) != 0)
+        return 0;
+    return zp.pageSize;
+}
+
+//===========================================================================
 DbData::~DbData () {
     s_perfCount -= m_numMetrics;
 }

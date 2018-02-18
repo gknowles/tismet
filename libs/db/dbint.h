@@ -110,8 +110,8 @@ public:
     Dim::FileHandle dataFile() const { return m_fdata; }
 
 private:
-    bool openWork(std::string_view workfile, size_t pageSize);
-    bool openData(std::string_view datafile);
+    bool openData(std::string_view datafile, size_t pageSize);
+    bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
@@ -281,6 +281,11 @@ public:
         uint16_t pageLastSample; // position of last sample on last page
         DbSampleType sampleType;
     };
+
+public:
+    // Reads the file header to determine the page size, returns 0 if the
+    // file doesn't exist, access is denied, or has an invalid header.
+    static size_t queryPageSize(Dim::FileHandle f);
 
 public:
     ~DbData();
