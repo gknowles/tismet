@@ -21,9 +21,8 @@ struct CmdOpts {
     Path ofile;
     FileAppendStream::OpenExisting openMode;
 
-    uint64_t maxBytes;
-    unsigned maxSecs;
-    uint64_t maxSamples;
+    DbProgressInfo progress;
+    unsigned totalSecs;
 
     string addrStr;
     Endpoint addr;
@@ -47,35 +46,6 @@ static uint64_t s_bytesWritten;
 static TimePoint s_startTime;
 
 static FileAppendStream s_file;
-
-
-//===========================================================================
-static void logStart(string_view target, const Endpoint & source) {
-    s_startTime = Clock::now();
-    logMsgInfo() << "Recording " << source << " into " << target;
-    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxSamples) {
-        auto os = logMsgInfo();
-        os.imbue(locale(""));
-        os << "Limits";
-        if (auto num = s_opts.maxSamples)
-            os << "; samples: " << num;
-        if (auto num = s_opts.maxBytes)
-            os << "; bytes: " << num;
-        if (auto num = s_opts.maxSecs)
-            os << "; seconds: " << num;
-    }
-}
-
-//===========================================================================
-static void logShutdown() {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
-    os << "Done; samples: " << s_samplesWritten
-        << "; bytes: " << s_bytesWritten
-        << "; seconds: " << elapsed.count();
-}
 
 
 /****************************************************************************
@@ -138,7 +108,9 @@ void RecordConn::onCarbonValue(
     m_buf.clear();
     carbonWrite(m_buf, name, time, (float) value);
     s_bytesWritten += m_buf.size();
-    if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes) {
+    if (s_opts.progress.totalBytes
+        && s_opts.progress.bytes > s_opts.progress.totalBytes
+    ) {
         s_bytesWritten -= m_buf.size();
         return appSignalShutdown();
     }
@@ -150,8 +122,10 @@ void RecordConn::onCarbonValue(
         cout << m_buf;
     }
 
-    if (s_opts.maxSamples && s_samplesWritten == s_opts.maxSamples
-        || s_opts.maxBytes && s_bytesWritten == s_opts.maxBytes
+    if (s_opts.progress.totalSamples
+            && s_opts.progress.samples == s_opts.progress.totalSamples
+        || s_opts.progress.totalBytes
+            && s_opts.progress.bytes == s_opts.progress.totalBytes
     ) {
         return appSignalShutdown();
     }
@@ -177,7 +151,7 @@ static ShutdownNotify s_cleanup;
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
     s_file.close();
-    logShutdown();
+    tcLogShutdown(&s_opts.progress);
 }
 
 
@@ -217,12 +191,12 @@ CmdOpts::CmdOpts() {
     cli.group("~").title("Other");
 
     cli.group("When to Stop").sortKey("1");
-    cli.opt(&maxBytes, "B bytes", 0)
+    cli.opt(&progress.totalBytes, "B bytes", 0)
         .desc("Max bytes to record, 0 for unlimited");
-    cli.opt(&maxSecs, "T time", 0)
-        .desc("Max seconds to record, 0 for unlimited");
-    cli.opt(&maxSamples, "S samples", 0)
+    cli.opt(&progress.totalSamples, "S samples", 0)
         .desc("Max samples to record, 0 for unlimited");
+    cli.opt(&totalSecs, "T time", 0)
+        .desc("Max seconds to record, 0 for unlimited");
 
     cli.group("Output Options").sortKey("2");
     cli.opt(&openMode, "", FileAppendStream::kFail)
@@ -245,9 +219,10 @@ static bool recordCmd(Cli & cli) {
 
     consoleCatchCtrlC();
     shutdownMonitor(&s_cleanup);
-    logStart(s_opts.ofile, s_opts.addr);
-    if (s_opts.maxSecs)
-        timerUpdate(&s_timer, (chrono::seconds) s_opts.maxSecs);
+    logMsgInfo() << "Recording " << s_opts.addr << " to " << s_opts.ofile;
+    tcLogStart(&s_opts.progress, (chrono::seconds) s_opts.totalSecs);
+    if (s_opts.totalSecs)
+        timerUpdate(&s_timer, (chrono::seconds) s_opts.totalSecs);
 
     taskSetQueueThreads(taskComputeQueue(), 1);
     carbonInitialize();

@@ -36,9 +36,7 @@ struct CmdOpts {
 
 static CmdOpts s_opts;
 
-static unsigned s_files;
-static uint64_t s_bytes;
-static TimePoint s_startTime;
+static DbProgressInfo s_info;
 
 static SockMgrHandle s_mgr;
 static int s_statusLines;
@@ -52,29 +50,21 @@ static int s_statusLines;
 
 //===========================================================================
 static void logStart(string_view target, const Endpoint * addr) {
-    s_startTime = Clock::now();
-    {
-        auto os = logMsgInfo();
-        os << "Backing up server at " << target;
-        if (addr)
-            os << " (" << *addr << ")";
-    }
+    tcLogStart();
+    auto os = logMsgInfo();
+    os << "Backing up server at " << target;
+    if (addr)
+        os << " (" << *addr << ")";
 }
 
 //===========================================================================
 static void logShutdown() {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
     if (++s_statusLines > 1)
         consoleRedoLine();
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
     if (!s_opts.wait) {
-        os << "Started";
+        logMsgInfo() << "Started";
     } else {
-        os << "Done; files: " << s_files
-            << "; bytes: " << s_bytes
-            << "; seconds: " << elapsed.count();
+        tcLogShutdown(&s_info);
     }
 }
 
@@ -84,12 +74,13 @@ static bool reportStatus(XNode * node) {
     if (!val)
         return false;
     auto mode = fromString(val, kRunStopping);
+    DbProgressInfo info = {};
     auto e = firstChild(node, "Files");
-    s_files = strToInt(attrValue(e, "value", ""));
-    auto totalFiles = strToInt(attrValue(e, "total", "-1"));
+    info.files = strToInt(attrValue(e, "value", ""));
+    info.totalFiles = strToInt(attrValue(e, "total", "-1"));
     e = firstChild(node, "Bytes");
-    s_bytes = strToInt64(attrValue(e, "value", ""));
-    auto totalBytes = strToInt64(attrValue(e, "total", "-1"));
+    info.bytes = strToInt64(attrValue(e, "value", ""));
+    info.totalBytes = strToInt64(attrValue(e, "total", "-1"));
 
     if (++s_statusLines > 1)
         consoleRedoLine();
@@ -101,17 +92,17 @@ static bool reportStatus(XNode * node) {
         return true;
     }
 
-    os << "; files: " << s_files;
-    if (totalFiles >= 0)
-        os << " of " << totalFiles;
-    if (s_bytes) {
+    os << "; files: " << s_info.files;
+    if (s_info.totalFiles >= 0)
+        os << " of " << s_info.totalFiles;
+    if (s_info.bytes) {
         os << "; bytes: ";
-        if (totalBytes >= 0) {
-            auto pct = (double) s_bytes / (double) totalBytes * 100;
+        if (s_info.totalBytes >= 0) {
+            auto pct = (double) s_info.bytes / (double) s_info.totalBytes * 100;
             os.precision(3);
-            os << pct << "% of " << totalBytes;
+            os << pct << "% of " << s_info.totalBytes;
         } else {
-            os << s_bytes;
+            os << s_info.bytes;
         }
     }
     return mode != kRunStopped;

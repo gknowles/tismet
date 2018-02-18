@@ -20,9 +20,8 @@ namespace {
 
 struct CmdOpts {
     string oaddr;
-    uint64_t maxBytes;
-    unsigned maxSecs;
-    uint64_t maxSamples;
+    DbProgressInfo progress;
+    unsigned totalSecs;
 
     TimePoint startTime;
     TimePoint endTime;
@@ -46,11 +45,6 @@ struct Metric {
 ***/
 
 static CmdOpts s_opts;
-
-static uint64_t s_bytesWritten;
-static uint64_t s_samplesWritten;
-static TimePoint s_startTime;
-
 static SockMgrHandle s_mgr;
 
 
@@ -61,48 +55,17 @@ static SockMgrHandle s_mgr;
 ***/
 
 //===========================================================================
-static void logStart(string_view target, const Endpoint * addr) {
-    s_startTime = Clock::now();
-    {
-        auto os = logMsgInfo();
-        os << "Writing to " << target;
-        if (addr)
-            os << " (" << *addr << ")";
-    }
-    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxSamples) {
-        auto os = logMsgInfo();
-        os.imbue(locale(""));
-        os << "Limits";
-        if (auto num = s_opts.maxSamples)
-            os << "; samples: " << num;
-        if (auto num = s_opts.maxBytes)
-            os << "; bytes: " << num;
-        if (auto num = s_opts.maxSecs)
-            os << "; seconds: " << num;
-    }
-}
-
-//===========================================================================
-static void logShutdown() {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
-    os << "Done; samples: " << s_samplesWritten
-        << "; bytes: " << s_bytesWritten
-        << "; seconds: " << elapsed.count();
-}
-
-//===========================================================================
 inline static bool checkLimits(size_t moreBytes) {
     // Update counters and check thresholds, if exceeded roll back last value.
-    s_bytesWritten += moreBytes;
-    s_samplesWritten += 1;
-    if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
-        || s_opts.maxSamples && s_samplesWritten > s_opts.maxSamples
+    s_opts.progress.bytes += moreBytes;
+    s_opts.progress.samples += 1;
+    if (s_opts.progress.totalBytes
+            && s_opts.progress.bytes > s_opts.progress.totalBytes
+        || s_opts.progress.totalSamples
+            && s_opts.progress.samples > s_opts.progress.totalSamples
     ) {
-        s_bytesWritten -= moreBytes;
-        s_samplesWritten -= 1;
+        s_opts.progress.bytes -= moreBytes;
+        s_opts.progress.samples -= 1;
         return false;
     }
     return true;
@@ -187,9 +150,9 @@ void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
         write();
     } else if (m_done
         && !info.incomplete
-        && info.total == s_bytesWritten
+        && info.total == s_opts.progress.bytes
     ) {
-        logShutdown();
+        tcLogShutdown(&s_opts.progress);
         appSignalShutdown();
     }
 }
@@ -229,7 +192,8 @@ void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {
-        logStart(s_opts.oaddr, ptr);
+        logMsgInfo() << "Writing to " << s_opts.oaddr << " (" << *ptr << ")";
+        tcLogStart(&s_opts.progress, (seconds) s_opts.totalSecs);
         sockMgrSetEndpoints(s_mgr, ptr, count);
     }
     delete this;
@@ -262,12 +226,12 @@ CmdOpts::CmdOpts() {
     cli.group("~").title("Other");
 
     cli.group("When to Stop").sortKey("2");
-    cli.opt(&maxBytes, "B bytes", 0)
+    cli.opt(&progress.totalBytes, "B bytes", 0)
         .desc("Max bytes to replay, 0 for all");
-    cli.opt(&maxSecs, "T time", 0)
-        .desc("Max seconds to replay, 0 for all");
-    cli.opt(&maxSamples, "S samples", 0)
+    cli.opt(&progress.totalSamples, "S samples", 0)
         .desc("Max samples to replay, 0 for all");
+    cli.opt(&totalSecs, "T time", 0)
+        .desc("Max seconds to replay, 0 for all");
 
     cli.group("Metrics to Replay").sortKey("3");
     cli.opt(&startTime, "s start", kDefaultStartTime)

@@ -27,9 +27,8 @@ struct CmdOpts {
     OutputType otype{};
     Path ofile;
     string oaddr;
-    uint64_t maxBytes;
-    unsigned maxSecs;
-    uint64_t maxSamples;
+    DbProgressInfo progress;
+    unsigned totalSecs;
 
     string prefix;
     unsigned metrics;
@@ -59,11 +58,6 @@ struct Metric {
 ***/
 
 static CmdOpts s_opts;
-
-static uint64_t s_bytesWritten;
-static uint64_t s_samplesWritten;
-static TimePoint s_startTime;
-
 static SockMgrHandle s_mgr;
 
 
@@ -74,48 +68,17 @@ static SockMgrHandle s_mgr;
 ***/
 
 //===========================================================================
-static void logStart(string_view target, const Endpoint * addr) {
-    s_startTime = Clock::now();
-    {
-        auto os = logMsgInfo();
-        os << "Writing to " << target;
-        if (addr)
-            os << " (" << *addr << ")";
-    }
-    if (s_opts.maxBytes || s_opts.maxSecs || s_opts.maxSamples) {
-        auto os = logMsgInfo();
-        os.imbue(locale(""));
-        os << "Limits";
-        if (auto num = s_opts.maxSamples)
-            os << "; samples: " << num;
-        if (auto num = s_opts.maxBytes)
-            os << "; bytes: " << num;
-        if (auto num = s_opts.maxSecs)
-            os << "; seconds: " << num;
-    }
-}
-
-//===========================================================================
-static void logShutdown() {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
-    os << "Done; samples: " << s_samplesWritten
-        << "; bytes: " << s_bytesWritten
-        << "; seconds: " << elapsed.count();
-}
-
-//===========================================================================
 static bool checkLimits(size_t moreBytes) {
     // Update counters and check thresholds, if exceeded roll back last value.
-    s_bytesWritten += moreBytes;
-    s_samplesWritten += 1;
-    if (s_opts.maxBytes && s_bytesWritten > s_opts.maxBytes
-        || s_opts.maxSamples && s_samplesWritten > s_opts.maxSamples
+    s_opts.progress.bytes += moreBytes;
+    s_opts.progress.samples += 1;
+    if (s_opts.progress.totalBytes
+            && s_opts.progress.bytes > s_opts.progress.totalBytes
+        || s_opts.progress.totalSamples
+            && s_opts.progress.samples > s_opts.progress.totalSamples
     ) {
-        s_bytesWritten -= moreBytes;
-        s_samplesWritten -= 1;
+        s_opts.progress.bytes -= moreBytes;
+        s_opts.progress.samples -= 1;
         return false;
     }
     return true;
@@ -327,9 +290,9 @@ void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
         write();
     } else if (m_done
         && !info.incomplete
-        && info.total == s_bytesWritten
+        && info.total == s_opts.progress.bytes
     ) {
-        logShutdown();
+        tcLogShutdown(&s_opts.progress);
         appSignalShutdown();
     }
 }
@@ -369,7 +332,8 @@ void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {
-        logStart(s_opts.oaddr, ptr);
+        logMsgInfo() << "Writing to " << s_opts.oaddr << " (" << *ptr << ")";
+        tcLogStart(&s_opts.progress);
         sockMgrSetEndpoints(s_mgr, ptr, count);
     }
     delete this;
@@ -403,7 +367,7 @@ private:
 //===========================================================================
 FileJob::~FileJob() {
     m_file.close();
-    logShutdown();
+    tcLogShutdown(&s_opts.progress);
     appSignalShutdown();
 }
 
@@ -422,7 +386,8 @@ bool FileJob::start(Cli & cli) {
     }
 
     taskSetQueueThreads(taskComputeQueue(), 2);
-    logStart(fname, nullptr);
+    logMsgInfo() << "Writing to " << fname;
+    tcLogStart(&s_opts.progress);
     taskPushCompute(this);
     cli.fail(EX_PENDING, "");
     return true;
@@ -483,11 +448,11 @@ CmdOpts::CmdOpts() {
     cli.group("~").title("Other");
 
     cli.group("When to Stop").sortKey("2");
-    cli.opt(&maxBytes, "B bytes", 0)
+    cli.opt(&progress.totalBytes, "B bytes", 0)
         .desc("Max bytes to generate, 0 for unlimited");
-    cli.opt(&maxSecs, "T time", 0)
-        .desc("Max seconds to run, 0 for unlimited");
-    cli.opt(&maxSamples, "S samples", 10)
+    //cli.opt(&totalSecs, "T time", 0)
+    //    .desc("Max seconds to run, 0 for unlimited");
+    cli.opt(&progress.totalSamples, "S samples", 10)
         .desc("Max samples to generate, 0 for unlimited");
 
     cli.group("Metrics to Generate").sortKey("3");

@@ -39,32 +39,6 @@ static TimePoint s_startTime;
 
 /****************************************************************************
 *
-*   Helpers
-*
-***/
-
-//===========================================================================
-static void logStart(string_view target, string_view source) {
-    s_startTime = Clock::now();
-    logMsgInfo() << "Dumping " << source << " into " << target;
-}
-
-//===========================================================================
-static void logShutdown(const DbProgressInfo & info) {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
-    os << "Done"
-        << "; metrics: " << info.metrics
-        << "; samples: " << info.samples
-        << "; bytes: " << info.bytes
-        << "; seconds: " << elapsed.count();
-}
-
-
-/****************************************************************************
-*
 *   LoadProgress
 *
 ***/
@@ -120,12 +94,13 @@ static bool dumpCmd(Cli & cli) {
         os = &ofile;
     }
 
-    logStart(*s_out, *s_dat);
+    logMsgInfo() << "Dumping " << *s_out << " to " << *s_dat;
+    tcLogStart();
     auto h = dbOpen(*s_dat);
     LoadProgress progress;
     dbWriteDump(&progress, *os, h, *s_qry);
     dbClose(h);
-    logShutdown(progress.m_info);
+    tcLogShutdown(&progress.m_info);
 
     return true;
 }

@@ -39,32 +39,6 @@ static TimePoint s_startTime;
 
 /****************************************************************************
 *
-*   Helpers
-*
-***/
-
-//===========================================================================
-static void logStart(string_view target, string_view source) {
-    s_startTime = Clock::now();
-    logMsgInfo() << "Loading " << source << " into " << target;
-}
-
-//===========================================================================
-static void logShutdown(const DbProgressInfo & info) {
-    TimePoint finish = Clock::now();
-    std::chrono::duration<double> elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
-    os.imbue(locale(""));
-    os << "Done"
-        << "; metrics: " << info.metrics
-        << "; samples: " << info.samples
-        << "; bytes: " << info.bytes
-        << "; seconds: " << elapsed.count();
-}
-
-
-/****************************************************************************
-*
 *   LoadProgress
 *
 ***/
@@ -95,7 +69,7 @@ bool LoadProgress::onDbProgress(
         if (logGetMsgCount(kLogTypeError)) {
             appSignalShutdown(EX_DATAERR);
         } else {
-            logShutdown(m_info);
+            tcLogShutdown(&m_info);
             appSignalShutdown();
         }
     }
@@ -140,7 +114,8 @@ static bool loadCmd(Cli & cli) {
     s_dat->defaultExt("dat");
     s_in->defaultExt("txt");
 
-    logStart(*s_dat, *s_in);
+    logMsgInfo() << "Loading " << *s_dat << " into " << *s_in;
+    tcLogStart();
     if (s_truncate)
         fileRemove(*s_dat);
     auto h = dbOpen(*s_dat);

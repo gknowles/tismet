@@ -20,6 +20,15 @@ const char kVersion[] = "1.0.0";
 
 /****************************************************************************
 *
+*   Variables
+*
+***/
+
+static TimePoint s_startTime;
+
+
+/****************************************************************************
+*
 *   Application
 *
 ***/
@@ -53,4 +62,82 @@ int main(int argc, char *argv[]) {
 
     int code = appRun(app, argc, argv);
     return code;
+}
+
+
+/****************************************************************************
+*
+*   Internal API
+*
+***/
+
+//===========================================================================
+static void dump(
+    ostream & os,
+    const DbProgressInfo & info,
+    chrono::duration<double> time
+) {
+    if (auto num = info.files)
+        os << "; files: " << num;
+    if (auto num = info.metrics)
+        os << "; metrics: " << num;
+    if (auto num = info.samples)
+        os << "; samples: " << num;
+    if (auto num = info.bytes)
+        os << "; bytes: " << num;
+    if (auto num = time.count())
+        os << "; seconds: " << num;
+}
+
+//===========================================================================
+static void dumpTotals(
+    ostream & os,
+    const DbProgressInfo & info,
+    chrono::duration<double> time
+) {
+    if (auto num = info.totalFiles)
+        os << "; files: " << num;
+    if (auto num = info.totalMetrics)
+        os << "; metrics: " << num;
+    if (auto num = info.totalSamples)
+        os << "; samples: " << num;
+    if (auto num = info.totalBytes)
+        os << "; bytes: " << num;
+    if (auto num = time.count())
+        os << "; seconds: " << num;
+}
+
+//===========================================================================
+void tcLogStart(
+    const DbProgressInfo * limit,
+    chrono::duration<double> timeLimit
+) {
+    s_startTime = Clock::now();
+    if (limit
+        && (limit->totalFiles
+            || limit->totalMetrics
+            || limit->totalSamples
+            || limit->totalBytes
+            || timeLimit.count()
+        )
+    ) {
+        auto os = logMsgInfo();
+        os.imbue(locale(""));
+        os << "Limits";
+        dumpTotals(os, *limit, timeLimit);
+    }
+}
+
+//===========================================================================
+void tcLogShutdown(const DbProgressInfo * total) {
+    TimePoint finish = Clock::now();
+    chrono::duration<double> elapsed = finish - s_startTime;
+    auto os = logMsgInfo();
+    os.imbue(locale(""));
+    os << "Done";
+    if (total) {
+        dump(os, *total, elapsed);
+    } else {
+        dump(os, {}, elapsed);
+    }
 }
