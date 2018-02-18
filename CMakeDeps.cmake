@@ -22,6 +22,7 @@
 # libs/db/dbindex.h
 # libs/db/dbint.h
 # libs/db/dblog.cpp
+# libs/db/dblog.h
 # libs/db/dblogcodec.cpp
 # libs/db/dbpage.cpp
 # libs/db/dbview.cpp

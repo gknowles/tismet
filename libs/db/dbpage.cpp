@@ -107,6 +107,7 @@ bool DbPage::openWork(string_view workfile, size_t pageSize) {
     assert(pageSize == pow2Ceil(pageSize));
     if (!pageSize)
         pageSize = kDefaultPageSize;
+    assert(pageSize >= kMinPageSize);
     assert(kViewSize % fileViewAlignment() == 0);
 
     m_fwork = fileOpen(
@@ -225,6 +226,16 @@ void DbPage::close() {
 }
 
 //===========================================================================
+void DbPage::growToFit(uint32_t pgno) {
+    unique_lock<mutex> lk{m_workMut};
+    if (pgno < m_pages.size())
+        return;
+    assert(pgno == m_pages.size());
+    m_vdata.growToFit(pgno);
+    m_pages.resize(pgno + 1);
+}
+
+//===========================================================================
 void DbPage::queuePageScan() {
     auto now = Clock::now().time_since_epoch();
     auto next = (now / m_pageScanInterval + 1) * m_pageScanInterval;
@@ -252,13 +263,6 @@ Duration DbPage::onTimer(TimePoint now) {
         queuePageScan();
     }
     return kTimerInfinite;
-}
-
-//===========================================================================
-void DbPage::stable(uint64_t lsn) {
-    unique_lock<mutex> lk{m_workMut};
-    m_stableLsns.back() = lsn;
-    m_stableLsn = lsn;
 }
 
 //===========================================================================
@@ -328,7 +332,14 @@ void DbPage::flushStalePages() {
 }
 
 //===========================================================================
-void DbPage::checkpointPages() {
+void DbPage::onLogStable(uint64_t lsn) {
+    unique_lock<mutex> lk{m_workMut};
+    m_stableLsns.back() = lsn;
+    m_stableLsn = lsn;
+}
+
+//===========================================================================
+void DbPage::onLogCheckpointPages() {
     assert(m_oldPages.empty());
     uint32_t wpno = 1;
     auto buf = make_unique<char[]>(m_pageSize);
@@ -370,7 +381,7 @@ void DbPage::checkpointPages() {
 }
 
 //===========================================================================
-void DbPage::checkpointStablePages() {
+void DbPage::onLogCheckpointStablePages() {
     for (auto && pgno_hdr : m_oldPages) {
         writePageWait(pgno_hdr.second);
         pgno_hdr.second->pgno = kFreePageMark;
@@ -387,17 +398,32 @@ void DbPage::checkpointStablePages() {
 }
 
 //===========================================================================
-void DbPage::growToFit(uint32_t pgno) {
-    unique_lock<mutex> lk{m_workMut};
-    if (pgno < m_pages.size())
-        return;
-    assert(pgno == m_pages.size());
-    m_vdata.growToFit(pgno);
-    m_pages.resize(pgno + 1);
+void DbPage::writePageWait(DbPageHeader * hdr) {
+    assert(hdr->pgno != (uint32_t) -1);
+    // TODO: update checksum
+    hdr->flags = 0;
+    fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }
 
 //===========================================================================
-void * DbPage::wptrRedo(uint64_t lsn, uint32_t pgno) {
+DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
+    auto wpno = (uint32_t) 0;
+    if (m_freeWorkPages.empty()) {
+        wpno = (uint32_t) m_workPages++;
+        m_vwork.growToFit(wpno);
+        s_perfPages += 1;
+    } else {
+        wpno = m_freeWorkPages.pop_front();
+        s_perfFreePages -= 1;
+    }
+    auto ptr = (DbPageHeader *) m_vwork.wptr(wpno);
+    memcpy(ptr, hdr, m_pageSize);
+    ptr->flags = 0;
+    return ptr;
+}
+
+//===========================================================================
+void * DbPage::onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) {
     if (pgno >= m_pages.size()) {
         m_vdata.growToFit(pgno);
         m_pages.resize(pgno + 1);
@@ -424,34 +450,7 @@ void * DbPage::wptrRedo(uint64_t lsn, uint32_t pgno) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
-    unique_lock<mutex> lk{m_workMut};
-    assert(pgno < m_pages.size());
-    if (auto hdr = m_pages[pgno])
-        return hdr;
-
-    return m_vdata.rptr(pgno);
-}
-
-//===========================================================================
-DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
-    auto wpno = (uint32_t) 0;
-    if (m_freeWorkPages.empty()) {
-        wpno = (uint32_t) m_workPages++;
-        m_vwork.growToFit(wpno);
-        s_perfPages += 1;
-    } else {
-        wpno = m_freeWorkPages.pop_front();
-        s_perfFreePages -= 1;
-    }
-    auto ptr = (DbPageHeader *) m_vwork.wptr(wpno);
-    memcpy(ptr, hdr, m_pageSize);
-    ptr->flags = 0;
-    return ptr;
-}
-
-//===========================================================================
-void * DbPage::wptr(uint64_t lsn, uint32_t pgno) {
+void * DbPage::onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) {
     assert(lsn);
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());
@@ -472,9 +471,11 @@ void * DbPage::wptr(uint64_t lsn, uint32_t pgno) {
 }
 
 //===========================================================================
-void DbPage::writePageWait(DbPageHeader * hdr) {
-    assert(hdr->pgno != (uint32_t) -1);
-    // TODO: update checksum
-    hdr->flags = 0;
-    fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
+const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
+    unique_lock<mutex> lk{m_workMut};
+    assert(pgno < m_pages.size());
+    if (auto hdr = m_pages[pgno])
+        return hdr;
+
+    return m_vdata.rptr(pgno);
 }

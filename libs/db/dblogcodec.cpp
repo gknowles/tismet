@@ -439,20 +439,20 @@ void DbLog::applyUpdate(void * page, const Record * log) {
         logMsgCrash() << "unknown log record type, " << log->type;
         return;
     case kRecTypeZeroInit:
-        return m_data.applyZeroInit(page);
+        return m_data->onLogApplyZeroInit(page);
     case kRecTypePageFree:
-        return m_data.applyPageFree(page);
+        return m_data->onLogApplyPageFree(page);
     case kRecTypeSegmentAlloc: {
         auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data.applySegmentUpdate(page, rec->refPage, false);
+        return m_data->onLogApplySegmentUpdate(page, rec->refPage, false);
     }
     case kRecTypeSegmentFree: {
         auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data.applySegmentUpdate(page, rec->refPage, true);
+        return m_data->onLogApplySegmentUpdate(page, rec->refPage, true);
     }
     case kRecTypeRadixInit: {
         auto rec = reinterpret_cast<const RadixInitRec *>(log);
-        return m_data.applyRadixInit(
+        return m_data->onLogApplyRadixInit(
             page,
             rec->id,
             rec->height,
@@ -462,7 +462,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeRadixInitList: {
         auto rec = reinterpret_cast<const RadixInitListRec *>(log);
-        return m_data.applyRadixInit(
+        return m_data->onLogApplyRadixInit(
             page,
             rec->id,
             rec->height,
@@ -472,20 +472,20 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeRadixErase: {
         auto rec = reinterpret_cast<const RadixEraseRec *>(log);
-        return m_data.applyRadixErase(page, rec->firstPos, rec->lastPos);
+        return m_data->onLogApplyRadixErase(page, rec->firstPos, rec->lastPos);
     }
     case kRecTypeRadixPromote: {
         auto rec = reinterpret_cast<const RadixPromoteRec *>(log);
-        return m_data.applyRadixPromote(page, rec->refPage);
+        return m_data->onLogApplyRadixPromote(page, rec->refPage);
     }
     case kRecTypeRadixUpdate: {
         auto rec = reinterpret_cast<const RadixUpdateRec *>(log);
-        return m_data.applyRadixUpdate(page, rec->refPos, rec->refPage);
+        return m_data->onLogApplyRadixUpdate(page, rec->refPos, rec->refPage);
     }
 
     case kRecTypeMetricInit: {
         auto rec = reinterpret_cast<const MetricInitRec *>(log);
-        return m_data.applyMetricInit(
+        return m_data->onLogApplyMetricInit(
             page,
             rec->id,
             rec->name,
@@ -496,7 +496,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeMetricUpdate: {
         auto rec = reinterpret_cast<const MetricUpdateRec *>(log);
-        return m_data.applyMetricUpdate(
+        return m_data->onLogApplyMetricUpdate(
             page,
             rec->sampleType,
             rec->retention,
@@ -504,10 +504,10 @@ void DbLog::applyUpdate(void * page, const Record * log) {
         );
     }
     case kRecTypeMetricClearSamples:
-        return m_data.applyMetricClearSamples(page);
+        return m_data->onLogApplyMetricClearSamples(page);
     case kRecTypeMetricUpdateLast: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
-        return m_data.applyMetricUpdateSamples(
+        return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec->refPos,
             rec->refPage,
@@ -517,7 +517,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeMetricUpdateLastAndIndex: {
         auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
-        return m_data.applyMetricUpdateSamples(
+        return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec->refPos,
             rec->refPage,
@@ -528,7 +528,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
 
     case kRecTypeSampleInit: {
         auto rec = reinterpret_cast<const SampleInitRec *>(log);
-        return m_data.applySampleInit(
+        return m_data->onLogApplySampleInit(
             page,
             rec->id,
             rec->sampleType,
@@ -538,7 +538,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdate: {
         auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->firstSample,
             rec->lastSample,
@@ -548,7 +548,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateLast: {
         auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->firstSample,
             rec->lastSample,
@@ -558,12 +558,12 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateTime: {
         auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(log);
-        return m_data.applySampleUpdateTime(page, rec->pageTime);
+        return m_data->onLogApplySampleUpdateTime(page, rec->pageTime);
     }
 
     case kRecTypeSampleUpdateFloat32Txn: {
         auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -573,7 +573,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateFloat64Txn: {
         auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -583,7 +583,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt8Txn: {
         auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -593,7 +593,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt16Txn: {
         auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -603,7 +603,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt32Txn: {
         auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -613,7 +613,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateFloat32LastTxn: {
         auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -623,7 +623,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateFloat64LastTxn: {
         auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -633,7 +633,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt8LastTxn: {
         auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -643,7 +643,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt16LastTxn: {
         auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,
@@ -653,7 +653,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
     }
     case kRecTypeSampleUpdateInt32LastTxn: {
         auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
-        return m_data.applySampleUpdate(
+        return m_data->onLogApplySampleUpdate(
             page,
             rec->pos,
             rec->pos,

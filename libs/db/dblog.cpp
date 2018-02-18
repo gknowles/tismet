@@ -148,9 +148,9 @@ bool DbLog::TaskInfo::operator>(const TaskInfo & right) const {
 ***/
 
 //===========================================================================
-DbLog::DbLog(DbData & data, DbPage & work)
+DbLog::DbLog(IApplyNotify * data, IPageNotify * page)
     : m_data(data)
-    , m_page(work)
+    , m_page(page)
     , m_maxCheckpointData{kDefaultMaxCheckpointData}
     , m_maxCheckpointInterval{kDefaultMaxCheckpointInterval}
     , m_checkpointTimer([&](auto){ checkpoint(); return kTimerInfinite; })
@@ -172,9 +172,12 @@ char * DbLog::bufPtr(size_t ibuf) {
 }
 
 //===========================================================================
-bool DbLog::open(string_view logfile, DbOpenFlags flags) {
+bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
+    assert(pageSize == pow2Ceil(pageSize));
+    assert(pageSize >= kMinPageSize);
+
     m_verbose = flags & fDbOpenVerbose;
-    m_pageSize = 2 * m_page.pageSize();
+    m_pageSize = 2 * pageSize;
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::Empty);
     m_emptyBufs = m_numBufs;
@@ -434,7 +437,7 @@ bool DbLog::recover() {
     auto & back = m_pages.back();
     m_stableTxn = back.firstLsn + back.numLogs - 1;
     m_lastLsn = m_stableTxn;
-    m_page.stable(m_stableTxn);
+    m_page->onLogStable(m_stableTxn);
     return true;
 }
 
@@ -493,7 +496,7 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
         return;
 
     auto pgno = getPgno(log);
-    if (auto ptr = m_page.wptrRedo(lsn, pgno))
+    if (auto ptr = m_page->onLogGetRedoPtr(lsn, pgno))
         applyUpdate(ptr, log);
 }
 
@@ -541,7 +544,7 @@ void DbLog::checkpoint() {
 void DbLog::checkpointPages() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
     m_checkpointLsn = m_lastLsn;
-    m_page.checkpointPages();
+    m_page->onLogCheckpointPages();
     m_phase = Checkpoint::WaitForTxnCommits;
     if (m_checkpointLsn > m_stableTxn) {
         queueTask(&m_checkpointStablePagesTask, m_checkpointLsn);
@@ -553,7 +556,7 @@ void DbLog::checkpointPages() {
 //===========================================================================
 void DbLog::checkpointStablePages() {
     assert(m_phase == Checkpoint::WaitForTxnCommits);
-    m_page.checkpointStablePages();
+    m_page->onLogCheckpointStablePages();
     logCommitCheckpoint(m_checkpointLsn);
     m_phase = Checkpoint::WaitForCheckpointCommit;
     queueTask(&m_checkpointStableCommitTask, m_lastLsn);
@@ -719,7 +722,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     assert(last > m_stableTxn);
 
     m_stableTxn = last;
-    m_page.stable(m_stableTxn);
+    m_page->onLogStable(m_stableTxn);
     while (!m_tasks.empty()) {
         auto & ti = m_tasks.top();
         if (m_stableTxn < ti.waitTxn)
@@ -937,7 +940,7 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
 void DbLog::applyUpdate(uint64_t lsn, const Record * log) {
     auto pgno = getPgno(log);
     auto ptr = (void *) nullptr;
-    ptr = m_page.wptr(lsn, pgno);
+    ptr = m_page->onLogGetUpdatePtr(lsn, pgno);
     applyUpdate(ptr, log);
 }
 

@@ -6,6 +6,7 @@
 // Public header
 #include "db/db.h"
 #include "db/dbindex.h"
+#include "db/dblog.h"
 
 // External library public headers
 #include "dimcli/cli.h"

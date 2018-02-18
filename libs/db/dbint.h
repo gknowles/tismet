@@ -84,7 +84,7 @@ struct DbPageHeader {
     uint64_t lsn;
 };
 
-class DbPage : Dim::ITimerNotify {
+class DbPage : public DbLog::IPageNotify, Dim::ITimerNotify {
 public:
     DbPage();
     ~DbPage();
@@ -99,16 +99,10 @@ public:
     void configure(const DbConfig & conf);
     void growToFit(uint32_t pgno);
 
-    const void * rptr(uint64_t txn, uint32_t pgno) const;
-    void * wptr(uint64_t lsn, uint32_t pgno);
+    const void * rptr(uint64_t lsn, uint32_t pgno) const;
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
-
-    void checkpointPages();
-    void checkpointStablePages();
-    void stable(uint64_t lsn);
-    void * wptrRedo(uint64_t lsn, uint32_t pgno);
 
     // true if page scan previously enabled
     bool enablePageScan(bool enable);
@@ -121,8 +115,14 @@ private:
     void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
-    void queuePageScan();
+    void * onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) override;
+    void * onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) override;
+    void onLogStable(uint64_t lsn) override;
+    void onLogCheckpointPages() override;
+    void onLogCheckpointStablePages() override;
+
     Dim::Duration onTimer(Dim::TimePoint now) override;
+    void queuePageScan();
     void flushStalePages();
 
     mutable std::mutex m_workMut;
@@ -158,168 +158,6 @@ private:
 ***/
 
 enum DbLogRecType : int8_t;
-class DbData;
-
-class DbLog : Dim::IFileWriteNotify {
-public:
-    enum class Buffer : int;
-    enum class Checkpoint : int;
-
-    struct Record;
-    static uint16_t size(const Record * log);
-    static uint32_t getPgno(const Record * log);
-    static uint16_t getLocalTxn(const Record * log);
-    static void setLocalTxn(Record * log, uint16_t localTxn);
-
-    static uint64_t getLsn(uint64_t logPos);
-    static uint16_t getLocalTxn(uint64_t logPos);
-    static uint64_t getTxn(uint64_t lsn, uint16_t localTxn);
-
-    struct PageInfo {
-        uint32_t pgno;
-        uint64_t firstLsn;
-        uint16_t numLogs;
-
-        unsigned beginTxns;
-        std::vector<std::pair<
-            uint64_t,   // firstLsn of page
-            unsigned    // number of txns from that page committed
-        >> commitTxns;
-    };
-
-public:
-    DbLog(DbData & data, DbPage & page);
-    ~DbLog();
-
-    bool open(std::string_view file, DbOpenFlags flags);
-    void close();
-    void configure(const DbConfig & conf);
-
-    // Returns transaction id (localTxn + LSN)
-    uint64_t beginTxn();
-    void commit(uint64_t txn);
-    void checkpoint();
-    void blockCheckpoint(IDbProgressNotify * notify, bool enable);
-
-    void logAndApply(uint64_t txn, Record * log, size_t bytes);
-    void queueTask(
-        Dim::ITaskNotify * task,
-        uint64_t waitTxn,
-        Dim::TaskQueueHandle hq = {} // defaults to compute queue
-    );
-
-    Dim::FileHandle logFile() const { return m_flog; }
-
-private:
-    char * bufPtr(size_t ibuf);
-
-    void onFileWrite(
-        int written,
-        std::string_view data,
-        int64_t offset,
-        Dim::FileHandle f
-    ) override;
-
-    bool loadPages();
-    bool recover();
-
-    void logCommitCheckpoint(uint64_t startLsn);
-    uint64_t logBeginTxn(uint16_t localTxn);
-    void logCommit(uint64_t txn);
-
-    // returns LSN
-    uint64_t log(Record * log, size_t bytes, int txnType, uint64_t txn = 0);
-
-    void prepareBuffer_LK(
-        const Record * log,
-        size_t bytesOnOldPage,
-        size_t bytesOnNewPage
-    );
-    void countBeginTxn_LK();
-    void countCommitTxn_LK(uint64_t txn);
-    void updatePages_LK(const PageInfo & pi, bool partialWrite);
-    void checkpointPages();
-    void checkpointStablePages();
-    void checkpointStableCommit();
-    void checkpointTruncateCommit();
-    void checkpointWaitForNext();
-    void flushWriteBuffer();
-
-    struct AnalyzeData;
-    void applyAll(AnalyzeData & data);
-    void apply(uint64_t lsn, const Record * log, AnalyzeData * data = nullptr);
-    void applyUpdate(uint64_t lsn, const Record * log);
-    void applyUpdate(void * page, const Record * log);
-    void applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log);
-    void applyCommitCheckpoint(
-        AnalyzeData & data,
-        uint64_t lsn,
-        uint64_t startLsn
-    );
-    void applyBeginTxn(AnalyzeData & data, uint64_t lsn, uint16_t txn);
-    void applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t txn);
-
-    DbData & m_data;
-    DbPage & m_page;
-    Dim::FileHandle m_flog;
-    bool m_closing{false};
-    bool m_verbose{false};
-
-    // last assigned
-    uint16_t m_lastLocalTxn{0};
-    uint64_t m_lastLsn{0};
-
-    Dim::UnsignedSet m_freePages;
-    std::deque<PageInfo> m_pages;
-    size_t m_numPages{0};
-    size_t m_pageSize{0};
-
-    size_t m_maxCheckpointData{0};
-    size_t m_checkpointData{0};
-    Dim::Duration m_maxCheckpointInterval;
-    Dim::TimerProxy m_checkpointTimer;
-    Dim::TaskProxy m_checkpointPagesTask;
-    Dim::TaskProxy m_checkpointStablePagesTask;
-    Dim::TaskProxy m_checkpointStableCommitTask;
-    Checkpoint m_phase{};
-    std::vector<IDbProgressNotify *> m_checkpointBlocks;
-
-    // last started (perhaps unfinished) checkpoint
-    Dim::TimePoint m_checkpointStart;
-    uint64_t m_checkpointLsn{0};
-
-    // last known durably saved
-    uint64_t m_stableTxn{0};
-
-    struct TaskInfo {
-        Dim::ITaskNotify * notify;
-        uint64_t waitTxn;
-        Dim::TaskQueueHandle hq;
-
-        bool operator<(const TaskInfo & right) const;
-        bool operator>(const TaskInfo & right) const;
-    };
-    std::priority_queue<
-        TaskInfo,
-        std::vector<TaskInfo>,
-        std::greater<TaskInfo>
-    > m_tasks;
-
-    Dim::TimerProxy m_flushTimer;
-    std::mutex m_bufMut;
-    std::condition_variable m_bufAvailCv;
-    std::vector<Buffer> m_bufStates;
-    std::unique_ptr<char[]> m_buffers;
-    unsigned m_numBufs{0};
-    unsigned m_emptyBufs{0};
-    unsigned m_curBuf{0};
-    size_t m_bufPos{0};
-};
-
-//===========================================================================
-inline bool operator<(const DbLog::PageInfo & a, const DbLog::PageInfo & b) {
-    return a.firstLsn < b.firstLsn;
-}
 
 class DbTxn {
 public:
@@ -424,7 +262,7 @@ const T * DbTxn::viewPage(uint32_t pgno) const {
 *
 ***/
 
-class DbData : public Dim::HandleContent {
+class DbData : public DbLog::IApplyNotify, public Dim::HandleContent {
 public:
     struct SegmentPage;
     struct ZeroPage;
@@ -487,56 +325,71 @@ public:
         unsigned presamples
     );
 
-    void applyZeroInit(void * ptr);
-    void applyPageFree(void * ptr);
-    void applySegmentUpdate(void * ptr, uint32_t refPage, bool free);
-    void applyRadixInit(
+    void onLogApplyZeroInit(void * ptr) override;
+    void onLogApplyPageFree(void * ptr) override;
+    void onLogApplySegmentUpdate(
+        void * ptr,
+        uint32_t refPage,
+        bool free
+    ) override;
+    void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
         const uint32_t * firstPgno,
         const uint32_t * lastPgno
-    );
-    void applyRadixErase(void * ptr, size_t firstPos, size_t lastPos);
-    void applyRadixPromote(void * ptr, uint32_t refPage);
-    void applyRadixUpdate(void * ptr, size_t pos, uint32_t refPage);
-    void applyMetricInit(
+    ) override;
+    void onLogApplyRadixErase(
+        void * ptr,
+        size_t firstPos,
+        size_t lastPos
+    ) override;
+    void onLogApplyRadixPromote(void * ptr, uint32_t refPage) override;
+    void onLogApplyRadixUpdate(
+        void * ptr,
+        size_t pos,
+        uint32_t refPage
+    ) override;
+    void onLogApplyMetricInit(
         void * ptr,
         uint32_t id,
         std::string_view name,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
-    );
-    void applyMetricUpdate(
+    ) override;
+    void onLogApplyMetricUpdate(
         void * ptr,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
-    );
-    void applyMetricClearSamples(void * ptr);
-    void applyMetricUpdateSamples(
+    ) override;
+    void onLogApplyMetricClearSamples(void * ptr);
+    void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
         uint32_t refPage,
         Dim::TimePoint refTime,
         bool updateIndex
-    );
-    void applySampleInit(
+    ) override;
+    void onLogApplySampleInit(
         void * ptr,
         uint32_t id,
         DbSampleType sampleType,
         Dim::TimePoint pageTime,
         size_t lastSample
-    );
-    void applySampleUpdate(
+    ) override;
+    void onLogApplySampleUpdate(
         void * ptr,
         size_t firstPos,
         size_t lastPos,
         double value,
         bool updateLast
-    );
-    void applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime);
+    ) override;
+    void onLogApplySampleUpdateTime(
+        void * ptr,
+        Dim::TimePoint pageTime
+    ) override;
 
 private:
     RadixData * radixData(DbPageHeader * hdr) const;

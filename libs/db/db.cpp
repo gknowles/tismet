@@ -181,7 +181,7 @@ inline static DbBase * db(DbHandle h) {
 //===========================================================================
 DbBase::DbBase ()
     : m_dstFile(100, 2, envMemoryConfig().pageSize)
-    , m_log(m_data, m_page)
+    , m_log(&m_data, &m_page)
 {}
 
 //===========================================================================
@@ -194,7 +194,7 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
     if (!m_page.open(datafile, workfile, pageSize, flags))
         return false;
     m_data.openForApply(m_page.pageSize(), flags);
-    if (!m_log.open(logfile, flags))
+    if (!m_log.open(logfile, m_page.pageSize(), flags))
         return false;
     DbTxn txn{m_log, m_page};
     return m_data.openForUpdate(txn, this, datafile, flags);

@@ -447,7 +447,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
 }
 
 //===========================================================================
-void DbData::applyMetricInit(
+void DbData::onLogApplyMetricInit(
     void * ptr,
     uint32_t id,
     string_view name,
@@ -549,7 +549,7 @@ void DbData::getMetricInfo(
 }
 
 //===========================================================================
-void DbData::applyMetricUpdate(
+void DbData::onLogApplyMetricUpdate(
     void * ptr,
     DbSampleType sampleType,
     Dim::Duration retention,
@@ -664,7 +664,7 @@ DbData::MetricPosition DbData::loadMetricPos(
 }
 
 //===========================================================================
-void DbData::applyMetricClearSamples(void * ptr) {
+void DbData::onLogApplyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->s_pageType);
     mp->lastPage = 0;
@@ -676,7 +676,7 @@ void DbData::applyMetricClearSamples(void * ptr) {
 }
 
 //===========================================================================
-void DbData::applyMetricUpdateSamples(
+void DbData::onLogApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
     uint32_t refPage,
@@ -959,7 +959,7 @@ static void clearSamples(
 }
 
 //===========================================================================
-void DbData::applySampleInit(
+void DbData::onLogApplySampleInit(
     void * ptr,
     uint32_t id,
     DbSampleType sampleType,
@@ -982,7 +982,7 @@ void DbData::applySampleInit(
 }
 
 //===========================================================================
-void DbData::applySampleUpdate(
+void DbData::onLogApplySampleUpdate(
     void * ptr,
     size_t firstPos,
     size_t lastPos,
@@ -999,7 +999,7 @@ void DbData::applySampleUpdate(
 }
 
 //===========================================================================
-void DbData::applySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
+void DbData::onLogApplySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->s_pageType);
     sp->pageFirstTime = pageTime;
@@ -1294,7 +1294,7 @@ bool DbData::radixInsert(
 }
 
 //===========================================================================
-void DbData::applyRadixInit(
+void DbData::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
@@ -1318,7 +1318,7 @@ void DbData::applyRadixInit(
 }
 
 //===========================================================================
-void DbData::applyRadixErase(void * ptr, size_t firstPos, size_t lastPos) {
+void DbData::onLogApplyRadixErase(void * ptr, size_t firstPos, size_t lastPos) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1328,7 +1328,7 @@ void DbData::applyRadixErase(void * ptr, size_t firstPos, size_t lastPos) {
 }
 
 //===========================================================================
-void DbData::applyRadixPromote(void * ptr, uint32_t refPage) {
+void DbData::onLogApplyRadixPromote(void * ptr, uint32_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1338,7 +1338,7 @@ void DbData::applyRadixPromote(void * ptr, uint32_t refPage) {
 }
 
 //===========================================================================
-void DbData::applyRadixUpdate(void * ptr, size_t pos, uint32_t refPage) {
+void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, uint32_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1535,14 +1535,14 @@ void DbData::freePage(DbTxn & txn, uint32_t pgno) {
 }
 
 //===========================================================================
-void DbData::applyPageFree(void * ptr) {
+void DbData::onLogApplyPageFree(void * ptr) {
     auto fp = static_cast<FreePage *>(ptr);
     assert(fp->hdr.type && fp->hdr.type != kPageTypeFree);
     fp->hdr.type = kPageTypeFree;
 }
 
 //===========================================================================
-void DbData::applyZeroInit(void * ptr) {
+void DbData::onLogApplyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(!zp->hdr.type);
     zp->hdr.type = zp->s_pageType;
@@ -1559,7 +1559,7 @@ void DbData::applyZeroInit(void * ptr) {
 }
 
 //===========================================================================
-void DbData::applySegmentUpdate(
+void DbData::onLogApplySegmentUpdate(
     void * ptr,
     uint32_t refPage,
     bool free
