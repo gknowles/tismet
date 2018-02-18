@@ -71,6 +71,7 @@
 # tools/tsm/tcmain.cpp
 # tools/tsm/tcrecord.cpp
 # tools/tsm/tcreplay.cpp
+# tools/tsm/tctext.cpp
 # vendor/dimapp
 # vendor/dimapp/libs/app/app.cpp
 # vendor/dimapp/libs/app/app.h
