@@ -176,9 +176,14 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     assert(pageSize == pow2Ceil(pageSize));
     assert(!pageSize || pageSize >= kMinPageSize);
 
-    m_verbose = flags & fDbOpenVerbose;
+    m_openFlags = flags;
 
-    auto oflags = File::fReadWrite | File::fDenyWrite;
+    auto oflags = File::fDenyWrite;
+    if (flags & fDbOpenReadOnly) {
+        oflags |= File::fReadOnly;
+    } else {
+        oflags |= File::fReadWrite;
+    }
     if (flags & fDbOpenCreat) {
         assert(!m_pageSize);
         oflags |= File::fCreat;
@@ -250,6 +255,12 @@ void DbLog::close() {
         return;
 
     m_closing = true;
+    if (m_openFlags & fDbOpenReadOnly) {
+        fileClose(m_flog);
+        m_flog = {};
+        return;
+    }
+
     if (m_numBufs) {
         checkpoint();
         flushWriteBuffer();
@@ -410,7 +421,7 @@ void DbLog::applyAll(AnalyzeData & data) {
 
 //===========================================================================
 bool DbLog::recover() {
-    if (m_verbose)
+    if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Load transaction log";
     if (!loadPages())
         return false;
@@ -420,7 +431,7 @@ bool DbLog::recover() {
     // Go through log entries looking for last committed checkpoint and the
     // set of incomplete transactions (so we can avoid trying to redo them
     // later).
-    if (m_verbose)
+    if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
@@ -429,9 +440,8 @@ bool DbLog::recover() {
         logMsgCrash() << "Invalid .tsl file, no checkpoint found";
     m_checkpointLsn = data.checkpoint;
 
-    for (auto && kv : data.txns) {
+    for (auto && kv : data.txns)
         data.incompleteTxnLsns.push_back(kv.second);
-    }
     sort(
         data.incompleteTxnLsns.begin(),
         data.incompleteTxnLsns.end(),
@@ -444,14 +454,19 @@ bool DbLog::recover() {
     );
     data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
 
+    if (m_openFlags & fDbOpenIncludeIncompleteTxns)
+        data.incompleteTxnLsns.clear();
+
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
-    if (m_verbose)
+    if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Recover database";
     data.analyze = false;
     applyAll(data);
-    assert(data.incompleteTxnLsns.empty());
-    assert(data.activeTxns.empty());
+    if (~m_openFlags & fDbOpenIncludeIncompleteTxns) {
+        assert(data.incompleteTxnLsns.empty());
+        assert(data.activeTxns.empty());
+    }
 
     auto & back = m_pages.back();
     m_stableTxn = back.firstLsn + back.numLogs - 1;
@@ -549,7 +564,7 @@ void DbLog::commit(uint64_t txn) {
 void DbLog::checkpoint() {
     if (m_phase != Checkpoint::Complete || !m_checkpointBlocks.empty())
         return;
-    if (m_verbose)
+    if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Checkpoint started";
     m_checkpointStart = Clock::now();
     m_checkpointData = 0;
@@ -626,7 +641,7 @@ void DbLog::checkpointStableCommit() {
 //===========================================================================
 void DbLog::checkpointTruncateCommit() {
     assert(m_phase == Checkpoint::WaitForTruncateCommit);
-    if (m_verbose)
+    if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::Complete;
     s_perfCurCps -= 1;

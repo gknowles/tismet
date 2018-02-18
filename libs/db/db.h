@@ -22,11 +22,18 @@ struct IDbDataNotify;
 struct DbHandle : Dim::HandleBase {};
 
 enum DbOpenFlags : unsigned {
+    fDbOpenCreat = 0x01,
+    fDbOpenTrunc = 0x02,
+    fDbOpenExcl = 0x04,
+
     // Log database status info messages
-    fDbOpenVerbose = 1,
-    fDbOpenCreat = 2,
-    fDbOpenTrunc = 4,
-    fDbOpenExcl = 8,
+    fDbOpenVerbose = 0x08,
+    fDbOpenReadOnly = 0x10,
+
+    // Redo incomplete transactions during recovery, since they are incomplete
+    // this would normally the database in a corrupt state. Used by wal dump
+    // tool, which completely replaces the normal database apply logic.
+    fDbOpenIncludeIncompleteTxns = 0x20,
 };
 DbHandle dbOpen(
     std::string_view path,
@@ -221,3 +228,27 @@ void dbLoadDump(
     DbHandle h,
     const Dim::Path & src
 );
+
+
+/****************************************************************************
+*
+*   Internals for special utility programs
+*
+***/
+
+enum DbPageType : int32_t;
+
+enum DbPageFlags : uint32_t {
+    fDbPageDirty = 1,
+};
+
+struct DbPageHeader {
+    DbPageType type;
+    uint32_t pgno;
+    uint32_t id;
+    union {
+        uint32_t checksum;
+        uint32_t flags;
+    };
+    uint64_t lsn;
+};

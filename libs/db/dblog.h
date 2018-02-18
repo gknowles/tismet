@@ -133,7 +133,7 @@ private:
     IPageNotify * m_page;
     Dim::FileHandle m_flog;
     bool m_closing{false};
-    bool m_verbose{false};
+    DbOpenFlags m_openFlags{};
 
     // last assigned
     uint16_t m_lastLocalTxn{0};

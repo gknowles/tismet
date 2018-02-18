@@ -14,6 +14,7 @@
 
 #include "carbon/carbon.h"
 #include "db/db.h"
+#include "db/dblog.h"
 
 // Standard headers
 #include <condition_variable>

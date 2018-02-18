@@ -67,23 +67,6 @@ public:
 *
 ***/
 
-enum DbPageType : int32_t;
-
-enum DbPageFlags : uint32_t {
-    fDbPageDirty = 1,
-};
-
-struct DbPageHeader {
-    DbPageType type;
-    uint32_t pgno;
-    uint32_t id;
-    union {
-        uint32_t checksum;
-        uint32_t flags;
-    };
-    uint64_t lsn;
-};
-
 class DbPage : public DbLog::IPageNotify, Dim::ITimerNotify {
 public:
     DbPage();
