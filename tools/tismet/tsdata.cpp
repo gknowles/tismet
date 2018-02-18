@@ -214,7 +214,7 @@ void tsDataInitialize() {
     configMonitor("app.xml", &s_appXml);
     string path;
     appDataPath(&path, "metrics");
-    s_db = dbOpen(path, 0, fDbOpenVerbose);
+    s_db = dbOpen(path, 0, fDbOpenVerbose | fDbOpenCreat);
     if (!s_db) {
         logMsgError() << "Unable to open database, " << path;
         return appSignalShutdown(EX_DATAERR);

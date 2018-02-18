@@ -110,8 +110,12 @@ public:
     Dim::FileHandle dataFile() const { return m_fdata; }
 
 private:
-    bool openData(std::string_view datafile, size_t pageSize);
-    bool openWork(std::string_view workfile);
+    bool openData(
+        std::string_view datafile,
+        size_t pageSize,
+        DbOpenFlags flags
+    );
+    bool openWork(std::string_view workfile, DbOpenFlags flags);
     void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 

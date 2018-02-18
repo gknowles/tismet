@@ -118,7 +118,7 @@ static bool loadCmd(Cli & cli) {
     tcLogStart();
     if (s_truncate)
         fileRemove(*s_dat);
-    auto h = dbOpen(*s_dat);
+    auto h = dbOpen(*s_dat, fDbOpenCreat);
     if (!h)
         return cli.fail(EX_ABORTED, "Canceled");
     DbConfig conf = {};

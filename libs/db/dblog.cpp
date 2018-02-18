@@ -174,9 +174,32 @@ char * DbLog::bufPtr(size_t ibuf) {
 //===========================================================================
 bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     assert(pageSize == pow2Ceil(pageSize));
-    assert(pageSize >= kMinPageSize);
+    assert(!pageSize || pageSize >= kMinPageSize);
 
     m_verbose = flags & fDbOpenVerbose;
+
+    auto oflags = File::fReadWrite | File::fDenyWrite;
+    if (flags & fDbOpenCreat) {
+        assert(!m_pageSize);
+        oflags |= File::fCreat;
+    }
+    if (flags & fDbOpenTrunc)
+        oflags |= File::fTrunc;
+    if (flags & fDbOpenExcl)
+        oflags |= File::fExcl;
+    m_flog = fileOpen(logfile, oflags);
+    if (!m_flog)
+        return false;
+    auto len = fileSize(m_flog);
+    ZeroPage zp{};
+    if (len) {
+        fileReadWait(&zp, sizeof(zp), m_flog, 0);
+        if (!pageSize) {
+            if (~flags & fDbOpenCreat)
+                pageSize = zp.pageSize / 2;
+        }
+    }
+
     m_pageSize = 2 * pageSize;
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::Empty);
@@ -190,14 +213,6 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     }
     m_bufPos = m_pageSize;
 
-    m_flog = fileOpen(
-        logfile,
-        File::fCreat | File::fReadWrite | File::fDenyWrite
-    );
-    if (!m_flog)
-        return false;
-    auto len = fileSize(m_flog);
-    ZeroPage zp{};
     if (!len) {
         zp.hdr.type = (DbPageType) kPageTypeZero;
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
@@ -212,7 +227,6 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
         return true;
     }
 
-    fileReadWait(&zp, sizeof(zp), m_flog, 0);
     if (memcmp(zp.signature, kLogFileSig, sizeof(zp.signature)) != 0) {
         logMsgError() << "Bad signature in " << logfile;
         return false;
@@ -221,6 +235,7 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
         logMsgError() << "Mismatched page size in " << logfile;
         return false;
     }
+
     m_numPages = (len + m_pageSize - 1) / m_pageSize;
     s_perfPages += (unsigned) m_numPages;
     if (!recover())
@@ -231,6 +246,9 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
 
 //===========================================================================
 void DbLog::close() {
+    if (!m_flog)
+        return;
+
     m_closing = true;
     if (m_numBufs) {
         checkpoint();
@@ -251,6 +269,7 @@ void DbLog::close() {
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
     fileClose(m_flog);
+    m_flog = {};
 }
 
 //===========================================================================

@@ -101,9 +101,9 @@ bool DbPage::open(
     m_verbose = flags & fDbOpenVerbose;
     if (m_verbose)
         logMsgInfo() << "Open data files";
-    if (!openData(datafile, pageSize))
+    if (!openData(datafile, pageSize, flags))
         return false;
-    if (!openWork(workfile)) {
+    if (!openWork(workfile, flags)) {
         close();
         return false;
     }
@@ -112,12 +112,19 @@ bool DbPage::open(
 }
 
 //===========================================================================
-bool DbPage::openData(string_view datafile, size_t pageSize) {
-    m_fdata = fileOpen(
-        datafile,
-        File::fCreat | File::fReadWrite | File::fDenyWrite
-            | File::fRandom
-    );
+bool DbPage::openData(
+    string_view datafile,
+    size_t pageSize,
+    DbOpenFlags flags
+) {
+    auto oflags = File::fReadWrite | File::fDenyWrite | File::fRandom;
+    if (flags & fDbOpenCreat)
+        oflags |= File::fCreat;
+    if (flags & fDbOpenTrunc)
+        oflags |= File::fTrunc;
+    if (flags & fDbOpenExcl)
+        oflags |= File::fExcl;
+    m_fdata = fileOpen(datafile, oflags);
     if (!m_fdata)
         return false;
     auto len = fileSize(m_fdata);
@@ -149,12 +156,15 @@ bool DbPage::openData(string_view datafile, size_t pageSize) {
 }
 
 //===========================================================================
-bool DbPage::openWork(string_view workfile) {
-    m_fwork = fileOpen(
-        workfile,
-        File::fCreat | File::fTemp | File::fReadWrite | File::fDenyWrite
-            | File::fBlocking | File::fRandom
-    );
+bool DbPage::openWork(string_view workfile, DbOpenFlags flags) {
+    auto oflags = File::fTemp | File::fReadWrite | File::fDenyWrite
+        | File::fBlocking | File::fRandom;
+    // Opening the data file has already succeeded, so always create the
+    // work file (if not exist).
+    oflags |= File::fCreat;
+    if (flags & fDbOpenExcl)
+        oflags |= File::fExcl;
+    m_fwork = fileOpen(workfile, oflags);
     if (!m_fwork)
         return false;
     auto len = fileSize(m_fwork);

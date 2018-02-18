@@ -58,7 +58,10 @@ public:
     DbLog(IApplyNotify * data, IPageNotify * page);
     ~DbLog();
 
+    // pageSize must match the size saved in the file or be zero. If it is
+    // zero fDbOpenCreat must not be specified.
     bool open(std::string_view file, size_t pageSize, DbOpenFlags flags);
+
     void close();
     void configure(const DbConfig & conf);
 

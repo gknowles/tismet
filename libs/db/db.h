@@ -24,6 +24,9 @@ struct DbHandle : Dim::HandleBase {};
 enum DbOpenFlags : unsigned {
     // Log database status info messages
     fDbOpenVerbose = 1,
+    fDbOpenCreat = 2,
+    fDbOpenTrunc = 4,
+    fDbOpenExcl = 8,
 };
 DbHandle dbOpen(
     std::string_view path,

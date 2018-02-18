@@ -59,10 +59,7 @@ void Test::onTestRun() {
     string name = "this.is.metric.1";
 
     const char dat[] = "test";
-    fileRemove("test.tsd");
-    fileRemove("test.tsw");
-    fileRemove("test.tsl");
-    auto h = dbOpen(dat, 128);
+    auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);
     EXPECT(h && "Failure to create database");
     if (!h)
         return;
