@@ -95,13 +95,13 @@ static void dumpTotals(
     const DbProgressInfo & info,
     chrono::duration<double> time
 ) {
-    if (auto num = info.totalFiles)
+    if (auto num = info.totalFiles; num && num != (size_t) -1)
         os << "; files: " << num;
-    if (auto num = info.totalMetrics)
+    if (auto num = info.totalMetrics; num && num != (size_t) -1)
         os << "; metrics: " << num;
-    if (auto num = info.totalSamples)
+    if (auto num = info.totalSamples; num && num != (size_t) -1)
         os << "; samples: " << num;
-    if (auto num = info.totalBytes)
+    if (auto num = info.totalBytes; num && num != (size_t) -1)
         os << "; bytes: " << num;
     if (auto num = time.count())
         os << "; seconds: " << num;
