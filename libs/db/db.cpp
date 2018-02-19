@@ -584,8 +584,10 @@ DbHandle dbOpen(string_view name, size_t pageSize, DbOpenFlags flags) {
 
 //===========================================================================
 void dbClose(DbHandle h) {
-    scoped_lock<shared_mutex> lk{s_mut};
-    s_files.erase(h);
+    unique_lock<shared_mutex> lk{s_mut};
+    auto db = s_files.release(h);
+    lk.unlock();
+    delete db;
 }
 
 static TokenTable::Token s_sampleTypes[] = {

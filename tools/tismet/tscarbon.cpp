@@ -124,7 +124,7 @@ void CarbonConn::onCarbonValue(
 namespace {
 
 class ShutdownNotify : public IShutdownNotify {
-    void onShutdownServer(bool firstTry) override;
+    void onShutdownClient(bool firstTry) override;
 };
 
 } // namespace
@@ -132,7 +132,7 @@ class ShutdownNotify : public IShutdownNotify {
 static ShutdownNotify s_cleanup;
 
 //===========================================================================
-void ShutdownNotify::onShutdownServer(bool firstTry) {
+void ShutdownNotify::onShutdownClient(bool firstTry) {
     if (s_perfTasks > 0)
         shutdownIncomplete();
 }
