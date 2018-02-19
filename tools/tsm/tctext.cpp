@@ -94,8 +94,16 @@ private:
     void onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
 
     // Inherited via IPageNotify
-    void * onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) override;
-    void * onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) override;
+    void * onLogGetUpdatePtr(
+        uint32_t pgno,
+        uint64_t lsn,
+        uint16_t localTxn
+    ) override;
+    void * onLogGetRedoPtr(
+        uint32_t pgno,
+        uint64_t lsn,
+        uint16_t localTxn
+    ) override;
 
     ostream & out(void * ptr);
     string_view timeStr(TimePoint time);
@@ -133,7 +141,7 @@ TextWriter::TextWriter(ostream & os)
 //===========================================================================
 ostream & TextWriter::out(void * ptr) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    m_os << hdr->lsn << " @" << hdr->pgno << ": ";
+    m_os << hdr->lsn << '.' << hdr->checksum << " @" << hdr->pgno << ": ";
     return m_os;
 }
 
@@ -277,12 +285,21 @@ void TextWriter::onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
 }
 
 //===========================================================================
-void * TextWriter::onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) {
+void * TextWriter::onLogGetUpdatePtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
     return nullptr;
 }
 
 //===========================================================================
-void * TextWriter::onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) {
+void * TextWriter::onLogGetRedoPtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
+    m_hdr.checksum = localTxn;
     m_hdr.lsn = lsn;
     m_hdr.pgno = pgno;
     return &m_hdr;

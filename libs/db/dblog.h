@@ -202,8 +202,16 @@ class DbLog::IPageNotify {
 public:
     virtual ~IPageNotify() = default;
 
-    virtual void * onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) = 0;
-    virtual void * onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) = 0;
+    virtual void * onLogGetUpdatePtr(
+        uint32_t pgno,
+        uint64_t lsn,
+        uint16_t localTxn
+    ) = 0;
+    virtual void * onLogGetRedoPtr(
+        uint32_t pgno,
+        uint64_t lsn,
+        uint16_t localTxn
+    ) = 0;
 
     virtual void onLogStable(uint64_t lsn) {}
     virtual void onLogCheckpointPages() {}

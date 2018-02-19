@@ -102,8 +102,8 @@ private:
     void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
-    void * onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) override;
-    void * onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) override;
+    void * onLogGetUpdatePtr(uint32_t pgno, uint64_t lsn, uint16_t txn) override;
+    void * onLogGetRedoPtr(uint32_t pgno, uint64_t lsn, uint16_t txn) override;
     void onLogStable(uint64_t lsn) override;
     void onLogCheckpointPages() override;
     void onLogCheckpointStablePages() override;

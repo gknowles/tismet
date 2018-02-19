@@ -447,7 +447,11 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-void * DbPage::onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) {
+void * DbPage::onLogGetRedoPtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
     if (pgno >= m_pages.size()) {
         m_vdata.growToFit(pgno);
         m_pages.resize(pgno + 1);
@@ -474,7 +478,11 @@ void * DbPage::onLogGetRedoPtr(uint64_t lsn, uint32_t pgno) {
 }
 
 //===========================================================================
-void * DbPage::onLogGetUpdatePtr(uint64_t lsn, uint32_t pgno) {
+void * DbPage::onLogGetUpdatePtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
     assert(lsn);
     unique_lock<mutex> lk{m_workMut};
     assert(pgno < m_pages.size());

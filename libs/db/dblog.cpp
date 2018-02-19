@@ -530,7 +530,7 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
         return;
 
     auto pgno = getPgno(log);
-    if (auto ptr = m_page->onLogGetRedoPtr(lsn, pgno))
+    if (auto ptr = m_page->onLogGetRedoPtr(pgno, lsn, localTxn))
         applyUpdate(ptr, log);
 }
 
@@ -973,8 +973,9 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
 //===========================================================================
 void DbLog::applyUpdate(uint64_t lsn, const Record * log) {
     auto pgno = getPgno(log);
+    auto localTxn = getLocalTxn(log);
     auto ptr = (void *) nullptr;
-    ptr = m_page->onLogGetUpdatePtr(lsn, pgno);
+    ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
     applyUpdate(ptr, log);
 }
 
