@@ -314,7 +314,7 @@ DbStats DbData::queryStats() {
         s.samplesPerPage[i] = (unsigned) samplesPerPage(DbSampleType{i});
 
     {
-        shared_lock<shared_mutex> lk{m_metricMut};
+        shared_lock<shared_mutex> lk{m_mposMut};
         s.metrics = m_numMetrics;
     }
 
@@ -326,7 +326,7 @@ DbStats DbData::queryStats() {
 
 //===========================================================================
 DbData::MetricPosition DbData::getMetricPos(uint32_t id) const {
-    shared_lock<shared_mutex> lk{m_metricMut};
+    shared_lock<shared_mutex> lk{m_mposMut};
     if (id >= m_metricPos.size())
         return {};
     return m_metricPos[id];
@@ -334,7 +334,7 @@ DbData::MetricPosition DbData::getMetricPos(uint32_t id) const {
 
 //===========================================================================
 void DbData::setMetricPos(uint32_t id, const MetricPosition & mi) {
-    shared_lock<shared_mutex> lk{m_metricMut};
+    shared_lock<shared_mutex> lk{m_mposMut};
     assert(id < m_metricPos.size());
     m_metricPos[id] = mi;
 }
@@ -351,7 +351,7 @@ void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
     auto mp = txn.viewPage<MetricPage>(pgno);
     radixDestruct(txn, mp->hdr);
 
-    unique_lock<shared_mutex> lk{m_metricMut};
+    unique_lock<shared_mutex> lk{m_mposMut};
     m_metricPos[mp->hdr.id] = {};
     m_numMetrics -= 1;
     s_perfCount -= 1;
@@ -428,28 +428,30 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         kDefaultInterval
     );
 
-    auto mp = txn.viewPage<MetricPage>(pgno);
-
     // update index
-    bool inserted [[maybe_unused]] = radixInsert(
-        txn,
-        kMetricIndexPageNum,
-        id,
-        mp->hdr.pgno
-    );
-    assert(inserted);
-    s_perfCount += 1;
+    {
+        scoped_lock<mutex> lk{m_mndxMut};
+        bool inserted [[maybe_unused]] = radixInsert(
+            txn,
+            kMetricIndexPageNum,
+            id,
+            pgno
+        );
+        assert(inserted);
+        s_perfCount += 1;
+    }
 
+    auto mp = txn.viewPage<MetricPage>(pgno);
     MetricPosition mi = {};
     mi.infoPage = mp->hdr.pgno;
     mi.interval = mp->interval;
     mi.sampleType = mp->sampleType;
 
-    shared_lock<shared_mutex> lk{m_metricMut};
+    shared_lock<shared_mutex> lk{m_mposMut};
     if (id >= m_metricPos.size()) {
         lk.unlock();
         {
-            unique_lock<shared_mutex> lk{m_metricMut};
+            unique_lock<shared_mutex> lk{m_mposMut};
             if (id >= m_metricPos.size())
                 m_metricPos.resize(id + 1);
         }
@@ -494,6 +496,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     if (mi.infoPage) {
         *name = txn.viewPage<MetricPage>(mi.infoPage)->name;
         auto rp = txn.viewPage<RadixPage>(kMetricIndexPageNum);
+        scoped_lock<mutex> lk{m_mndxMut};
         radixErase(txn, rp->hdr, id, id + 1);
         return true;
     }
@@ -533,7 +536,7 @@ void DbData::updateMetric(
     mi.lastPage = 0;
     mi.pageFirstTime = {};
     mi.pageLastSample = 0;
-    shared_lock<shared_mutex> lk{m_metricMut};
+    shared_lock<shared_mutex> lk{m_mposMut};
     m_metricPos[id] = mi;
 }
 

@@ -445,11 +445,14 @@ private:
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
 
-    mutable std::shared_mutex m_metricMut;
+    mutable std::shared_mutex m_mposMut;
     std::vector<MetricPosition> m_metricPos;
     unsigned m_numMetrics = 0;
 
     std::recursive_mutex m_pageMut;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
+
+    // used to manage the index at kMetricIndexPageNum
+    std::mutex m_mndxMut;
 };
