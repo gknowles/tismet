@@ -16,7 +16,7 @@ using namespace Dim;
 ***/
 
 static SockMgrHandle s_mgr;
-static auto & s_perfTasks = uperf("db update tasks");
+static auto & s_perfTasks = uperf("db.update tasks");
 
 static mutex s_mut;
 static condition_variable s_cv;

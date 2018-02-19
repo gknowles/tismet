@@ -149,8 +149,8 @@ static shared_mutex s_mut;
 static HandleMap<DbHandle, DbBase> s_files;
 static HandleMap<DbContextHandle, DbContext> s_contexts;
 
-static auto & s_perfCreated = uperf("db metrics created");
-static auto & s_perfDeleted = uperf("db metrics deleted");
+static auto & s_perfCreated = uperf("db.metrics created");
+static auto & s_perfDeleted = uperf("db.metrics deleted");
 
 
 /****************************************************************************

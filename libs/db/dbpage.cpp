@@ -60,11 +60,11 @@ struct ZeroPage {
 *
 ***/
 
-static auto & s_perfPages = uperf("db work pages (total)");
-static auto & s_perfFreePages = uperf("db work pages (free)");
-static auto & s_perfDirtyPages = uperf("db work pages (dirty)");
-static auto & s_perfPurges = uperf("db work dirty scans (total)");
-static auto & s_perfCurPurges = uperf("db work dirty scans (current)");
+static auto & s_perfPages = uperf("db.work pages (total)");
+static auto & s_perfFreePages = uperf("db.work pages (free)");
+static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
+static auto & s_perfPurges = uperf("db.work dirty scans (total)");
+static auto & s_perfCurPurges = uperf("db.work dirty scans (current)");
 
 
 /****************************************************************************

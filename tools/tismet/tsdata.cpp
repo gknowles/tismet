@@ -17,8 +17,8 @@ using namespace Dim;
 ***/
 
 static DbHandle s_db;
-static auto & s_perfExpired = uperf("db metrics expired");
-static auto & s_perfIgnored = uperf("db samples ignored (rule)");
+static auto & s_perfExpired = uperf("db.metrics expired");
+static auto & s_perfIgnored = uperf("db.samples ignored (rule)");
 
 
 /****************************************************************************

@@ -35,10 +35,10 @@ namespace {
 *
 ***/
 
-static auto & s_perfClients = uperf("carbon clients");
-static auto & s_perfCurrent = uperf("carbon clients (current)");
-static auto & s_perfUpdates = uperf("carbon updates");
-static auto & s_perfErrors = uperf("carbon errors");
+static auto & s_perfClients = uperf("carbon.clients");
+static auto & s_perfCurrent = uperf("carbon.clients (current)");
+static auto & s_perfUpdates = uperf("carbon.updates");
+static auto & s_perfErrors = uperf("carbon.errors");
 
 
 /****************************************************************************
