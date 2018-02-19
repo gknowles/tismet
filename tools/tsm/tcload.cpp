@@ -109,16 +109,15 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 //===========================================================================
 static bool loadCmd(Cli & cli) {
     if (!s_dat)
-        return cli.badUsage("No value given for <dat file[.dat]>");
+        return cli.badUsage("No value given for <dat file>");
 
-    s_dat->defaultExt("dat");
     s_in->defaultExt("txt");
 
-    logMsgInfo() << "Loading " << *s_dat << " into " << *s_in;
+    logMsgInfo() << "Loading " << *s_in << " into " << *s_dat;
     tcLogStart();
     if (s_truncate)
         fileRemove(*s_dat);
-    auto h = dbOpen(*s_dat, fDbOpenCreat);
+    auto h = dbOpen(*s_dat, 0, fDbOpenCreat);
     if (!h)
         return cli.fail(EX_ABORTED, "Canceled");
     DbConfig conf = {};
