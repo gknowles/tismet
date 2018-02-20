@@ -118,16 +118,15 @@ void FuncImpl<FT, T>::onFuncAdjustRange(
 
 namespace {
 class FuncAlias : public FuncImpl<Function::kAlias, FuncAlias> {
-    void onResult(int resultId, const ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
 };
 } // namespace
 
 //===========================================================================
-void FuncAlias::onResult(int resultId, const ResultInfo & info) {
-    ResultInfo out{info};
-    if (out.samples)
-        out.name = m_args[0].string;
-    forwardResult(out, true);
+bool FuncAlias::onFuncApply(ResultInfo & info) {
+    info.name = m_args[0].string;
+    outputResult(info);
+    return true;
 }
 
 
@@ -137,30 +136,44 @@ void FuncAlias::onResult(int resultId, const ResultInfo & info) {
 *
 ***/
 
+namespace {
+template<Function::Type FT, typename T>
+class Filter : public FuncImpl<FT, T> {
+    bool onFuncApply(ResultInfo & info) override;
+
+    virtual bool onFilter(const ResultInfo & info) = 0;
+};
+} // namespace
+
+//===========================================================================
+template<Function::Type FT, typename T>
+bool Filter<FT, T>::onFuncApply(ResultInfo & info) {
+    if (info.samples && !onFilter(info)) {
+        info.name = {};
+        info.samples = {};
+    }
+    if (info.samples || !info.more)
+        this->outputResult(info);
+    return true;
+}
+
 //===========================================================================
 // maximumAbove
 //===========================================================================
 namespace {
 class FuncMaximumAbove
-    : public FuncImpl<Function::kMaximumAbove, FuncMaximumAbove>
+    : public Filter<Function::kMaximumAbove, FuncMaximumAbove>
 {
-    void onResult(int resultId, const ResultInfo & info) override;
+    bool onFilter(const ResultInfo & info) override;
 };
 } // namespace
 
 //===========================================================================
-void FuncMaximumAbove::onResult(int resultId, const ResultInfo & info) {
-    ResultInfo out{info};
-    if (out.samples) {
-        auto limit = m_args[0].number;
-        auto ptr = info.samples->samples;
-        auto eptr = ptr + info.samples->count;
-        if (find_if(ptr, eptr, [&](auto val){ return val > limit; }) == eptr) {
-            out.name = {};
-            out.samples = {};
-        }
-    }
-    forwardResult(out, true);
+bool FuncMaximumAbove::onFilter(const ResultInfo & info) {
+    auto limit = m_args[0].number;
+    auto ptr = info.samples->samples;
+    auto eptr = ptr + info.samples->count;
+    return find_if(ptr, eptr, [&](auto val){ return val > limit; }) != eptr;
 }
 
 
@@ -173,7 +186,7 @@ void FuncMaximumAbove::onResult(int resultId, const ResultInfo & info) {
 namespace {
 template<Function::Type FT, typename T>
 class Transform : public FuncImpl<FT, T> {
-    FuncNode::Apply onFuncApply(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
 
     virtual void onTransformStart(Duration interval) {}
     virtual void onTransform(
@@ -186,17 +199,19 @@ class Transform : public FuncImpl<FT, T> {
 
 //===========================================================================
 template<Function::Type FT, typename T>
-FuncNode::Apply Transform<FT, T>::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(this->type(), info.name);
-
-    auto out = SampleList::alloc(*info.samples);
-    onTransformStart(out->interval);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count;
-    onTransform(optr, ptr, eptr);
-    info.samples = out;
-    return FuncNode::Apply::kForward;
+bool Transform<FT, T>::onFuncApply(ResultInfo & info) {
+    if (info.samples) {
+        info.name = addFuncName(this->type(), info.name);
+        auto out = SampleList::alloc(*info.samples);
+        onTransformStart(out->interval);
+        auto optr = out->samples;
+        auto ptr = info.samples->samples;
+        auto eptr = ptr + info.samples->count;
+        onTransform(optr, ptr, eptr);
+        info.samples = out;
+    }
+    this->outputResult(info);
+    return true;
 }
 
 //===========================================================================
@@ -430,7 +445,7 @@ void FuncNonNegativeDerivative::onTransform(
 namespace {
 template<Function::Type FT, typename T>
 class Convert : public FuncImpl<FT, T> {
-    FuncNode::Apply onFuncApply(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
 
     virtual double onConvert(double value) = 0;
     virtual void onConvertStart(Duration interval) {}
@@ -439,19 +454,21 @@ class Convert : public FuncImpl<FT, T> {
 
 //===========================================================================
 template<Function::Type FT, typename T>
-FuncNode::Apply Convert<FT, T>::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(this->type(), info.name);
-
-    auto out = SampleList::alloc(*info.samples);
-    onConvertStart(out->interval);
-    auto optr = out->samples;
-    auto ptr = info.samples->samples;
-    auto eptr = ptr + info.samples->count;
-    for (; ptr != eptr; ++ptr)
-        *optr++ = onConvert(*ptr);
-    assert(optr == out->samples + out->count);
-    info.samples = out;
-    return FuncNode::Apply::kForward;
+bool Convert<FT, T>::onFuncApply(ResultInfo & info) {
+    if (info.samples) {
+        info.name = addFuncName(this->type(), info.name);
+        auto out = SampleList::alloc(*info.samples);
+        onConvertStart(out->interval);
+        auto optr = out->samples;
+        auto ptr = info.samples->samples;
+        auto eptr = ptr + info.samples->count;
+        for (; ptr != eptr; ++ptr)
+            *optr++ = onConvert(*ptr);
+        assert(optr == out->samples + out->count);
+        info.samples = out;
+    }
+    this->outputResult(info);
+    return true;
 }
 
 //===========================================================================
@@ -565,7 +582,7 @@ class FuncTimeShift : public FuncImpl<Function::kTimeShift, FuncTimeShift> {
         Duration * pretime,
         unsigned * presamples
     ) override;
-    Apply onFuncApply(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
 
     Duration m_shift{};
 };
@@ -593,13 +610,16 @@ void FuncTimeShift::onFuncAdjustRange(
 }
 
 //===========================================================================
-FuncNode::Apply FuncTimeShift::onFuncApply(ResultInfo & info) {
-    info.name = addFuncName(type(), info.name);
-    info.samples = SampleList::dup(*info.samples);
-    auto & first = info.samples->first;
-    first -= m_shift;
-    first -= first.time_since_epoch() % info.samples->interval;
-    return Apply::kForward;
+bool FuncTimeShift::onFuncApply(ResultInfo & info) {
+    if (info.samples) {
+        info.name = addFuncName(type(), info.name);
+        info.samples = SampleList::dup(*info.samples);
+        auto & first = info.samples->first;
+        first -= m_shift;
+        first -= first.time_since_epoch() % info.samples->interval;
+    }
+    outputResult(info);
+    return true;
 }
 
 
@@ -613,13 +633,13 @@ namespace {
 class FuncHighestCurrent
     : public FuncImpl<Function::kHighestCurrent, FuncHighestCurrent>
 {
-    Apply onResultTask(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
     multimap<double, ResultInfo> m_best;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncHighestCurrent::onResultTask(ResultInfo & info) {
+bool FuncHighestCurrent::onFuncApply(ResultInfo & info) {
     auto allowed = m_args[0].number;
 
     // last non-NAN sample in list
@@ -643,14 +663,14 @@ FuncNode::Apply FuncHighestCurrent::onResultTask(ResultInfo & info) {
     if (!info.more) {
         for (auto && out : m_best) {
             out.second.more = true;
-            forwardResult(out.second);
+            outputResult(out.second);
         }
-        ResultInfo out{};
-        out.target = info.target;
-        forwardResult(out);
+        info.name = {};
+        info.samples = {};
+        outputResult(info);
         m_best.clear();
     }
-    return Apply::kSkip;
+    return true;
 }
 
 
@@ -662,13 +682,13 @@ FuncNode::Apply FuncHighestCurrent::onResultTask(ResultInfo & info) {
 
 namespace {
 class FuncHighestMax : public FuncImpl<Function::kHighestMax, FuncHighestMax> {
-    Apply onResultTask(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
     multimap<double, ResultInfo> m_best;
 };
 } // namespace
 
 //===========================================================================
-FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
+bool FuncHighestMax::onFuncApply(ResultInfo & info) {
     auto allowed = m_args[0].number;
 
     // largest non-NAN sample in list
@@ -696,14 +716,14 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
     if (!info.more) {
         for (auto i = m_best.rbegin(), ei = m_best.rend(); i != ei; ++i) {
             i->second.more = true;
-            forwardResult(i->second);
+            outputResult(i->second);
         }
         ResultInfo out{};
         out.target = info.target;
-        forwardResult(out);
+        outputResult(out);
         m_best.clear();
     }
-    return Apply::kSkip;
+    return true;
 }
 
 
@@ -716,7 +736,7 @@ FuncNode::Apply FuncHighestMax::onResultTask(ResultInfo & info) {
 namespace {
 template<Function::Type FT, typename T>
 class Aggregate : public FuncImpl<FT, T> {
-    FuncNode::Apply onResultTask(ResultInfo & info) override;
+    bool onFuncApply(ResultInfo & info) override;
 
     virtual void onAggregate(double & agg, double newVal) = 0;
 protected:
@@ -726,7 +746,7 @@ protected:
 
 //===========================================================================
 template<Function::Type FT, typename T>
-FuncNode::Apply Aggregate<FT, T>::onResultTask(ResultInfo & info) {
+bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
     if (info.samples) {
         if (!m_samples) {
             m_samples = SampleList::dup(*info.samples);
@@ -785,9 +805,9 @@ FuncNode::Apply Aggregate<FT, T>::onResultTask(ResultInfo & info) {
         out.name = addFuncName(this->type(), info.target);
         out.samples = move(m_samples);
         out.more = false;
-        this->forwardResult(out);
+        this->outputResult(out);
     }
-    return FuncNode::Apply::kSkip;
+    return true;
 }
 
 //===========================================================================

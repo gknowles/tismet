@@ -52,7 +52,7 @@ public:
     virtual ~ResultNode();
 
     virtual void onResult(int resultId, const ResultInfo & info);
-    void onTask() override;
+    void onTask() override = 0;
 
     int m_unfinished{0};
     std::vector<std::shared_ptr<SourceNode>> m_sources;
@@ -93,18 +93,22 @@ protected:
     std::shared_ptr<char[]> sourceName() const { return m_source; }
 
     // Sets first, last, pretime, and presamples
-    bool outputRange(ResultRange * rr) const;
+    // Returns false if outputs and pendingOutputs are empty
+    bool outputRange(ResultRange * rr);
 
-    // Returns false when !info.more
-    bool outputResult(const ResultInfo & info);
+    struct OutputResultReturn {
+        bool more;      // more series expected for this set of outputs
+        bool pending;   // another set of outputs is pending
+    } outputResult(const ResultInfo & info);
 
 private:
-    virtual void onStart() = 0;
+    virtual void onSourceStart() = 0;
 
     std::shared_ptr<char[]> m_source;
 
     mutable std::mutex m_outMut;
     std::vector<ResultRange> m_outputs;
+    std::vector<ResultRange> m_pendingOutputs;
 };
 
 struct FuncArg {
@@ -118,10 +122,8 @@ public:
     bool bind(std::vector<FuncArg> && args);
 
 protected:
-    void forwardResult(ResultInfo & info, bool unfinished = false);
-
-    void onStart() override;
-    Apply onResultTask(ResultInfo & info) override;
+    void onSourceStart() override;
+    void onTask() override;
 
     // validate and/or process arguments
     virtual bool onFuncBind();
@@ -131,7 +133,13 @@ protected:
         Dim::Duration * pretime,
         unsigned * presamples
     );
-    virtual Apply onFuncApply(ResultInfo & info);
+
+    // Perform the function, outputResult() must be called for each result
+    // that should be published.
+    //
+    // Return false to stop receiving results for the current outputs, only
+    // required if the function is to be aborted midstream.
+    virtual bool onFuncApply(ResultInfo & info) = 0;
 
     virtual Query::Function::Type type() const = 0;
 

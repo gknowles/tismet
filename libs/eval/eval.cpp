@@ -23,7 +23,7 @@ class DbDataNode : public SourceNode, ITaskNotify, IDbDataNotify {
 private:
     void readMore();
 
-    void onStart() override;
+    void onSourceStart() override;
     void onTask() override;
 
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
@@ -46,7 +46,11 @@ public:
     ~Evaluate();
 
     void onResult(int resultId, const ResultInfo & info) override;
-    Apply onResultTask(ResultInfo & info) override;
+    void onTask() override;
+
+    // Return false when done receiving results, either normally or because
+    // it was aborted.
+    bool onEvalApply(ResultInfo & info);
 
     IEvalNotify * m_notify{nullptr};
     DbContextHandle m_ctx;
@@ -270,6 +274,7 @@ shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
 //===========================================================================
 SourceNode::~SourceNode() {
     assert(m_outputs.empty());
+    assert(m_pendingOutputs.empty());
 }
 
 //===========================================================================
@@ -280,41 +285,37 @@ void SourceNode::init(shared_ptr<char[]> name) {
 //===========================================================================
 void SourceNode::addOutput(const ResultRange & rr) {
     unique_lock<mutex> lk{m_outMut};
-    m_outputs.push_back(rr);
-    if (m_outputs.size() != 1)
+    m_pendingOutputs.push_back(rr);
+    if (m_pendingOutputs.size() != 1 || !m_outputs.empty())
         return;
 
     lk.unlock();
-    onStart();
+    onSourceStart();
 }
 
 //===========================================================================
 void SourceNode::removeOutput(ResultNode * rn) {
+    auto pred = [=](auto & a) { return a.rn == rn; };
     scoped_lock<mutex> lk{m_outMut};
-    auto ptr = m_outputs.data(),
-        eptr = ptr + m_outputs.size();
-    while (ptr != eptr) {
-        if (ptr->rn == rn) {
-            if (--eptr == ptr)
-                break;
-            *ptr = *eptr;
-        } else {
-            ptr += 1;
-        }
-    }
-    m_outputs.resize(eptr - m_outputs.data());
+    if (!m_outputs.empty())
+        erase_unordered_if(m_outputs, pred);
+    if (!m_outputs.empty())
+        erase_unordered_if(m_pendingOutputs, pred);
 }
 
 //===========================================================================
-bool SourceNode::outputRange(ResultRange * out) const {
+bool SourceNode::outputRange(ResultRange * out) {
     out->first = TimePoint::max();
     out->last = TimePoint::min();
     out->pretime = {};
     out->presamples = 0;
 
     scoped_lock<mutex> lk{m_outMut};
-    if (m_outputs.empty())
-        return false;
+    if (m_outputs.empty()) {
+        if (m_pendingOutputs.empty())
+            return false;
+        m_outputs.swap(m_pendingOutputs);
+    }
     for (auto && rr : m_outputs) {
         out->first = min(out->first, rr.first);
         out->last = max(out->last, rr.last);
@@ -377,10 +378,12 @@ static shared_ptr<SampleList> consolidateAvg(
 }
 
 //===========================================================================
-bool SourceNode::outputResult(const ResultInfo & info) {
+SourceNode::OutputResultReturn SourceNode::outputResult(
+    const ResultInfo & info
+) {
     scoped_lock<mutex> lk{m_outMut};
     if (m_outputs.empty())
-        return info.more;
+        return {false, !m_pendingOutputs.empty()};
 
     auto baseInterval = info.samples
         ? info.samples->interval
@@ -414,10 +417,10 @@ bool SourceNode::outputResult(const ResultInfo & info) {
             rr.rn->onResult(rr.resultId, out);
         }
     }
-
     if (!info.more)
         m_outputs.clear();
-    return info.more;
+
+    return {info.more, !m_pendingOutputs.empty()};
 }
 
 
@@ -428,7 +431,7 @@ bool SourceNode::outputResult(const ResultInfo & info) {
 ***/
 
 //===========================================================================
-void DbDataNode::onStart() {
+void DbDataNode::onSourceStart() {
     taskPushCompute(this);
 }
 
@@ -442,7 +445,8 @@ void DbDataNode::onTask() {
     m_result.target = sourceName();
     dbFindMetrics(&m_unfinished, s_db, m_result.target.get());
     if (m_unfinished.empty()) {
-        outputResult(m_result);
+        if (outputResult(m_result).pending)
+            onSourceStart();
         return;
     }
     readMore();
@@ -521,11 +525,13 @@ void DbDataNode::onDbSeriesEnd(uint32_t id) {
     }
 
     m_result.more = !m_unfinished.empty();
-    auto more = outputResult(m_result);
+    auto ret = outputResult(m_result);
     m_result.name = {};
     m_result.samples = {};
-    if (!more) {
+    if (!ret.more) {
         m_unfinished.clear();
+        if (ret.pending)
+            onSourceStart();
         return;
     }
 
@@ -560,38 +566,6 @@ void ResultNode::onResult(int resultId, const ResultInfo & info) {
 }
 
 //===========================================================================
-void ResultNode::onTask() {
-    unique_lock<mutex> lk{m_resMut};
-    assert(!m_results.empty());
-    auto mode = Apply::kSkip;
-    for (;;) {
-        auto info = m_results.front();
-        lk.unlock();
-        info.more = info.more || --m_unfinished;
-        if (!info.more || info.samples) {
-            mode = onResultTask(info);
-            switch (mode) {
-            case Apply::kForward:
-                logMsgCrash() << "onResultTask returned Apply::kForward";
-                return;
-            case Apply::kSkip:
-                break;
-            case Apply::kFinished:
-                stopSources();
-                break;
-            case Apply::kDestroy:
-                delete this;
-                return;
-            }
-        }
-        lk.lock();
-        m_results.pop_front();
-        if (m_results.empty())
-            return;
-    }
-}
-
-//===========================================================================
 ResultNode::Apply ResultNode::onResultTask(ResultInfo & info) {
     assert(!"onResultTask not implemented");
     return Apply::kDestroy;
@@ -616,15 +590,7 @@ bool FuncNode::bind(vector<FuncArg> && args) {
 }
 
 //===========================================================================
-void FuncNode::forwardResult(ResultInfo & info, bool unfinished) {
-    if (unfinished)
-        info.more = (info.more || --m_unfinished);
-    if (info.samples || !info.more)
-        outputResult(info);
-}
-
-//===========================================================================
-void FuncNode::onStart() {
+void FuncNode::onSourceStart() {
     ResultRange rr;
     if (!outputRange(&rr))
         return;
@@ -639,15 +605,31 @@ void FuncNode::onStart() {
 }
 
 //===========================================================================
-FuncNode::Apply FuncNode::onResultTask(ResultInfo & info) {
-    auto mode = Apply::kForward;
-    if (info.samples)
-        mode = onFuncApply(info);
-    if (mode == Apply::kForward) {
-        forwardResult(info);
-        return Apply::kSkip;
+void FuncNode::onTask() {
+    unique_lock<mutex> lk{m_resMut};
+    assert(!m_results.empty());
+    auto stop = false;
+    for (;;) {
+        auto info = m_results.front();
+        info.more = info.more || --m_unfinished;
+        if (!info.more || info.samples) {
+            lk.unlock();
+            stop = !onFuncApply(info);
+            if (stop)
+                stopSources();
+            lk.lock();
+        }
+        if (stop) {
+            m_results.clear();
+        } else {
+            m_results.pop_front();
+        }
+        if (m_results.empty()) {
+            if (!info.more)
+                onSourceStart();
+            return;
+        }
     }
-    return mode;
 }
 
 //===========================================================================
@@ -663,12 +645,6 @@ void FuncNode::onFuncAdjustRange(
     unsigned * presamples
 )
 {}
-
-//===========================================================================
-FuncNode::Apply FuncNode::onFuncApply(ResultInfo & info) {
-    assert(!"onFuncApply not implemented");
-    return Apply::kDestroy;
-}
 
 
 /****************************************************************************
@@ -719,7 +695,28 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
 }
 
 //===========================================================================
-FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
+void Evaluate::onTask() {
+    unique_lock<mutex> lk{m_resMut};
+    assert(!m_results.empty());
+    for (;;) {
+        auto info = m_results.front();
+        lk.unlock();
+        info.more = info.more || --m_unfinished;
+        if (!info.more || info.samples) {
+            if (!onEvalApply(info)) {
+                delete this;
+                return;
+            }
+        }
+        lk.lock();
+        m_results.pop_front();
+        if (m_results.empty())
+            return;
+    }
+}
+
+//===========================================================================
+bool Evaluate::onEvalApply(ResultInfo & info) {
     if (info.samples) {
         DbSeriesInfo dsi;
         dsi.target = info.target.get();
@@ -730,26 +727,29 @@ FuncNode::Apply Evaluate::onResultTask(ResultInfo & info) {
         dsi.first = m_first - m_first.time_since_epoch() % dsi.interval;
         auto presamples = (dsi.first - info.samples->first) / dsi.interval;
         auto count = info.samples->count - presamples;
-        dsi.last = dsi.first + count * info.samples->interval;
+        dsi.last = dsi.first + count * dsi.interval;
+        assert(presamples >= 0);
+        assert(dsi.last ==
+            m_last + dsi.interval - m_last.time_since_epoch() % dsi.interval);
         if (!m_notify->onDbSeriesStart(dsi)) {
             m_notify->onEvalEnd();
-            return Apply::kDestroy;
+            return false;
         }
         auto samp = info.samples->samples + presamples;
         auto time = dsi.first;
         for (; time < dsi.last; time += dsi.interval, ++samp) {
             if (!m_notify->onDbSample(dsi.id, time, *samp)) {
                 m_notify->onEvalEnd();
-                return Apply::kDestroy;
+                return false;
             }
         }
         m_notify->onDbSeriesEnd(dsi.id);
     }
     if (info.more)
-        return Apply::kSkip;
+        return true;
 
     m_notify->onEvalEnd();
-    return Apply::kDestroy;
+    return false;
 }
 
 
