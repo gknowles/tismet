@@ -292,22 +292,28 @@ void UnitTest::onEvalEnd() {
 //===========================================================================
 static auto s_keepLastValue = UnitTest("keepLastValue")
     .query("keepLastValue(*.value, 2)", 1, 20)
-    .in("1.value", 1, 1s, {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
+    .in("1.value", 1, 1s,
+        {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
     .out("keepLastValue(1.value)", 1, 1s,
         {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20})
-    .in("2.value", 1, 1s, {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10,NAN,12,NAN,14,NAN,16,NAN,18,NAN,20})
+    .in("2.value", 1, 1s,
+        {NAN,2,NAN,4,NAN,6,NAN,8,NAN,10,NAN,12,NAN,14,NAN,16,NAN,18,NAN,20})
     .out("keepLastValue(2.value)", 1, 1s,
         {NAN,2,2,4,4,6,6,8,8,10,10,12,12,14,14,16,16,18,18,20})
-    .in("3.value", 1, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
+    .in("3.value", 1, 1s,
+        {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
     .out("keepLastValue(3.value)", 1, 1s,
         {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,NAN,NAN,NAN})
-    .in("4.value", 1, 1s, {1,2,3,4,NAN,6,NAN,NAN,9,10,11,NAN,13,NAN,NAN,NAN,NAN,18,19,20})
+    .in("4.value", 1, 1s,
+        {1,2,3,4,NAN,6,NAN,NAN,9,10,11,NAN,13,NAN,NAN,NAN,NAN,18,19,20})
     .out("keepLastValue(4.value)", 1, 1s,
         {1,2,3,4,4,6,6,6,9,10,11,11,13,NAN,NAN,NAN,NAN,18,19,20})
-    .in("5.value", 1, 1s, {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,NAN,NAN})
+    .in("5.value", 1, 1s,
+        {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,NAN,NAN})
     .out("keepLastValue(5.value)", 1, 1s,
         {1,2,NAN,NAN,NAN,6,7,8,9,10,11,12,13,14,15,16,17,18,18,18})
-    .in("6.value", 0, 1s, {1,NAN,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3})
+    .in("6.value", 0, 1s,
+        {1,NAN,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3})
     .out("keepLastValue(6.value)", 1, 1s,
         {1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3});
 

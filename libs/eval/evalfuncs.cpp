@@ -148,11 +148,7 @@ class Filter : public FuncImpl<FT, T> {
 //===========================================================================
 template<Function::Type FT, typename T>
 bool Filter<FT, T>::onFuncApply(ResultInfo & info) {
-    if (info.samples && !onFilter(info)) {
-        info.name = {};
-        info.samples = {};
-    }
-    if (info.samples || !info.more)
+    if (!info.samples || onFilter(info))
         this->outputResult(info);
     return true;
 }
@@ -650,21 +646,17 @@ bool FuncHighestCurrent::onFuncApply(ResultInfo & info) {
             if (!isnan(best))
                 break;
         }
-    }
-
-    if (!isnan(best)) {
-        if (m_best.size() < allowed) {
-            m_best.emplace(best, info);
-        } else if (auto i = m_best.begin();  i->first < best) {
-            m_best.erase(i);
-            m_best.emplace(best, info);
+        if (!isnan(best)) {
+            if (m_best.size() < allowed) {
+                m_best.emplace(best, info);
+            } else if (auto i = m_best.begin();  i->first < best) {
+                m_best.erase(i);
+                m_best.emplace(best, info);
+            }
         }
-    }
-    if (!info.more) {
-        for (auto && out : m_best) {
-            out.second.more = true;
+    } else {
+        for (auto && out : m_best)
             outputResult(out.second);
-        }
         info.name = {};
         info.samples = {};
         outputResult(info);
@@ -703,24 +695,20 @@ bool FuncHighestMax::onFuncApply(ResultInfo & info) {
                 found = true;
             }
         }
-    }
-
-    if (found) {
-        if (m_best.size() < allowed) {
-            m_best.emplace(best, info);
-        } else if (auto i = m_best.begin();  best > i->first) {
-            m_best.erase(i);
-            m_best.emplace(best, info);
+        if (found) {
+            if (m_best.size() < allowed) {
+                m_best.emplace(best, info);
+            } else if (auto i = m_best.begin();  best > i->first) {
+                m_best.erase(i);
+                m_best.emplace(best, info);
+            }
         }
-    }
-    if (!info.more) {
-        for (auto i = m_best.rbegin(), ei = m_best.rend(); i != ei; ++i) {
-            i->second.more = true;
+    } else {
+        for (auto i = m_best.rbegin(), ei = m_best.rend(); i != ei; ++i)
             outputResult(i->second);
-        }
-        ResultInfo out{};
-        out.target = info.target;
-        outputResult(out);
+        info.name = {};
+        info.samples = {};
+        outputResult(info);
         m_best.clear();
     }
     return true;
@@ -797,16 +785,16 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
             // TODO: normalize and consolidate incompatible lists
             logMsgError() << "summing incompatible series";
         }
+        return true;
     }
 
-    if (!info.more) {
-        ResultInfo out;
-        out.target = info.target;
-        out.name = addFuncName(this->type(), info.target);
-        out.samples = move(m_samples);
-        out.more = false;
-        this->outputResult(out);
-    }
+    // Output aggregated result and end mark
+    info.name = addFuncName(this->type(), info.target);
+    info.samples = move(m_samples);
+    this->outputResult(info);
+    info.name = {};
+    info.samples = {};
+    this->outputResult(info);
     return true;
 }
 

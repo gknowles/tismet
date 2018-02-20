@@ -417,10 +417,10 @@ SourceNode::OutputResultReturn SourceNode::outputResult(
             rr.rn->onResult(rr.resultId, out);
         }
     }
-    if (!info.more)
+    if (!info.samples)
         m_outputs.clear();
 
-    return {info.more, !m_pendingOutputs.empty()};
+    return {(bool) info.samples, !m_pendingOutputs.empty()};
 }
 
 
@@ -523,11 +523,13 @@ void DbDataNode::onDbSeriesEnd(uint32_t id) {
             samples[m_pos] = NAN;
         assert(m_pos == count);
     }
-
-    m_result.more = !m_unfinished.empty();
     auto ret = outputResult(m_result);
+
     m_result.name = {};
     m_result.samples = {};
+
+    if (ret.more && m_unfinished.empty())
+        ret = outputResult(m_result);
     if (!ret.more) {
         m_unfinished.clear();
         if (ret.pending)
@@ -563,12 +565,6 @@ void ResultNode::onResult(int resultId, const ResultInfo & info) {
     m_results.push_back(info);
     if (m_results.size() == 1)
         taskPushCompute(this);
-}
-
-//===========================================================================
-ResultNode::Apply ResultNode::onResultTask(ResultInfo & info) {
-    assert(!"onResultTask not implemented");
-    return Apply::kDestroy;
 }
 
 
@@ -611,8 +607,8 @@ void FuncNode::onTask() {
     auto stop = false;
     for (;;) {
         auto info = m_results.front();
-        info.more = info.more || --m_unfinished;
-        if (!info.more || info.samples) {
+        bool more = info.samples || --m_unfinished;
+        if (info.samples || !more) {
             lk.unlock();
             stop = !onFuncApply(info);
             if (stop)
@@ -625,7 +621,7 @@ void FuncNode::onTask() {
             m_results.pop_front();
         }
         if (m_results.empty()) {
-            if (!info.more)
+            if (!more)
                 onSourceStart();
             return;
         }
@@ -678,7 +674,7 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
 
     bool pushTask = m_results.empty();
     m_results.push_back(info);
-    auto more = info.more;
+    auto more = (bool) info.samples;
     while (!more) {
         if (++m_curId == m_idResults.size())
             break;
@@ -687,7 +683,7 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
         } else {
             for (auto && ri : m_idResults[m_curId])
                 m_results.push_back(move(ri));
-            more = m_results.back().more;
+            more = (bool) m_results.back().samples;
         }
     }
     if (pushTask)
@@ -701,8 +697,8 @@ void Evaluate::onTask() {
     for (;;) {
         auto info = m_results.front();
         lk.unlock();
-        info.more = info.more || --m_unfinished;
-        if (!info.more || info.samples) {
+        auto more = info.samples || --m_unfinished;
+        if (info.samples || !more) {
             if (!onEvalApply(info)) {
                 delete this;
                 return;
@@ -744,9 +740,8 @@ bool Evaluate::onEvalApply(ResultInfo & info) {
             }
         }
         m_notify->onDbSeriesEnd(dsi.id);
-    }
-    if (info.more)
         return true;
+    }
 
     m_notify->onEvalEnd();
     return false;

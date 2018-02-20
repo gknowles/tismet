@@ -36,7 +36,6 @@ struct ResultInfo {
     std::shared_ptr<char[]> target;
     std::shared_ptr<char[]> name;
     std::shared_ptr<SampleList> samples;
-    bool more{false};
 };
 
 class ResultNode : public Dim::ITaskNotify {
@@ -58,8 +57,6 @@ public:
     std::vector<std::shared_ptr<SourceNode>> m_sources;
 
 protected:
-    virtual Apply onResultTask(ResultInfo & info);
-
     void stopSources();
 
     std::mutex m_resMut;
