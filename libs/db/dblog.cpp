@@ -536,14 +536,17 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
 
 //===========================================================================
 uint64_t DbLog::beginTxn() {
+    uint16_t localTxn = 0;
     for (;;) {
-        if (++m_lastLocalTxn)
+        localTxn = m_lastLocalTxn.fetch_add(1) + 1;
+        if (localTxn)
             break;
     }
+
     s_perfCurTxns += 1;
     s_perfVolatileTxns += 1;
 
-    return logBeginTxn(m_lastLocalTxn);
+    return logBeginTxn(localTxn);
 }
 
 //===========================================================================
@@ -911,12 +914,12 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
         m_bufAvailCv.wait(lk);
     auto lsn = ++m_lastLsn;
 
-    // Count begin transactions (txns == 1) on the page their log record
+    // Count begin transactions (txnType == 1) on the page their log record
     // started. This means the current page before logging (since logging can
     // advance to the next page), UNLESS it's exactly at the end of the page.
     // In that case the transaction actually starts on the next page, which is
     // where we'll be after logging.
-    // Transaction commits (txns == -1) are counted after logging, so it's
+    // Transaction commits (txnType == -1) are counted after logging, so it's
     // always on the page where they finished.
     if (m_bufPos == m_pageSize) {
         prepareBuffer_LK(log, 0, bytes);

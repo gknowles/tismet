@@ -180,7 +180,7 @@ void TextWriter::onLogApplyRadixInit(
     const uint32_t * lastPgno
 ) {
     auto & os = out(ptr);
-    os << "radix/" << id << ".init = " << height << " height" << '\n';
+    os << "radix/" << id << ".init = " << height << '\n';
 }
 
 //===========================================================================
@@ -189,7 +189,11 @@ void TextWriter::onLogApplyRadixErase(
     size_t firstPos,
     size_t lastPos
 ) {
-    out(ptr) << "radix.erase(" << firstPos << " thru " << lastPos << ")\n";
+    auto & os = out(ptr);
+    os << "radix[" << firstPos;
+    if (firstPos != lastPos)
+        os << " thru " << lastPos;
+    os << "] = 0\n";
 }
 
 //===========================================================================
@@ -277,7 +281,11 @@ void TextWriter::onLogApplySampleUpdate(
     double value,
     bool updateLast
 ) {
-    out(ptr) << "samples[" << firstPos << " thru " << lastPos << "] = "
+    auto & os = out(ptr);
+    os << "samples[" << firstPos;
+    if (firstPos != lastPos)
+        os << " thru " << lastPos;
+    os << "] = "
         << value << (updateLast ? ", update last" : "")
         << '\n';
 }
