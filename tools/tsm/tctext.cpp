@@ -59,6 +59,7 @@ private:
         void * ptr,
         uint32_t id,
         string_view name,
+        TimePoint creation,
         DbSampleType sampleType,
         Duration retention,
         Duration interval
@@ -210,11 +211,13 @@ void TextWriter::onLogApplyMetricInit(
     void * ptr,
     uint32_t id,
     string_view name,
+    TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
     Duration interval
 ) {
     out(ptr) << name << "/" << id << ".init = "
+        << timeStr(creation) << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
         << toString(retention, DurationFormat::kTwoPart) << ", "
         << toString(interval, DurationFormat::kTwoPart) << '\n';
@@ -274,7 +277,7 @@ void TextWriter::onLogApplySampleUpdate(
     double value,
     bool updateLast
 ) {
-    out(ptr) << "samples[" << firstPos << ", " << lastPos << "] = "
+    out(ptr) << "samples[" << firstPos << " thru " << lastPos << "] = "
         << value << (updateLast ? ", update last" : "")
         << '\n';
 }

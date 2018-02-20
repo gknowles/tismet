@@ -140,6 +140,7 @@ struct MetricInitRec {
     DbSampleType sampleType;
     Duration retention;
     Duration interval;
+    TimePoint creation;
 
     // EXTENDS BEYOND END OF STRUCT
     char name[1]; // has terminating null
@@ -489,6 +490,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
             page,
             rec->id,
             rec->name,
+            rec->creation,
             rec->sampleType,
             rec->retention,
             rec->interval
@@ -791,6 +793,7 @@ void DbTxn::logMetricInit(
     uint32_t pgno,
     uint32_t id,
     string_view name,
+    TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
     Duration interval
@@ -806,6 +809,7 @@ void DbTxn::logMetricInit(
     rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;
+    rec->creation = creation;
     memcpy(rec->name, name.data(), extra - 1);
     rec->name[extra] = 0;
     log(&rec->hdr, bytes);

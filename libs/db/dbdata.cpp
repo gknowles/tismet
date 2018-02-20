@@ -90,6 +90,7 @@ struct DbData::RadixPage {
 struct DbData::MetricPage {
     static const DbPageType s_pageType = kPageTypeMetric;
     DbPageHeader hdr;
+    TimePoint creation;
     Duration interval;
     Duration retention;
     TimePoint lastPageFirstTime;
@@ -423,6 +424,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         pgno,
         id,
         name,
+        Clock::now(),
         kDefaultSampleType,
         kDefaultRetention,
         kDefaultInterval
@@ -468,6 +470,7 @@ void DbData::onLogApplyMetricInit(
     void * ptr,
     uint32_t id,
     string_view name,
+    TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
     Duration interval
@@ -480,6 +483,7 @@ void DbData::onLogApplyMetricInit(
     }
     mp->hdr.type = mp->s_pageType;
     mp->hdr.id = id;
+    mp->creation = creation;
     mp->sampleType = sampleType;
     mp->retention = retention;
     mp->interval = interval;

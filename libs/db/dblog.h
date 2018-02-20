@@ -258,6 +258,7 @@ public:
         void * ptr,
         uint32_t id,
         std::string_view name,
+        Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval

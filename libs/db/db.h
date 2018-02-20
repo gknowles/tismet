@@ -118,8 +118,8 @@ void dbEraseMetric(DbHandle h, uint32_t id);
 struct DbMetricInfo {
     std::string_view name;
     DbSampleType type{kSampleTypeInvalid};
-    Dim::Duration retention;
-    Dim::Duration interval;
+    Dim::Duration retention{};
+    Dim::Duration interval{};
 };
 // Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
@@ -157,7 +157,7 @@ struct DbSeriesInfo {
     DbSampleType type{kSampleTypeInvalid};
     Dim::TimePoint first;
     Dim::TimePoint last; // time of first interval after the end
-    Dim::Duration interval;
+    Dim::Duration interval{};
 };
 struct IDbDataNotify {
     virtual ~IDbDataNotify() = default;
