@@ -479,12 +479,11 @@ bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
         return true;
 
     auto first = m_range.first
-        - m_range.first.time_since_epoch() % info.interval
         - m_range.pretime
         - m_range.presamples * info.interval;
-    auto last = m_range.last
-        - m_range.last.time_since_epoch() % info.interval
-        + info.interval;
+    first -= first.time_since_epoch() % info.interval;
+    auto last = m_range.last + info.interval;
+    last -= last.time_since_epoch() % info.interval;
     auto count = (last - first) / info.interval;
     assert(info.first == info.last || first <= info.first && last >= info.last);
     if (!count)

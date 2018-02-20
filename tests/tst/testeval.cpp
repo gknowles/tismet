@@ -250,7 +250,7 @@ bool UnitTest::onDbSeriesStart(const DbSeriesInfo & info) {
     s.first = m_first - m_first.time_since_epoch() % info.interval;
     s.interval = info.interval;
     if (info.interval > 0s) {
-        auto count = (m_last - m_first) / info.interval + 1;
+        auto count = (m_last - s.first) / info.interval + 1;
         s.samples.resize(count, NAN);
     }
     return true;
@@ -349,9 +349,9 @@ static auto s_movingAverage = UnitTest("movingAverage")
     .in("3.value", 96, 1s, {0, 1, 2, 3, 4, 5, 6, 7})
     .out("movingAverage(3.value)", 100, 1s, {2.5, 3.5, 4.5, 5.5});
 static auto s_movingAverage_time = UnitTest("movingAverage_time")
-    .query("movingAverage(*.value, 210s)", 100, 4)
-    .in("1.value", 96, 1s, {0, 1, 2, 3, 4, 5, 6, 7})
-    .out("movingAverage(1.value)", 100, 1s, {2.5, 3.5, 4.5, 5.5});
+    .query("movingAverage(*.value, '210s')", 1000, 240)
+    .in("1.value", 760, 60s, {0, 1, 2, 3, 4, 5, 6, 7})
+    .out("movingAverage(1.value)", 960, 60s, {2.5, 3.5, 4.5, 5.5, 4.5});
 
 //===========================================================================
 // nonNegativeDerivative
