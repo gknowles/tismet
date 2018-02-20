@@ -486,7 +486,7 @@ bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
         - m_range.last.time_since_epoch() % info.interval
         + info.interval;
     auto count = (last - first) / info.interval;
-    assert(first <= info.first && last >= info.last);
+    assert(info.first == info.last || first <= info.first && last >= info.last);
     if (!count)
         return true;
 

@@ -324,37 +324,33 @@ class FuncMovingAverage
         const double * eptr
     ) override;
 
-    double m_points{};
-    Duration m_interval{};
-    int m_count{};
+    unsigned m_count{};
 };
 } // namespace
 
 //===========================================================================
 bool FuncMovingAverage::onFuncBind() {
     if (auto arg0 = m_args[0].string.get()) {
-        if (parse(&m_interval, arg0)) {
-            m_points = NAN;
-        } else {
-            m_points = m_count = strToInt(arg0);
-            if (!m_count)
-                m_count = 1;
-        }
+        if (parse(&m_pretime, arg0))
+            return true;
+        m_presamples = strToUint(arg0);
     } else {
-        m_points = m_count = (int) m_args[0].number;
-        if (!m_count)
-            m_count = 1;
+        m_presamples = (unsigned) m_args[0].number;
     }
+    if (m_presamples)
+        m_presamples -= 1;
     return true;
 }
 
 //===========================================================================
 void FuncMovingAverage::onTransformStart(Duration interval) {
-    if (isnan(m_points)) {
-        m_count = int(m_interval / interval);
-        if (!m_count)
-            m_count = 1;
+    if (m_pretime.count()) {
+        auto pretime = m_pretime - m_pretime % interval;
+        m_count = unsigned(pretime / interval) + 1;
+        return;
     }
+
+    m_count = m_presamples + 1;
 }
 
 //===========================================================================
@@ -363,19 +359,34 @@ void FuncMovingAverage::onTransform(
     const double * ptr,
     const double * eptr
 ) {
-    auto prev = *optr++ = NAN;
-    for (ptr += 1; ptr != eptr - 1; ++ptr) {
-        if (isnan(*ptr) || *ptr > m_count) {
-            prev = *optr++ = NAN;
-        } else if (*ptr >= prev) {
-            auto next = *ptr;
-            *optr++ = *ptr - prev;
-            prev = next;
+    auto pre = ptr;
+    auto epre = pre + m_count;
+    assert(epre <= eptr);
+    double sum = 0;
+    unsigned nans = 0;
+    for (unsigned i = 1; i <= m_count; ++i, ++ptr) {
+        if (isnan(*ptr)) {
+            if (++nans == i) {
+                *optr++ = NAN;
+                continue;
+            }
         } else {
-            auto next = *ptr;
-            *optr++ = *ptr + (m_count - prev + 1);
-            prev = next;
+            sum += *ptr;
         }
+        *optr++ = sum / m_count;
+    }
+    for (; ptr != eptr; ++ptr, ++pre) {
+        if (isnan(*ptr)) {
+            nans += 1;
+        } else {
+            sum += *ptr;
+        }
+        if (isnan(*pre)) {
+            nans -= 1;
+        } else {
+            sum -= *pre;
+        }
+        *optr++ = (nans == m_count) ? NAN : sum / m_count;
     }
 }
 

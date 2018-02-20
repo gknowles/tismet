@@ -340,14 +340,18 @@ static auto s_minSeries = UnitTest("minSeries")
 //===========================================================================
 // movingAverage
 //===========================================================================
-//static auto s_movingAverage = UnitTest("movingAverage")
-//    .query("movingAverage(*.value, 5)", 0, 10)
-//    .in("1.value", 100, 1s, {0})
-//    .in("2.value", 0, 1s, {NAN, NAN, NAN, NAN, NAN, 0, 1, 2, 3, 4, 5})
-//    .out("movingAverage(2.value)", 0, 1s, {NAN,NAN,NAN,NAN,NAN,0,0.5,1,1.5,2})
-//    .in("3.value", 1, 1s, {10, 11, 12, 13, 14, 15, 16, 17, 18, 19})
-//    .out("movingAverage(3.value)", 0, 1s,
-//        {10,10.5,11,11.5,12,12.5,13,13.5,14,14.5,15,15.5});
+static auto s_movingAverage = UnitTest("movingAverage")
+    .query("movingAverage(*.value, 4)", 100, 4)
+    .in("1.value", 0, 1s, {0})
+    .out("movingAverage(1.value)", 100, 1s, {NAN,NAN,NAN,NAN})
+    .in("2.value", 100, 1s, {NAN, 0, 1, 2})
+    .out("movingAverage(2.value)", 100, 1s, {NAN, 0, 0.25, 0.75 })
+    .in("3.value", 96, 1s, {0, 1, 2, 3, 4, 5, 6, 7})
+    .out("movingAverage(3.value)", 100, 1s, {2.5, 3.5, 4.5, 5.5});
+static auto s_movingAverage_time = UnitTest("movingAverage_time")
+    .query("movingAverage(*.value, 210s)", 100, 4)
+    .in("1.value", 96, 1s, {0, 1, 2, 3, 4, 5, 6, 7})
+    .out("movingAverage(1.value)", 100, 1s, {2.5, 3.5, 4.5, 5.5});
 
 //===========================================================================
 // nonNegativeDerivative
