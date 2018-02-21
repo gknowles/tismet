@@ -59,8 +59,9 @@ When run, Tismet accesses directories relative to the executable:
 
 ## Configuring
 Because Graphite doesn't understand HTTP/2 the simplest thing is to have it go
-though a proxy to talk to Tismet. I use nghttpx because it's simple, but
-anything that can proxy http clients to http/2 servers should work.
+though a reverse proxy to talk to Tismet. I use Apache, but anything that can
+proxy http clients to http/2 servers should work. Notably IIS and Nginx do not,
+at this time, support http/2 connections to back-end servers.
 
 For https you must have a certificate installed into the Windows certificate
 store and configure Tismet to use it. You tell Tismet which cert to use by
@@ -71,25 +72,36 @@ Https isn't required, but it can make it easier for some proxies to detect that
 Tismet wants HTTP/2.
 
 ### Certificate
-One simple way to make a cert is outlined below, although since it uses the
-Test Root cert (which is known to all those folks on the internet) it's not
-exactly safe:
-1. Generate the cert signed by the windows test certificate "CertReq Test Root"
-(Friendly name for your new cert is optional)
+One way to setup a certificate on Windows is outlined below.
+
+1. Generate a signing certificate that is used to sign server authentication
+certificates. The subject name doesn't have to be "Local Test Root", it could
+be anything. Make a note of the resulting Thumbprint, it will be used in the
+next step.
 ~~~ powershell
 powershell New-SelfSignedCertificate
-        -CertStoreLocation cert:\CurrentUser\MY
-        -DnsName MyComputerName
-        -TestRoot
-        -FriendlyName "Example Test Site"
+    -CertStoreLocation cert:\CurrentUser\My
+    -Subject "Local Test Root"
+    -Type Custom
+    -KeyUsage CertSign
 ~~~
 
-2. Make "CertReq Test Root" trusted - it was created by the previous step if
-it didn't already exist.
+2. Generate a signed certificate for the domain, using the signing certificate.
+The friendly name is optional. Repeat this step as often as you like for as
+many domains as you need.
+~~~ powershell
+powershell New-SelfSignedCertificate
+    -CertStoreLocation cert:\CurrentUser\My
+    -DnsName example.com, example.net
+    -Signer cert:\CurrentUser\My\<Thumbprint of Local Test Root>
+    -FriendlyName "Example Test Site"
+~~~
 
+3. Make "Local Test Root" trusted. Note that a copy of the certificate must be
+left in Personal for step #2 to sign additional certificates in the future.
    1. Run "certmgr.msc", the "Manage user certificates" management snap-in.
-   2. Copy/move "CertReq Test Root" from Intermediate Certification Authorities
-to Trusted Root Certification Authorities.
+   2. Copy "Local Test Root" from the Personal folder to Trusted Root
+Certification Authorities.
 
 
 ## Configuring Graphite
