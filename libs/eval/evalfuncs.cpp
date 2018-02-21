@@ -360,8 +360,7 @@ void FuncMovingAverage::onTransform(
     const double * eptr
 ) {
     auto pre = ptr;
-    auto epre = pre + m_count;
-    assert(epre <= eptr);
+    assert(pre + m_count <= eptr);
     double sum = 0;
     unsigned nans = 0;
     for (unsigned i = 1; i <= m_count; ++i, ++ptr) {
