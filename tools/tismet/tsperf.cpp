@@ -27,13 +27,17 @@ const Duration kSampleInterval = 1min;
 
 namespace {
 
-class SampleTimer : public ITimerNotify {
+class SampleTimer : public ITimerNotify, ITaskNotify {
     Duration onTimer(TimePoint now) override;
+    void onTask() override;
 
     vector<PerfValue> m_vals;
 };
 
 } // namespace
+
+static SampleTimer s_sampleTimer;
+static atomic_bool s_taskQueued{false};
 
 const char s_prefix[] = "tismet.";
 const char s_allowedChars[] =
@@ -44,9 +48,17 @@ const char s_allowedChars[] =
 
 //===========================================================================
 Duration SampleTimer::onTimer(TimePoint now) {
-    if (appStopping())
-        return kTimerInfinite;
+    if (!appStopping()) {
+        s_taskQueued = true;
+        taskPushCompute(this);
+    }
 
+    return kTimerInfinite;
+}
+
+//===========================================================================
+void SampleTimer::onTask() {
+    auto now = Clock::now();
     auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     perfGetValues(&m_vals);
@@ -83,7 +95,31 @@ Duration SampleTimer::onTimer(TimePoint now) {
     dbCloseContext(ctx);
     now = Clock::now();
     auto wait = ceil<minutes>(now) - now;
-    return wait;
+    timerUpdate(this, wait);
+    s_taskQueued = false;
+}
+
+
+/****************************************************************************
+*
+*   Shutdown monitor
+*
+***/
+
+namespace {
+
+class ShutdownNotify : public IShutdownNotify {
+    void onShutdownServer(bool firstTry) override;
+};
+
+} // namespace
+
+static ShutdownNotify s_cleanup;
+
+//===========================================================================
+void ShutdownNotify::onShutdownServer(bool firstTry) {
+    if (s_taskQueued)
+        shutdownIncomplete();
 }
 
 
@@ -92,8 +128,6 @@ Duration SampleTimer::onTimer(TimePoint now) {
 *   Public API
 *
 ***/
-
-static SampleTimer s_sampleTimer;
 
 //===========================================================================
 void tsPerfInitialize() {
