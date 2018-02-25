@@ -238,8 +238,8 @@ bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
     if (m_verbose)
         logMsgInfo() << "Backup started";
     m_backupFiles.clear();
-    Path src = filePath(m_page.dataFile());
-    Path dst = dstStem;
+    auto src = (Path) filePath(m_page.dataFile());
+    auto dst = (Path) dstStem;
     dst.setExt(src.extension());
     m_backupFiles.push_back(make_pair(dst, src));
     src = filePath(m_log.logFile());

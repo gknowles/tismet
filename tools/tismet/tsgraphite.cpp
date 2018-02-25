@@ -247,7 +247,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     res.addHeader(kHttpContentType, "application/x-msgpack");
     res.addHeader(kHttpAccessControlAllowOrigin, "*");
     res.addHeader(kHttp_Status, "200");
-    MsgBuilder bld(res.body());
+    MsgPack::Builder bld(&res.body());
     auto count = ids.size() + bids.size();
     bld.array(count);
     for (auto && bid : bids) {
@@ -303,7 +303,7 @@ private:
     bool m_started{false};
     HttpResponse m_res;
 
-    MsgBuilder m_bld{m_res.body()};
+    MsgPack::Builder m_bld{&m_res.body()};
     string_view m_pathExpr;
     TimePoint m_prevTime;
     Duration m_interval{};
@@ -450,7 +450,7 @@ bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
     } else {
         m_bld.value(value);
     }
-    m_bld.ivalue(Clock::to_time_t(time));
+    m_bld.value(Clock::to_time_t(time));
     m_bld.end();
     return true;
 }
