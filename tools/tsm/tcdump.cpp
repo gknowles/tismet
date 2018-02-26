@@ -78,6 +78,7 @@ public:
     bool onDbSample(uint32_t id, TimePoint time, double val) override;
 
 private:
+    TimePoint m_lastTime;
     TimePoint m_prevTime;
     Duration m_interval;
 };
@@ -96,12 +97,13 @@ bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
         s_bld.value(ex.creation.time_since_epoch().count());
         s_bld.value(ex.retention.count());
         s_bld.value(ex.interval.count());
-        s_bld.value(ex.first.time_since_epoch().count());
         return true;
     }
+    s_bld.value(info.first.time_since_epoch().count());
     auto count = (info.last - info.first) / info.interval;
     s_bld.array(count);
-    m_prevTime = info.first;
+    m_lastTime = info.last;
+    m_prevTime = info.first - info.interval;
     m_interval = info.interval;
     return true;
 }
@@ -109,15 +111,10 @@ bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
 //===========================================================================
 bool DumpWriter::onDbSample(uint32_t id, TimePoint time, double val) {
     s_progress.samples += 1;
-    auto count = size_t{1};
-    if (time != m_prevTime + m_interval) {
-        count = (time - m_prevTime) / m_interval;
-        appendIfFull(8 + count);
-        for (; m_prevTime != time; m_prevTime += m_interval)
-            s_bld.value(nullptr);
-    } else {
-        appendIfFull(8);
-    }
+    m_prevTime += m_interval;
+    for (; time != m_prevTime; m_prevTime += m_interval)
+        s_bld.value(nullptr);
+    appendIfFull(8);
     s_bld.value(val);
     return true;
 }

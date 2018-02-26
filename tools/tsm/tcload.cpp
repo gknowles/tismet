@@ -52,11 +52,11 @@ private:
     bool startMap(size_t length) override;
     bool valuePrefix(std::string_view val, bool first) override;
     bool value(std::string_view val) override;
-    bool value(bool val) override;
     bool value(double val) override;
+    bool value(int64_t val) override;
+    bool value(uint64_t val) override;
+    bool value(bool val) override;
     bool value(std::nullptr_t) override;
-    bool negativeValue(int64_t val) override;
-    bool positiveValue(uint64_t val) override;
 
     bool nextMetric();
 
@@ -80,7 +80,8 @@ private:
         kDone,
     };
     State m_state{State::kStartFileArray};
-    vector<pair<bool, size_t>> m_stack;
+    size_t m_metrics{0};
+    size_t m_samples{0};
     string m_tmp;
     string m_name;
     DbSeriesInfoEx m_ex;
@@ -144,7 +145,6 @@ void DumpReader::onFileEnd(int64_t offset, FileHandle f) {
 
 //===========================================================================
 bool DumpReader::startArray(size_t length) {
-    m_stack.push_back({false, length});
     switch (m_state) {
     case State::kStartFileArray:
         m_state = State::kStartMetaMap;
@@ -153,10 +153,10 @@ bool DumpReader::startArray(size_t length) {
         if (!onDumpMetrics(length))
             return false;
         if (length) {
+            m_metrics = length;
             m_state = State::kStartMetricArray;
             s_progress.totalMetrics = length;
         } else {
-            m_stack.pop_back();
             m_state = State::kDone;
         }
         return true;
@@ -164,6 +164,7 @@ bool DumpReader::startArray(size_t length) {
         m_state = State::kMetricName;
         return length == 7;
     case State::kStartSamplesArray:
+        m_samples = length;
         if (!length)
             return nextMetric();
         m_state = State::kSample;
@@ -176,7 +177,6 @@ bool DumpReader::startArray(size_t length) {
 
 //===========================================================================
 bool DumpReader::startMap(size_t length) {
-    m_stack.push_back({true, 2 * length});
     switch (m_state) {
     case State::kStartMetaMap:
         m_state = State::kVersionKey;
@@ -225,13 +225,18 @@ bool DumpReader::value(bool val) {
 }
 
 //===========================================================================
+bool DumpReader::value(std::nullptr_t) {
+    return value(NAN);
+}
+
+//===========================================================================
 bool DumpReader::value(double val) {
     switch (m_state) {
     case State::kSample:
         s_progress.samples += 1;
         if (!onDumpSample(val))
             return false;
-        if (!--m_stack.back().second)
+        if (!--m_samples)
             return nextMetric();
         return true;
     default:
@@ -240,12 +245,12 @@ bool DumpReader::value(double val) {
 }
 
 //===========================================================================
-bool DumpReader::negativeValue(int64_t val) {
+bool DumpReader::value(int64_t val) {
     return value((double) val);
 }
 
 //===========================================================================
-bool DumpReader::positiveValue(uint64_t val) {
+bool DumpReader::value(uint64_t val) {
     switch (m_state) {
     case State::kMetricCreation:
         m_ex.creation = TimePoint{Duration{val}};
@@ -272,15 +277,8 @@ bool DumpReader::positiveValue(uint64_t val) {
 }
 
 //===========================================================================
-bool DumpReader::value(std::nullptr_t) {
-    return false;
-}
-
-//===========================================================================
 bool DumpReader::nextMetric() {
-    m_stack.pop_back();
-    if (!--m_stack.back().second) {
-        m_stack.pop_back();
+    if (!--m_metrics) {
         m_state = State::kDone;
     } else {
         m_state = State::kStartMetricArray;
