@@ -217,11 +217,15 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
     }
 
 FUNC(Alias);
+FUNC(AliasSub);
+FUNC(Color);
 FUNC(Derivative);
 FUNC(DrawAsInfinite);
 FUNC(HighestCurrent);
 FUNC(HighestMax);
 FUNC(KeepLastValue);
+FUNC(LegendValue);
+FUNC(LineWidth);
 FUNC(MaximumAbove);
 FUNC(MaxSeries);
 FUNC(MinSeries);

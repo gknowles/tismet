@@ -80,6 +80,12 @@ zero = "0"
 func = fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 
+func =/ fn-aliasSub { End }
+fn-aliasSub = %s"aliasSub(" arg-query "," arg-string "," arg-string ")" { Start }
+
+func =/ fn-color { End }
+fn-color = %s"color(" arg-query "," arg-string ")" { Start }
+
 func =/ fn-derivative
 fn-derivative = %s"derivative(" arg-query ")" { Start }
 
@@ -94,6 +100,12 @@ fn-highestMax = %s"highestMax(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-keepLastValue
 fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
+
+func =/ fn-legendValue
+fn-legendValue = %s"legendValue(" arg-query *( "," arg-string ) ")" { Start }
+
+func =/ fn-lineWidth
+fn-lineWidth = %s"lineWidth(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-maximumAbove
 fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }

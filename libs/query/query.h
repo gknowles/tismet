@@ -70,11 +70,15 @@ struct PathSegment {
 struct Function {
     enum Type {
         kAlias,
+        kAliasSub,
+        kColor,
         kDerivative,
         kDrawAsInfinite,
         kHighestCurrent,
         kHighestMax,
         kKeepLastValue,
+        kLegendValue,
+        kLineWidth,
         kMaximumAbove,
         kMaxSeries,
         kMinSeries,

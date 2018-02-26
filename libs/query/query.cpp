@@ -62,11 +62,15 @@ struct StringNode : Node {
 
 const TokenTable::Token s_funcNames[] = {
     { Function::kAlias,                 "alias" },
+    { Function::kAliasSub,              "aliasSub" },
+    { Function::kColor,                 "color" },
     { Function::kDerivative,            "derivative" },
     { Function::kDrawAsInfinite,        "drawAsInfinite" },
     { Function::kHighestCurrent,        "highestCurrent" },
     { Function::kHighestMax,            "highestMax" },
     { Function::kKeepLastValue,         "keepLastValue" },
+    { Function::kLegendValue,           "legendValue" },
+    { Function::kLineWidth,             "lineWidth" },
     { Function::kMaximumAbove,          "maximumAbove" },
     { Function::kMaxSeries,             "maxSeries" },
     { Function::kMinSeries,             "minSeries" },

@@ -54,12 +54,6 @@ private:
 
 /****************************************************************************
 *
-*   Variables
-*
-***/
-
-/****************************************************************************
-*
 *   Helpers
 *
 ***/
@@ -108,6 +102,35 @@ void FuncImpl<FT, T>::onFuncAdjustRange(
     *pretime += m_pretime;
     *presamples += m_presamples;
 }
+
+
+/****************************************************************************
+*
+*   Passthru
+*
+***/
+
+namespace {
+template<Function::Type FT, typename T>
+class Passthru : public FuncImpl<FT, T> {
+    bool onFuncApply(ResultInfo & info) override;
+};
+} // namespace
+
+//===========================================================================
+template<Function::Type FT, typename T>
+bool Passthru<FT, T>::onFuncApply(ResultInfo & info) {
+    this->outputResult(info);
+    return true;
+}
+
+namespace {
+class FuncAliasSub : public Passthru<Function::kAliasSub, FuncAliasSub> {};
+class FuncColor : public Passthru<Function::kColor, FuncColor> {};
+class FuncLegendValue
+    : public Passthru<Function::kLegendValue, FuncLegendValue> {};
+class FuncLineWidth : public Passthru<Function::kLineWidth, FuncLineWidth> {};
+} // namespace
 
 
 /****************************************************************************
