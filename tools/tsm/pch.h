@@ -10,6 +10,7 @@
 #include "app/app.h"
 #include "core/core.h"
 #include "file/file.h"
+#include "msgpack/msgpack.h"
 #include "net/net.h"
 
 #include "carbon/carbon.h"

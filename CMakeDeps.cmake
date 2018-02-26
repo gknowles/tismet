@@ -17,7 +17,6 @@
 # libs/db/db.cpp
 # libs/db/db.h
 # libs/db/dbdata.cpp
-# libs/db/dbdump.cpp
 # libs/db/dbindex.cpp
 # libs/db/dbindex.h
 # libs/db/dbint.h
@@ -145,8 +144,10 @@
 # vendor/dimapp/libs/json/jsonbaseparse.h
 # vendor/dimapp/libs/json/pch.cpp
 # vendor/dimapp/libs/json/pch.h
+# vendor/dimapp/libs/msgpack/intern.h
 # vendor/dimapp/libs/msgpack/msgbuilder.cpp
 # vendor/dimapp/libs/msgpack/msgpack.h
+# vendor/dimapp/libs/msgpack/msgparser.cpp
 # vendor/dimapp/libs/msgpack/pch.cpp
 # vendor/dimapp/libs/msgpack/pch.h
 # vendor/dimapp/libs/net/address.cpp

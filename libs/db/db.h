@@ -151,13 +151,20 @@ void dbUpdateSample(
 );
 
 struct DbSeriesInfo {
-    std::string_view target; // query series is from, empty for metrics
-    uint32_t id{0}; // for metrics, the metric id, otherwise 0
-    std::string_view name; // such as metric name or alias
+    bool infoEx{false};
     DbSampleType type{kSampleTypeInvalid};
+    uint32_t id{0}; // for metrics, the metric id, otherwise 0
+    std::string_view target; // query series is from, empty for metrics
+    std::string_view name; // such as metric name or alias
     Dim::TimePoint first;
     Dim::TimePoint last; // time of first interval after the end
     Dim::Duration interval{};
+};
+// Used in callback from dbGetMetricInfo()
+struct DbSeriesInfoEx : DbSeriesInfo {
+    DbSeriesInfoEx() { infoEx = true; }
+    Dim::Duration retention{};
+    Dim::TimePoint creation;
 };
 struct IDbDataNotify {
     virtual ~IDbDataNotify() = default;
@@ -204,7 +211,7 @@ struct DbProgressInfo {
     size_t totalFiles{(size_t) -1};
 };
 struct IDbProgressNotify {
-    virtual ~IDbProgressNotify() {}
+    virtual ~IDbProgressNotify() = default;
     virtual bool onDbProgress(
         Dim::RunMode mode,
         const DbProgressInfo & info
@@ -215,19 +222,6 @@ struct IDbProgressNotify {
 bool dbBackup(IDbProgressNotify * notify, DbHandle h, std::string_view dst);
 
 void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
-
-void dbWriteDump(
-    IDbProgressNotify * notify,
-    std::ostream & os,
-    DbHandle h,
-    std::string_view wildname = {}
-);
-
-void dbLoadDump(
-    IDbProgressNotify * notify,
-    DbHandle h,
-    const Dim::Path & src
-);
 
 
 /****************************************************************************

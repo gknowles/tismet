@@ -301,7 +301,7 @@ public:
         IDbDataNotify * notify,
         const DbTxn & txn,
         uint32_t id
-    ) const;
+    );
 
     void updateSample(
         DbTxn & txn,
@@ -436,7 +436,7 @@ private:
     size_t samplesPerPage(DbSampleType type) const;
     MetricPosition getMetricPos(uint32_t id) const;
     void setMetricPos(uint32_t id, const MetricPosition & mi);
-    MetricPosition loadMetricPos(DbTxn & txn, uint32_t id);
+    MetricPosition loadMetricPos(const DbTxn & txn, uint32_t id);
     MetricPosition loadMetricPos(
         DbTxn & txn,
         uint32_t id,

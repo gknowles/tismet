@@ -11,21 +11,21 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Command line
+*   Declarations
 *
 ***/
 
-static bool dumpCmd(Cli & cli);
+namespace {
 
-static Cli s_cli = Cli{}.command("dump")
-    .desc("Create dump file from metrics database.")
-    .action(dumpCmd);
-static auto & s_dat = s_cli.opt<Path>("[dat file]")
-    .desc("Database to dump");
-static auto & s_out = s_cli.opt<Path>("[output file]")
-    .desc("Output defaults to '<dat file>.txt', '-' for stdout");
-static auto & s_qry = s_cli.opt<string>("f find")
-    .desc("Wildcard metric name to match, defaults to matching all metrics.");
+struct CmdOpts {
+    Path database;
+    Path dumpfile;
+    string query;
+
+    CmdOpts();
+};
+
+} // namespace
 
 
 /****************************************************************************
@@ -34,34 +34,116 @@ static auto & s_qry = s_cli.opt<string>("f find")
 *
 ***/
 
-static TimePoint s_startTime;
+static CmdOpts s_opts;
+static DbProgressInfo s_progress;
+static FileAppendStream s_dump;
+static CharBuf s_buf;
+static MsgPack::Builder s_bld(&s_buf);
 
 
 /****************************************************************************
 *
-*   LoadProgress
+*   Helpers
+*
+***/
+
+//===========================================================================
+static void appendRest() {
+    for (auto && v : s_buf.views()) {
+        s_progress.bytes += v.size();
+        s_dump.append(v);
+    }
+    s_buf.clear();
+}
+
+//===========================================================================
+static void appendIfFull(size_t pending) {
+    auto blksize = s_buf.defaultBlockSize();
+    if (s_buf.size() + pending > blksize)
+        appendRest();
+}
+
+
+/****************************************************************************
+*
+*   Write dump
 *
 ***/
 
 namespace {
 
-struct LoadProgress : IDbProgressNotify {
-    DbProgressInfo m_info;
+class DumpWriter : public IDbDataNotify {
+public:
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSample(uint32_t id, TimePoint time, double val) override;
 
-    // Inherited via IDbProgressNotify
-    bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
+private:
+    TimePoint m_prevTime;
+    Duration m_interval;
 };
 
 } // namespace
 
 //===========================================================================
-bool LoadProgress::onDbProgress(
-    RunMode mode,
-    const DbProgressInfo & info
-) {
-    if (mode == kRunStopped)
-        m_info = info;
+bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
+    if (info.infoEx) {
+        s_progress.metrics += 1;
+        auto & ex = static_cast<const DbSeriesInfoEx &>(info);
+        appendIfFull(ex.name.size() + 64);
+        s_bld.array(7);
+        s_bld.value(ex.name);
+        s_bld.value(toString(ex.type));
+        s_bld.value(ex.creation.time_since_epoch().count());
+        s_bld.value(ex.retention.count());
+        s_bld.value(ex.interval.count());
+        s_bld.value(ex.first.time_since_epoch().count());
+        return true;
+    }
+    auto count = (info.last - info.first) / info.interval;
+    s_bld.array(count);
+    m_prevTime = info.first;
+    m_interval = info.interval;
     return true;
+}
+
+//===========================================================================
+bool DumpWriter::onDbSample(uint32_t id, TimePoint time, double val) {
+    s_progress.samples += 1;
+    auto count = size_t{1};
+    if (time != m_prevTime + m_interval) {
+        count = (time - m_prevTime) / m_interval;
+        appendIfFull(8 + count);
+        for (; m_prevTime != time; m_prevTime += m_interval)
+            s_bld.value(nullptr);
+    } else {
+        appendIfFull(8);
+    }
+    s_bld.value(val);
+    return true;
+}
+
+
+/****************************************************************************
+*
+*   Command line
+*
+***/
+
+static bool dumpCmd(Cli & cli);
+
+//===========================================================================
+CmdOpts::CmdOpts() {
+    Cli cli;
+    cli.command("dump")
+        .desc("Create dump file from metrics database.")
+        .action(dumpCmd);
+    cli.opt(&database, "[database]")
+        .desc("Database to dump")
+        .require();
+    cli.opt(&dumpfile, "[output file]")
+        .desc("Output defaults to '<dat file>.txt', '-' for stdout");
+    cli.opt(&query, "f find")
+        .desc("Wildcard metric name to match, defaults to all metrics.");
 }
 
 
@@ -73,34 +155,47 @@ bool LoadProgress::onDbProgress(
 
 //===========================================================================
 static bool dumpCmd(Cli & cli) {
-    if (!s_dat)
-        return cli.badUsage("No value given for <dat file[.dat]>");
-    s_dat->defaultExt("dat");
+    tcLogStart();
 
-    ostream * os{nullptr};
-    ofstream ofile;
-    if (!s_out)
-        s_out->assign(*s_dat).setExt("txt");
-    if (*s_out == string_view("-")) {
-        os = &cout;
+    FileHandle fout;
+    if (!s_opts.dumpfile)
+        s_opts.dumpfile.assign(s_opts.database).setExt("txt");
+    if (s_opts.dumpfile == string_view("-")) {
+        fout = fileAttachStdout();
     } else {
-        ofile.open(s_out->str(), ios::trunc);
-        if (!ofile) {
-            return cli.fail(
-                EX_DATAERR,
-                string(s_out->c_str()) + ": invalid <outputFile[.txt]>"
-            );
-        }
-        os = &ofile;
+        fout = fileOpen(
+            s_opts.dumpfile,
+            File::fCreat | File::fTrunc | File::fReadWrite
+        );
     }
 
-    logMsgInfo() << "Dumping " << *s_out << " to " << *s_dat;
-    tcLogStart();
-    auto h = dbOpen(*s_dat);
-    LoadProgress progress;
-    dbWriteDump(&progress, *os, h, *s_qry);
-    dbClose(h);
-    tcLogShutdown(&progress.m_info);
+    s_dump.init(10, 2, envMemoryConfig().pageSize);
+    if (!fout || !s_dump.attach(fout)) {
+        fileClose(fout);
+        return cli.fail(
+            EX_DATAERR,
+            s_opts.dumpfile.str() + ": invalid <outputFile[.txt]>"
+        );
+    }
 
+    logMsgInfo() << "Dumping " << s_opts.database << " to " << s_opts.dumpfile;
+    auto h = dbOpen(s_opts.database);
+    DumpWriter out;
+    UnsignedSet ids;
+    dbFindMetrics(&ids, h, s_opts.query);
+    s_bld.array(2);
+    s_bld.map(1);
+    s_bld.element("Tismet Dump Version");
+    s_bld.value("2018.1");
+    s_bld.array(ids.size());
+    DbMetricInfo info;
+    for (auto && id : ids) {
+        dbGetMetricInfo(&out, h, id);
+        dbGetSamples(&out, h, id);
+    }
+    appendRest();
+    s_dump.close();
+    dbClose(h);
+    tcLogShutdown(&s_progress);
     return true;
 }

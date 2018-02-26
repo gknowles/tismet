@@ -549,13 +549,13 @@ void DbData::getMetricInfo(
     IDbDataNotify * notify,
     const DbTxn & txn,
     uint32_t id
-) const {
-    auto mi = getMetricPos(id);
+) {
+    auto mi = loadMetricPos(txn, id);
     if (!mi.infoPage)
         return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
 
     auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    DbSeriesInfo info;
+    DbSeriesInfoEx info;
     info.id = id;
     info.name = mp->name;
     info.type = mp->sampleType;
@@ -566,6 +566,8 @@ void DbData::getMetricInfo(
         info.first = info.last - mp->retention;
     }
     info.interval = mp->interval;
+    info.retention = mp->retention;
+    info.creation = mp->creation;
     if (notify->onDbSeriesStart(info))
         notify->onDbSeriesEnd(id);
 }
@@ -643,7 +645,7 @@ static double getSample(const DbData::SamplePage * sp, size_t pos) {
 }
 
 //===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(DbTxn & txn, uint32_t id) {
+DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
 
     // Update metric info from sample page if it has no page data.
