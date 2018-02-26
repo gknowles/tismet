@@ -438,6 +438,7 @@ bool RenderJson::onDbSeriesStart(const DbSeriesInfo & info) {
 
 //===========================================================================
 bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
+    m_started = xferIfFull(m_res, m_started, m_reqId, 32);
     m_bld.array();
     if (isnan(value)) {
         m_bld.value(nullptr);
@@ -551,7 +552,7 @@ bool RenderAlternativeStorage::onDbSample(
     auto count = size_t{1};
     if (time != m_prevTime + m_interval)
         count = (time - m_prevTime) / m_interval;
-    m_started = xferIfFull(m_res, m_started, m_reqId, 4 + count);
+    m_started = xferIfFull(m_res, m_started, m_reqId, 8 + count);
     for (; count > 1; --count)
         m_bld.value(nullptr);
     m_bld.value(value);
