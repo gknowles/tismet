@@ -32,6 +32,7 @@ class SampleTimer : public ITimerNotify, ITaskNotify {
     void onTask() override;
 
     vector<PerfValue> m_vals;
+    string m_tmp;
 };
 
 } // namespace
@@ -63,22 +64,20 @@ void SampleTimer::onTask() {
     auto ctx = tsDataOpenContext();
     perfGetValues(&m_vals);
     for (auto && val : m_vals) {
-        auto name = (char *) alloca(val.name.size() + size(s_prefix));
-        memcpy(name, s_prefix, size(s_prefix) - 1);
-        auto optr = name + size(s_prefix) - 1;
+        m_tmp.reserve(val.name.size() + size(s_prefix));
+        m_tmp.assign(s_prefix);
         for (auto && ch : val.name) {
             if (strchr(s_allowedChars, ch)) {
-                *optr++ = ch;
+                m_tmp.push_back(ch);
             } else {
-                if (optr[-1] != '_')
-                    *optr++ = '_';
+                if (m_tmp.back() != '_')
+                    m_tmp.push_back('_');
             }
         }
-        while (optr[-1] == '_')
-            optr -= 1;
-        *optr = 0;
+        while (m_tmp.back() == '_')
+            m_tmp.pop_back();
         uint32_t id;
-        if (!tsDataInsertMetric(&id, f, name))
+        if (!tsDataInsertMetric(&id, f, m_tmp))
             continue;
         DbMetricInfo info = {};
         switch (val.type) {
