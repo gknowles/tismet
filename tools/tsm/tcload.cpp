@@ -194,6 +194,12 @@ bool DumpReader::valuePrefix(std::string_view val, bool first) {
 
 //===========================================================================
 bool DumpReader::value(std::string_view val) {
+    string tmp;
+    if (!m_tmp.empty()) {
+        tmp.swap(m_tmp);
+        tmp.append(val);
+        val = tmp;
+    }
     switch (m_state) {
     case State::kVersionKey:
         if (val != "Tismet Dump Version")
@@ -305,6 +311,7 @@ bool DbWriter::onDumpSeries(const DbSeriesInfoEx & ex) {
 
     dbInsertMetric(&m_id, s_db, ex.name);
     DbMetricInfo info;
+    info.creation = ex.creation;
     info.type = ex.type;
     info.retention = ex.retention;
     info.interval = ex.interval;
@@ -375,7 +382,7 @@ CmdOpts::CmdOpts() {
         .desc("Target database")
         .require();
     cli.opt(&dumpfile, "[input file]")
-        .desc("File to load (default extension: .txt)");
+        .desc("File to load (default extension: .tsdump)");
     cli.opt(&truncate, "truncate", false)
         .desc("Completely replace database contents");
 }
@@ -389,7 +396,7 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static bool loadCmd(Cli & cli) {
-    s_opts.dumpfile.defaultExt("txt");
+    s_opts.dumpfile.defaultExt("tsdump");
 
     logMsgInfo() << "Loading " << s_opts.dumpfile
         << " into " << s_opts.database;

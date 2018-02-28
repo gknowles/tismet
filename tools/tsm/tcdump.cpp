@@ -138,7 +138,7 @@ CmdOpts::CmdOpts() {
         .desc("Database to dump")
         .require();
     cli.opt(&dumpfile, "[output file]")
-        .desc("Output defaults to '<dat file>.txt', '-' for stdout");
+        .desc("Output defaults to '<dat file>.tsdump', '-' for stdout");
     cli.opt(&query, "f find")
         .desc("Wildcard metric name to match, defaults to all metrics.");
 }
@@ -156,10 +156,11 @@ static bool dumpCmd(Cli & cli) {
 
     FileHandle fout;
     if (!s_opts.dumpfile)
-        s_opts.dumpfile.assign(s_opts.database).setExt("txt");
+        s_opts.dumpfile.assign(s_opts.database).setExt("tsdump");
     if (s_opts.dumpfile == string_view("-")) {
         fout = fileAttachStdout();
     } else {
+        s_opts.dumpfile.defaultExt("tsdump");
         fout = fileOpen(
             s_opts.dumpfile,
             File::fCreat | File::fTrunc | File::fReadWrite
@@ -171,7 +172,7 @@ static bool dumpCmd(Cli & cli) {
         fileClose(fout);
         return cli.fail(
             EX_DATAERR,
-            s_opts.dumpfile.str() + ": invalid <outputFile[.txt]>"
+            s_opts.dumpfile.str() + ": invalid <outputFile[.tsdump]>"
         );
     }
 
