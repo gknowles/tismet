@@ -265,6 +265,7 @@ public:
     ) = 0;
     virtual void onLogApplyMetricUpdate(
         void * ptr,
+        Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval

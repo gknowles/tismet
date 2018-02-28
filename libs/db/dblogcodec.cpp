@@ -147,6 +147,7 @@ struct MetricInitRec {
 };
 struct MetricUpdateRec {
     DbLog::Record hdr;
+    TimePoint creation;
     DbSampleType sampleType;
     Duration retention;
     Duration interval;
@@ -500,6 +501,7 @@ void DbLog::applyUpdate(void * page, const Record * log) {
         auto rec = reinterpret_cast<const MetricUpdateRec *>(log);
         return m_data->onLogApplyMetricUpdate(
             page,
+            rec->creation,
             rec->sampleType,
             rec->retention,
             rec->interval
@@ -818,11 +820,13 @@ void DbTxn::logMetricInit(
 //===========================================================================
 void DbTxn::logMetricUpdate(
     uint32_t pgno,
+    TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
     Duration interval
 ) {
     auto [rec, bytes] = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
+    rec->creation = creation;
     rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;

@@ -66,6 +66,7 @@ private:
     ) override;
     void onLogApplyMetricUpdate(
         void * ptr,
+        TimePoint creation,
         DbSampleType sampleType,
         Duration retention,
         Duration interval
@@ -230,11 +231,13 @@ void TextWriter::onLogApplyMetricInit(
 //===========================================================================
 void TextWriter::onLogApplyMetricUpdate(
     void * ptr,
+    TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
     Duration interval
 ) {
     out(ptr) << "metric = "
+        << timeStr(creation) << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
         << toString(retention, DurationFormat::kTwoPart) << ", "
         << toString(interval, DurationFormat::kTwoPart) << '\n';

@@ -180,6 +180,7 @@ public:
     );
     void logMetricUpdate(
         uint32_t pgno,
+        Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
@@ -354,6 +355,7 @@ public:
     ) override;
     void onLogApplyMetricUpdate(
         void * ptr,
+        Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval

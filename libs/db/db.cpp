@@ -399,6 +399,7 @@ void DbBase::apply(uint32_t id, DbReq && req) {
             info.type = req.sampleType;
             info.retention = req.retention;
             info.interval = req.interval;
+            info.creation = req.first;
             m_data.updateMetric(txn, id, info);
         }
         break;
@@ -489,6 +490,7 @@ void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
     req.sampleType = info.type;
     req.retention = info.retention;
     req.interval = info.interval;
+    req.first = info.creation;
     transact(id, move(req));
 }
 

@@ -524,16 +524,24 @@ void DbData::updateMetric(
     info.retention = from.retention.count() ? from.retention : mp->retention;
     info.interval = from.interval.count() ? from.interval : mp->interval;
     info.type = from.type ? from.type : mp->sampleType;
+    info.creation = from.creation ? from.creation : mp->creation;
     if (mp->retention == info.retention
         && mp->interval == info.interval
         && mp->sampleType == info.type
+        && mp->creation == info.creation
     ) {
         return;
     }
 
     // Remove all existing samples
     radixDestruct(txn, mp->hdr);
-    txn.logMetricUpdate(mi.infoPage, info.type, info.retention, info.interval);
+    txn.logMetricUpdate(
+        mi.infoPage,
+        info.creation,
+        info.type,
+        info.retention,
+        info.interval
+    );
 
     mi.interval = info.interval;
     mi.sampleType = info.type;
@@ -575,12 +583,14 @@ void DbData::getMetricInfo(
 //===========================================================================
 void DbData::onLogApplyMetricUpdate(
     void * ptr,
+    TimePoint creation,
     DbSampleType sampleType,
-    Dim::Duration retention,
-    Dim::Duration interval
+    Duration retention,
+    Duration interval
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->s_pageType);
+    mp->creation = creation;
     mp->sampleType = sampleType;
     mp->retention = retention;
     mp->interval = interval;

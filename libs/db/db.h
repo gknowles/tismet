@@ -120,6 +120,7 @@ struct DbMetricInfo {
     DbSampleType type{kSampleTypeInvalid};
     Dim::Duration retention{};
     Dim::Duration interval{};
+    Dim::TimePoint creation;
 };
 // Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
