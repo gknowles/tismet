@@ -191,6 +191,7 @@
 # vendor/dimapp/libs/win/pch.h
 # vendor/dimapp/libs/win/winaddress.cpp
 # vendor/dimapp/libs/win/winconsole.cpp
+# vendor/dimapp/libs/win/wincrash.cpp
 # vendor/dimapp/libs/win/winenv.cpp
 # vendor/dimapp/libs/win/winerror.cpp
 # vendor/dimapp/libs/win/winevent.cpp
