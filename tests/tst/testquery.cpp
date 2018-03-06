@@ -67,6 +67,7 @@ static Test s_test;
 void Test::onTestRun() {
     TimePoint start = Clock::from_time_t(900'000'000);
 
+    EXPECT_PARSE("a.b{,d}", "a.b{,d}");
     EXPECT_PARSE("a{,b}", "a{,b}");
     EXPECT_PARSE("a{ [12] , cd[34] }", "a{cd[34],[12]}");
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");

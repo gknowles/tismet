@@ -166,6 +166,7 @@ inline bool QueryParser::onSegLiteralEnd (const char * eptr) {
 inline bool QueryParser::onSslSegsStart () {
     auto sl = addSegSegChoices(m_query, m_nodes.back());
     m_nodes.push_back(sl);
+    m_pathSeg = false;
     return true;
 }
 

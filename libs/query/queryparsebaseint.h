@@ -23,7 +23,7 @@ struct QueryParserBase {
     const char * m_start{nullptr};
     const char * m_end{nullptr};
 
-    bool m_pathSeg{false};
+    bool m_pathSeg{false}; // true if pathSeg just ended
 
     bool m_minus{false};
     int64_t m_int{0};

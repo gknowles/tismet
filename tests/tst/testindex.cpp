@@ -74,6 +74,10 @@ void Test::onTestRun() {
     DbIndex index;
 
     index.clear();
+    index.insert(1, "a.bd.c");
+    EXPECT_FIND("a.b{,d}.c", "1");
+
+    index.clear();
     index.insert(1, "a");
     index.insert(2, "b");
     index.insert(3, "ab");
