@@ -529,6 +529,10 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
     if (localTxn && !data.activeTxns.count(localTxn))
         return;
 
+    // redo
+    if (lsn < data.checkpoint)
+        return;
+
     auto pgno = getPgno(log);
     if (auto ptr = m_page->onLogGetRedoPtr(pgno, lsn, localTxn))
         applyUpdate(ptr, log);
