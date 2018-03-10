@@ -1494,7 +1494,6 @@ bool DbData::loadFreePages (DbTxn & txn) {
             first = bits.find(last);
         }
     }
-    logMsgDebug() << "Free pages: " << m_freePages;
 
     // validate that pages in free list are in fact free
     uint32_t blank = 0;
