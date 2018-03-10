@@ -818,6 +818,10 @@ void DbData::updateSample(
             s_perfDup += 1;
         } else {
             if (isnan(ref)) {
+                if (isnan(value)) {
+                    s_perfDup += 1;
+                    return;
+                }
                 s_perfAdd += 1;
             } else {
                 s_perfChange += 1;
