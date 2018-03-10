@@ -279,6 +279,10 @@ void DbLog::close() {
     lk.unlock();
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
+    auto lastPage = (uint32_t) m_numPages - 1;
+    while (m_freePages.count(lastPage))
+        lastPage -= 1;
+    fileResize(m_flog, (lastPage + 1) * m_pageSize);
     fileClose(m_flog);
     m_flog = {};
 }
