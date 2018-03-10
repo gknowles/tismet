@@ -319,6 +319,11 @@ public:
         unsigned presamples
     );
 
+    // Inherited via IApplyNotify
+    void onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplySegmentUpdate(

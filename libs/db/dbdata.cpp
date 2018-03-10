@@ -340,6 +340,18 @@ void DbData::setMetricPos(uint32_t id, const MetricPosition & mi) {
     m_metricPos[id] = mi;
 }
 
+//===========================================================================
+void DbData::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
+{}
+
+//===========================================================================
+void DbData::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
+{}
+
+//===========================================================================
+void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
+{}
+
 
 /****************************************************************************
 *
@@ -1482,6 +1494,7 @@ bool DbData::loadFreePages (DbTxn & txn) {
             first = bits.find(last);
         }
     }
+    logMsgDebug() << "Free pages: " << m_freePages;
 
     // validate that pages in free list are in fact free
     uint32_t blank = 0;

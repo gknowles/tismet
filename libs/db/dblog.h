@@ -229,6 +229,13 @@ class DbLog::IApplyNotify {
 public:
     virtual ~IApplyNotify() = default;
 
+    virtual void onLogApplyCommitCheckpoint(
+        uint64_t lsn,
+        uint64_t startLsn
+    ) = 0;
+    virtual void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) = 0;
+    virtual void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
+
     virtual void onLogApplyZeroInit(void * ptr) = 0;
     virtual void onLogApplyPageFree(void * ptr) = 0;
     virtual void onLogApplySegmentUpdate(

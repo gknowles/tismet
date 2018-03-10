@@ -435,10 +435,12 @@ bool DbLog::recover() {
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
-    applyAll(data);
-    if (!data.checkpoint)
-        logMsgCrash() << "Invalid .tsl file, no checkpoint found";
-    m_checkpointLsn = data.checkpoint;
+    if (~m_openFlags & fDbOpenIncludeBeforeCheckpoint) {
+        applyAll(data);
+        if (!data.checkpoint)
+            logMsgCrash() << "Invalid .tsl file, no checkpoint found";
+        m_checkpointLsn = data.checkpoint;
+    }
 
     for (auto && kv : data.txns)
         data.incompleteTxnLsns.push_back(kv.second);
@@ -481,8 +483,16 @@ void DbLog::applyCommitCheckpoint(
     uint64_t lsn,
     uint64_t startLsn
 ) {
-    if (data.analyze && startLsn >= m_checkpointLsn)
-        data.checkpoint = startLsn;
+    if (data.analyze) {
+        if (startLsn >= m_checkpointLsn)
+            data.checkpoint = startLsn;
+        return;
+    }
+
+    // redo
+    if (lsn < data.checkpoint)
+        return;
+    m_data->onLogApplyCommitCheckpoint(lsn, startLsn);
 }
 
 //===========================================================================
@@ -509,20 +519,30 @@ void DbLog::applyBeginTxn(
         return;
     }
     data.activeTxns.insert(localTxn);
+    m_data->onLogApplyBeginTxn(lsn, localTxn);
 }
 
 //===========================================================================
 void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
     if (data.analyze) {
         data.txns.erase(localTxn);
-    } else {
-        data.activeTxns.erase(localTxn);
+        return;
     }
+
+    // redo
+    if (lsn < data.checkpoint)
+        return;
+    data.activeTxns.erase(localTxn);
+    m_data->onLogApplyCommitTxn(lsn, localTxn);
 }
 
 //===========================================================================
 void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
     if (data.analyze)
+        return;
+
+    // redo
+    if (lsn < data.checkpoint)
         return;
 
     auto localTxn = getLocalTxn(log);

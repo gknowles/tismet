@@ -20,6 +20,7 @@ namespace {
 struct CmdOpts {
     Path tslfile;
     Path ofile;
+    bool all;
 
     CmdOpts();
 };
@@ -30,6 +31,10 @@ public:
 
 private:
     // Inherited via IApplyNotify
+    void onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplySegmentUpdate(
@@ -143,7 +148,9 @@ TextWriter::TextWriter(ostream & os)
 //===========================================================================
 ostream & TextWriter::out(void * ptr) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    m_os << hdr->lsn << '.' << hdr->checksum << " @" << hdr->pgno << ": ";
+    m_os << hdr->lsn
+        << '.' << hdr->checksum // localTxn smuggled through as checksum
+        << " @" << hdr->pgno << ": ";
     return m_os;
 }
 
@@ -151,6 +158,21 @@ ostream & TextWriter::out(void * ptr) {
 string_view TextWriter::timeStr(TimePoint time) {
     m_ts.set(time, 0, timeZoneMinutes(time));
     return m_ts.view();
+}
+
+//===========================================================================
+void TextWriter::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) {
+    m_os << lsn << '.' << 0 << ": CHECKPOINT.commit = " << startLsn << "\n";
+}
+
+//===========================================================================
+void TextWriter::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) {
+    m_os << lsn << '.' << localTxn << ": txn.begin\n";
+}
+
+//===========================================================================
+void TextWriter::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) {
+    m_os << lsn << '.' << localTxn << ": txn.commit\n";
 }
 
 //===========================================================================
@@ -192,8 +214,8 @@ void TextWriter::onLogApplyRadixErase(
 ) {
     auto & os = out(ptr);
     os << "radix[" << firstPos;
-    if (firstPos != lastPos)
-        os << " thru " << lastPos;
+    if (firstPos != lastPos - 1)
+        os << " thru " << lastPos - 1;
     os << "] = 0\n";
 }
 
@@ -256,9 +278,11 @@ void TextWriter::onLogApplyMetricUpdateSamples(
     TimePoint refTime,
     bool updateIndex
 ) {
-    out(ptr) << "metric.samples[" << pos << "] = "
+    auto & os = out(ptr);
+    if (updateIndex)
+        os << "metric.samples[" << pos << "] = @" << refPage << "; ";
+    os << "metric.samples.last = " << pos << " / "
         << "@" << refPage << " / " << timeStr(refTime)
-        << (updateIndex ? ", update index" : "")
         << '\n';
 }
 
@@ -286,11 +310,21 @@ void TextWriter::onLogApplySampleUpdate(
 ) {
     auto & os = out(ptr);
     os << "samples[" << firstPos;
-    if (firstPos != lastPos)
-        os << " thru " << lastPos;
-    os << "] = "
-        << value << (updateLast ? ", update last" : "")
-        << '\n';
+    if (isnan(value)) {
+        if (firstPos < lastPos - 1)
+            os << " thru " << lastPos - 1;
+        os << "] = NAN";
+    } else {
+        if (firstPos < lastPos - 1) {
+            os << " thru " << lastPos - 1 << ", " << lastPos << "] = NAN, ";
+        } else {
+            os << lastPos << "] = ";
+        }
+        os << value;
+    }
+    if (updateLast)
+        os << "; samples.last = " << lastPos;
+    os << '\n';
 }
 
 //===========================================================================
@@ -338,6 +372,9 @@ CmdOpts::CmdOpts() {
         .desc("Wal file to dump, extension defaults to '.tsl'");
     cli.opt(&ofile, "[output file]")
         .desc("Output defaults to '<dat file>.txt', '-' for stdout");
+    cli.opt(&all, "a all")
+        .desc("Include all logs entries instead of just those after the last "
+            "checkpoint.");
 }
 
 
@@ -374,7 +411,10 @@ static bool textCmd(Cli & cli) {
     tcLogStart();
     TextWriter writer(*os);
     DbLog dlog(&writer, &writer);
-    dlog.open(s_opts.tslfile, 0, fDbOpenReadOnly | fDbOpenIncludeIncompleteTxns);
+    auto flags = fDbOpenReadOnly | fDbOpenIncludeIncompleteTxns;
+    if (s_opts.all)
+        flags |= fDbOpenIncludeBeforeCheckpoint;
+    dlog.open(s_opts.tslfile, 0, flags);
     dlog.close();
     tcLogShutdown(&s_progress);
 
