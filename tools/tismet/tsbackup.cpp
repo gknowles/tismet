@@ -93,7 +93,7 @@ void BackupProgress::replyStatus(unsigned reqId, bool immediate) {
 
     HttpResponse res;
     buildResponse(&res, progress);
-    httpRouteReply(reqId, res);
+    httpRouteReply(reqId, move(res));
 }
 
 //===========================================================================
@@ -119,10 +119,11 @@ bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
         m_reqIds.clear();
     }
 
-    HttpResponse res;
-    buildResponse(&res, progress);
-    for (auto && reqId : progress.m_reqIds)
-        httpRouteReply(reqId, res);
+    for (auto && reqId : progress.m_reqIds) {
+        HttpResponse res;
+        buildResponse(&res, progress);
+        httpRouteReply(reqId, move(res));
+    }
     return true;
 }
 

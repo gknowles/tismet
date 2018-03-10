@@ -50,27 +50,28 @@ static bool xferIfFull(
 ) {
     auto blksize = res.body().defaultBlockSize();
     if (res.body().size() + pending > blksize) {
+        HttpResponse tmp;
+        tmp.swap(res);
         if (!started) {
-            httpRouteReply(reqId, res, true);
+            httpRouteReply(reqId, move(tmp), true);
             started = true;
         } else {
-            httpRouteReply(reqId, res.body(), true);
+            httpRouteReply(reqId, move(tmp.body()), true);
         }
-        res.body().clear();
     }
     return started;
 }
 
 //===========================================================================
 static void xferRest(
-    HttpResponse & res,
+    HttpResponse && res,
     bool started,
     unsigned reqId
 ) {
     if (!started) {
-        httpRouteReply(reqId, res);
+        httpRouteReply(reqId, move(res));
     } else {
-        httpRouteReply(reqId, res.body(), false);
+        httpRouteReply(reqId, move(res.body()), false);
     }
 }
 
@@ -133,7 +134,7 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
         bld.value(name);
     }
     bld.end();
-    xferRest(res, started, reqId);
+    xferRest(move(res), started, reqId);
     dbCloseContext(ctx);
 }
 
@@ -229,7 +230,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
         }
     }
     bld.end();
-    xferRest(res, started, reqId);
+    xferRest(move(res), started, reqId);
     dbCloseContext(ctx);
 }
 
@@ -269,7 +270,7 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
         }
     }
     assert(bld.depth() == 0);
-    xferRest(res, started, reqId);
+    xferRest(move(res), started, reqId);
     dbCloseContext(ctx);
 }
 
@@ -465,7 +466,7 @@ void RenderJson::onDbSeriesEnd(uint32_t id) {
 //===========================================================================
 void RenderJson::onEvalEnd() {
     m_bld.end();
-    xferRest(m_res, m_started, m_reqId);
+    xferRest(move(m_res), m_started, m_reqId);
     delete this;
 }
 
@@ -523,7 +524,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
         ids.insert(move(iset));
     }
     assert(m_bld.depth() == 0);
-    xferRest(m_res, m_started, reqId);
+    xferRest(move(m_res), m_started, reqId);
     dbCloseContext(ctx);
 }
 
