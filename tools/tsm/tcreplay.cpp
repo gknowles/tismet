@@ -89,7 +89,7 @@ public:
     void onSocketConnect(const AppSocketInfo & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
-    void onSocketRead(AppSocketData & data) override;
+    bool onSocketRead(AppSocketData & data) override;
     void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
 private:
     void write();
@@ -138,8 +138,9 @@ void AddrConn::onSocketDisconnect() {
 }
 
 //===========================================================================
-void AddrConn::onSocketRead(AppSocketData & data)
-{}
+bool AddrConn::onSocketRead(AppSocketData & data) {
+    return true;
+}
 
 //===========================================================================
 void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {

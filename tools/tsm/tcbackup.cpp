@@ -126,7 +126,7 @@ public:
     void onSocketConnect(const AppSocketInfo & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
-    void onSocketRead(AppSocketData & data) override;
+    bool onSocketRead(AppSocketData & data) override;
 
     // Inherited via ITimerNotify
     Duration onTimer(TimePoint now) override;
@@ -176,7 +176,7 @@ void AddrConn::onSocketDisconnect() {
 }
 
 //===========================================================================
-void AddrConn::onSocketRead(AppSocketData & data) {
+bool AddrConn::onSocketRead(AppSocketData & data) {
     CharBuf out;
     vector<unique_ptr<HttpMsg>> msgs;
     bool result = httpRecv(&out, &msgs, m_conn, data.data, data.bytes);
@@ -202,6 +202,7 @@ void AddrConn::onSocketRead(AppSocketData & data) {
         socketWrite(this, out);
     if (!result)
         socketDisconnect(this);
+    return true;
 }
 
 //===========================================================================
