@@ -240,7 +240,7 @@ void UnitTest::onTest(DbHandle h) {
         [](auto & a, auto & b) { return a == b; }
     );
     if (!matched)
-        logMsgError() << "Query failed: " << m_query;
+        logMsgError() << "Query failed, " << m_query;
 }
 
 //===========================================================================
@@ -460,7 +460,7 @@ void Test::onTestRun() {
     }
     for (auto && [name, found] : tests) {
         if (!found)
-            logMsgError() << "unknown test: " << name;
+            logMsgError() << "Unknown test, " << name;
     }
 
     dbClose(h);

@@ -156,7 +156,7 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         try {
             rule.pattern.assign(val, regex::nosubs|regex::optimize);
         } catch(exception &) {
-            logMsgError() << "invalid metric rule pattern, " << val;
+            logMsgError() << "Invalid metric rule pattern, " << val;
             continue;
         }
         val = attrValue(&xrule, "type");
@@ -165,7 +165,7 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         } else {
             rule.type = fromString(val, kSampleTypeInvalid);
             if (rule.type == kSampleTypeInvalid) {
-                logMsgError() << "unknown metric rule type, " << val;
+                logMsgError() << "Unknown metric rule type, " << val;
                 continue;
             }
         }

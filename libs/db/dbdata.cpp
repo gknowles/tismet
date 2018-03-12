@@ -273,15 +273,15 @@ bool DbData::openForUpdate(
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
-        logMsgError() << "Bad signature in " << name;
+        logMsgError() << "Bad signature, " << name;
         return false;
     }
     if (zp->pageSize != m_pageSize) {
-        logMsgError() << "Mismatched page size in " << name;
+        logMsgError() << "Mismatched page size, " << name;
         return false;
     }
     if (zp->segmentSize != segmentSize(m_pageSize)) {
-        logMsgError() << "Mismatched segment size in " << name;
+        logMsgError() << "Mismatched segment size, " << name;
         return false;
     }
     m_numPages = txn.numPages();

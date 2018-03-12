@@ -53,7 +53,7 @@ bool DbFileView<Writable>::open(
         commit, // length committed
         m_firstViewSize
     )) {
-        logMsgError() << "Open view failed on " << filePath(file);
+        logMsgError() << "Open view failed, " << filePath(file);
         return false;
     }
 

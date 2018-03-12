@@ -816,7 +816,7 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
             assert(pos <= m_samples->count);
         } else {
             // TODO: normalize and consolidate incompatible lists
-            logMsgError() << "summing incompatible series";
+            logMsgError() << "Summing incompatible series, " << info.name.get();
         }
         return true;
     }

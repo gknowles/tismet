@@ -193,8 +193,10 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     if (flags & fDbOpenExcl)
         oflags |= File::fExcl;
     m_flog = fileOpen(logfile, oflags);
-    if (!m_flog)
+    if (!m_flog) {
+        logMsgError() << "Open failed, " << logfile;
         return false;
+    }
     auto len = fileSize(m_flog);
     ZeroPage zp{};
     if (len) {
@@ -233,11 +235,11 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     }
 
     if (memcmp(zp.signature, kLogFileSig, sizeof(zp.signature)) != 0) {
-        logMsgError() << "Bad signature in " << logfile;
+        logMsgError() << "Bad signature, " << logfile;
         return false;
     }
     if (zp.pageSize != m_pageSize) {
-        logMsgError() << "Mismatched page size in " << logfile;
+        logMsgError() << "Mismatched page size, " << logfile;
         return false;
     }
 
