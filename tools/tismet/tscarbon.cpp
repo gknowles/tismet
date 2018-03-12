@@ -18,9 +18,6 @@ using namespace Dim;
 static SockMgrHandle s_mgr;
 static auto & s_perfTasks = uperf("db.update tasks");
 
-static mutex s_mut;
-static condition_variable s_cv;
-
 
 /****************************************************************************
 *
@@ -32,13 +29,14 @@ namespace {
 
 class CarbonTask : public ITaskNotify {
 public:
-    CarbonTask(string_view name, TimePoint time, double value);
+    CarbonTask(unsigned reqId, string_view name, TimePoint time, double value);
     ~CarbonTask();
 
     // Inherited via ITaskNotify
     void onTask() override;
 
 private:
+    unsigned m_reqId;
     unique_ptr<char[]> m_name;
     TimePoint m_time;
     double m_value;
@@ -48,8 +46,14 @@ private:
 
 
 //===========================================================================
-CarbonTask::CarbonTask(string_view name, TimePoint time, double value)
-    : m_name{strDup(name)}
+CarbonTask::CarbonTask(
+    unsigned reqId,
+    string_view name,
+    TimePoint time,
+    double value
+)
+    : m_reqId{reqId}
+    , m_name{strDup(name)}
     , m_time{time}
     , m_value{value}
 {
@@ -58,21 +62,24 @@ CarbonTask::CarbonTask(string_view name, TimePoint time, double value)
 
 //===========================================================================
 CarbonTask::~CarbonTask() {
-    {
-        scoped_lock<mutex> lk{s_mut};
-        s_perfTasks -= 1;
-    }
-    s_cv.notify_one();
+    s_perfTasks -= 1;
 }
 
 //===========================================================================
 void CarbonTask::onTask() {
-    auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
-    uint32_t id;
-    if (tsDataInsertMetric(&id, f, m_name.get()))
-        dbUpdateSample(f, id, m_time, m_value);
-    dbCloseContext(ctx);
+    if (auto name = m_name.get()) {
+        auto f = tsDataHandle();
+        auto ctx = tsDataOpenContext();
+        uint32_t id;
+        if (tsDataInsertMetric(&id, f, name))
+            dbUpdateSample(f, id, m_time, m_value);
+        dbCloseContext(ctx);
+        m_name.reset();
+        taskPushEvent(this);
+        return;
+    }
+
+    carbonAckValue(m_reqId, 1);
     delete this;
 }
 
@@ -89,7 +96,8 @@ class CarbonConn : public ICarbonSocketNotify, public ITaskNotify {
     string m_buf;
 public:
     // Inherited via ICarbonSocketNotify
-    void onCarbonValue(
+    bool onCarbonValue(
+        unsigned reqId,
         string_view name,
         TimePoint time,
         double value,
@@ -100,18 +108,16 @@ public:
 } // namespace
 
 //===========================================================================
-void CarbonConn::onCarbonValue(
+bool CarbonConn::onCarbonValue(
+    unsigned reqId,
     string_view name,
     TimePoint time,
     double value,
     uint32_t idHint
 ) {
-    auto task = new CarbonTask(name, time, value);
+    auto task = new CarbonTask(reqId, name, time, value);
     taskPushCompute(task);
-
-    unique_lock<mutex> lk{s_mut};
-    while (s_perfTasks >= 100)
-        s_cv.wait(lk);
+    return false;
 }
 
 

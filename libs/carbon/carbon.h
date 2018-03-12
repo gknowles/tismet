@@ -34,10 +34,16 @@ class ICarbonNotify {
 public:
     virtual ~ICarbonNotify() {}
 
-    // add more input data, may trigger any number of onCarbon*() callbacks
-    bool append(std::string_view data);
+    // Returns number of onCarbonValue() calls that requested delayed reads,
+    // or EOF on malformed data. When EOF is returned, there may have been any
+    // number of onCarbonValue calls before the error was detected.
+    unsigned append(unsigned reqId, std::string_view data);
 
-    virtual void onCarbonValue(
+    // Return false for each value that has its processing delayed. All delayed
+    // values must be accounted for after they have completed by calls to
+    // carbonAckValue.
+    virtual bool onCarbonValue(
+        unsigned reqId,
         std::string_view name,
         Dim::TimePoint time,
         double value,
@@ -52,11 +58,16 @@ class ICarbonSocketNotify
     : public Dim::IAppSocketNotify
     , public ICarbonNotify
 {
+public:
+    static void ackValue(unsigned reqId, unsigned completed);
+
 private:
     // Inherited via IAppSocketNotify
     bool onSocketAccept(const Dim::AppSocketInfo & info) override;
     void onSocketDisconnect() override;
-    void onSocketRead(Dim::AppSocketData & data) override;
+    bool onSocketRead(Dim::AppSocketData & data) override;
+
+    Dim::UnsignedSet m_requestIds;
 };
 
 
@@ -66,9 +77,20 @@ private:
 *
 ***/
 
+//===========================================================================
+// Listening for carbon protocol connections
+//===========================================================================
 void carbonInitialize ();
 
+// Called as onCarbonValue calls that returned false are completed. There may
+// be multiple carbon values with the same request id, and all of their
+// completions must be acknowledged.
+void carbonAckValue (unsigned reqId, unsigned completed);
 
+
+//===========================================================================
+// Basic building/parsing
+//===========================================================================
 struct CarbonUpdate {
     std::string_view name;
     double value;

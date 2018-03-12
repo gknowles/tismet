@@ -83,7 +83,8 @@ namespace {
 
 class RecordConn : public ICarbonSocketNotify {
 public:
-    void onCarbonValue(
+    bool onCarbonValue(
+        unsigned reqId,
         string_view name,
         TimePoint time,
         double value,
@@ -96,14 +97,15 @@ private:
 } // namespace
 
 //===========================================================================
-void RecordConn::onCarbonValue(
-        string_view name,
-        TimePoint time,
-        double value,
-        uint32_t idHint
+bool RecordConn::onCarbonValue(
+    unsigned reqId,
+    string_view name,
+    TimePoint time,
+    double value,
+    uint32_t idHint
 ) {
     if (appStopping())
-        return;
+        return true;
 
     m_buf.clear();
     carbonWrite(m_buf, name, time, (float) value);
@@ -112,7 +114,8 @@ void RecordConn::onCarbonValue(
         && s_opts.progress.bytes > s_opts.progress.totalBytes
     ) {
         s_bytesWritten -= m_buf.size();
-        return appSignalShutdown();
+        appSignalShutdown();
+        return true;
     }
     s_samplesWritten += 1;
 
@@ -127,8 +130,9 @@ void RecordConn::onCarbonValue(
         || s_opts.progress.totalBytes
             && s_opts.progress.bytes == s_opts.progress.totalBytes
     ) {
-        return appSignalShutdown();
+        appSignalShutdown();
     }
+    return true;
 }
 
 

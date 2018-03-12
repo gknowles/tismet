@@ -20,11 +20,16 @@ const unsigned kCarbonMaxRecordSize = 1024;
 
 /****************************************************************************
 *
-*   Private declarations
+*   Declarations
 *
 ***/
 
 namespace {
+
+struct IncompleteRequest {
+    ICarbonSocketNotify * socket;
+    unsigned incomplete;
+};
 
 } // namespace
 
@@ -40,12 +45,8 @@ static auto & s_perfCurrent = uperf("carbon.clients (current)");
 static auto & s_perfUpdates = uperf("carbon.updates");
 static auto & s_perfErrors = uperf("carbon.errors");
 
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
+static unordered_map<unsigned, IncompleteRequest> s_incompletes;
+static unsigned s_nextRequestId;
 
 
 /****************************************************************************
@@ -55,12 +56,13 @@ static auto & s_perfErrors = uperf("carbon.errors");
 ***/
 
 //===========================================================================
-bool ICarbonNotify::append(string_view src) {
+unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
     CarbonUpdate upd;
     if (!m_buf.empty()) {
         m_buf.append(src);
         src = m_buf;
     }
+    unsigned incomplete = 0;
     while (carbonParse(upd, src)) {
         if (upd.name.empty()) {
             if (m_buf.empty()) {
@@ -68,14 +70,15 @@ bool ICarbonNotify::append(string_view src) {
             } else {
                 m_buf.erase(0, m_buf.size() - src.size());
             }
-            return true;
+            return incomplete;
         }
         s_perfUpdates += 1;
-        onCarbonValue(upd.name, upd.time, upd.value);
+        if (!onCarbonValue(reqId, upd.name, upd.time, upd.value))
+            incomplete += 1;
     }
 
     s_perfErrors += 1;
-    return false;
+    return (unsigned) EOF;
 }
 
 
@@ -96,14 +99,50 @@ bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
 //===========================================================================
 void ICarbonSocketNotify::onSocketDisconnect() {
     s_perfCurrent -= 1;
+    for (auto && id : m_requestIds)
+        s_incompletes.erase(id);
 }
 
 //===========================================================================
-void ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
-    if (!append(string_view(data.data, data.bytes))) {
+static unsigned nextRequestId() {
+    for (;;) {
+        auto id = ++s_nextRequestId;
+        if (id && !s_incompletes.count(id))
+            return id;
+    }
+}
+
+//===========================================================================
+bool ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
+    auto id = nextRequestId();
+    auto incomplete = append(id, string_view(data.data, data.bytes));
+    if (incomplete == EOF) {
         s_perfErrors += 1;
         socketDisconnect(this);
+    } else if (incomplete) {
+        m_requestIds.insert(id);
+        s_incompletes[id] = {this, incomplete};
+        return false;
     }
+    return true;
+}
+
+//===========================================================================
+// static
+void ICarbonSocketNotify::ackValue(unsigned reqId, unsigned completed) {
+    assert(reqId && completed);
+    auto i = s_incompletes.find(reqId);
+    if (i == s_incompletes.end())
+        return;
+    auto & incomplete = i->second;
+    if (incomplete.incomplete < completed)
+        logMsgCrash() << "too many carbon value acknowledgments";
+    if (incomplete.incomplete -= completed)
+        return;
+    auto sock = incomplete.socket;
+    sock->m_requestIds.erase(reqId);
+    socketRead(sock);
+    s_incompletes.erase(i);
 }
 
 
@@ -114,12 +153,15 @@ void ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
 ***/
 
 namespace {
+
 class CarbonMatch : public IAppSocketMatchNotify {
     AppSocket::MatchType onMatch(
         AppSocket::Family fam,
-        string_view view) override;
+        string_view view
+    ) override;
 };
 static CarbonMatch s_sockMatch;
+
 } // namespace
 
 //===========================================================================
@@ -152,6 +194,11 @@ AppSocket::MatchType CarbonMatch::onMatch(
 //===========================================================================
 void carbonInitialize() {
     socketAddFamily((AppSocket::Family) TismetSocket::kCarbon, &s_sockMatch);
+}
+
+//===========================================================================
+void carbonAckValue(unsigned reqId, unsigned completed) {
+    ICarbonSocketNotify::ackValue(reqId, completed);
 }
 
 //===========================================================================
