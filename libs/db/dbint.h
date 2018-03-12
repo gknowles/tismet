@@ -91,14 +91,11 @@ public:
     bool enablePageScan(bool enable);
 
     Dim::FileHandle dataFile() const { return m_fdata; }
+    bool newFiles() const { return m_newFiles; }
 
 private:
-    bool openData(
-        std::string_view datafile,
-        size_t pageSize,
-        DbOpenFlags flags
-    );
-    bool openWork(std::string_view workfile, DbOpenFlags flags);
+    bool openData(std::string_view datafile, size_t pageSize);
+    bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
 
@@ -119,7 +116,8 @@ private:
     std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
 
     size_t m_pageSize{0};
-    bool m_verbose{false};
+    DbOpenFlags m_flags{};
+    bool m_newFiles{false};
 
     bool m_pageScanEnabled{true};
     Dim::Duration m_pageMaxAge{};

@@ -194,6 +194,8 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
     if (!m_page.open(datafile, workfile, pageSize, flags))
         return false;
     m_data.openForApply(m_page.pageSize(), flags);
+    if (!m_page.newFiles())
+        flags &= ~fDbOpenCreat;
     if (!m_log.open(logfile, m_page.pageSize(), flags))
         return false;
     DbTxn txn{m_log, m_page};
@@ -285,7 +287,7 @@ void DbBase::backupNextFile() {
             fileStreamBinary(this, src, 65536, taskComputeQueue());
             return;
         }
-        logMsgError() << "Unable to create " << dst;
+        logMsgError() << "Create failed, " << dst;
         m_backupFiles.clear();
     }
 

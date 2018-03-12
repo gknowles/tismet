@@ -98,12 +98,12 @@ bool DbPage::open(
     assert(pageSize >= kMinPageSize);
     assert(kViewSize % fileViewAlignment() == 0);
 
-    m_verbose = flags & fDbOpenVerbose;
-    if (m_verbose)
+    m_flags = flags;
+    if (m_flags & fDbOpenVerbose)
         logMsgInfo() << "Open data files";
-    if (!openData(datafile, pageSize, flags))
+    if (!openData(datafile, pageSize))
         return false;
-    if (!openWork(workfile, flags)) {
+    if (!openWork(workfile)) {
         close();
         return false;
     }
@@ -112,17 +112,13 @@ bool DbPage::open(
 }
 
 //===========================================================================
-bool DbPage::openData(
-    string_view datafile,
-    size_t pageSize,
-    DbOpenFlags flags
-) {
+bool DbPage::openData(string_view datafile, size_t pageSize) {
     auto oflags = File::fReadWrite | File::fDenyWrite | File::fRandom;
-    if (flags & fDbOpenCreat)
+    if (m_flags & fDbOpenCreat)
         oflags |= File::fCreat;
-    if (flags & fDbOpenTrunc)
+    if (m_flags & fDbOpenTrunc)
         oflags |= File::fTrunc;
-    if (flags & fDbOpenExcl)
+    if (m_flags & fDbOpenExcl)
         oflags |= File::fExcl;
     m_fdata = fileOpen(datafile, oflags);
     if (!m_fdata)
@@ -132,13 +128,14 @@ bool DbPage::openData(
         DbPageHeader hdr = {};
         fileWriteWait(m_fdata, 0, &hdr, sizeof(hdr));
         m_pageSize = pageSize;
+        m_newFiles = true;
     } else {
         m_pageSize = DbData::queryPageSize(m_fdata);
         if (!m_pageSize)
             m_pageSize = pageSize;
     }
     if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
-        logMsgError() << "Open view failed for " << datafile;
+        logMsgError() << "Open view failed, " << datafile;
         return false;
     }
 
@@ -156,13 +153,13 @@ bool DbPage::openData(
 }
 
 //===========================================================================
-bool DbPage::openWork(string_view workfile, DbOpenFlags flags) {
+bool DbPage::openWork(string_view workfile) {
     auto oflags = File::fTemp | File::fReadWrite | File::fDenyWrite
         | File::fBlocking | File::fRandom;
     // Opening the data file has already succeeded, so always create the
     // work file (if not exist).
     oflags |= File::fCreat;
-    if (flags & fDbOpenExcl)
+    if (m_flags & fDbOpenExcl)
         oflags |= File::fExcl;
     m_fwork = fileOpen(workfile, oflags);
     if (!m_fwork)
@@ -179,15 +176,15 @@ bool DbPage::openWork(string_view workfile, DbOpenFlags flags) {
         fileReadWait(&zp, sizeof(zp), m_fwork, 0);
     }
     if (zp.pageSize != m_pageSize) {
-        logMsgError() << "Mismatched page size in " << workfile;
+        logMsgError() << "Mismatched page size, " << workfile;
         return false;
     }
     if (memcmp(zp.signature, kWorkFileSig, sizeof(zp.signature)) != 0) {
-        logMsgError() << "Bad signature in " << workfile;
+        logMsgError() << "Bad signature, " << workfile;
         return false;
     }
     if (m_pageSize < kMinPageSize || kViewSize % m_pageSize != 0) {
-        logMsgError() << "Invalid page size in " << workfile;
+        logMsgError() << "Invalid page size, " << workfile;
         return false;
     }
     m_workPages = len / m_pageSize;
@@ -195,7 +192,7 @@ bool DbPage::openWork(string_view workfile, DbOpenFlags flags) {
     m_freeWorkPages.insert(1, (unsigned) m_workPages - 1);
     s_perfFreePages += (unsigned) m_workPages - 1;
     if (!m_vwork.open(m_fwork, kViewSize, m_pageSize)) {
-        logMsgError() << "Open view failed for " << workfile;
+        logMsgError() << "Open view failed, " << workfile;
         return false;
     }
 
@@ -299,7 +296,7 @@ bool DbPage::enablePageScan(bool enable) {
 void DbPage::flushStalePages() {
     s_perfPurges += 1;
     s_perfCurPurges += 1;
-    if (m_verbose)
+    if (m_flags & fDbOpenVerbose)
         logMsgInfo() << "Dirty page scan started";
     uint32_t wpno = 1;
     auto buf = make_unique<char[]>(m_pageSize);
@@ -351,7 +348,7 @@ void DbPage::flushStalePages() {
 
     m_flushLsn = 0;
     s_perfCurPurges -= 1;
-    if (m_verbose)
+    if (m_flags & fDbOpenVerbose)
         logMsgInfo() << "Dirty page scan completed";
 }
 
