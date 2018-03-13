@@ -87,6 +87,9 @@ Duration ExpireTimer::timeUntilCheck() {
 
 //===========================================================================
 Duration ExpireTimer::onTimer(TimePoint now) {
+    if (appStopping())
+        return kTimerInfinite;
+
     if (m_ids.empty())
         dbFindMetrics(&m_ids, s_db);
 
@@ -134,20 +137,24 @@ static AppXmlNotify s_appXml;
 
 //===========================================================================
 void AppXmlNotify::onConfigChange(const XDocument & doc) {
-    DbConfig conf;
-    conf.checkpointMaxData = (size_t) configNumber(doc, "CheckpointMaxData");
-    conf.checkpointMaxInterval = configDuration(doc, "CheckpointMaxInterval");
-    conf.pageMaxAge = configDuration(doc, "WorkMemoryMaxAge");
-    conf.pageScanInterval = configDuration(doc, "WorkMemoryScanInterval");
-    if (s_db)
+    if (s_db) {
+        DbConfig conf;
+        conf.checkpointMaxData =
+            (size_t) configNumber(doc, "CheckpointMaxData");
+        conf.checkpointMaxInterval =
+            configDuration(doc, "CheckpointMaxInterval");
+        conf.pageMaxAge = configDuration(doc, "WorkMemoryMaxAge");
+        conf.pageScanInterval = configDuration(doc, "WorkMemoryScanInterval");
         dbConfigure(s_db, conf);
 
-    Duration val = configDuration(doc, "MetricExpirationCheckInterval", 24h);
-    // In addition to the range of 5 minutes to a week, a check interval of 0
-    // (disable checking) is also allowed.
-    if (val.count())
-        val = clamp(val, Duration{5min}, Duration{168h});
-    s_expireTimer.updateInterval(val);
+        Duration val =
+            configDuration(doc, "MetricExpirationCheckInterval", 24h);
+        // In addition to the range of 5 minutes to a week, a check interval
+        // of 0 (disable checking) is also allowed.
+        if (val.count())
+            val = clamp(val, Duration{5min}, Duration{168h});
+        s_expireTimer.updateInterval(val);
+    }
 
     auto xdefs = configElement(doc, "MetricDefaults");
     for (auto && xrule : elems(xdefs, "Rule")) {
