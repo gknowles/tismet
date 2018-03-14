@@ -146,15 +146,17 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         conf.pageMaxAge = configDuration(doc, "WorkMemoryMaxAge");
         conf.pageScanInterval = configDuration(doc, "WorkMemoryScanInterval");
         dbConfigure(s_db, conf);
-
-        Duration val =
-            configDuration(doc, "MetricExpirationCheckInterval", 24h);
-        // In addition to the range of 5 minutes to a week, a check interval
-        // of 0 (disable checking) is also allowed.
-        if (val.count())
-            val = clamp(val, Duration{5min}, Duration{168h});
-        s_expireTimer.updateInterval(val);
     }
+
+    Duration val =
+        configDuration(doc, "MetricExpirationCheckInterval", 24h);
+    // In addition to the range of 5 minutes to a week, a check interval
+    // of 0 (disable checking) is also allowed.
+    if (val.count())
+        val = clamp(val, Duration{5min}, Duration{168h});
+    if (!s_db)
+        val = 0ms;
+    s_expireTimer.updateInterval(val);
 
     auto xdefs = configElement(doc, "MetricDefaults");
     for (auto && xrule : elems(xdefs, "Rule")) {
