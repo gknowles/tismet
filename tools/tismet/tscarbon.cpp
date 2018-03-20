@@ -92,7 +92,7 @@ void CarbonTask::onTask() {
 
 namespace {
 
-class CarbonConn : public ICarbonSocketNotify, public ITaskNotify {
+class CarbonConn : public ICarbonSocketNotify {
     string m_buf;
 public:
     // Inherited via ICarbonSocketNotify
