@@ -720,12 +720,13 @@ bool Evaluate::onEvalApply(ResultInfo & info) {
         dsi.type = kSampleTypeFloat64;
         dsi.interval = info.samples->interval;
         dsi.first = m_first - m_first.time_since_epoch() % dsi.interval;
+        dsi.last = m_last
+            + dsi.interval
+            - m_last.time_since_epoch() % dsi.interval;
         auto presamples = (dsi.first - info.samples->first) / dsi.interval;
-        auto count = info.samples->count - presamples;
-        dsi.last = dsi.first + count * dsi.interval;
+        auto count = (dsi.last - dsi.first) / dsi.interval;
         assert(presamples >= 0);
-        assert(dsi.last ==
-            m_last + dsi.interval - m_last.time_since_epoch() % dsi.interval);
+        assert(count <= info.samples->count - presamples);
         if (!m_notify->onDbSeriesStart(dsi)) {
             m_notify->onEvalEnd();
             return false;
@@ -807,7 +808,8 @@ void evaluate(
     TimePoint last,
     size_t maxPoints
 ) {
-    auto ex = new Evaluate;
+    auto hostage = make_unique<Evaluate>();
+    auto ex = hostage.get();
     ex->m_notify = notify;
     ex->m_ctx = dbOpenContext(s_db);
     ex->m_unfinished = (int) targets.size();
@@ -816,19 +818,25 @@ void evaluate(
     if (maxPoints)
         ex->m_minInterval = (last - first) / maxPoints;
     ex->m_idResults.resize(targets.size());
+    vector<shared_ptr<SourceNode>> snodes;
+    for (auto && target : targets) {
+        if (auto sn = addSource(ex, target)) {
+            snodes.push_back(sn);
+        } else {
+            notify->onEvalError("Invalid target parameter: " + string(target));
+            return;
+        }
+    }
+
     SourceNode::ResultRange rr;
     rr.rn = ex;
     rr.first = first;
     rr.last = last;
     rr.minInterval = ex->m_minInterval;
-    for (auto && target : targets) {
-        if (auto sn = addSource(ex, target)) {
-            sn->addOutput(rr);
-            rr.resultId += 1;
-        } else {
-            delete ex;
-            notify->onEvalError("Invalid target parameter: " + string(target));
-            return;
-        }
+    for (auto && sn : snodes) {
+        sn->addOutput(rr);
+        rr.resultId += 1;
     }
+
+    hostage.release();
 }
