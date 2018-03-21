@@ -38,7 +38,10 @@ struct ResultInfo {
     std::shared_ptr<SampleList> samples;
 };
 
-class ResultNode : public Dim::ITaskNotify {
+class ResultNode
+    : public Dim::RefCount
+    , public Dim::ITaskNotify
+{
 public:
     enum class Apply {
         kForward,

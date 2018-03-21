@@ -191,7 +191,10 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
         return {};
     shared_ptr<FuncNode> fnode;
     if (auto fact = s_funcFacts[qf.type]) {
-        fnode = fact->onFactoryCreate();
+        fnode = shared_ptr<FuncNode>(
+            fact->onFactoryCreate().release(),
+            RefCount::Deleter{}
+        );
         fnode->init(src);
     } else {
         assert(!"Unsupported function");
@@ -562,8 +565,10 @@ void ResultNode::stopSources() {
 void ResultNode::onResult(int resultId, const ResultInfo & info) {
     scoped_lock<mutex> lk{m_resMut};
     m_results.push_back(info);
-    if (m_results.size() == 1)
+    if (m_results.size() == 1) {
+        incRef();
         taskPushCompute(this);
+    }
 }
 
 
@@ -575,6 +580,7 @@ void ResultNode::onResult(int resultId, const ResultInfo & info) {
 
 //===========================================================================
 void FuncNode::init(std::shared_ptr<char[]> sourceName) {
+    incRef();
     SourceNode::init(sourceName);
 }
 
@@ -602,6 +608,7 @@ void FuncNode::onSourceStart() {
 //===========================================================================
 void FuncNode::onTask() {
     unique_lock<mutex> lk{m_resMut};
+    decRef();
     assert(!m_results.empty());
     auto stop = false;
     for (;;) {
@@ -685,13 +692,16 @@ void Evaluate::onResult(int resultId, const ResultInfo & info) {
             more = (bool) m_results.back().samples;
         }
     }
-    if (pushTask)
+    if (pushTask) {
+        incRef();
         taskPushCompute(this);
+    }
 }
 
 //===========================================================================
 void Evaluate::onTask() {
     unique_lock<mutex> lk{m_resMut};
+    decRef();
     assert(!m_results.empty());
     for (;;) {
         auto info = m_results.front();
@@ -699,7 +709,7 @@ void Evaluate::onTask() {
         auto more = info.samples || --m_unfinished;
         if (info.samples || !more) {
             if (!onEvalApply(info)) {
-                delete this;
+                decRef();
                 return;
             }
         }
@@ -808,7 +818,7 @@ void evaluate(
     TimePoint last,
     size_t maxPoints
 ) {
-    auto hostage = make_unique<Evaluate>();
+    auto hostage = RefPtr<Evaluate>(new Evaluate);
     auto ex = hostage.get();
     ex->m_notify = notify;
     ex->m_ctx = dbOpenContext(s_db);
@@ -818,25 +828,19 @@ void evaluate(
     if (maxPoints)
         ex->m_minInterval = (last - first) / maxPoints;
     ex->m_idResults.resize(targets.size());
-    vector<shared_ptr<SourceNode>> snodes;
-    for (auto && target : targets) {
-        if (auto sn = addSource(ex, target)) {
-            snodes.push_back(sn);
-        } else {
-            notify->onEvalError("Invalid target parameter: " + string(target));
-            return;
-        }
-    }
-
     SourceNode::ResultRange rr;
     rr.rn = ex;
     rr.first = first;
     rr.last = last;
     rr.minInterval = ex->m_minInterval;
-    for (auto && sn : snodes) {
-        sn->addOutput(rr);
-        rr.resultId += 1;
+    for (auto && target : targets) {
+        if (auto sn = addSource(ex, target)) {
+            sn->addOutput(rr);
+            rr.resultId += 1;
+        } else {
+            notify->onEvalError("Invalid target parameter: " + string(target));
+            return;
+        }
     }
-
     hostage.release();
 }
