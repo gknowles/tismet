@@ -66,7 +66,7 @@ void BackupProgress::buildResponse(
     auto & info = progress.m_info;
     out->addHeader(kHttpContentType, "application/xml");
     out->addHeader(kHttp_Status, "200");
-    XBuilder bld(out->body());
+    XBuilder bld(&out->body());
     Time8601Str ts(progress.m_time, 3, timeZoneMinutes(progress.m_time));
     bld.start("Backup")
         .attr("status", toString(progress.m_mode))

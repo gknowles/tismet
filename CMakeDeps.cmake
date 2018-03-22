@@ -4,6 +4,7 @@
 # README.md
 # appveyor.yml
 # bin/conf/app.xml
+# bin/conf/app.xml.sample
 # configure.bat
 # libs/carbon/carbon.abnf
 # libs/carbon/carbon.cpp
