@@ -77,6 +77,7 @@ enum PageType {
 struct PageHeader {
     PageType type;
     uint32_t pgno;
+    uint32_t checksum;
     uint64_t firstLsn; // LSN of first record started on page
     uint16_t numLogs; // number of log records started on page
     uint16_t firstPos; // position of first log started on page
@@ -660,6 +661,7 @@ void DbLog::checkpointStableCommit() {
     } else {
         static PageHeader hdr = { kPageTypeFree };
         hdr.pgno = lastPgno;
+        hdr.checksum = 0;
         fileWrite(
             this,
             m_flog,
@@ -731,12 +733,14 @@ void DbLog::flushWriteBuffer() {
     auto offset = lp->pgno * m_pageSize;
     auto bytes = m_bufPos;
 
-    auto * nlp = new char[bytes + sizeof(PageHeader *)];
-    *(PageHeader **) nlp = lp;
-    nlp += sizeof(PageHeader *);
+    auto * tmp = new char[bytes + sizeof(PageHeader *)];
+    *(PageHeader **) tmp = lp;
+    auto nlp = (PageHeader *) (tmp + sizeof(PageHeader *));
     memcpy(nlp, lp, bytes);
 
     lk.unlock();
+    nlp->checksum = 0;
+    nlp->checksum = hash_crc32c(nlp, m_pageSize);
     fileWrite(this, m_flog, offset, nlp, bytes, logQueue());
 }
 
@@ -852,6 +856,8 @@ void DbLog::onFileWrite(
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
     } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
+        olp->checksum = 0;
+        olp->checksum = hash_crc32c(olp, m_pageSize);
         fileWrite(this, m_flog, offset, olp, m_pageSize, logQueue());
     }
     delete[] buf;
@@ -997,8 +1003,11 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
             countCommitTxn_LK(txn);
 
         lk.unlock();
-        if (!writeInProgress)
+        if (!writeInProgress) {
+            lp->checksum = 0;
+            lp->checksum = hash_crc32c(lp, m_pageSize);
             fileWrite(this, m_flog, offset, lp, m_pageSize, logQueue());
+        }
     }
     return lsn;
 }

@@ -96,6 +96,7 @@
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
 # vendor/dimapp/libs/core/hash.h
+# vendor/dimapp/libs/core/hash_crc32c.cpp
 # vendor/dimapp/libs/core/list.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h

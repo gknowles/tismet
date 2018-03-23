@@ -421,8 +421,8 @@ void DbPage::onLogCheckpointStablePages() {
 //===========================================================================
 void DbPage::writePageWait(DbPageHeader * hdr) {
     assert(hdr->pgno != (uint32_t) -1);
-    // TODO: update checksum
     hdr->flags = 0;
+    hdr->checksum = hash_crc32c(hdr, m_pageSize);
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }
 
