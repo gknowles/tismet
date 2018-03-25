@@ -734,7 +734,7 @@ bool Evaluate::onEvalApply(ResultInfo & info) {
             + dsi.interval
             - m_last.time_since_epoch() % dsi.interval;
         auto presamples = (dsi.first - info.samples->first) / dsi.interval;
-        auto count = (dsi.last - dsi.first) / dsi.interval;
+        [[maybe_unused]] auto count = (dsi.last - dsi.first) / dsi.interval;
         assert(presamples >= 0);
         assert(count <= info.samples->count - presamples);
         if (!m_notify->onDbSeriesStart(dsi)) {
