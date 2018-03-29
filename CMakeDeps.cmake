@@ -141,6 +141,7 @@
 # vendor/dimapp/libs/file/path.h
 # vendor/dimapp/libs/file/pch.cpp
 # vendor/dimapp/libs/file/pch.h
+# vendor/dimapp/libs/file/search.cpp
 # vendor/dimapp/libs/json/jbuilder.cpp
 # vendor/dimapp/libs/json/json.abnf
 # vendor/dimapp/libs/json/json.h
