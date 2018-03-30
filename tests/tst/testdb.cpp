@@ -68,6 +68,7 @@ void Test::onTestRun() {
     EXPECT(stats.metrics == 0);
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
+    EXPECT(stats.freePages == 0);
     auto pgt = stats.samplesPerPage[kSampleTypeFloat32] * 1min;
 
     auto ctx = dbOpenContext(h);
@@ -126,18 +127,18 @@ void Test::onTestRun() {
     dbUpdateSample(h, id, start + 6 * pgt, 6);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 8);
-    EXPECT(stats.freePages == 504);
+    EXPECT(stats.freePages == 0);
     EXPECT(stats.metrics == 1);
     // add sample more than the retention period in the future
     dbUpdateSample(h, id, start + 20 * pgt, 1);
     stats = dbQueryStats(h);
-    EXPECT(stats.freePages == 508);
+    EXPECT(stats.freePages == 4);
     EXPECT(stats.metrics == 1);
     // erase metric
     dbEraseMetric(h, id);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 8);
-    EXPECT(stats.freePages == 510);
+    EXPECT(stats.freePages == 6);
     EXPECT(stats.metrics == 0);
 
     count = 0;
@@ -149,6 +150,8 @@ void Test::onTestRun() {
         dbUpdateSample(h, i2, start, (float) i);
     }
     EXPECT("metrics inserted" && count == 29);
+    stats = dbQueryStats(h);
+    EXPECT(stats.freePages == 0);
 
     UnsignedSet found;
     dbFindMetrics(&found, h, "*.is.*.*5");

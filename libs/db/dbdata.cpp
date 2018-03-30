@@ -142,6 +142,9 @@ static auto & s_perfDup = uperf("db.samples ignored (same)");
 static auto & s_perfChange = uperf("db.samples changed");
 static auto & s_perfAdd = uperf("db.samples added");
 
+static auto & s_perfPages = uperf("db.data pages (total)");
+static auto & s_perfFreePages = uperf("db.data pages (free)");
+
 
 /****************************************************************************
 *
@@ -248,6 +251,8 @@ size_t DbData::queryPageSize(FileHandle f) {
 //===========================================================================
 DbData::~DbData () {
     s_perfCount -= m_numMetrics;
+    s_perfPages -= (unsigned) m_numPages;
+    s_perfFreePages -= (unsigned) m_numFreed;
 }
 
 //===========================================================================
@@ -285,6 +290,7 @@ bool DbData::openForUpdate(
         return false;
     }
     m_numPages = txn.numPages();
+    s_perfPages += (unsigned) m_numPages;
     m_segmentSize = zp->segmentSize;
 
     if (m_verbose)
@@ -321,7 +327,7 @@ DbStats DbData::queryStats() {
 
     scoped_lock<recursive_mutex> lk{m_pageMut};
     s.numPages = (unsigned) m_numPages;
-    s.freePages = (unsigned) m_freePages.size();
+    s.freePages = (unsigned) m_numFreed;
     return s;
 }
 
@@ -1495,6 +1501,11 @@ bool DbData::loadFreePages (DbTxn & txn) {
                 pgno + (unsigned) first,
                 pgno + (unsigned) last - 1
             );
+            if (first < m_numPages) {
+                auto num = (unsigned) (min(last, m_numPages) - first);
+                m_numFreed += num;
+                s_perfFreePages += num;
+            }
             first = bits.find(last);
         }
     }
@@ -1519,8 +1530,12 @@ bool DbData::loadFreePages (DbTxn & txn) {
         }
     }
     if (blank && blank < m_numPages) {
-        logMsgInfo() << "Trimmed " << m_numPages - blank << " blank pages";
+        auto trimmed = (unsigned) (m_numPages - blank);
+        logMsgInfo() << "Trimmed " << trimmed << " blank pages";
         m_numPages = blank;
+        s_perfPages -= trimmed;
+        m_numFreed -= trimmed;
+        s_perfFreePages -= trimmed;
     }
     return true;
 }
@@ -1534,17 +1549,23 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
         assert(segPage == m_numPages && !segPos);
         (void) segPos;
         m_numPages += 1;
+        s_perfPages += 1;
         txn.growToFit(segPage);
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
     auto pgno = m_freePages.pop_front();
+    if (pgno < m_numPages) {
+        m_numFreed -= 1;
+        s_perfFreePages -= 1;
+    }
 
     auto segPage = segmentPage(pgno, m_pageSize).first;
     txn.logSegmentUpdate(segPage, pgno, false);
     if (pgno >= m_numPages) {
         assert(pgno == m_numPages);
         m_numPages += 1;
+        s_perfPages += 1;
         txn.growToFit(pgno);
     }
 
@@ -1579,6 +1600,8 @@ void DbData::freePage(DbTxn & txn, uint32_t pgno) {
 
     txn.logPageFree(pgno);
     m_freePages.insert(pgno);
+    m_numFreed += 1;
+    s_perfFreePages += 1;
 
     auto segPage = segmentPage(pgno, m_pageSize).first;
     txn.logSegmentUpdate(segPage, pgno, true);
