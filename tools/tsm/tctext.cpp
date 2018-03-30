@@ -315,10 +315,10 @@ void TextWriter::onLogApplySampleUpdate(
             os << " thru " << lastPos - 1;
         os << "] = NAN";
     } else {
-        if (firstPos < lastPos - 1) {
+        if (firstPos < lastPos) {
             os << " thru " << lastPos - 1 << ", " << lastPos << "] = NAN, ";
         } else {
-            os << lastPos << "] = ";
+            os << "] = ";
         }
         os << value;
     }
