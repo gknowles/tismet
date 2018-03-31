@@ -288,6 +288,23 @@ void UnitTest::onEvalEnd() {
 ***/
 
 //===========================================================================
+// consolidate points
+//===========================================================================
+static auto s_maxpoints_odd = UnitTest("consolidate points")
+    .query("*.value", 9, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 8, 2s, {NAN, 1.5, 3.5, 5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 8, 2s, {NAN, NAN, 4, 5})
+;
+static auto s_maxpoints = UnitTest("consolidate points even")
+    .query("*.value", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {1.5, 3.5, 5.5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 5.5});
+
+//===========================================================================
 // keepLastValue
 //===========================================================================
 static auto s_keepLastValue = UnitTest("keepLastValue")

@@ -340,21 +340,21 @@ static shared_ptr<SampleList> consolidateAvg(
     auto sps = (minInterval.count() + baseInterval.count() - 1)
         / baseInterval.count();
     auto maxInterval = sps * baseInterval;
-    auto first = samples->first + maxInterval - baseInterval;
+    auto first = samples->first;
     first -= first.time_since_epoch() % maxInterval;
-    auto skip = (first - samples->first) / baseInterval;
-    auto count = samples->count - skip;
+    auto presamples = (samples->first - first) / baseInterval;
+    auto count = samples->count;
     auto out = SampleList::alloc(
         first,
         maxInterval,
-        (count + sps - 1) / sps
+        (count + presamples + sps - 1) / sps
     );
 
-    auto sum = samples->samples[skip];
-    auto num = 1;
-    auto nans = isnan(sum) ? 1 : 0;
+    auto sum = 0.0;
+    auto num = presamples;
+    auto nans = presamples;
     auto optr = out->samples;
-    for (auto i = skip + 1; i < samples->count; ++i) {
+    for (unsigned i = 0; i < samples->count; ++i) {
         auto val = samples->samples[i];
         if (num == sps) {
             *optr++ = nans == num ? NAN : sum / (num - nans);
