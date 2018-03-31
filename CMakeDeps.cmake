@@ -92,6 +92,7 @@
 # vendor/dimapp/libs/core/charbuf.cpp
 # vendor/dimapp/libs/core/charbuf.h
 # vendor/dimapp/libs/core/core.h
+# vendor/dimapp/libs/core/core.natvis
 # vendor/dimapp/libs/core/handle.cpp
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
