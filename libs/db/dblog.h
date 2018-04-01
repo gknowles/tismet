@@ -72,9 +72,12 @@ public:
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
 
     void logAndApply(uint64_t txn, Record * log, size_t bytes);
+
+    // Queues task to be run after the indicated LSN is committed to stable
+    // storage.
     void queueTask(
         Dim::ITaskNotify * task,
-        uint64_t waitTxn,
+        uint64_t waitLsn,
         Dim::TaskQueueHandle hq = {} // defaults to compute queue
     );
 
@@ -159,21 +162,21 @@ private:
     uint64_t m_checkpointLsn{0};
 
     // last known durably saved
-    uint64_t m_stableTxn{0};
+    uint64_t m_stableLsn{0};
 
-    struct TaskInfo {
+    struct LsnTaskInfo {
         Dim::ITaskNotify * notify;
-        uint64_t waitTxn;
+        uint64_t waitLsn;
         Dim::TaskQueueHandle hq;
 
-        bool operator<(const TaskInfo & right) const;
-        bool operator>(const TaskInfo & right) const;
+        bool operator<(const LsnTaskInfo & right) const;
+        bool operator>(const LsnTaskInfo & right) const;
     };
     std::priority_queue<
-        TaskInfo,
-        std::vector<TaskInfo>,
-        std::greater<TaskInfo>
-    > m_tasks;
+        LsnTaskInfo,
+        std::vector<LsnTaskInfo>,
+        std::greater<LsnTaskInfo>
+    > m_lsnTasks;
 
     Dim::TimerProxy m_flushTimer;
     std::mutex m_bufMut;

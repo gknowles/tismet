@@ -168,8 +168,7 @@ static void pack(void * ptr, const LogPage & lp) {
     case kPageTypeFree:
         break;
     case kPageTypeLog:
-        v2->type = lp.type;
-        v2->pgno = lp.pgno;
+        assert(v2->type == lp.type);
         v2->checksum = lp.checksum;
         v2->firstLsn = lp.firstLsn;
         v2->numLogs = lp.numLogs;
@@ -177,8 +176,7 @@ static void pack(void * ptr, const LogPage & lp) {
         v2->lastPos = lp.lastPos;
         break;
     case kPageTypeLogV1:
-        v1->type = lp.type;
-        v1->pgno = lp.pgno;
+        assert(v1->type == lp.type);
         v1->firstLsn = lp.firstLsn;
         v1->numLogs = lp.numLogs;
         v1->firstPos = lp.firstPos;
@@ -245,18 +243,18 @@ static size_t logHdrLen(PageType type) {
 
 /****************************************************************************
 *
-*   DbLog::TaskInfo
+*   DbLog::LsnTaskInfo
 *
 ***/
 
 //===========================================================================
-bool DbLog::TaskInfo::operator<(const TaskInfo & right) const {
-    return waitTxn < right.waitTxn;
+bool DbLog::LsnTaskInfo::operator<(const LsnTaskInfo & right) const {
+    return waitLsn < right.waitLsn;
 }
 
 //===========================================================================
-bool DbLog::TaskInfo::operator>(const TaskInfo & right) const {
-    return waitTxn > right.waitTxn;
+bool DbLog::LsnTaskInfo::operator>(const LsnTaskInfo & right) const {
+    return waitLsn > right.waitLsn;
 }
 
 
@@ -607,9 +605,9 @@ bool DbLog::recover() {
     }
 
     auto & back = m_pages.back();
-    m_stableTxn = back.firstLsn + back.numLogs - 1;
-    m_lastLsn = m_stableTxn;
-    m_page->onLogStable(m_stableTxn);
+    m_stableLsn = back.firstLsn + back.numLogs - 1;
+    m_lastLsn = m_stableLsn;
+    m_page->onLogStable(m_stableLsn);
     return true;
 }
 
@@ -739,7 +737,7 @@ void DbLog::checkpointPages() {
     m_checkpointLsn = m_lastLsn;
     m_page->onLogCheckpointPages();
     m_phase = Checkpoint::WaitForTxnCommits;
-    if (m_checkpointLsn > m_stableTxn) {
+    if (m_checkpointLsn > m_stableLsn) {
         queueTask(&m_checkpointStablePagesTask, m_checkpointLsn);
     } else {
         checkpointStablePages();
@@ -830,17 +828,17 @@ void DbLog::checkpointWaitForNext() {
 //===========================================================================
 void DbLog::queueTask(
     ITaskNotify * task,
-    uint64_t waitTxn,
+    uint64_t waitLsn,
     TaskQueueHandle hq
 ) {
     if (!hq)
         hq = taskComputeQueue();
     unique_lock<mutex> lk{m_bufMut};
-    if (m_stableTxn >= waitTxn) {
+    if (m_stableLsn >= waitLsn) {
         taskPush(hq, task);
     } else {
-        auto ti = TaskInfo{task, waitTxn, hq};
-        m_tasks.push(ti);
+        auto ti = LsnTaskInfo{task, waitLsn, hq};
+        m_lsnTasks.push(ti);
     }
 }
 
@@ -861,10 +859,10 @@ void DbLog::flushWriteBuffer() {
     auto offset = lp.pgno * m_pageSize;
     auto bytes = m_bufPos;
 
-    auto tmp = new char[m_pageSize + sizeof(void *)];
-    *(void **) tmp = rawbuf;
-    auto nraw = (tmp + sizeof(void *));
-    memcpy(nraw, rawbuf, m_pageSize);
+    auto tmp = new char[bytes + sizeof(char *)];
+    *(char **) tmp = rawbuf;
+    auto nraw = tmp + sizeof(char *);
+    memcpy(nraw, rawbuf, bytes);
 
     lk.unlock();
     if (lp.type != kPageTypeFree) {
@@ -895,7 +893,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     if (partialWrite)
         i->commitTxns.emplace_back(pi.firstLsn, 0);
 
-    if (base->firstLsn > m_stableTxn + 1) {
+    if (base->firstLsn > m_stableLsn + 1) {
         s_perfReorderedWrites += 1;
         return;
     }
@@ -921,16 +919,16 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
     }
     if (!last)
         return;
-    assert(last > m_stableTxn);
+    assert(last > m_stableLsn);
 
-    m_stableTxn = last;
-    m_page->onLogStable(m_stableTxn);
-    while (!m_tasks.empty()) {
-        auto & ti = m_tasks.top();
-        if (m_stableTxn < ti.waitTxn)
+    m_stableLsn = last;
+    m_page->onLogStable(m_stableLsn);
+    while (!m_lsnTasks.empty()) {
+        auto & ti = m_lsnTasks.top();
+        if (m_stableLsn < ti.waitLsn)
             break;
         taskPush(ti.hq, ti.notify);
-        m_tasks.pop();
+        m_lsnTasks.pop();
     }
 }
 
@@ -978,7 +976,7 @@ void DbLog::onFileWrite(
 
     // it's a partial
     s_perfPartialWrites += 1;
-    auto buf = data.data() - sizeof(LogPage *);
+    auto buf = data.data() - sizeof(char *);
     auto rawbuf = *(char **) buf;
     LogPage olp;
     unpack(&olp, rawbuf);
@@ -986,14 +984,15 @@ void DbLog::onFileWrite(
     if (m_bufStates[ibuf] == Buffer::PartialWriting) {
         if (olp.numLogs == lp.numLogs) {
             m_bufStates[ibuf] = Buffer::PartialClean;
+            lk.unlock();
             m_bufAvailCv.notify_one();
         } else {
             m_bufStates[ibuf] = Buffer::PartialDirty;
+            lk.unlock();
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
     } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
-        olp.checksum = 0;
-        pack(rawbuf, olp);
+        lk.unlock();
         olp.checksum = hash_crc32c(rawbuf, m_pageSize);
         pack(rawbuf, olp);
         fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
@@ -1137,7 +1136,8 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
         unpack(&lp, rawbuf);
         lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
         lp.lastPos = (uint16_t) m_bufPos;
-        auto offset = lp.pgno * m_pageSize;
+        lp.checksum = 0;
+        pack(rawbuf, lp);
 
         if (overflow) {
             lp.lastPos -= (uint16_t) bytes;
@@ -1148,10 +1148,9 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
 
         lk.unlock();
         if (!writeInProgress) {
-            lp.checksum = 0;
-            pack(rawbuf, lp);
             lp.checksum = hash_crc32c(rawbuf, m_pageSize);
             pack(rawbuf, lp);
+            auto offset = lp.pgno * m_pageSize;
             fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
         }
     }
