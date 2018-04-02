@@ -148,6 +148,8 @@ TextWriter::TextWriter(ostream & os)
 //===========================================================================
 ostream & TextWriter::out(void * ptr) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
+    if (hdr->pgno >= (unsigned) numeric_limits<int32_t>::max())
+        logMsgError() << "Data page out of range: @" << hdr->pgno;
     m_os << hdr->lsn
         << '.' << hdr->checksum // localTxn smuggled through as checksum
         << " @" << hdr->pgno << ": ";
