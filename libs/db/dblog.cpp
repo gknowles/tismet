@@ -470,14 +470,16 @@ bool DbLog::loadPages() {
                 pi.numLogs = lp.numLogs;
             }
             break;
+        default:
+            logMsgError() << "Invalid page type(" << mp->type << ") on page #"
+                << i << " of " << filePath(m_flog);
+            mp->type = kPageTypeFree;
+            mp->pgno = i;
+            [[fallthrough]]; // return false;
         case kPageTypeFree:
             m_freePages.insert(mp->pgno);
             s_perfFreePages += 1;
             break;
-        default:
-            logMsgError() << "Invalid page type(" << mp->type << ") on page #"
-                << i << " of " << filePath(m_flog);
-            return false;
         }
     }
     if (m_pages.empty())
