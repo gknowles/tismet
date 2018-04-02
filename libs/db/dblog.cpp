@@ -782,14 +782,14 @@ void DbLog::checkpointStableCommit() {
     if (!lastPgno) {
         checkpointTruncateCommit();
     } else {
-        MinimumPage mp = { kPageTypeFree };
-        mp.pgno = lastPgno;
+        auto mp = new MinimumPage{ kPageTypeFree };
+        mp->pgno = lastPgno;
         fileWrite(
             this,
             m_flog,
             lastPgno * m_pageSize,
-            &mp,
-            sizeof(mp),
+            mp,
+            sizeof(*mp),
             logQueue()
         );
     }
@@ -942,15 +942,17 @@ void DbLog::onFileWrite(
     if (written != data.size())
         logMsgCrash() << "Write to .tsl failed, " << errno << ", " << _doserrno;
 
+    auto rawbuf = (char *) data.data();
     s_perfWrites += 1;
     LogPage lp;
-    unpack(&lp, data.data());
+    unpack(&lp, rawbuf);
     PageInfo pi = { lp.pgno, lp.firstLsn, lp.numLogs };
     unique_lock<mutex> lk{m_bufMut};
     if (lp.type == kPageTypeFree) {
         m_freePages.insert(lp.pgno);
         s_perfFreePages += 1;
         lk.unlock();
+        delete[] rawbuf;
         checkpointTruncateCommit();
         return;
     }
@@ -959,7 +961,6 @@ void DbLog::onFileWrite(
     updatePages_LK(pi, partialWrite);
     if (!partialWrite) {
         assert(data.size() == m_pageSize);
-        auto rawbuf = (char *) data.data();
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers.get()) / m_pageSize;
         m_bufStates[ibuf] = Buffer::Empty;
@@ -976,8 +977,8 @@ void DbLog::onFileWrite(
 
     // it's a partial
     s_perfPartialWrites += 1;
-    auto buf = data.data() - sizeof(char *);
-    auto rawbuf = *(char **) buf;
+    auto buf = rawbuf - sizeof(char *);
+    rawbuf = *(char **) buf;
     LogPage olp;
     unpack(&olp, rawbuf);
     auto ibuf = (rawbuf - m_buffers.get()) / m_pageSize;
@@ -997,6 +998,8 @@ void DbLog::onFileWrite(
         pack(rawbuf, olp);
         fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
     }
+
+    // wait until after unlocked before deleting, no need to hold the lock
     delete[] buf;
 }
 
