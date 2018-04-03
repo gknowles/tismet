@@ -859,24 +859,25 @@ void DbLog::flushWriteBuffer() {
     lp.checksum = 0;
     pack(rawbuf, lp);
     auto offset = lp.pgno * m_pageSize;
-    auto bytes = m_bufPos;
 
-    auto tmp = new char[bytes + sizeof(char *)];
+    // Write the entire page, not just the changed part, otherwise the
+    // resulting page might not match the checksum.
+    auto tmp = new char[m_pageSize + sizeof(char *)];
     *(char **) tmp = rawbuf;
     auto nraw = tmp + sizeof(char *);
-    memcpy(nraw, rawbuf, bytes);
+    memcpy(nraw, rawbuf, m_pageSize);
 
     lk.unlock();
     if (lp.type != kPageTypeFree) {
         assert(lp.type == kPageTypeLog || lp.type == kPageTypeLogV1);
-        lp.checksum = hash_crc32c(rawbuf, m_pageSize);
+        lp.checksum = hash_crc32c(nraw, m_pageSize);
         pack(nraw, lp);
     }
-    fileWrite(this, m_flog, offset, nraw, bytes, logQueue());
+    fileWrite(this, m_flog, offset, nraw, m_pageSize, logQueue());
 }
 
 //===========================================================================
-void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
+void DbLog::updatePages_LK(const PageInfo & pi, bool fullWrite) {
     auto i = lower_bound(m_pages.begin(), m_pages.end(), pi);
     assert(i != m_pages.end() && i->firstLsn == pi.firstLsn);
     i->numLogs = pi.numLogs;
@@ -892,7 +893,9 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool partialWrite) {
         }
     }
     i->commitTxns.clear();
-    if (partialWrite)
+    // Mark page as incomplete after a partial write by putting an empty
+    // placeholder.
+    if (!fullWrite)
         i->commitTxns.emplace_back(pi.firstLsn, 0);
 
     if (base->firstLsn > m_stableLsn + 1) {
@@ -959,9 +962,10 @@ void DbLog::onFileWrite(
         return;
     }
 
-    bool partialWrite = (data.size() < m_pageSize);
-    updatePages_LK(pi, partialWrite);
-    if (!partialWrite) {
+    bool fullWrite = rawbuf >= m_buffers.get()
+        && rawbuf < m_buffers.get() + m_numBufs * m_pageSize;
+    updatePages_LK(pi, fullWrite);
+    if (fullWrite) {
         assert(data.size() == m_pageSize);
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers.get()) / m_pageSize;
