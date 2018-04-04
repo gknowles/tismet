@@ -728,6 +728,7 @@ void DbLog::checkpoint() {
     m_checkpointStart = Clock::now();
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
+    fileFlush(m_flog);
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -759,6 +760,7 @@ void DbLog::checkpointStablePages() {
 //===========================================================================
 void DbLog::checkpointStableCommit() {
     assert(m_phase == Checkpoint::WaitForCheckpointCommit);
+    fileFlush(m_flog);
 
     auto lastPgno = uint32_t{0};
     {

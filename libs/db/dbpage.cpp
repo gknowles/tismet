@@ -407,6 +407,7 @@ void DbPage::onLogCheckpointStablePages() {
         writePageWait(pgno_hdr.second);
         pgno_hdr.second->pgno = kFreePageMark;
     }
+    fileFlush(m_fdata);
 
     unique_lock<mutex> lk{m_workMut};
     for (auto && pgno_hdr : m_oldPages) {
