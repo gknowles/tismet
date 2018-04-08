@@ -53,8 +53,10 @@ sc create Tismet binPath= <installPath>\tismet.exe start= auto depend= Tcpip/Afd
 When run, Tismet accesses directories relative to the executable:
   - tismet.exe
   - conf/
+  - crash/
   - data/
   - data/backup/
+  - log/
 
 
 ## Configuring
