@@ -85,6 +85,7 @@ public:
 
 private:
     char * bufPtr(size_t ibuf);
+    char * partialPtr(size_t ibuf);
 
     void onFileWrite(
         int written,
@@ -182,7 +183,11 @@ private:
     std::mutex m_bufMut;
     std::condition_variable m_bufAvailCv;
     std::vector<Buffer> m_bufStates;
-    std::unique_ptr<char[]> m_buffers;
+
+    // page aligned buffers
+    char * m_buffers{nullptr};
+    char * m_partialBuffers{nullptr};
+
     unsigned m_numBufs{0};
     unsigned m_emptyBufs{0};
     unsigned m_curBuf{0};

@@ -92,7 +92,6 @@ struct ZeroPage {
     DbPageHeader hdr;
     char signature[sizeof(kLogFileSig)];
     uint32_t pageSize;
-    uint32_t checksum;
 };
 
 struct MinimumPage {
@@ -285,7 +284,13 @@ DbLog::~DbLog() {
 //===========================================================================
 char * DbLog::bufPtr(size_t ibuf) {
     assert(ibuf < m_numBufs);
-    return m_buffers.get() + ibuf * m_pageSize;
+    return m_buffers + ibuf * m_pageSize;
+}
+
+//===========================================================================
+char * DbLog::partialPtr(size_t ibuf) {
+    assert(ibuf < m_numBufs);
+    return m_partialBuffers + ibuf * m_pageSize;
 }
 
 //===========================================================================
@@ -296,13 +301,15 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     m_openFlags = flags;
 
     auto oflags = File::fDenyWrite;
+    if (2 * pageSize >= envMemoryConfig().pageSize)
+        oflags |= File::fAligned;
     if (flags & fDbOpenReadOnly) {
         oflags |= File::fReadOnly;
     } else {
         oflags |= File::fReadWrite;
     }
     if (flags & fDbOpenCreat) {
-        assert(!m_pageSize);
+        assert(pageSize);
         oflags |= File::fCreat;
     }
     if (flags & fDbOpenTrunc)
@@ -317,19 +324,28 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     auto len = fileSize(m_flog);
     ZeroPage zp{};
     if (len) {
-        fileReadWait(&zp, sizeof(zp), m_flog, 0);
+        auto bytes = 2 * max(pageSize, (size_t) kMinPageSize);
+        auto rawbuf = aligned_alloc(bytes, bytes);
+        fileReadWait(rawbuf, bytes, m_flog, 0);
+        memcpy(&zp, rawbuf, sizeof(zp));
         if (!pageSize) {
             if (~flags & fDbOpenCreat)
                 pageSize = zp.pageSize / 2;
         }
+        aligned_free(rawbuf);
     }
 
     m_pageSize = 2 * pageSize;
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::Empty);
     m_emptyBufs = m_numBufs;
-    m_buffers.reset(new char[m_numBufs * m_pageSize]);
-    memset(m_buffers.get(), 0, m_numBufs * m_pageSize);
+    m_buffers = (char *) aligned_alloc(m_pageSize, m_numBufs * m_pageSize);
+    memset(m_buffers, 0, m_numBufs * m_pageSize);
+    m_partialBuffers = (char *) aligned_alloc(
+        m_pageSize,
+        m_numBufs * m_pageSize
+    );
+    memset(m_partialBuffers, 0, m_numBufs * m_pageSize);
     m_curBuf = 0;
     for (unsigned i = 0; i < m_numBufs; ++i) {
         auto mp = (MinimumPage *) bufPtr(i);
@@ -341,7 +357,12 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
         zp.hdr.type = (DbPageType) kPageTypeZero;
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
-        fileWriteWait(m_flog, 0, &zp, sizeof(zp));
+        zp.hdr.checksum = 0;
+        auto nraw = partialPtr(0);
+        memcpy(nraw, &zp, sizeof(zp));
+        zp.hdr.checksum = hash_crc32c(nraw, m_pageSize);
+        memcpy(nraw, &zp, sizeof(zp));
+        fileWriteWait(m_flog, 0, nraw, m_pageSize);
         s_perfWrites += 1;
         m_numPages = 1;
         s_perfPages += (unsigned) m_numPages;
@@ -404,6 +425,10 @@ void DbLog::close() {
     fileResize(m_flog, (lastPage + 1) * m_pageSize);
     fileClose(m_flog);
     m_flog = {};
+    aligned_free(m_buffers);
+    m_buffers = nullptr;
+    aligned_free(m_partialBuffers);
+    m_partialBuffers = nullptr;
 }
 
 //===========================================================================
@@ -450,10 +475,10 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
 //===========================================================================
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
-    char rawbuf[kMaxHdrLen];
+    auto rawbuf = partialPtr(0);
     // load info for each page
     for (uint32_t i = 1; i < m_numPages; ++i) {
-        fileReadWait(&rawbuf, sizeof(rawbuf), m_flog, i * m_pageSize);
+        fileReadWait(rawbuf, m_pageSize, m_flog, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
         case kPageTypeInvalid:
@@ -506,24 +531,25 @@ bool DbLog::loadPages() {
 //===========================================================================
 void DbLog::applyAll(AnalyzeData & data) {
     LogPage lp;
-    auto buf = make_unique<char[]>(2 * m_pageSize);
-    auto buf2 = make_unique<char[]>(2 * m_pageSize);
+    auto buf = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
+    auto buf2 = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
+    auto finally = Finally([&] { aligned_free(buf); aligned_free(buf2); });
     int bytesBefore{0};
     int logPos{0};
     auto lsn = uint64_t{0};
     auto log = (Record *) nullptr;
 
     for (auto & pi : m_pages) {
-        fileReadWait(buf2.get(), m_pageSize, m_flog, pi.pgno * m_pageSize);
-        unpack(&lp, buf2.get());
+        fileReadWait(buf2, m_pageSize, m_flog, pi.pgno * m_pageSize);
+        unpack(&lp, buf2);
         if (bytesBefore) {
             auto bytesAfter = lp.firstPos - logHdrLen(lp.type);
             memcpy(
-                buf.get() + m_pageSize,
-                buf2.get() + logHdrLen(lp.type),
+                buf + m_pageSize,
+                buf2 + logHdrLen(lp.type),
                 bytesAfter
             );
-            log = (Record *) (buf.get() + m_pageSize - bytesBefore);
+            log = (Record *) (buf + m_pageSize - bytesBefore);
             assert(size(log) == bytesBefore + bytesAfter);
             apply(lp.firstLsn - 1, log, &data);
         }
@@ -532,7 +558,7 @@ void DbLog::applyAll(AnalyzeData & data) {
         logPos = lp.firstPos;
         lsn = lp.firstLsn;
         while (logPos < lp.lastPos) {
-            log = (Record *) (buf.get() + logPos);
+            log = (Record *) (buf + logPos);
             apply(lsn, log, &data);
             logPos += size(log);
             lsn += 1;
@@ -544,7 +570,7 @@ void DbLog::applyAll(AnalyzeData & data) {
     // Initialize log write buffers with last buffer (if partial) found
     // during analyze.
     if (data.analyze && logPos < m_pageSize) {
-        memcpy(m_buffers.get(), buf.get(), logPos);
+        memcpy(m_buffers, buf, logPos);
         m_bufPos = logPos;
         m_bufStates[m_curBuf] = Buffer::PartialClean;
         m_emptyBufs -= 1;
@@ -786,14 +812,15 @@ void DbLog::checkpointStableCommit() {
     if (!lastPgno) {
         checkpointTruncateCommit();
     } else {
-        auto mp = new MinimumPage{ kPageTypeFree };
+        auto vptr = aligned_alloc(m_pageSize, m_pageSize);
+        auto mp = new(vptr) MinimumPage{ kPageTypeFree };
         mp->pgno = lastPgno;
         fileWrite(
             this,
             m_flog,
             lastPgno * m_pageSize,
             mp,
-            sizeof(*mp),
+            m_pageSize,
             logQueue()
         );
     }
@@ -864,9 +891,7 @@ void DbLog::flushWriteBuffer() {
 
     // Write the entire page, not just the changed part, otherwise the
     // resulting page might not match the checksum.
-    auto tmp = new char[m_pageSize + sizeof(char *)];
-    *(char **) tmp = rawbuf;
-    auto nraw = tmp + sizeof(char *);
+    auto nraw = partialPtr(m_curBuf);
     memcpy(nraw, rawbuf, m_pageSize);
 
     lk.unlock();
@@ -959,18 +984,18 @@ void DbLog::onFileWrite(
         m_freePages.insert(lp.pgno);
         s_perfFreePages += 1;
         lk.unlock();
-        delete[] rawbuf;
+        aligned_free(rawbuf);
         checkpointTruncateCommit();
         return;
     }
 
-    bool fullWrite = rawbuf >= m_buffers.get()
-        && rawbuf < m_buffers.get() + m_numBufs * m_pageSize;
+    bool fullWrite = rawbuf >= m_buffers
+        && rawbuf < m_buffers + m_numBufs * m_pageSize;
     updatePages_LK(pi, fullWrite);
     if (fullWrite) {
         assert(data.size() == m_pageSize);
         m_emptyBufs += 1;
-        auto ibuf = (rawbuf - m_buffers.get()) / m_pageSize;
+        auto ibuf = (rawbuf - m_buffers) / m_pageSize;
         m_bufStates[ibuf] = Buffer::Empty;
         lp.type = kPageTypeFree;
         pack(rawbuf, lp);
@@ -984,12 +1009,14 @@ void DbLog::onFileWrite(
     }
 
     // it's a partial
+    assert(rawbuf >= m_partialBuffers
+        && rawbuf < m_partialBuffers + m_numBufs * m_pageSize
+    );
     s_perfPartialWrites += 1;
-    auto buf = rawbuf - sizeof(char *);
-    rawbuf = *(char **) buf;
+    auto ibuf = (rawbuf - m_partialBuffers) / m_pageSize;
+    rawbuf = bufPtr(ibuf);
     LogPage olp;
     unpack(&olp, rawbuf);
-    auto ibuf = (rawbuf - m_buffers.get()) / m_pageSize;
     if (m_bufStates[ibuf] == Buffer::PartialWriting) {
         if (olp.numLogs == lp.numLogs) {
             m_bufStates[ibuf] = Buffer::PartialClean;
@@ -1006,9 +1033,6 @@ void DbLog::onFileWrite(
         pack(rawbuf, olp);
         fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
     }
-
-    // wait until after unlocked before deleting, no need to hold the lock
-    delete[] buf;
 }
 
 //===========================================================================
