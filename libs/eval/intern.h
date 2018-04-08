@@ -53,7 +53,7 @@ public:
 public:
     virtual ~ResultNode();
 
-    virtual void onResult(int resultId, const ResultInfo & info);
+    void onResult(const ResultInfo & info);
     void onTask() override = 0;
 
     int m_unfinished{0};
@@ -70,7 +70,6 @@ class SourceNode {
 public:
     struct ResultRange {
         ResultNode * rn{};
-        int resultId{};
         Dim::Duration minInterval{};
         Dim::TimePoint first;
         Dim::TimePoint last;

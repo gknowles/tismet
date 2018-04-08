@@ -310,9 +310,33 @@ private:
     Duration m_interval{};
 };
 
+class RenderMultitarget {
+public:
+    RenderMultitarget(unsigned reqId, size_t ntargets);
+
+    void xferIfFull(HttpResponse * res, unsigned pos, size_t pending);
+    void xferRest(HttpResponse * res, unsigned pos);
+    void xferError(unsigned pos, string_view errmsg);
+
+    size_t ntargets() const { return m_targets.size(); }
+
+private:
+    void reply(HttpResponse && res, bool more);
+
+    unsigned m_reqId{0};
+    unsigned m_pos{0};
+    bool m_started{false};
+    bool m_error{false};
+    struct TargetInfo {
+        CharBuf data;
+        bool done{false};
+    };
+    vector<TargetInfo> m_targets;
+};
+
 class RenderJson : public IEvalNotify {
 public:
-    RenderJson(unsigned reqId);
+    RenderJson(RenderMultitarget * out, unsigned reqId);
 
 private:
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
@@ -321,8 +345,8 @@ private:
     void onEvalEnd() override;
     void onEvalError(std::string_view errmsg) override;
 
-    unsigned m_reqId{0};
-    bool m_started{false};
+    RenderMultitarget & m_out;
+    unsigned m_targetId{0};
     HttpResponse m_res;
 
     JBuilder m_bld{m_res.body()};
@@ -407,21 +431,136 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         );
     }
 
-    auto render = new RenderJson(reqId);
-    evaluate(render, targets, from, until, maxPoints);
+    auto root = new RenderMultitarget(reqId, targets.size());
+    for (auto i = 0; i < targets.size(); ++i) {
+        auto render = new RenderJson(root, i);
+        evaluate(render, targets[i], from, until, maxPoints);
+    }
+}
+
+//===========================================================================
+// RenderMultitarget
+//===========================================================================
+RenderMultitarget::RenderMultitarget(unsigned reqId, size_t ntargets)
+    : m_reqId{reqId}
+{
+    m_targets.resize(ntargets);
+}
+
+//===========================================================================
+void RenderMultitarget::xferIfFull(
+    HttpResponse * res,
+    unsigned pos,
+    size_t pending
+) {
+    auto blksize = res->body().defaultBlockSize();
+    if (res->body().size() + pending <= blksize)
+        return;
+
+    HttpResponse tmp;
+    tmp.swap(*res);
+
+    if (pos != m_pos) {
+        assert(pos > m_pos);
+        if (!m_error)
+            m_targets[pos].data.append(move(tmp.body()));
+        return;
+    }
+    reply(move(tmp), true);
+}
+
+//===========================================================================
+void RenderMultitarget::xferRest(HttpResponse * res, unsigned pos) {
+    HttpResponse tmp;
+    tmp.swap(*res);
+
+    if (pos != m_pos) {
+        assert(pos > m_pos);
+        m_targets[pos].data.append(move(tmp.body()));
+        m_targets[pos].done = true;
+        return;
+    }
+
+    if (m_pos == m_targets.size() - 1) {
+        reply(move(tmp), false);
+        delete this;
+        return;
+    }
+
+    reply(move(tmp), true);
+    while (++m_pos != m_targets.size()) {
+        auto & tgt = m_targets[m_pos];
+        if (tgt.done && m_pos == m_targets.size() - 1) {
+            if (!m_error)
+                httpRouteReply(m_reqId, move(tgt.data), false);
+            delete this;
+            return;
+        }
+        if (!tgt.data.empty() && !m_error)
+            httpRouteReply(m_reqId, move(tgt.data), true);
+        if (!tgt.done)
+            return;
+    }
+}
+
+//===========================================================================
+void RenderMultitarget::xferError(unsigned pos, string_view errmsg) {
+    if (!m_error) {
+        if (m_started) {
+            httpRouteInternalError(m_reqId);
+        } else {
+            httpRouteReply(m_reqId, 400, errmsg);
+            m_started = true;
+        }
+        m_error = true;
+    }
+
+    if (pos != m_pos) {
+        assert(pos > m_pos);
+        m_targets[pos].done = true;
+        return;
+    }
+
+    while (++m_pos != m_targets.size()) {
+        auto & tgt = m_targets[m_pos];
+        if (!tgt.done)
+            return;
+        if (m_pos == m_targets.size() - 1) {
+            delete this;
+            return;
+        }
+    }
+}
+
+//===========================================================================
+void RenderMultitarget::reply(HttpResponse && res, bool more) {
+    if (!m_started) {
+        assert(!m_error);
+        httpRouteReply(m_reqId, move(res), more);
+        m_started = true;
+    } else {
+        if (!m_error)
+            httpRouteReply(m_reqId, move(res.body()), more);
+    }
 }
 
 //===========================================================================
 // RenderJson
 //===========================================================================
-RenderJson::RenderJson(unsigned reqId)
-    : m_reqId{reqId}
+RenderJson::RenderJson(RenderMultitarget * out, unsigned targetId)
+    : m_out{*out}
+    , m_targetId{targetId}
 {
     m_res.addHeader(kHttpContentType, "application/json");
     m_res.addHeader(kHttpAccessControlAllowOrigin, "*");
     m_res.addHeader(kHttp_Status, "200");
 
+    auto pos = m_res.body().size();
     m_bld.array();
+    if (m_targetId != 0) {
+        m_res.body().resize(pos);
+        m_res.body().pushBack(',');
+    }
 }
 
 //===========================================================================
@@ -438,7 +577,7 @@ bool RenderJson::onDbSeriesStart(const DbSeriesInfo & info) {
 
 //===========================================================================
 bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
-    m_started = xferIfFull(m_res, m_started, m_reqId, 32);
+    m_out.xferIfFull(&m_res, m_targetId, 32);
     m_bld.array();
     if (isnan(value)) {
         m_bld.value(nullptr);
@@ -464,18 +603,15 @@ void RenderJson::onDbSeriesEnd(uint32_t id) {
 
 //===========================================================================
 void RenderJson::onEvalEnd() {
-    m_bld.end();
-    xferRest(move(m_res), m_started, m_reqId);
+    if (m_targetId == m_out.ntargets() - 1)
+        m_bld.end();
+    m_out.xferRest(&m_res, m_targetId);
     delete this;
 }
 
 //===========================================================================
 void RenderJson::onEvalError(string_view errmsg) {
-    if (m_started) {
-        httpRouteInternalError(m_reqId);
-    } else {
-        httpRouteReply(m_reqId, 400, errmsg);
-    }
+    m_out.xferError(m_targetId, errmsg);
     delete this;
 }
 

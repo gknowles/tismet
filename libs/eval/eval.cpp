@@ -45,7 +45,6 @@ public:
     Evaluate();
     ~Evaluate();
 
-    void onResult(int resultId, const ResultInfo & info) override;
     void onTask() override;
 
     // Return false when done receiving results, either normally or because
@@ -57,9 +56,6 @@ public:
     TimePoint m_first;
     TimePoint m_last;
     Duration m_minInterval{};
-
-    int m_curId{0};
-    vector<deque<ResultInfo>> m_idResults;
 };
 
 } // namespace
@@ -399,7 +395,7 @@ SourceNode::OutputResultReturn SourceNode::outputResult(
                 nextMin = rr.minInterval;
             continue;
         }
-        rr.rn->onResult(rr.resultId, info);
+        rr.rn->onResult(info);
     }
 
     while (nextMin != Duration::max()) {
@@ -417,7 +413,7 @@ SourceNode::OutputResultReturn SourceNode::outputResult(
             }
             if (rr.minInterval < minInterval)
                 continue;
-            rr.rn->onResult(rr.resultId, out);
+            rr.rn->onResult(out);
         }
     }
     if (!info.samples)
@@ -562,7 +558,7 @@ void ResultNode::stopSources() {
 }
 
 //===========================================================================
-void ResultNode::onResult(int resultId, const ResultInfo & info) {
+void ResultNode::onResult(const ResultInfo & info) {
     scoped_lock<mutex> lk{m_resMut};
     m_results.push_back(info);
     if (m_results.size() == 1) {
@@ -599,10 +595,8 @@ void FuncNode::onSourceStart() {
     onFuncAdjustRange(&rr.first, &rr.last, &rr.pretime, &rr.presamples);
     m_unfinished = (int) m_sources.size();
     rr.rn = this;
-    for (auto && sn : m_sources) {
+    for (auto && sn : m_sources)
         sn->addOutput(rr);
-        rr.resultId += 1;
-    }
 }
 
 //===========================================================================
@@ -667,35 +661,6 @@ Evaluate::~Evaluate() {
 
     unique_lock<shared_mutex> lk{s_mut};
     s_execs.unlink(this);
-}
-
-//===========================================================================
-void Evaluate::onResult(int resultId, const ResultInfo & info) {
-    scoped_lock<mutex> lk{m_resMut};
-    if (resultId != m_curId) {
-        assert(resultId > m_curId);
-        m_idResults[resultId].push_back(info);
-        return;
-    }
-
-    bool pushTask = m_results.empty();
-    m_results.push_back(info);
-    auto more = (bool) info.samples;
-    while (!more) {
-        if (++m_curId == m_idResults.size())
-            break;
-        if (m_idResults[m_curId].empty()) {
-            more = true;
-        } else {
-            for (auto && ri : m_idResults[m_curId])
-                m_results.push_back(move(ri));
-            more = (bool) m_results.back().samples;
-        }
-    }
-    if (pushTask) {
-        incRef();
-        taskPushCompute(this);
-    }
 }
 
 //===========================================================================
@@ -813,7 +778,7 @@ void evalInitialize(DbHandle f) {
 //===========================================================================
 void evaluate(
     IEvalNotify * notify,
-    const vector<string_view> & targets,
+    string_view target,
     TimePoint first,
     TimePoint last,
     size_t maxPoints
@@ -822,25 +787,22 @@ void evaluate(
     auto ex = hostage.get();
     ex->m_notify = notify;
     ex->m_ctx = dbOpenContext(s_db);
-    ex->m_unfinished = (int) targets.size();
+    ex->m_unfinished = 1;
     ex->m_first = first;
     ex->m_last = last;
     if (maxPoints)
         ex->m_minInterval = (last - first) / maxPoints;
-    ex->m_idResults.resize(targets.size());
     SourceNode::ResultRange rr;
     rr.rn = ex;
     rr.first = first;
     rr.last = last;
     rr.minInterval = ex->m_minInterval;
-    for (auto && target : targets) {
-        if (auto sn = addSource(ex, target)) {
-            sn->addOutput(rr);
-            rr.resultId += 1;
-        } else {
-            notify->onEvalError("Invalid target parameter: " + string(target));
-            return;
-        }
+    auto sn = addSource(ex, target);
+    if (!sn) {
+        notify->onEvalError("Invalid target parameter: " + string(target));
+        return;
     }
+
+    sn->addOutput(rr);
     hostage.release();
 }

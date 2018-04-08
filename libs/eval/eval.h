@@ -24,7 +24,7 @@ struct IEvalNotify : IDbDataNotify {
 };
 void evaluate(
     IEvalNotify * notify,
-    const std::vector<std::string_view> & targets,
+    std::string_view target,
     Dim::TimePoint from,
     Dim::TimePoint until,
     size_t maxPoints = 0    // 0 for no maximum
