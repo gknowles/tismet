@@ -17,7 +17,7 @@ using namespace Dim;
 
 constexpr auto kDirtyWriteBufferTimeout = 500ms;
 
-const unsigned kLogWriteBuffers = 3;
+const unsigned kLogWriteBuffers = 10;
 static_assert(kLogWriteBuffers > 1);
 
 const unsigned kDefaultMaxCheckpointData = 1'048'576; // 1 MiB
@@ -754,7 +754,8 @@ void DbLog::checkpoint() {
     m_checkpointStart = Clock::now();
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
-    fileFlush(m_flog);
+    if (!fileFlush(m_flog))
+        logMsgCrash() << "Checkpointing failed.";
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -786,7 +787,8 @@ void DbLog::checkpointStablePages() {
 //===========================================================================
 void DbLog::checkpointStableCommit() {
     assert(m_phase == Checkpoint::WaitForCheckpointCommit);
-    fileFlush(m_flog);
+    if (!fileFlush(m_flog))
+        logMsgCrash() << "Checkpointing failed.";
 
     auto lastPgno = uint32_t{0};
     {
