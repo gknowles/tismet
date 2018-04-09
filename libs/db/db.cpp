@@ -11,6 +11,15 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Tuning parameters
+*
+***/
+
+const unsigned kRequestBuckets = 8;
+
+
+/****************************************************************************
+*
 *   Private
 *
 ***/
@@ -103,8 +112,11 @@ private:
     ) override;
     void onFileEnd(int64_t offset, FileHandle f) override;
 
-    mutex m_dataMut;
-    unordered_map<uint32_t, deque<DbReq>> m_requests;
+    struct RequestBucket {
+        mutex mut;
+        unordered_map<uint32_t, deque<DbReq>> requests;
+    };
+    unique_ptr<RequestBucket[]> m_reqBuckets;
     bool m_verbose{false};
 
     RunMode m_backupMode{kRunStopped};
@@ -182,7 +194,9 @@ inline static DbBase * db(DbHandle h) {
 DbBase::DbBase ()
     : m_dstFile(100, 2, envMemoryConfig().pageSize)
     , m_log(&m_data, &m_page)
-{}
+{
+    m_reqBuckets.reset(new RequestBucket[kRequestBuckets]);
+}
 
 //===========================================================================
 bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
@@ -413,8 +427,9 @@ void DbBase::apply(uint32_t id, DbReq && req) {
 
 //===========================================================================
 bool DbBase::transact(uint32_t id, DbReq && req) {
-    unique_lock<mutex> lk{m_dataMut};
-    auto & reqs = m_requests[id];
+    auto & bucket = m_reqBuckets[id % kRequestBuckets];
+    unique_lock<mutex> lk{bucket.mut};
+    auto & reqs = bucket.requests[id];
     reqs.push_back(move(req));
     if (reqs.size() != 1)
         return false;
@@ -426,7 +441,7 @@ bool DbBase::transact(uint32_t id, DbReq && req) {
         lk.lock();
         reqs.pop_front();
     }
-    m_requests.erase(id);
+    bucket.requests.erase(id);
     return true;
 }
 
