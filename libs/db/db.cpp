@@ -57,6 +57,7 @@ public:
     DbBase();
 
     bool open(string_view name, size_t pageSize, DbOpenFlags flags);
+    void close();
     void configure(const DbConfig & conf);
     DbStats queryStats();
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
@@ -214,6 +215,11 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
         return false;
     DbTxn txn{m_log, m_page};
     return m_data.openForUpdate(txn, this, datafile, flags);
+}
+
+//===========================================================================
+void DbBase::close() {
+    m_log.close();
 }
 
 //===========================================================================
@@ -606,7 +612,10 @@ void dbClose(DbHandle h) {
     unique_lock<shared_mutex> lk{s_mut};
     auto db = s_files.release(h);
     lk.unlock();
-    delete db;
+    if (db) {
+        db->close();
+        delete db;
+    }
 }
 
 static TokenTable::Token s_sampleTypes[] = {

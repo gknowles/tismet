@@ -278,7 +278,12 @@ DbLog::DbLog(IApplyNotify * data, IPageNotify * page)
 
 //===========================================================================
 DbLog::~DbLog() {
-    close();
+    if (m_flog)
+        fileClose(m_flog);
+    if (m_buffers)
+        aligned_free(m_buffers);
+    if (m_partialBuffers)
+        aligned_free(m_partialBuffers);
 }
 
 //===========================================================================
@@ -295,6 +300,7 @@ char * DbLog::partialPtr(size_t ibuf) {
 
 //===========================================================================
 bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
+    assert(!m_closing && !m_flog);
     assert(pageSize == pow2Ceil(pageSize));
     assert(!pageSize || pageSize >= kMinPageSize);
 
@@ -425,10 +431,6 @@ void DbLog::close() {
     fileResize(m_flog, (lastPage + 1) * m_pageSize);
     fileClose(m_flog);
     m_flog = {};
-    aligned_free(m_buffers);
-    m_buffers = nullptr;
-    aligned_free(m_partialBuffers);
-    m_partialBuffers = nullptr;
 }
 
 //===========================================================================
