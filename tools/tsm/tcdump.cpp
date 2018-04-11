@@ -163,7 +163,7 @@ static bool dumpCmd(Cli & cli) {
         s_opts.dumpfile.defaultExt("tsdump");
         fout = fileOpen(
             s_opts.dumpfile,
-            File::fCreat | File::fTrunc | File::fReadWrite
+            File::fCreat | File::fTrunc | File::fReadWrite | File::fDenyWrite
         );
     }
 
