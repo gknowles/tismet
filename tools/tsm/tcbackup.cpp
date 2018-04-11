@@ -21,6 +21,7 @@ namespace {
 struct CmdOpts {
     string oaddr;
     bool wait;
+    bool start;
 
     CmdOpts();
 };
@@ -147,13 +148,18 @@ private:
 void AddrConn::onSocketConnect(const AppSocketInfo & info) {
     CharBuf out;
     m_conn = httpConnect(&out);
-    HttpRequest req;
-    req.addHeaderRef(kHttp_Scheme, "http");
-    req.addHeaderRef(kHttp_Authority, s_opts.oaddr.c_str());
-    req.addHeaderRef(kHttp_Method, "POST");
-    req.addHeaderRef(kHttp_Path, "/backup");
-    m_streamId = httpRequest(&out, m_conn, req);
-    socketWrite(this, out);
+    if (!s_opts.start) {
+        socketWrite(this, out);
+        timerUpdate(this, 0s);
+    } else {
+        HttpRequest req;
+        req.addHeaderRef(kHttp_Scheme, "http");
+        req.addHeaderRef(kHttp_Authority, s_opts.oaddr.c_str());
+        req.addHeaderRef(kHttp_Method, "POST");
+        req.addHeaderRef(kHttp_Path, "/backup");
+        m_streamId = httpRequest(&out, m_conn, req);
+        socketWrite(this, out);
+    }
 }
 
 //===========================================================================
@@ -280,6 +286,8 @@ CmdOpts::CmdOpts() {
         .valueDesc("ADDRESS");
     cli.opt(&wait, "wait", true)
         .desc("Wait for backup to finish before returning.");
+    cli.opt(&start, "start", true)
+        .desc("Start backup (unless it's already running).");
 }
 
 //===========================================================================
