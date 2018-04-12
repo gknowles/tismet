@@ -133,6 +133,7 @@ private:
 
     DbPage m_page;
     DbData m_data;
+    unsigned m_maxNameLen{0};
     DbLog m_log; // MUST be last! (and destroyed first)
 };
 
@@ -164,7 +165,7 @@ static HandleMap<DbContextHandle, DbContext> s_contexts;
 
 static auto & s_perfCreated = uperf("db.metrics created");
 static auto & s_perfDeleted = uperf("db.metrics deleted");
-
+static auto & s_perfTrunc = uperf("db.metric names truncated");
 
 /****************************************************************************
 *
@@ -213,6 +214,7 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
         flags &= ~fDbOpenCreat;
     if (!m_log.open(logfile, m_page.pageSize(), flags))
         return false;
+    m_maxNameLen = m_data.queryStats().metricNameSize - 1;
     DbTxn txn{m_log, m_page};
     return m_data.openForUpdate(txn, this, datafile, flags);
 }
@@ -472,6 +474,11 @@ void DbBase::releaseInstanceRef(uint64_t instance) {
 
 //===========================================================================
 bool DbBase::insertMetric(uint32_t * out, string_view name) {
+    if (name.size() > m_maxNameLen) {
+        name = name.substr(0, m_maxNameLen);
+        s_perfTrunc += 1;
+    }
+
     {
         shared_lock<shared_mutex> lk{m_indexMut};
         if (m_leaf.find(out, name))
@@ -534,6 +541,8 @@ bool DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
 
 //===========================================================================
 bool DbBase::findMetric(uint32_t * out, string_view name) const {
+    if (name.size() > m_maxNameLen)
+        name = name.substr(0, m_maxNameLen);
     shared_lock<shared_mutex> lk{m_indexMut};
     return m_leaf.find(out, name);
 }
