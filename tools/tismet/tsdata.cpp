@@ -158,6 +158,7 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
         val = 0ms;
     s_expireTimer.updateInterval(val);
 
+    s_rules.clear();
     auto xdefs = configElement(doc, "MetricDefaults");
     for (auto && xrule : elems(xdefs, "Rule")) {
         MetricRule rule;
