@@ -117,7 +117,6 @@ bool ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
     auto id = nextRequestId();
     auto incomplete = append(id, string_view(data.data, data.bytes));
     if (incomplete == EOF) {
-        s_perfErrors += 1;
         socketDisconnect(this);
     } else if (incomplete) {
         m_requestIds.insert(id);
