@@ -1175,13 +1175,13 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
         unpack(&lp, rawbuf);
         lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
         lp.lastPos = (uint16_t) m_bufPos;
+        if (overflow)
+            lp.lastPos -= (uint16_t) bytes;
         lp.checksum = 0;
         pack(rawbuf, lp);
 
-        if (overflow) {
-            lp.lastPos -= (uint16_t) bytes;
+        if (overflow)
             prepareBuffer_LK(log, bytes, overflow);
-        }
         if (txnType < 0)
             countCommitTxn_LK(txn);
 
