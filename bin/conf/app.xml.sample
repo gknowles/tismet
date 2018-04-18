@@ -29,5 +29,9 @@ Tismet Configuration File.
       <Certificate thumbprint="09d137ac66960e30903d254cfab92d2e9ec8be93"/>
       <Certificate subjectKeyId="4d9db905781bfacac0748324ed7c01d34adf4947"/>
     </Store>
+    <SelfSigned>
+      <SubjectAltName dnsName="localhost"/>
+      <SubjectAltName ipAddr="192.168.0.10"/>
+    </SelfSigned>
   </Certificates>
 </App>
