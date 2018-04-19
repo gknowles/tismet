@@ -323,6 +323,7 @@ public:
 private:
     void reply(HttpResponse && res, bool more);
 
+    mutex m_mut;
     unsigned m_reqId{0};
     unsigned m_pos{0};
     bool m_started{false};
@@ -460,11 +461,14 @@ void RenderMultitarget::xferIfFull(
     HttpResponse tmp;
     tmp.swap(*res);
 
-    if (pos != m_pos) {
-        assert(pos > m_pos);
-        if (!m_error)
-            m_targets[pos].data.append(move(tmp.body()));
-        return;
+    {
+        unique_lock<mutex> lk{m_mut};
+        if (pos != m_pos) {
+            assert(pos > m_pos);
+            if (!m_error)
+                m_targets[pos].data.append(move(tmp.body()));
+            return;
+        }
     }
     reply(move(tmp), true);
 }
@@ -474,45 +478,42 @@ void RenderMultitarget::xferRest(HttpResponse * res, unsigned pos) {
     HttpResponse tmp;
     tmp.swap(*res);
 
+    unique_lock<mutex> lk{m_mut};
     if (pos != m_pos) {
         assert(pos > m_pos);
         m_targets[pos].data.append(move(tmp.body()));
         m_targets[pos].done = true;
         return;
     }
+    lk.unlock();
 
-    if (m_pos == m_targets.size() - 1) {
+    auto backPos = m_targets.size() - 1;
+    if (m_pos == backPos) {
         reply(move(tmp), false);
         delete this;
         return;
     }
 
     reply(move(tmp), true);
-    while (++m_pos != m_targets.size()) {
+    lk.lock();
+    for (;;) {
+        m_pos += 1;
         auto & tgt = m_targets[m_pos];
-        if (tgt.done && m_pos == m_targets.size() - 1) {
-            if (!m_error) {
-                // Since we're immediately deleting it anyway it's fine to move
-                // directly from tgt.data
-                httpRouteReply(m_reqId, move(tgt.data), false);
-            }
-            delete this;
-            return;
-        }
-        if (!tgt.data.empty() && !m_error) {
-            // Leave tgt.data valid and empty so that more data can be poured 
-            // into it in case !tgt.done
-            CharBuf tmpbuf;
-            tmpbuf.swap(tgt.data);
-            httpRouteReply(m_reqId, move(tmpbuf), true);
-        }
+        bool more = !tgt.done || m_pos != backPos;
+        if (!tgt.data.empty() && !m_error)
+            httpRouteReply(m_reqId, move(tgt.data), more);
         if (!tgt.done)
             return;
+        if (m_pos == backPos)
+            break;
     }
+    lk.unlock();
+    delete this;
 }
 
 //===========================================================================
 void RenderMultitarget::xferError(unsigned pos, string_view errmsg) {
+    unique_lock<mutex> lk{m_mut};
     if (!m_error) {
         if (m_started) {
             httpRouteInternalError(m_reqId);
@@ -529,15 +530,17 @@ void RenderMultitarget::xferError(unsigned pos, string_view errmsg) {
         return;
     }
 
-    while (++m_pos != m_targets.size()) {
+    auto backPos = m_targets.size() - 1;
+    for (;;) {
+        m_pos += 1;
         auto & tgt = m_targets[m_pos];
         if (!tgt.done)
             return;
-        if (m_pos == m_targets.size() - 1) {
-            delete this;
-            return;
-        }
+        if (m_pos == backPos)
+            break;
     }
+    lk.unlock();
+    delete this;
 }
 
 //===========================================================================
