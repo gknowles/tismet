@@ -491,13 +491,21 @@ void RenderMultitarget::xferRest(HttpResponse * res, unsigned pos) {
     while (++m_pos != m_targets.size()) {
         auto & tgt = m_targets[m_pos];
         if (tgt.done && m_pos == m_targets.size() - 1) {
-            if (!m_error)
+            if (!m_error) {
+                // Since we're immediately deleting it anyway it's fine to move
+                // directly from tgt.data
                 httpRouteReply(m_reqId, move(tgt.data), false);
+            }
             delete this;
             return;
         }
-        if (!tgt.data.empty() && !m_error)
-            httpRouteReply(m_reqId, move(tgt.data), true);
+        if (!tgt.data.empty() && !m_error) {
+            // Leave tgt.data valid and empty so that more data can be poured 
+            // into it in case !tgt.done
+            CharBuf tmpbuf;
+            tmpbuf.swap(tgt.data);
+            httpRouteReply(m_reqId, move(tmpbuf), true);
+        }
         if (!tgt.done)
             return;
     }
