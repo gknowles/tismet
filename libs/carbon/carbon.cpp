@@ -135,7 +135,7 @@ void ICarbonSocketNotify::ackValue(unsigned reqId, unsigned completed) {
         return;
     auto & incomplete = i->second;
     if (incomplete.incomplete < completed)
-        logMsgCrash() << "too many carbon value acknowledgments";
+        logMsgFatal() << "too many carbon value acknowledgments";
     if (incomplete.incomplete -= completed)
         return;
     auto sock = incomplete.socket;

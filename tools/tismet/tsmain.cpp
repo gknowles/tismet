@@ -36,25 +36,33 @@ class ConsoleLogger : public ILogNotify {
 
 static ConsoleLogger s_consoleLogger;
 
+static struct {
+    const char * desc;
+    ConsoleAttr attr;
+} s_logTypeInfo[] = {
+    { "UNKNOWN", kConsoleNormal     }, // invalid
+    { "DEBUG",   kConsoleNormal     }, // debug
+    { "INFO",    kConsoleHighlight  }, // info
+    { "WARN",    kConsoleWarn       }, // warn
+    { "ERROR",   kConsoleError      }, // error
+    { "FATAL",   kConsoleError      }, // fatal
+};
+static_assert(size(s_logTypeInfo) == kLogTypes);
+
 //===========================================================================
 void ConsoleLogger::onLog(LogType type, string_view msg) {
     auto now = Clock::now();
     Time8601Str nowStr{now, 3, timeZoneMinutes(now)};
     scoped_lock<mutex> lk{m_mut};
     cout << nowStr.view() << ' ';
-    if (type == kLogTypeCrash) {
-        ConsoleScopedAttr attr(kConsoleError);
-        cout << "CRASH";
-    } else if (type == kLogTypeError) {
-        ConsoleScopedAttr attr(kConsoleError);
-        cout << "ERROR";
-    } else if (type == kLogTypeInfo) {
-        ConsoleScopedAttr attr(kConsoleHighlight);
-        cout << "INFO";
-    } else if (type == kLogTypeDebug) {
-        cout << "DEBUG";
+    if (type >= size(s_logTypeInfo))
+        type = kLogTypeInvalid;
+    auto & lti = s_logTypeInfo[type];
+    if (lti.attr) {
+        ConsoleScopedAttr attr(lti.attr);
+        cout << lti.desc;
     } else {
-        cout << "UNKNOWN";
+        cout << lti.desc;
     }
     cout << ' ';
     cout.write(msg.data(), msg.size());

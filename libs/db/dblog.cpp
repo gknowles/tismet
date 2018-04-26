@@ -182,7 +182,7 @@ static void pack(void * ptr, const LogPage & lp) {
         v1->lastPos = lp.lastPos;
         break;
     default:
-        logMsgCrash() << "pack log page " << lp.pgno
+        logMsgFatal() << "pack log page " << lp.pgno
             << ", unknown type: " << lp.type;
         break;
     }
@@ -220,7 +220,7 @@ static void unpack(LogPage * out, const void * ptr) {
         out->lastPos = v1->lastPos;
         break;
     default:
-        logMsgCrash() << "unpack log page " << mp->pgno
+        logMsgFatal() << "unpack log page " << mp->pgno
             << ", unknown type: " << mp->type;
         break;
     }
@@ -234,7 +234,7 @@ static size_t logHdrLen(PageType type) {
     case kPageTypeLogV1:
         return sizeof(PageHeaderRawV1);
     default:
-        logMsgCrash() << "logHdrLen, unknown page type: " << type;
+        logMsgFatal() << "logHdrLen, unknown page type: " << type;
         return 0;
     }
 }
@@ -602,7 +602,7 @@ bool DbLog::recover() {
     if (~m_openFlags & fDbOpenIncludeBeforeCheckpoint) {
         applyAll(data);
         if (!data.checkpoint)
-            logMsgCrash() << "Invalid .tsl file, no checkpoint found";
+            logMsgFatal() << "Invalid .tsl file, no checkpoint found";
         m_checkpointLsn = data.checkpoint;
     }
 
@@ -757,7 +757,7 @@ void DbLog::checkpoint() {
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
     if (!fileFlush(m_flog))
-        logMsgCrash() << "Checkpointing failed.";
+        logMsgFatal() << "Checkpointing failed.";
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -790,7 +790,7 @@ void DbLog::checkpointStablePages() {
 void DbLog::checkpointStableCommit() {
     assert(m_phase == Checkpoint::WaitForCheckpointCommit);
     if (!fileFlush(m_flog))
-        logMsgCrash() << "Checkpointing failed.";
+        logMsgFatal() << "Checkpointing failed.";
 
     auto lastPgno = uint32_t{0};
     {
@@ -976,7 +976,7 @@ void DbLog::onFileWrite(
     FileHandle f
 ) {
     if (written != data.size())
-        logMsgCrash() << "Write to .tsl failed, " << errno << ", " << _doserrno;
+        logMsgFatal() << "Write to .tsl failed, " << errno << ", " << _doserrno;
 
     auto rawbuf = (char *) data.data();
     s_perfWrites += 1;

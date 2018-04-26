@@ -100,7 +100,7 @@ void DbFileView<Writable>::growToFit(uint32_t pgno) {
         m_viewSize,
         m_viewSize
     )) {
-        logMsgCrash() << "Extend file failed on " << filePath(m_file);
+        logMsgFatal() << "Extend file failed on " << filePath(m_file);
     }
     m_views.push_back(view);
 }

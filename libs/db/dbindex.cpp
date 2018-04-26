@@ -88,7 +88,7 @@ void DbIndex::insert(uint32_t id, string_view name) {
     name = string_view{ptr.get(), name.size()};
     auto ib = m_metricIds.insert({name, {id, 1}});
     if (!ib.second) {
-        logMsgCrash() << "Metric multiply defined, " << name;
+        logMsgFatal() << "Metric multiply defined, " << name;
         return;
     }
 

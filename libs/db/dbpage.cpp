@@ -408,7 +408,7 @@ void DbPage::onLogCheckpointStablePages() {
         pgno_hdr.second->pgno = kFreePageMark;
     }
     if (!fileFlush(m_fdata))
-        logMsgCrash() << "Checkpointing failed.";
+        logMsgFatal() << "Checkpointing failed.";
 
     unique_lock<mutex> lk{m_workMut};
     for (auto && pgno_hdr : m_oldPages) {

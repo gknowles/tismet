@@ -289,7 +289,7 @@ uint16_t DbLog::size(const Record * log) {
         break;
     }
 
-    logMsgCrash() << "Unknown log record type, " << log->type;
+    logMsgFatal() << "Unknown log record type, " << log->type;
     return 0;
 }
 
@@ -438,7 +438,7 @@ void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
 void DbLog::applyUpdate(void * page, const Record * log) {
     switch (log->type) {
     default:
-        logMsgCrash() << "unknown log record type, " << log->type;
+        logMsgFatal() << "unknown log record type, " << log->type;
         return;
     case kRecTypeZeroInit:
         return m_data->onLogApplyZeroInit(page);

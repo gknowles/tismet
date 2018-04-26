@@ -1593,9 +1593,9 @@ void DbData::freePage(DbTxn & txn, uint32_t pgno) {
     case kPageTypeSample:
         break;
     case kPageTypeFree:
-        logMsgCrash() << "freePage: page already free";
+        logMsgFatal() << "freePage: page already free";
     default:
-        logMsgCrash() << "freePage(" << fp.hdr.type << "): invalid state";
+        logMsgFatal() << "freePage(" << fp.hdr.type << "): invalid state";
     }
 
     txn.logPageFree(pgno);
