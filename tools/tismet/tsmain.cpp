@@ -124,12 +124,15 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 
 //===========================================================================
 static void app(int argc, char * argv[]) {
+    auto ver = "tismet/"s + kVersion;
     Cli cli;
-    cli.header("tismet v"s + kVersion + " (" __DATE__ ")");
+    cli.header(ver + " (" __DATE__ ")");
     cli.versionOpt(kVersion, "tismet");
     if (!cli.parse(argc, argv))
         return appSignalUsageError();
 
+    httpRouteSetDefaultReplyHeader(kHttpServer, ver.c_str());
+    httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
