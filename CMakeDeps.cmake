@@ -54,8 +54,11 @@
 # tests/tst/testmain.cpp
 # tests/tst/testquery.cpp
 # tools/tismet/intern.h
+# tools/tismet/logo.bmp
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
+# tools/tismet/resource.h
+# tools/tismet/tismet.rc
 # tools/tismet/tsbackup.cpp
 # tools/tismet/tscarbon.cpp
 # tools/tismet/tsdata.cpp
