@@ -749,8 +749,13 @@ void DbLog::commit(uint64_t txn) {
 // Write the pages from the copies
 // Write the checkpoint record, specifying the low LSN as it's start
 void DbLog::checkpoint() {
-    if (m_phase != Checkpoint::Complete || !m_checkpointBlocks.empty())
+    if (m_phase != Checkpoint::Complete
+        || !m_checkpointBlocks.empty()
+        || (m_openFlags & fDbOpenReadOnly)
+    ) {
         return;
+    }
+
     if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Checkpoint started";
     m_checkpointStart = Clock::now();

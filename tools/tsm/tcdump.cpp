@@ -177,7 +177,13 @@ static bool dumpCmd(Cli & cli) {
     }
 
     logMsgInfo() << "Dumping " << s_opts.database << " to " << s_opts.dumpfile;
-    auto h = dbOpen(s_opts.database);
+    auto h = dbOpen(s_opts.database, 0, fDbOpenReadOnly);
+    if (!h) {
+        return cli.fail(
+            EX_DATAERR,
+            s_opts.database.str() + ": malformed database"
+        );
+    }
     DumpWriter out;
     UnsignedSet ids;
     dbFindMetrics(&ids, h, s_opts.query);
