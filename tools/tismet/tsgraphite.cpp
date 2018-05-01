@@ -564,10 +564,8 @@ RenderJson::RenderJson(RenderMultitarget * out, unsigned targetId)
 
     auto pos = m_res.body().size();
     m_bld.array();
-    if (m_targetId != 0) {
+    if (m_targetId != 0)
         m_res.body().resize(pos);
-        m_res.body().pushBack(',');
-    }
 }
 
 //===========================================================================
@@ -610,8 +608,12 @@ void RenderJson::onDbSeriesEnd(uint32_t id) {
 
 //===========================================================================
 void RenderJson::onEvalEnd() {
-    if (m_targetId == m_out.ntargets() - 1)
+    if (m_targetId == m_out.ntargets() - 1) {
         m_bld.end();
+    } else if (m_res.body().size() > (size_t) !m_targetId) {
+        m_res.body().pushBack(',');
+    }
+
     m_out.xferRest(&m_res, m_targetId);
     delete this;
 }
