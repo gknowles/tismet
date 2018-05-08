@@ -126,7 +126,7 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
-    JBuilder bld(res.body());
+    JBuilder bld(&res.body());
     bld.array();
     for (auto && name : names) {
         started = xferIfFull(res, started, reqId, name.size() + 8);
@@ -201,7 +201,7 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     HttpResponse res;
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
-    JBuilder bld(res.body());
+    JBuilder bld(&res.body());
     bld.array();
     for (auto && bid : bids) {
         if (auto name = dbGetBranchName(f, bid)) {

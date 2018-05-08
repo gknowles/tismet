@@ -147,10 +147,14 @@
 # vendor/dimapp/libs/file/pch.h
 # vendor/dimapp/libs/file/search.cpp
 # vendor/dimapp/libs/json/jbuilder.cpp
+# vendor/dimapp/libs/json/jdocument.cpp
 # vendor/dimapp/libs/json/json.abnf
 # vendor/dimapp/libs/json/json.h
-# vendor/dimapp/libs/json/jsonbaseparse.cpp
-# vendor/dimapp/libs/json/jsonbaseparse.h
+# vendor/dimapp/libs/json/jsonparse.cpp
+# vendor/dimapp/libs/json/jsonparsebaseint.h
+# vendor/dimapp/libs/json/jsonparseimplint.h
+# vendor/dimapp/libs/json/jsonparseint.h
+# vendor/dimapp/libs/json/jsonstream.cpp
 # vendor/dimapp/libs/json/pch.cpp
 # vendor/dimapp/libs/json/pch.h
 # vendor/dimapp/libs/msgpack/intern.h
