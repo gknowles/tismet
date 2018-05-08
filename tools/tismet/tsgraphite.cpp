@@ -347,7 +347,7 @@ private:
     unsigned m_targetId{0};
     HttpResponse m_res;
 
-    JBuilder m_bld{m_res.body()};
+    JBuilder m_bld{&m_res.body()};
     Duration m_interval{};
 };
 
