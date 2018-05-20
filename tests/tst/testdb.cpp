@@ -55,8 +55,8 @@ void Test::onTestDefine(Cli & cli) {
 void Test::onTestRun() {
     int line = 0;
 
-    TimePoint start = Clock::from_time_t(900'000'000);
-    string name = "this.is.metric.1";
+    auto start = timeFromUnix(900'000'000);
+    auto name = "this.is.metric.1"s;
 
     const char dat[] = "test";
     auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);

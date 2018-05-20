@@ -87,7 +87,7 @@ static bool parseTime(TimePoint * abs, Duration * rel, string_view src) {
         }
         *abs = {};
     } else {
-        *abs = Clock::from_time_t(t);
+        *abs = timeFromUnix(t);
         *rel = {};
     }
     return true;
@@ -377,7 +377,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
                 targets.emplace_back(val.value);
         } else if (param.name == "now") {
             auto t = strToInt64(value);
-            now = Clock::from_time_t(t);
+            now = timeFromUnix(t);
         } else if (param.name == "from") {
             if (!parseTime(&from, &relFrom, value)) {
                 return httpRouteReply(
@@ -595,7 +595,7 @@ bool RenderJson::onDbSample(uint32_t id, TimePoint time, double value) {
     } else {
         m_bld.value(value);
     }
-    m_bld.value(Clock::to_time_t(time));
+    m_bld.value(timeToUnix(time));
     m_bld.end();
     return true;
 }
@@ -676,8 +676,8 @@ bool RenderAlternativeStorage::onDbSeriesStart(const DbSeriesInfo & info) {
     m_bld.map(6);
     m_bld.element("name", info.name);
     m_bld.element("pathExpression", m_pathExpr);
-    m_bld.element("start", Clock::to_time_t(info.first));
-    m_bld.element("end", Clock::to_time_t(info.last));
+    m_bld.element("start", timeToUnix(info.first));
+    m_bld.element("end", timeToUnix(info.last));
     m_bld.element("step", duration_cast<seconds>(info.interval).count());
     m_bld.element("values");
     auto count = (info.last - info.first) / info.interval;

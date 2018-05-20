@@ -46,7 +46,7 @@ inline bool CarbonParser::onIntNumChar (char ch) {
 inline bool CarbonParser::onMetricEnd () {
     m_upd->name = std::string_view(m_nameStart, m_nameEnd - m_nameStart);
 
-    m_upd->time = Dim::Clock::from_time_t(m_seconds);
+    m_upd->time = Dim::timeFromUnix(m_seconds);
     m_seconds = 0;
 
     if (m_minus) {

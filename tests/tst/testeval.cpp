@@ -163,7 +163,7 @@ UnitTest & UnitTest::query(
     unsigned maxPoints
 ) {
     m_query = query;
-    m_first = Clock::from_time_t(first);
+    m_first = timeFromUnix(first);
     m_last = m_first + (seconds) (querySeconds - 1);
     m_maxPoints = maxPoints;
     return *this;
@@ -178,7 +178,7 @@ UnitTest & UnitTest::in(
 ) {
     auto & tmp = m_in.emplace_back();
     tmp.name = name;
-    tmp.first = Clock::from_time_t(start);
+    tmp.first = timeFromUnix(start);
     tmp.interval = interval;
     tmp.samples = move(samples);
     return *this;
@@ -193,7 +193,7 @@ UnitTest & UnitTest::out(
 ) {
     auto & tmp = m_out.emplace_back();
     tmp.name = name;
-    tmp.first = Clock::from_time_t(start);
+    tmp.first = timeFromUnix(start);
     tmp.interval = interval;
     tmp.samples = move(samples);
     return *this;
@@ -451,8 +451,8 @@ void Test::onTestDefine(Cli & cli) {
 void Test::onTestRun() {
     int line = 0;
 
-    TimePoint start = Clock::from_time_t(900'000'000);
-    string name = "this.is.metric.1";
+    auto start = timeFromUnix(900'000'000);
+    auto name = "this.is.metric.1"s;
 
     const char dat[] = "test";
     auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);

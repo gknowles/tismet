@@ -87,6 +87,8 @@
 # vendor/dimapp/libs/app/logfile.cpp
 # vendor/dimapp/libs/app/pch.cpp
 # vendor/dimapp/libs/app/pch.h
+# vendor/dimapp/libs/app/resource.cpp
+# vendor/dimapp/libs/app/resource.h
 # vendor/dimapp/libs/app/webadmin.cpp
 # vendor/dimapp/libs/core/algo.h
 # vendor/dimapp/libs/core/appint.h
@@ -214,6 +216,7 @@
 # vendor/dimapp/libs/win/winint.h
 # vendor/dimapp/libs/win/winiocp.cpp
 # vendor/dimapp/libs/win/winplatform.cpp
+# vendor/dimapp/libs/win/winres.cpp
 # vendor/dimapp/libs/win/winservice.cpp
 # vendor/dimapp/libs/win/winsock.cpp
 # vendor/dimapp/libs/win/winsockacc.cpp

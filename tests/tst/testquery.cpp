@@ -65,7 +65,7 @@ static Test s_test;
 
 //===========================================================================
 void Test::onTestRun() {
-    TimePoint start = Clock::from_time_t(900'000'000);
+    auto start = timeFromUnix(900'000'000);
 
     EXPECT_PARSE("a.b{,d}", "a.b{,d}");
     EXPECT_PARSE("a{,b}", "a{,b}");
