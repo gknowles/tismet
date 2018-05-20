@@ -144,6 +144,7 @@ static void app(int argc, char * argv[]) {
     consoleCatchCtrlC();
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
+    resLoadWebSite();
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
