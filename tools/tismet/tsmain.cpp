@@ -53,7 +53,7 @@ static_assert(size(s_logTypeInfo) == kLogTypes);
 void ConsoleLogger::onLog(LogType type, string_view msg) {
     auto now = Clock::now();
     Time8601Str nowStr{now, 3, timeZoneMinutes(now)};
-    scoped_lock<mutex> lk{m_mut};
+    scoped_lock lk{m_mut};
     cout << nowStr.view() << ' ';
     if (type >= size(s_logTypeInfo))
         type = kLogTypeInvalid;

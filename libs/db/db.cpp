@@ -175,13 +175,13 @@ static auto & s_perfTrunc = uperf("db.metric names truncated");
 
 //===========================================================================
 inline static DbBase * db(DbContextHandle h) {
-    shared_lock<shared_mutex> lk{s_mut};
+    shared_lock lk{s_mut};
     return s_files.find(s_contexts.find(h)->handle());
 }
 
 //===========================================================================
 inline static DbBase * db(DbHandle h) {
-    shared_lock<shared_mutex> lk{s_mut};
+    shared_lock lk{s_mut};
     return s_files.find(h);
 }
 
@@ -407,7 +407,7 @@ void DbBase::apply(uint32_t id, DbReq && req) {
         break;
     case kEraseMetric:
         if (m_data.eraseMetric(&req.name, txn, id)) {
-            scoped_lock<shared_mutex> lk{m_indexMut};
+            scoped_lock lk{m_indexMut};
             m_leaf.erase(req.name);
             m_branch.eraseBranches(req.name);
             s_perfDeleted += 1;
@@ -436,7 +436,7 @@ void DbBase::apply(uint32_t id, DbReq && req) {
 //===========================================================================
 bool DbBase::transact(uint32_t id, DbReq && req) {
     auto & bucket = m_reqBuckets[id % kRequestBuckets];
-    unique_lock<mutex> lk{bucket.mut};
+    unique_lock lk{bucket.mut};
     auto & reqs = bucket.requests[id];
     reqs.push_back(move(req));
     if (reqs.size() != 1)
@@ -462,13 +462,13 @@ bool DbBase::transact(uint32_t id, DbReq && req) {
 
 //===========================================================================
 uint64_t DbBase::acquireInstanceRef() {
-    scoped_lock<shared_mutex> lk{m_indexMut};
+    scoped_lock lk{m_indexMut};
     return m_leaf.acquireInstanceRef();
 }
 
 //===========================================================================
 void DbBase::releaseInstanceRef(uint64_t instance) {
-    scoped_lock<shared_mutex> lk{m_indexMut};
+    scoped_lock lk{m_indexMut};
     m_leaf.releaseInstanceRef(instance);
 }
 
@@ -480,13 +480,13 @@ bool DbBase::insertMetric(uint32_t * out, string_view name) {
     }
 
     {
-        shared_lock<shared_mutex> lk{m_indexMut};
+        shared_lock lk{m_indexMut};
         if (m_leaf.find(out, name))
             return false;
     }
 
     {
-        scoped_lock<shared_mutex> lk{m_indexMut};
+        scoped_lock lk{m_indexMut};
         if (m_leaf.find(out, name))
             return false;
 
@@ -526,7 +526,7 @@ void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
 
 //===========================================================================
 const char * DbBase::getMetricName(uint32_t id) const {
-    shared_lock<shared_mutex> lk{m_indexMut};
+    shared_lock lk{m_indexMut};
     return m_leaf.name(id);
 }
 
@@ -543,25 +543,25 @@ bool DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
 bool DbBase::findMetric(uint32_t * out, string_view name) const {
     if (name.size() > m_maxNameLen)
         name = name.substr(0, m_maxNameLen);
-    shared_lock<shared_mutex> lk{m_indexMut};
+    shared_lock lk{m_indexMut};
     return m_leaf.find(out, name);
 }
 
 //===========================================================================
 void DbBase::findMetrics(UnsignedSet * out, string_view pattern) const {
-    shared_lock<shared_mutex> lk{m_indexMut};
+    shared_lock lk{m_indexMut};
     m_leaf.find(out, pattern);
 }
 
 //===========================================================================
 const char * DbBase::getBranchName(uint32_t id) const {
-    shared_lock<shared_mutex> lk{m_indexMut};
+    shared_lock lk{m_indexMut};
     return m_branch.name(id);
 }
 
 //===========================================================================
 void DbBase::findBranches(UnsignedSet * out, string_view pattern) const {
-    shared_lock<shared_mutex> lk{m_indexMut};
+    shared_lock lk{m_indexMut};
     m_branch.find(out, pattern);
 }
 
@@ -611,14 +611,14 @@ DbHandle dbOpen(string_view name, size_t pageSize, DbOpenFlags flags) {
     if (!db->open(name, pageSize, flags))
         return DbHandle{};
 
-    scoped_lock<shared_mutex> lk{s_mut};
+    scoped_lock lk{s_mut};
     auto h = s_files.insert(db.release());
     return h;
 }
 
 //===========================================================================
 void dbClose(DbHandle h) {
-    unique_lock<shared_mutex> lk{s_mut};
+    unique_lock lk{s_mut};
     auto db = s_files.release(h);
     lk.unlock();
     if (db) {
@@ -671,7 +671,7 @@ bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
 DbContextHandle dbOpenContext(DbHandle f) {
     auto ptr = make_unique<DbContext>(f);
 
-    scoped_lock<shared_mutex> lk{s_mut};
+    scoped_lock lk{s_mut};
     if (!s_files.find(f)) {
         return {};
     } else {
@@ -681,7 +681,7 @@ DbContextHandle dbOpenContext(DbHandle f) {
 
 //===========================================================================
 void dbCloseContext(DbContextHandle h) {
-    scoped_lock<shared_mutex> lk{s_mut};
+    scoped_lock lk{s_mut};
     if (auto ctx = s_contexts.release(h)) {
         ctx->release_RL();
         delete ctx;

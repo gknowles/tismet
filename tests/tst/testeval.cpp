@@ -224,7 +224,7 @@ void UnitTest::onTest(DbHandle h) {
     m_done = false;
     evaluate(this, m_query, m_first, m_last, m_maxPoints);
 
-    unique_lock<mutex> lk{s_mut};
+    unique_lock lk{s_mut};
     while (!m_done)
         s_cv.wait(lk);
 
@@ -273,7 +273,7 @@ void UnitTest::onEvalError(string_view errmsg) {
 //===========================================================================
 void UnitTest::onEvalEnd() {
     {
-        scoped_lock<mutex> lk{s_mut};
+        scoped_lock lk{s_mut};
         m_done = true;
     }
     s_cv.notify_one();

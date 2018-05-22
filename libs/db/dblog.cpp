@@ -411,7 +411,7 @@ void DbLog::close() {
         checkpoint();
         flushWriteBuffer();
     }
-    unique_lock<mutex> lk{m_bufMut};
+    unique_lock lk{m_bufMut};
     for (;;) {
         if (m_phase == Checkpoint::Complete) {
             if (m_emptyBufs == m_numBufs)
@@ -799,7 +799,7 @@ void DbLog::checkpointStableCommit() {
 
     auto lastPgno = uint32_t{0};
     {
-        unique_lock<mutex> lk{m_bufMut};
+        unique_lock lk{m_bufMut};
         auto lastTxn = m_pages.back().firstLsn;
         auto before = m_pages.size();
         for (;;) {
@@ -873,7 +873,7 @@ void DbLog::queueTask(
 ) {
     if (!hq)
         hq = taskComputeQueue();
-    unique_lock<mutex> lk{m_bufMut};
+    unique_lock lk{m_bufMut};
     if (m_stableLsn >= waitLsn) {
         taskPush(hq, task);
     } else {
@@ -884,7 +884,7 @@ void DbLog::queueTask(
 
 //===========================================================================
 void DbLog::flushWriteBuffer() {
-    unique_lock<mutex> lk{m_bufMut};
+    unique_lock lk{m_bufMut};
     if (m_bufStates[m_curBuf] != Buffer::PartialDirty)
         return;
 
@@ -988,7 +988,7 @@ void DbLog::onFileWrite(
     LogPage lp;
     unpack(&lp, rawbuf);
     PageInfo pi = { lp.pgno, lp.firstLsn, lp.numLogs };
-    unique_lock<mutex> lk{m_bufMut};
+    unique_lock lk{m_bufMut};
     if (lp.type == kPageTypeFree) {
         m_freePages.insert(lp.pgno);
         s_perfFreePages += 1;
@@ -1130,7 +1130,7 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
     assert(bytes < m_pageSize - kMaxHdrLen);
     assert(bytes == size(log));
 
-    unique_lock<mutex> lk{m_bufMut};
+    unique_lock lk{m_bufMut};
     while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
         m_bufAvailCv.wait(lk);
     auto lsn = ++m_lastLsn;

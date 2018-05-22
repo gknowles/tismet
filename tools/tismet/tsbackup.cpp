@@ -82,7 +82,7 @@ void BackupProgress::buildResponse(
 void BackupProgress::replyStatus(unsigned reqId, bool immediate) {
     BackupProgress progress;
     {
-        scoped_lock<mutex> lk{m_mut};
+        scoped_lock lk{m_mut};
         if (!immediate && m_mode != kRunStopped) {
             m_reqIds.insert(reqId);
             return;
@@ -108,7 +108,7 @@ void BackupProgress::copy_LK(BackupProgress * out) const {
 bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
     BackupProgress progress;
     {
-        scoped_lock<mutex> lk{m_mut};
+        scoped_lock lk{m_mut};
         m_mode = mode;
         m_info = info;
         m_time = Clock::now();

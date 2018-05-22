@@ -160,7 +160,7 @@ static shared_ptr<SourceNode> addSource(
 
 //===========================================================================
 static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
-    shared_lock<shared_mutex> lk{s_mut};
+    shared_lock lk{s_mut};
     if (auto si = s_sources.find(srcv); si != s_sources.end())
         return addSource(rn, si->second);
     lk.unlock();
@@ -175,7 +175,7 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
         auto sn = make_shared<DbDataNode>();
         sn->init(src);
         {
-            scoped_lock<shared_mutex> lk{s_mut};
+            scoped_lock lk{s_mut};
             s_sources[src.get()] = sn;
         }
         return addSource(rn, sn);
@@ -197,7 +197,7 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
         return {};
     }
     {
-        scoped_lock<shared_mutex> lk{s_mut};
+        scoped_lock lk{s_mut};
         s_sources[src.get()] = fnode;
     }
     vector<FuncArg> fargs;
@@ -283,7 +283,7 @@ void SourceNode::init(shared_ptr<char[]> name) {
 
 //===========================================================================
 void SourceNode::addOutput(const ResultRange & rr) {
-    unique_lock<mutex> lk{m_outMut};
+    unique_lock lk{m_outMut};
     m_pendingOutputs.push_back(rr);
     if (m_pendingOutputs.size() != 1 || !m_outputs.empty())
         return;
@@ -295,7 +295,7 @@ void SourceNode::addOutput(const ResultRange & rr) {
 //===========================================================================
 void SourceNode::removeOutput(ResultNode * rn) {
     auto pred = [=](auto & a) { return a.rn == rn; };
-    scoped_lock<mutex> lk{m_outMut};
+    scoped_lock lk{m_outMut};
     if (!m_outputs.empty())
         erase_unordered_if(m_outputs, pred);
     if (!m_outputs.empty())
@@ -309,7 +309,7 @@ bool SourceNode::outputRange(ResultRange * out) {
     out->pretime = {};
     out->presamples = 0;
 
-    scoped_lock<mutex> lk{m_outMut};
+    scoped_lock lk{m_outMut};
     if (m_outputs.empty()) {
         if (m_pendingOutputs.empty())
             return false;
@@ -380,7 +380,7 @@ static shared_ptr<SampleList> consolidateAvg(
 SourceNode::OutputResultReturn SourceNode::outputResult(
     const ResultInfo & info
 ) {
-    scoped_lock<mutex> lk{m_outMut};
+    scoped_lock lk{m_outMut};
     if (m_outputs.empty())
         return {false, !m_pendingOutputs.empty()};
 
@@ -559,7 +559,7 @@ void ResultNode::stopSources() {
 
 //===========================================================================
 void ResultNode::onResult(const ResultInfo & info) {
-    scoped_lock<mutex> lk{m_resMut};
+    scoped_lock lk{m_resMut};
     m_results.push_back(info);
     if (m_results.size() == 1) {
         incRef();
@@ -601,7 +601,7 @@ void FuncNode::onSourceStart() {
 
 //===========================================================================
 void FuncNode::onTask() {
-    unique_lock<mutex> lk{m_resMut};
+    unique_lock lk{m_resMut};
     decRef();
     assert(!m_results.empty());
     auto stop = false;
@@ -651,7 +651,7 @@ void FuncNode::onFuncAdjustRange(
 
 //===========================================================================
 Evaluate::Evaluate() {
-    unique_lock<shared_mutex> lk{s_mut};
+    unique_lock lk{s_mut};
     s_execs.link(this);
 }
 
@@ -659,13 +659,13 @@ Evaluate::Evaluate() {
 Evaluate::~Evaluate() {
     dbCloseContext(m_ctx);
 
-    unique_lock<shared_mutex> lk{s_mut};
+    unique_lock lk{s_mut};
     s_execs.unlink(this);
 }
 
 //===========================================================================
 void Evaluate::onTask() {
-    unique_lock<mutex> lk{m_resMut};
+    unique_lock lk{m_resMut};
     decRef();
     assert(!m_results.empty());
     for (;;) {
@@ -741,7 +741,7 @@ static ShutdownNotify s_cleanup;
 
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
-    shared_lock<shared_mutex> lk{s_mut};
+    shared_lock lk{s_mut};
     assert(s_execs.empty());
 }
 

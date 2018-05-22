@@ -459,7 +459,7 @@ void RenderMultitarget::xferIfFull(
     tmp.swap(*res);
 
     {
-        unique_lock<mutex> lk{m_mut};
+        unique_lock lk{m_mut};
         if (pos != m_pos) {
             assert(pos > m_pos);
             if (!m_error)
@@ -475,7 +475,7 @@ void RenderMultitarget::xferRest(HttpResponse * res, unsigned pos) {
     HttpResponse tmp;
     tmp.swap(*res);
 
-    unique_lock<mutex> lk{m_mut};
+    unique_lock lk{m_mut};
     if (pos != m_pos) {
         assert(pos > m_pos);
         m_targets[pos].data.append(move(tmp.body()));
@@ -510,7 +510,7 @@ void RenderMultitarget::xferRest(HttpResponse * res, unsigned pos) {
 
 //===========================================================================
 void RenderMultitarget::xferError(unsigned pos, string_view errmsg) {
-    unique_lock<mutex> lk{m_mut};
+    unique_lock lk{m_mut};
     if (!m_error) {
         if (m_started) {
             httpRouteInternalError(m_reqId);

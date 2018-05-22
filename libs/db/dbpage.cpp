@@ -248,7 +248,7 @@ void DbPage::close() {
 
 //===========================================================================
 void DbPage::growToFit(uint32_t pgno) {
-    unique_lock<mutex> lk{m_workMut};
+    unique_lock lk{m_workMut};
     if (pgno < m_pages.size())
         return;
     assert(pgno == m_pages.size());
@@ -268,7 +268,7 @@ Duration DbPage::onTimer(TimePoint now) {
     size_t count = m_pageMaxAge / m_pageScanInterval;
 
     {
-        unique_lock<mutex> lk{m_workMut};
+        unique_lock lk{m_workMut};
         if (m_flushLsn)
             return kTimerInfinite;
         m_stableLsns.push_back(0);
@@ -354,7 +354,7 @@ void DbPage::flushStalePages() {
 
 //===========================================================================
 void DbPage::onLogStable(uint64_t lsn) {
-    unique_lock<mutex> lk{m_workMut};
+    unique_lock lk{m_workMut};
     m_stableLsns.back() = lsn;
     m_stableLsn = lsn;
 }
@@ -410,7 +410,7 @@ void DbPage::onLogCheckpointStablePages() {
     if (!fileFlush(m_fdata))
         logMsgFatal() << "Checkpointing failed.";
 
-    unique_lock<mutex> lk{m_workMut};
+    unique_lock lk{m_workMut};
     for (auto && pgno_hdr : m_oldPages) {
         assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
         auto wpno = m_vwork.pgno(pgno_hdr.second);
@@ -483,7 +483,7 @@ void * DbPage::onLogGetUpdatePtr(
     uint16_t localTxn
 ) {
     assert(lsn);
-    unique_lock<mutex> lk{m_workMut};
+    unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto hdr = m_pages[pgno];
     if (!hdr) {
@@ -503,7 +503,7 @@ void * DbPage::onLogGetUpdatePtr(
 
 //===========================================================================
 const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
-    unique_lock<mutex> lk{m_workMut};
+    unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     if (auto hdr = m_pages[pgno])
         return hdr;
