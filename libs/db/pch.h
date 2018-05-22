@@ -20,6 +20,7 @@
 
 // Standard headers
 #include <cassert>
+#include <cerrno>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
