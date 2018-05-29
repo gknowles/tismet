@@ -478,6 +478,9 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
     auto rawbuf = partialPtr(0);
+    LogPage lp;
+    PageInfo * pi;
+    uint32_t checksum;
     // load info for each page
     for (uint32_t i = 1; i < m_numPages; ++i) {
         fileReadWait(rawbuf, m_pageSize, m_flog, i * m_pageSize);
@@ -486,23 +489,36 @@ bool DbLog::loadPages() {
         case kPageTypeInvalid:
             i = (uint32_t) m_numPages;
             break;
-        case kPageTypeLog:
         case kPageTypeLogV1:
-            {
-                LogPage lp;
-                unpack(&lp, rawbuf);
-                auto & pi = m_pages.emplace_back();
-                pi.pgno = lp.pgno;
-                pi.firstLsn = lp.firstLsn;
-                pi.numLogs = lp.numLogs;
+            unpack(&lp, rawbuf);
+            pi = &m_pages.emplace_back();
+            pi->pgno = lp.pgno;
+            pi->firstLsn = lp.firstLsn;
+            pi->numLogs = lp.numLogs;
+            break;
+        case kPageTypeLog:
+            unpack(&lp, rawbuf);
+            checksum = lp.checksum;
+            lp.checksum = 0;
+            pack(rawbuf, lp);
+            lp.checksum = hash_crc32c(rawbuf, m_pageSize);
+            if (checksum != lp.checksum) {
+                logMsgError() << "Invalid checksum on page #"
+                    << i << " of " << filePath(m_flog);
+                goto MAKE_FREE;
             }
+            pi = &m_pages.emplace_back();
+            pi->pgno = lp.pgno;
+            pi->firstLsn = lp.firstLsn;
+            pi->numLogs = lp.numLogs;
             break;
         default:
             logMsgError() << "Invalid page type(" << mp->type << ") on page #"
                 << i << " of " << filePath(m_flog);
+        MAKE_FREE:
             mp->type = kPageTypeFree;
             mp->pgno = i;
-            [[fallthrough]]; // return false;
+            [[fallthrough]];
         case kPageTypeFree:
             m_freePages.insert(mp->pgno);
             s_perfFreePages += 1;
