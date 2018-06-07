@@ -234,11 +234,10 @@ static void noSamples(
 ***/
 
 //===========================================================================
-// static
-size_t DbData::queryPageSize(FileHandle f) {
+inline static size_t queryPageSize(FileHandle f) {
     if (!f)
         return 0;
-    ZeroPage zp;
+    DbData::ZeroPage zp;
     if (auto bytes = fileReadWait(&zp, sizeof(zp), f, 0); bytes != sizeof(zp))
         return 0;
     if (zp.hdr.type != zp.s_pageType)

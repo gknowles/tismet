@@ -20,9 +20,6 @@ constexpr auto kDirtyWriteBufferTimeout = 500ms;
 const unsigned kLogWriteBuffers = 10;
 static_assert(kLogWriteBuffers > 1);
 
-const unsigned kDefaultMaxCheckpointData = 1'048'576; // 1 MiB
-const Duration kDefaultMaxCheckpointInterval = 1h;
-
 
 /****************************************************************************
 *
@@ -39,9 +36,9 @@ enum class DbLog::Buffer : int {
 };
 
 enum class DbLog::Checkpoint : int {
+    StartRecovery,
     Complete,
     WaitForPageFlush,
-    WaitForTxnCommits,
     WaitForStablePageFlush,
     WaitForCheckpointCommit,
     WaitForTruncateCommit,
@@ -271,7 +268,6 @@ DbLog::DbLog(IApplyNotify * data, IPageNotify * page)
     , m_maxCheckpointInterval{kDefaultMaxCheckpointInterval}
     , m_checkpointTimer([&](auto){ checkpoint(); return kTimerInfinite; })
     , m_checkpointPagesTask([&]{ checkpointPages(); })
-    , m_checkpointStablePagesTask([&]{ checkpointStablePages(); })
     , m_checkpointStableCommitTask([&]{ checkpointStableCommit(); })
     , m_flushTimer([&](auto){ flushWriteBuffer(); return kTimerInfinite; })
 {}
@@ -299,49 +295,64 @@ char * DbLog::partialPtr(size_t ibuf) {
 }
 
 //===========================================================================
-bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
-    assert(!m_closing && !m_flog);
-    assert(pageSize == pow2Ceil(pageSize));
-    assert(!pageSize || pageSize >= kMinPageSize);
-
-    m_openFlags = flags;
-
+static FileHandle openDbFile(
+    string_view logfile,
+    DbOpenFlags flags,
+    bool align
+) {
     auto oflags = File::fDenyWrite;
-    if (2 * pageSize >= envMemoryConfig().pageSize)
+    if (align)
         oflags |= File::fAligned;
     if (flags & fDbOpenReadOnly) {
         oflags |= File::fReadOnly;
     } else {
         oflags |= File::fReadWrite;
     }
-    if (flags & fDbOpenCreat) {
-        assert(pageSize);
+    if (flags & fDbOpenCreat)
         oflags |= File::fCreat;
-    }
     if (flags & fDbOpenTrunc)
         oflags |= File::fTrunc;
     if (flags & fDbOpenExcl)
         oflags |= File::fExcl;
-    m_flog = fileOpen(logfile, oflags);
-    if (!m_flog) {
+    auto f = fileOpen(logfile, oflags);
+    if (!f)
         logMsgError() << "Open failed, " << logfile;
+    return f;
+}
+
+//===========================================================================
+bool DbLog::open(string_view logfile, size_t dataPageSize, DbOpenFlags flags) {
+    assert(!m_closing && !m_flog);
+    assert(dataPageSize == pow2Ceil(dataPageSize));
+    assert(!dataPageSize || dataPageSize >= kMinPageSize);
+
+    m_openFlags = flags;
+    m_flog = openDbFile(logfile, flags, true);
+    if (!m_flog)
         return false;
-    }
+
+    auto fps = filePageSize(m_flog);
     auto len = fileSize(m_flog);
     ZeroPage zp{};
-    if (len) {
-        auto bytes = 2 * max(pageSize, (size_t) kMinPageSize);
-        auto rawbuf = aligned_alloc(bytes, bytes);
-        fileReadWait(rawbuf, bytes, m_flog, 0);
+    if (!len) {
+        if (!dataPageSize)
+            dataPageSize = kDefaultPageSize;
+    } else {
+        auto rawbuf = aligned_alloc(fps, fps);
+        fileReadWait(rawbuf, fps, m_flog, 0);
         memcpy(&zp, rawbuf, sizeof(zp));
-        if (!pageSize) {
-            if (~flags & fDbOpenCreat)
-                pageSize = zp.pageSize / 2;
-        }
+        if (!dataPageSize)
+            dataPageSize = zp.pageSize / 2;
         aligned_free(rawbuf);
     }
+    if (dataPageSize < fps) {
+        // Page size is smaller than minimum required for aligned access.
+        // Reopen unaligned.
+        fileClose(m_flog);
+        m_flog = openDbFile(logfile, flags, false);
+    }
 
-    m_pageSize = 2 * pageSize;
+    m_pageSize = 2 * dataPageSize;
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::Empty);
     m_emptyBufs = m_numBufs;
@@ -360,6 +371,9 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
     m_bufPos = m_pageSize;
 
     if (!len) {
+        m_phase = Checkpoint::Complete;
+        m_newFiles = true;
+
         zp.hdr.type = (DbPageType) kPageTypeZero;
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
@@ -374,7 +388,8 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
         s_perfPages += (unsigned) m_numPages;
         m_lastLsn = 0;
         m_lastLocalTxn = 0;
-        logCommitCheckpoint(m_lastLsn + 1);
+        m_checkpointLsn = m_lastLsn + 1;
+        logCommitCheckpoint(m_checkpointLsn);
         return true;
     }
 
@@ -389,9 +404,6 @@ bool DbLog::open(string_view logfile, size_t pageSize, DbOpenFlags flags) {
 
     m_numPages = (len + m_pageSize - 1) / m_pageSize;
     s_perfPages += (unsigned) m_numPages;
-    if (!recover())
-        return false;
-    m_checkpointStart = Clock::now();
     return true;
 }
 
@@ -401,7 +413,9 @@ void DbLog::close() {
         return;
 
     m_closing = true;
-    if (m_openFlags & fDbOpenReadOnly) {
+    if (m_phase == Checkpoint::StartRecovery
+        || (m_openFlags & fDbOpenReadOnly)
+    ) {
         fileClose(m_flog);
         m_flog = {};
         return;
@@ -434,7 +448,7 @@ void DbLog::close() {
 }
 
 //===========================================================================
-void DbLog::configure(const DbConfig & conf) {
+DbConfig DbLog::configure(const DbConfig & conf) {
     auto maxData = conf.checkpointMaxData
         ? conf.checkpointMaxData
         : m_maxCheckpointData;
@@ -451,6 +465,11 @@ void DbLog::configure(const DbConfig & conf) {
     m_maxCheckpointData = maxData;
     m_maxCheckpointInterval = maxInterval;
     timerUpdate(&m_checkpointTimer, maxInterval, true);
+
+    auto tmp = conf;
+    tmp.checkpointMaxData = maxData;
+    tmp.checkpointMaxInterval = maxInterval;
+    return tmp;
 }
 
 //===========================================================================
@@ -600,7 +619,13 @@ void DbLog::applyAll(AnalyzeData & data) {
 }
 
 //===========================================================================
-bool DbLog::recover() {
+bool DbLog::recover(RecoverFlags flags) {
+    if (m_phase != Checkpoint::StartRecovery)
+        return true;
+
+    m_phase = Checkpoint::Complete;
+    m_checkpointStart = Clock::now();
+
     if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Load transaction log";
     if (!loadPages())
@@ -615,29 +640,30 @@ bool DbLog::recover() {
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
-    if (~m_openFlags & fDbOpenIncludeBeforeCheckpoint) {
+    if (~flags & fRecoverBeforeCheckpoint) {
         applyAll(data);
         if (!data.checkpoint)
             logMsgFatal() << "Invalid .tsl file, no checkpoint found";
         m_checkpointLsn = data.checkpoint;
     }
 
-    for (auto && kv : data.txns)
-        data.incompleteTxnLsns.push_back(kv.second);
-    sort(
-        data.incompleteTxnLsns.begin(),
-        data.incompleteTxnLsns.end(),
-        [](auto & a, auto & b) { return a > b; }
-    );
-    auto i = lower_bound(
-        data.incompleteTxnLsns.begin(),
-        data.incompleteTxnLsns.end(),
-        data.checkpoint
-    );
-    data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
-
-    if (m_openFlags & fDbOpenIncludeIncompleteTxns)
+    if (flags & fRecoverIncompleteTxns) {
         data.incompleteTxnLsns.clear();
+    } else {
+        for (auto && kv : data.txns)
+            data.incompleteTxnLsns.push_back(kv.second);
+        sort(
+            data.incompleteTxnLsns.begin(),
+            data.incompleteTxnLsns.end(),
+            [](auto & a, auto & b) { return a > b; }
+        );
+        auto i = lower_bound(
+            data.incompleteTxnLsns.begin(),
+            data.incompleteTxnLsns.end(),
+            data.checkpoint
+        );
+        data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
+    }
 
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
@@ -645,7 +671,7 @@ bool DbLog::recover() {
         logMsgInfo() << "Recover database";
     data.analyze = false;
     applyAll(data);
-    if (~m_openFlags & fDbOpenIncludeIncompleteTxns) {
+    if (~flags & fRecoverIncompleteTxns) {
         assert(data.incompleteTxnLsns.empty());
         assert(data.activeTxns.empty());
     }
@@ -653,7 +679,7 @@ bool DbLog::recover() {
     auto & back = m_pages.back();
     m_stableLsn = back.firstLsn + back.numLogs - 1;
     m_lastLsn = m_stableLsn;
-    m_page->onLogStable(m_stableLsn);
+    m_page->onLogStable(m_stableLsn, 0);
     return true;
 }
 
@@ -756,14 +782,9 @@ void DbLog::commit(uint64_t txn) {
 }
 
 //===========================================================================
-// How checkpointing works
-//
-// Walk all the dirty pages
-//  - finds the LSN range of the pages
-//  - flushes ones that are stable, makes copies of the rest
-// Wait for the high LSN of the pages to become stable
-// Write the pages from the copies
-// Write the checkpoint record, specifying the low LSN as it's start
+// Checkpointing places a marker in the log to indicate the start of entries
+// that are needed to fully recover the database. Any entries before that point
+// will subsequently be skipped and/or discarded.
 void DbLog::checkpoint() {
     if (m_phase != Checkpoint::Complete
         || !m_checkpointBlocks.empty()
@@ -777,8 +798,6 @@ void DbLog::checkpoint() {
     m_checkpointStart = Clock::now();
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
-    if (!fileFlush(m_flog))
-        logMsgFatal() << "Checkpointing failed.";
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -787,20 +806,15 @@ void DbLog::checkpoint() {
 //===========================================================================
 void DbLog::checkpointPages() {
     assert(m_phase == Checkpoint::WaitForPageFlush);
-    m_checkpointLsn = m_lastLsn;
-    m_page->onLogCheckpointPages();
-    m_phase = Checkpoint::WaitForTxnCommits;
-    if (m_checkpointLsn > m_stableLsn) {
-        queueTask(&m_checkpointStablePagesTask, m_checkpointLsn);
-    } else {
-        checkpointStablePages();
+    if (!fileFlush(m_flog))
+        logMsgFatal() << "Checkpointing failed.";
+    auto nextLsn = m_page->onLogCheckpointPages(m_checkpointLsn);
+    if (nextLsn == m_checkpointLsn) {
+        m_phase = Checkpoint::WaitForTruncateCommit;
+        checkpointTruncateCommit();
+        return;
     }
-}
-
-//===========================================================================
-void DbLog::checkpointStablePages() {
-    assert(m_phase == Checkpoint::WaitForTxnCommits);
-    m_page->onLogCheckpointStablePages();
+    m_checkpointLsn = nextLsn;
     logCommitCheckpoint(m_checkpointLsn);
     m_phase = Checkpoint::WaitForCheckpointCommit;
     queueTask(&m_checkpointStableCommitTask, m_lastLsn);
@@ -929,25 +943,25 @@ void DbLog::flushWriteBuffer() {
 }
 
 //===========================================================================
-void DbLog::updatePages_LK(const PageInfo & pi, bool fullWrite) {
+void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
     auto i = lower_bound(m_pages.begin(), m_pages.end(), pi);
     assert(i != m_pages.end() && i->firstLsn == pi.firstLsn);
     i->numLogs = pi.numLogs;
 
     auto base = i + 1;
-    for (auto && lsn_txns : i->commitTxns) {
+    for (auto && [lsn, txns] : i->commitTxns) {
         base -= 1;
-        assert(base->firstLsn == lsn_txns.first);
-        if (lsn_txns.second) {
-            assert(base->beginTxns >= lsn_txns.second);
-            base->beginTxns -= lsn_txns.second;
-            s_perfVolatileTxns -= lsn_txns.second;
+        assert(base->firstLsn == lsn);
+        if (txns) {
+            assert(base->activeTxns >= txns);
+            base->activeTxns -= txns;
+            s_perfVolatileTxns -= txns;
         }
     }
     i->commitTxns.clear();
     // Mark page as incomplete after a partial write by putting an empty
     // placeholder.
-    if (!fullWrite)
+    if (!fullPageWrite)
         i->commitTxns.emplace_back(pi.firstLsn, 0);
 
     if (base->firstLsn > m_stableLsn + 1) {
@@ -958,7 +972,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullWrite) {
     uint64_t last = 0;
     for (i = base; i != m_pages.end(); ++i) {
         auto & npi = *i;
-        if (npi.beginTxns || !npi.numLogs)
+        if (npi.activeTxns || !npi.numLogs)
             break;
         if (!npi.commitTxns.empty()) {
             if (npi.commitTxns.size() != 1 || npi.commitTxns[0].second)
@@ -979,7 +993,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullWrite) {
     assert(last > m_stableLsn);
 
     m_stableLsn = last;
-    m_page->onLogStable(m_stableLsn);
+    m_page->onLogStable(m_stableLsn, m_pageSize * (i - base));
     while (!m_lsnTasks.empty()) {
         auto & ti = m_lsnTasks.top();
         if (m_stableLsn < ti.waitLsn)
@@ -1014,10 +1028,10 @@ void DbLog::onFileWrite(
         return;
     }
 
-    bool fullWrite = rawbuf >= m_buffers
+    bool fullPageWrite = rawbuf >= m_buffers
         && rawbuf < m_buffers + m_numBufs * m_pageSize;
-    updatePages_LK(pi, fullWrite);
-    if (fullWrite) {
+    updatePages_LK(pi, fullPageWrite);
+    if (fullPageWrite) {
         assert(data.size() == m_pageSize);
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers) / m_pageSize;
@@ -1117,7 +1131,7 @@ void DbLog::prepareBuffer_LK(
 
 //===========================================================================
 void DbLog::countBeginTxn_LK() {
-    m_pages.back().beginTxns += 1;
+    m_pages.back().activeTxns += 1;
 }
 
 //===========================================================================

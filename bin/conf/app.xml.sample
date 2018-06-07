@@ -11,8 +11,6 @@ Tismet Configuration File.
   <Port value="41000"/>
   <EnableGui value="1"/>
 
-  <WorkMemoryMaxAge value="5min"/>
-  <WorkMemoryScanInterval value="1min"/>
   <CheckpointMaxData value="1G"/>
   <CheckpointMaxInterval value="1h"/>
   <MetricExpirationCheckInterval value="0h"/>

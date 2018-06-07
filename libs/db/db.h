@@ -29,15 +29,6 @@ enum DbOpenFlags : unsigned {
     // Log database status info messages
     fDbOpenVerbose = 0x08,
     fDbOpenReadOnly = 0x10,
-
-    // Redo incomplete transactions during recovery, since they are incomplete
-    // this would normally the database in a corrupt state. Used by wal dump
-    // tool, which completely replaces the normal database apply logic.
-    fDbOpenIncludeIncompleteTxns = 0x20,
-
-    // Include log records from before the last checkpoint, also only for wal
-    // dump tool.
-    fDbOpenIncludeBeforeCheckpoint = 0x40,
 };
 DbHandle dbOpen(
     std::string_view path,

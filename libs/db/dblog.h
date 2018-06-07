@@ -18,6 +18,16 @@
 
 /****************************************************************************
 *
+*   Tuning parameters
+*
+***/
+
+const unsigned kDefaultMaxCheckpointData = 1'048'576; // 1MiB
+const Dim::Duration kDefaultMaxCheckpointInterval = (std::chrono::hours) 1;
+
+
+/****************************************************************************
+*
 *   DbLog
 *
 ***/
@@ -47,7 +57,7 @@ public:
         uint64_t firstLsn;
         uint16_t numLogs;
 
-        unsigned beginTxns;
+        unsigned activeTxns;
         std::vector<std::pair<
             uint64_t,   // firstLsn of page
             unsigned    // number of txns from that page committed
@@ -58,12 +68,24 @@ public:
     DbLog(IApplyNotify * data, IPageNotify * page);
     ~DbLog();
 
-    // pageSize must match the size saved in the file or be zero. If it is
+    // pageSize must match the size saved in the data file or be zero. If it is
     // zero fDbOpenCreat must not be specified.
     bool open(std::string_view file, size_t pageSize, DbOpenFlags flags);
 
+    enum RecoverFlags : unsigned {
+        // Redo incomplete transactions during recovery, since they are incomplete
+        // this would normally the database in a corrupt state. Used by wal dump
+        // tool, which completely replaces the normal database apply logic.
+        fRecoverIncompleteTxns = 0x01,
+
+        // Include log records from before the last checkpoint, also only for wal
+        // dump tool.
+        fRecoverBeforeCheckpoint = 0x02,
+    };
+    bool recover(RecoverFlags flags = {});
+
     void close();
-    void configure(const DbConfig & conf);
+    DbConfig configure(const DbConfig & conf);
 
     // Returns transaction id (localTxn + LSN)
     uint64_t beginTxn();
@@ -81,7 +103,11 @@ public:
         Dim::TaskQueueHandle hq = {} // defaults to compute queue
     );
 
+    size_t dataPageSize() const { return m_pageSize / 2; }
+    size_t logPageSize() const { return m_pageSize; }
+
     Dim::FileHandle logFile() const { return m_flog; }
+    bool newFiles() const { return m_newFiles; }
 
 private:
     char * bufPtr(size_t ibuf);
@@ -95,7 +121,6 @@ private:
     ) override;
 
     bool loadPages();
-    bool recover();
 
     void logCommitCheckpoint(uint64_t startLsn);
     uint64_t logBeginTxn(uint16_t localTxn);
@@ -111,9 +136,8 @@ private:
     );
     void countBeginTxn_LK();
     void countCommitTxn_LK(uint64_t txn);
-    void updatePages_LK(const PageInfo & pi, bool partialWrite);
+    void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
     void checkpointPages();
-    void checkpointStablePages();
     void checkpointStableCommit();
     void checkpointTruncateCommit();
     void checkpointWaitForNext();
@@ -137,6 +161,7 @@ private:
     IPageNotify * m_page;
     Dim::FileHandle m_flog;
     bool m_closing{false};
+    bool m_newFiles{false}; // did the open create new data files?
     DbOpenFlags m_openFlags{};
 
     // last assigned
@@ -153,9 +178,11 @@ private:
     Dim::Duration m_maxCheckpointInterval;
     Dim::TimerProxy m_checkpointTimer;
     Dim::TaskProxy m_checkpointPagesTask;
-    Dim::TaskProxy m_checkpointStablePagesTask;
     Dim::TaskProxy m_checkpointStableCommitTask;
     Checkpoint m_phase{};
+
+    // Checkpoint blocks prevent checkpoints from occurring so that backups
+    // can be done safely.
     std::vector<IDbProgressNotify *> m_checkpointBlocks;
 
     // last started (perhaps unfinished) checkpoint
@@ -210,20 +237,40 @@ class DbLog::IPageNotify {
 public:
     virtual ~IPageNotify() = default;
 
+    // Returns content of page that will be updated in place by applying the
+    // action already recorded at the specified LSN. The pgno and lsn fields of
+    // the buffer must be set before returning.
     virtual void * onLogGetUpdatePtr(
         uint32_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
+
+    // Similar to onLogGetUpdatePtr, except that if the page has already been
+    // updated no action is taken and null is returned. A page is already
+    // updated if the on page LSN is greater or equal to the LSN of the update.
     virtual void * onLogGetRedoPtr(
         uint32_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
 
-    virtual void onLogStable(uint64_t lsn) {}
-    virtual void onLogCheckpointPages() {}
-    virtual void onLogCheckpointStablePages() {}
+    // Reports the stable LSN and the additional bytes of WAL that were written
+    // to get there. A LSN is stable when all transactions that include logs at
+    // or earlier than it have been either rolled back or been committed and
+    // have had all of their logs (including any after this LSN!) written to
+    // stable storage.
+    //
+    // The byte count combined with max checkpoint bytes provides a target for
+    // the page eviction algorithm.
+    virtual void onLogStable(uint64_t lsn, size_t bytes) {}
+
+    // The stable LSN is passed in, and the first stable LSN that still has
+    // volatile (not yet persisted to stable storage) data pages associated
+    // with it is returned.
+    //
+    // Upon return, all WAL prior to the returned LSN may be purged.
+    virtual uint64_t onLogCheckpointPages(uint64_t lsn) { return lsn; }
 };
 
 

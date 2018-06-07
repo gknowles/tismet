@@ -11,7 +11,11 @@
 *
 ***/
 
+const unsigned kDefaultPageSize = 4096;
+static_assert(kDefaultPageSize == Dim::pow2Ceil(kDefaultPageSize));
+
 const unsigned kMinPageSize = 128;
+static_assert(kDefaultPageSize % kMinPageSize == 0);
 
 
 /****************************************************************************
@@ -67,7 +71,7 @@ public:
 *
 ***/
 
-class DbPage : public DbLog::IPageNotify, Dim::ITimerNotify {
+class DbPage : public DbLog::IPageNotify {
 public:
     DbPage();
     ~DbPage();
@@ -79,7 +83,7 @@ public:
         DbOpenFlags flags
     );
     void close();
-    void configure(const DbConfig & conf);
+    DbConfig configure(const DbConfig & conf);
     void growToFit(uint32_t pgno);
 
     const void * rptr(uint64_t lsn, uint32_t pgno) const;
@@ -87,45 +91,80 @@ public:
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
 
-    // true if page scan previously enabled
-    bool enablePageScan(bool enable);
-
     Dim::FileHandle dataFile() const { return m_fdata; }
     bool newFiles() const { return m_newFiles; }
 
 private:
-    bool openData(std::string_view datafile, size_t pageSize);
+    bool openData(std::string_view datafile);
     bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
+    void freePage_LK(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
+    void * dirtyPage_LK(DbPageHeader * hdr, uint32_t pgno, uint64_t lsn);
 
-    void * onLogGetUpdatePtr(uint32_t pgno, uint64_t lsn, uint16_t txn) override;
+    // Inherited by DbLog::IPageNotify
+    void * onLogGetUpdatePtr(
+        uint32_t pgno,
+        uint64_t lsn,
+        uint16_t txn
+    ) override;
     void * onLogGetRedoPtr(uint32_t pgno, uint64_t lsn, uint16_t txn) override;
-    void onLogStable(uint64_t lsn) override;
-    void onLogCheckpointPages() override;
-    void onLogCheckpointStablePages() override;
+    void onLogStable(uint64_t lsn, size_t bytes) override;
+    uint64_t onLogCheckpointPages(uint64_t lsn) override;
 
-    Dim::Duration onTimer(Dim::TimePoint now) override;
-    void queuePageScan();
-    void flushStalePages();
+    Dim::Duration untilNextSave_LK();
+    void queueSaveWork_LK();
+    void removeWalPages_LK(uint64_t saveLsn);
+    void saveOldPages_LK();
+    Dim::Duration onSaveTimer(Dim::TimePoint now);
+
+    // Variables determined at open
+    size_t m_pageSize{0};
+    DbOpenFlags m_flags{};
+    bool m_newFiles{false}; // did the open create new data files?
+
+    // Configuration settings
+    Dim::Duration m_maxDirtyAge{};
+    size_t m_maxDirtyData{};
+
 
     mutable std::mutex m_workMut;
 
-    // One entry for every data page, may point to either a data or work view
+    // One entry for every data page, null for unmodified pages, otherwise
+    // points to dirty copy in work view
     std::vector<DbPageHeader *> m_pages;
-    std::unordered_map<uint32_t, DbPageHeader *> m_oldPages;
 
-    size_t m_pageSize{0};
-    DbOpenFlags m_flags{};
-    bool m_newFiles{false};
+    struct DirtyPageInfo {
+        DbPageHeader * hdr;
+        Dim::TimePoint time;
+        uint64_t lsn;
+    };
+    std::deque<DirtyPageInfo> m_dirtyPages;
 
-    bool m_pageScanEnabled{true};
-    Dim::Duration m_pageMaxAge{};
-    Dim::Duration m_pageScanInterval{};
-    std::deque<uint64_t> m_stableLsns;
+    // Static copies of old versions of dirty pages, that aren't yet stable,
+    // waiting to be written.
+    std::deque<DirtyPageInfo> m_oldPages;
+
+    // All WAL for any transaction, that has not been rolled back and included
+    // logs from this or any previous LSN, has been persisted to stable storage.
     uint64_t m_stableLsn{0};
-    uint64_t m_flushLsn{0};
-    Dim::TaskProxy m_flushTask;
+
+    // Info about WAL pages that have been persisted but with some or all of
+    // their corresponding data pages still dirty. Used to pace the speed at
+    // which dirty pages are written.
+    struct WalPageInfo {
+        uint64_t lsn; // first LSN on the page
+        Dim::TimePoint time; // time page became stable
+        size_t bytes; // bytes on the page
+    };
+    // Stable WAL pages that are within the "checkpoint bytes" threshold
+    std::deque<WalPageInfo> m_currentWal;
+    // Stable WAL pages older than the "checkpoint bytes" threshold
+    std::deque<WalPageInfo> m_overflowWal;
+    // Sum of bytes in overflow WAL pages
+    size_t m_overflowBytes{0};
+    // Sum of bytes in all stable WAL pages (both current and overflow)
+    size_t m_stableBytes{0};
 
     DbReadView m_vdata;
     Dim::FileHandle m_fdata;
@@ -133,6 +172,8 @@ private:
     Dim::FileHandle m_fwork;
     size_t m_workPages{0};
     Dim::UnsignedSet m_freeWorkPages;
+
+    Dim::TimerProxy m_saveTimer;
 };
 
 
@@ -268,11 +309,6 @@ public:
         uint16_t pageLastSample; // position of last sample on last page
         DbSampleType sampleType;
     };
-
-public:
-    // Reads the file header to determine the page size, returns 0 if the
-    // file doesn't exist, access is denied, or has an invalid header.
-    static size_t queryPageSize(Dim::FileHandle f);
 
 public:
     ~DbData();

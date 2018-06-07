@@ -15,15 +15,9 @@ using namespace Dim;
 *
 ***/
 
-const unsigned kDefaultPageSize = 4096;
-static_assert(kDefaultPageSize == pow2Ceil(kDefaultPageSize));
-
 // Must be a multiple of fileViewAlignment()
 const size_t kViewSize = 0x100'0000; // 16MiB
 const size_t kDefaultFirstViewSize = 2 * kViewSize;
-
-const Duration kDefaultPageMaxAge = 30min;
-const Duration kDefaultPageScanInterval = 1min;
 
 const uint32_t kFreePageMark = numeric_limits<uint32_t>::max();
 
@@ -63,8 +57,8 @@ struct ZeroPage {
 static auto & s_perfPages = uperf("db.work pages (total)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
-static auto & s_perfPurges = uperf("db.work dirty scans (total)");
-static auto & s_perfCurPurges = uperf("db.work dirty scans (current)");
+static auto & s_perfWrites = uperf("db.work writes (total)");
+static auto & s_perfStableBytes = uperf("db.work stable bytes");
 
 
 /****************************************************************************
@@ -75,9 +69,9 @@ static auto & s_perfCurPurges = uperf("db.work dirty scans (current)");
 
 //===========================================================================
 DbPage::DbPage()
-    : m_pageMaxAge{kDefaultPageMaxAge}
-    , m_pageScanInterval{kDefaultPageScanInterval}
-    , m_flushTask([&]{ flushStalePages(); })
+    : m_maxDirtyAge{kDefaultMaxCheckpointInterval}
+    , m_maxDirtyData{kDefaultMaxCheckpointData}
+    , m_saveTimer{[&](TimePoint now) { return onSaveTimer(now); }}
 {}
 
 //===========================================================================
@@ -92,27 +86,27 @@ bool DbPage::open(
     size_t pageSize,
     DbOpenFlags flags
 ) {
+    assert(pageSize);
     assert(pageSize == pow2Ceil(pageSize));
-    if (!pageSize)
-        pageSize = kDefaultPageSize;
     assert(pageSize >= kMinPageSize);
-    assert(kViewSize % fileViewAlignment() == 0);
 
+    m_pageSize = pageSize;
     m_flags = flags;
     if (m_flags & fDbOpenVerbose)
         logMsgInfo() << "Open data files";
-    if (!openData(datafile, pageSize))
+    if (!openData(datafile))
         return false;
     if (!openWork(workfile)) {
         close();
         return false;
     }
+    m_currentWal.push_back({0, Clock::now()});
 
     return true;
 }
 
 //===========================================================================
-bool DbPage::openData(string_view datafile, size_t pageSize) {
+bool DbPage::openData(string_view datafile) {
     auto oflags = File::fReadWrite | File::fDenyWrite | File::fRandom;
     if (m_flags & fDbOpenCreat)
         oflags |= File::fCreat;
@@ -127,12 +121,7 @@ bool DbPage::openData(string_view datafile, size_t pageSize) {
     if (!len) {
         DbPageHeader hdr = {};
         fileWriteWait(m_fdata, 0, &hdr, sizeof(hdr));
-        m_pageSize = pageSize;
         m_newFiles = true;
-    } else {
-        m_pageSize = DbData::queryPageSize(m_fdata);
-        if (!m_pageSize)
-            m_pageSize = pageSize;
     }
     if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
         logMsgError() << "Open view failed, " << datafile;
@@ -196,41 +185,31 @@ bool DbPage::openWork(string_view workfile) {
         return false;
     }
 
-    m_stableLsns.clear();
-    m_stableLsns.push_back(0);
     return true;
 }
 
 //===========================================================================
-void DbPage::configure(const DbConfig & conf) {
-    auto maxAge = conf.pageMaxAge.count() ? conf.pageMaxAge : m_pageMaxAge;
-    auto scanInterval = conf.pageScanInterval.count()
-        ? conf.pageScanInterval
-        : m_pageScanInterval;
-    if (maxAge < 1min) {
-        logMsgError() << "Max work page age must be at least 1 minute.";
-        return;
-    }
-    if (maxAge < scanInterval) {
-        logMsgError() << "Max work page age must be greater than scan "
-            "interval.";
-        return;
-    }
-    auto count = maxAge / scanInterval;
-    if (count > 1000) {
-        logMsgError() << "Work page scan interval must be at least 1/1000th "
-            "of the max age.";
-        return;
-    }
-    m_pageMaxAge = maxAge;
-    m_pageScanInterval = scanInterval;
-    queuePageScan();
+DbConfig DbPage::configure(const DbConfig & conf) {
+    // checkpoint configuration is assumed to have already been validated
+    // by DbLog.
+    assert(conf.checkpointMaxInterval.count());
+    assert(conf.checkpointMaxData);
+
+    unique_lock lk{m_workMut};
+    m_maxDirtyAge = conf.checkpointMaxInterval;
+    m_maxDirtyData = conf.checkpointMaxData;
+    queueSaveWork_LK();
+
+    return conf;
 }
 
 //===========================================================================
 void DbPage::close() {
-    m_stableLsns.clear();
     m_pages.clear();
+    m_dirtyPages.clear();
+    m_oldPages.clear();
+    m_currentWal.clear();
+
     m_vdata.close();
     fileClose(m_fdata);
     m_vwork.close();
@@ -257,175 +236,198 @@ void DbPage::growToFit(uint32_t pgno) {
 }
 
 //===========================================================================
-void DbPage::queuePageScan() {
-    auto now = Clock::now().time_since_epoch();
-    auto next = (now / m_pageScanInterval + 1) * m_pageScanInterval;
-    timerUpdate(this, next - now, true);
+void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
+    unique_lock lk{m_workMut};
+    m_stableLsn = lsn;
+    s_perfStableBytes += (unsigned) bytes;
+    m_stableBytes += bytes;
+    m_currentWal.push_back({lsn, Clock::now(), bytes});
+    while (m_stableBytes - m_overflowBytes > m_maxDirtyData) {
+        auto wi = m_currentWal.front();
+        m_overflowWal.push_back(wi);
+        m_currentWal.pop_front();
+        m_overflowBytes += wi.bytes;
+    }
+
+    queueSaveWork_LK();
 }
 
 //===========================================================================
-Duration DbPage::onTimer(TimePoint now) {
-    size_t count = m_pageMaxAge / m_pageScanInterval;
-
+uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
     {
-        unique_lock lk{m_workMut};
-        if (m_flushLsn)
-            return kTimerInfinite;
-        m_stableLsns.push_back(0);
-        while (m_stableLsns.size() > count) {
-            m_flushLsn = m_stableLsns.front();
-            m_stableLsns.pop_front();
+        scoped_lock lk{m_workMut};
+        if (!m_overflowWal.empty()) {
+            if (auto first = m_overflowWal.front().lsn; first > lsn)
+                lsn = first;
+        } else if (!m_currentWal.empty()) {
+            if (auto first = m_currentWal.front().lsn; first > lsn)
+                lsn = first;
         }
     }
 
-    if (m_flushLsn) {
-        taskPushCompute(&m_flushTask);
-    } else {
-        queuePageScan();
+    if (!fileFlush(m_fdata))
+        logMsgFatal() << "Checkpointing failed.";
+    return lsn;
+}
+
+//===========================================================================
+Duration DbPage::untilNextSave_LK() {
+    if (!m_oldPages.empty() && m_stableLsn >= m_oldPages.front().lsn)
+        return 0ms;
+    if (!m_dirtyPages.empty()) {
+        auto & front = m_dirtyPages.front();
+        if (m_overflowBytes && m_stableLsn >= front.lsn)
+            return 0ms;
+        auto minTime = Clock::now() - m_maxDirtyAge;
+        auto maxWait = front.time - minTime;
+        auto wait = (m_dirtyPages.back().time - minTime) / m_dirtyPages.size();
+        if (wait > maxWait)
+            wait = maxWait;
+        if (wait <= 0ms)
+            return 0ms;
+        return wait;
     }
     return kTimerInfinite;
 }
 
 //===========================================================================
-bool DbPage::enablePageScan(bool enable) {
-    swap(m_pageScanEnabled, enable);
-    return enable;
+void DbPage::queueSaveWork_LK() {
+    auto wait = untilNextSave_LK();
+    timerUpdate(&m_saveTimer, wait, true);
 }
 
 //===========================================================================
-void DbPage::flushStalePages() {
-    s_perfPurges += 1;
-    s_perfCurPurges += 1;
-    if (m_flags & fDbOpenVerbose)
-        logMsgInfo() << "Dirty page scan started";
-    uint32_t wpno = 1;
-    auto buf = make_unique<char[]>(m_pageSize);
-    auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
-    m_workMut.lock();
-    for (;; ++wpno) {
-        if (auto i = m_freeWorkPages.find(wpno); i) {
-            i = m_freeWorkPages.lastContiguous(i);
-            wpno = *i + 1;
-        }
-        bool done = (wpno >= m_workPages);
-        m_workMut.unlock();
+// Remove wal info entries that have had all their pages committed
+void DbPage::removeWalPages_LK(uint64_t lsn) {
+    assert(lsn);
+    size_t removed = 0;
 
-        if (!m_pageScanEnabled)
-            break;
-        if (done) {
-            queuePageScan();
-            break;
-        }
-        auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(wpno));
+    while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
+        || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
+    ) {
+        auto bytes = m_overflowWal.front().bytes;
+        removed += bytes;
+        m_overflowWal.pop_front();
+    }
+    m_overflowBytes -= removed;
 
-        m_workMut.lock();
-        if (m_flushLsn < hdr->lsn || hdr->pgno == kFreePageMark) {
-            // stay locked
-            continue;
+    if (m_overflowWal.empty()) {
+        while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
+            auto bytes = m_currentWal.front().bytes;
+            removed += bytes;
+            m_currentWal.pop_front();
         }
-        if (hdr->flags & fDbPageDirty) {
-            memcpy(tmpHdr, hdr, m_pageSize);
-            m_workMut.unlock();
-            writePageWait(tmpHdr);
-            m_workMut.lock();
-            if (tmpHdr->lsn != hdr->lsn) {
-                // the page changed, so don't mark it free
-                // stay locked
-                continue;
-            }
-        }
-
-        if (m_pages[hdr->pgno] == hdr)
-            m_pages[hdr->pgno] = nullptr;
-        if (hdr->flags & fDbPageDirty) {
-            hdr->flags &= ~fDbPageDirty;
-            s_perfDirtyPages -= 1;
-        }
-        hdr->pgno = kFreePageMark;
-        m_freeWorkPages.insert(wpno);
-        s_perfFreePages += 1;
     }
 
-    m_flushLsn = 0;
-    s_perfCurPurges -= 1;
-    if (m_flags & fDbOpenVerbose)
-        logMsgInfo() << "Dirty page scan completed";
+    s_perfStableBytes -= (unsigned) removed;
+    m_stableBytes -= removed;
 }
 
 //===========================================================================
-void DbPage::onLogStable(uint64_t lsn) {
+void DbPage::saveOldPages_LK() {
+    if (m_oldPages.empty())
+        return;
+
+    deque<DirtyPageInfo> pages;
+    uint64_t savedLsn = 0;
+    for (;;) {
+        auto dpi = m_oldPages.front();
+        if (dpi.hdr->lsn > m_stableLsn)
+            break;
+        savedLsn = dpi.lsn;
+        pages.push_back(dpi);
+        m_oldPages.pop_front();
+        if (m_oldPages.empty())
+            break;
+    }
+
+    if (!pages.empty()) {
+        m_workMut.unlock();
+        for (auto && dpi : pages)
+            writePageWait(dpi.hdr);
+        m_workMut.lock();
+        for (auto && dpi : pages) {
+            assert(m_pages[dpi.hdr->pgno] != dpi.hdr);
+            freePage_LK(dpi.hdr);
+        }
+
+        removeWalPages_LK(savedLsn);
+    }
+}
+
+//===========================================================================
+Duration DbPage::onSaveTimer(TimePoint now) {
     unique_lock lk{m_workMut};
-    m_stableLsns.back() = lsn;
-    m_stableLsn = lsn;
-}
+    saveOldPages_LK();
 
-//===========================================================================
-void DbPage::onLogCheckpointPages() {
-    assert(m_oldPages.empty());
-    uint32_t wpno = 1;
+    if (m_dirtyPages.empty())
+        return kTimerInfinite;
+
     auto buf = make_unique<char[]>(m_pageSize);
     auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
-    m_workMut.lock();
-    for (;; ++wpno) {
-        if (auto i = m_freeWorkPages.find(wpno); i) {
-            i = m_freeWorkPages.lastContiguous(i);
-            wpno = *i + 1;
-        }
-        if (wpno >= m_workPages)
+    uint64_t savedLsn = 0;
+    unsigned saved = 0;
+    auto minTime = now - m_maxDirtyAge;
+    auto minDataLsn = m_overflowBytes
+        ? m_currentWal.front().lsn
+        : 0;
+    while (!m_dirtyPages.empty()) {
+        auto dpi = m_dirtyPages.front();
+        // Make sure that we've saved:
+        //  - at least one page
+        //  - all pages older than max age
+        //  - enough pages to clear out the overflow bytes
+        if (saved
+            && dpi.time > minTime
+            && dpi.lsn >= minDataLsn
+        ) {
             break;
-
-        m_workMut.unlock();
-        auto hdr = reinterpret_cast<DbPageHeader *>(m_vwork.wptr(wpno));
-        m_workMut.lock();
-
-        if ((~hdr->flags & fDbPageDirty) || hdr->pgno == kFreePageMark) {
-            // stay locked
-            continue;
         }
-        hdr->flags &= ~fDbPageDirty;
+        m_dirtyPages.pop_front();
+        saved += 1;
+        dpi.hdr->flags &= ~fDbPageDirty;
         s_perfDirtyPages -= 1;
 
-        if (hdr->lsn > m_stableLsn) {
-            hdr = dupPage_LK(hdr);
-            m_oldPages[hdr->pgno] = hdr;
-            // stay locked
-            continue;
+        if (dpi.hdr->lsn > m_stableLsn) {
+            m_oldPages.push_back(dpi);
+            m_oldPages.back().hdr = dupPage_LK(dpi.hdr);
+        } else {
+            savedLsn = dpi.lsn;
+            auto was = dpi.hdr->lsn;
+            memcpy(tmpHdr, dpi.hdr, m_pageSize);
+            lk.unlock();
+            writePageWait(tmpHdr);
+            lk.lock();
+            assert(m_pages[dpi.hdr->pgno] == dpi.hdr);
+            if (was == dpi.hdr->lsn) {
+                // the page didn't change, free it
+                m_pages[dpi.hdr->pgno] = nullptr;
+                freePage_LK(dpi.hdr);
+            }
         }
-
-        memcpy(tmpHdr, hdr, m_pageSize);
-
-        m_workMut.unlock();
-        writePageWait(tmpHdr);
-        m_workMut.lock();
     }
-    m_workMut.unlock();
-}
 
-//===========================================================================
-void DbPage::onLogCheckpointStablePages() {
-    for (auto && pgno_hdr : m_oldPages) {
-        writePageWait(pgno_hdr.second);
-        pgno_hdr.second->pgno = kFreePageMark;
-    }
-    if (!fileFlush(m_fdata))
-        logMsgFatal() << "Checkpointing failed.";
+    if (m_oldPages.empty() && savedLsn)
+        removeWalPages_LK(savedLsn);
 
-    unique_lock lk{m_workMut};
-    for (auto && pgno_hdr : m_oldPages) {
-        assert(m_pages[pgno_hdr.first] != pgno_hdr.second);
-        auto wpno = m_vwork.pgno(pgno_hdr.second);
-        m_freeWorkPages.insert(wpno);
-        s_perfFreePages += 1;
-    }
-    m_oldPages.clear();
+    return untilNextSave_LK();
 }
 
 //===========================================================================
 void DbPage::writePageWait(DbPageHeader * hdr) {
     assert(hdr->pgno != (uint32_t) -1);
+    s_perfWrites += 1;
     hdr->flags = 0;
     hdr->checksum = hash_crc32c(hdr, m_pageSize);
     fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
+}
+
+//===========================================================================
+void DbPage::freePage_LK(DbPageHeader * hdr) {
+    hdr->pgno = kFreePageMark;
+    auto wpno = m_vwork.pgno(hdr);
+    m_freeWorkPages.insert(wpno);
+    s_perfFreePages += 1;
 }
 
 //===========================================================================
@@ -443,6 +445,22 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
     memcpy(ptr, hdr, m_pageSize);
     ptr->flags = 0;
     return ptr;
+}
+
+//===========================================================================
+void * DbPage::dirtyPage_LK(
+    DbPageHeader * hdr,
+    uint32_t pgno,
+    uint64_t lsn
+) {
+    if (~hdr->flags & fDbPageDirty) {
+        hdr->flags |= fDbPageDirty;
+        m_dirtyPages.push_back({hdr, Clock::now(), lsn});
+        s_perfDirtyPages += 1;
+    }
+    hdr->pgno = pgno;
+    hdr->lsn = lsn;
+    return hdr;
 }
 
 //===========================================================================
@@ -467,13 +485,7 @@ void * DbPage::onLogGetRedoPtr(
         if (lsn <= hdr->lsn)
             return nullptr;
     }
-    if (~hdr->flags & fDbPageDirty) {
-        hdr->flags |= fDbPageDirty;
-        s_perfDirtyPages += 1;
-    }
-    hdr->pgno = pgno;
-    hdr->lsn = lsn;
-    return hdr;
+    return dirtyPage_LK(hdr, pgno, lsn);
 }
 
 //===========================================================================
@@ -492,13 +504,7 @@ void * DbPage::onLogGetUpdatePtr(
         hdr = dupPage_LK(src);
         m_pages[pgno] = hdr;
     }
-    if (~hdr->flags & fDbPageDirty) {
-        hdr->flags |= fDbPageDirty;
-        s_perfDirtyPages += 1;
-    }
-    hdr->pgno = pgno;
-    hdr->lsn = lsn;
-    return hdr;
+    return dirtyPage_LK(hdr, pgno, lsn);
 }
 
 //===========================================================================

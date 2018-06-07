@@ -207,12 +207,14 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
     auto logfile = Path(name).setExt("tsl");
-    if (!m_page.open(datafile, workfile, pageSize, flags))
+    if (!m_log.open(logfile, pageSize, flags))
+        return false;
+    if (!m_log.newFiles())
+        flags &= ~fDbOpenCreat;
+    if (!m_page.open(datafile, workfile, m_log.dataPageSize(), flags))
         return false;
     m_data.openForApply(m_page.pageSize(), flags);
-    if (!m_page.newFiles())
-        flags &= ~fDbOpenCreat;
-    if (!m_log.open(logfile, m_page.pageSize(), flags))
+    if (!m_log.recover())
         return false;
     m_maxNameLen = m_data.queryStats().metricNameSize - 1;
     DbTxn txn{m_log, m_page};

@@ -340,6 +340,7 @@ void * TextWriter::onLogGetUpdatePtr(
     uint64_t lsn,
     uint16_t localTxn
 ) {
+    assert(!"updates not supported when dumping wal");
     return nullptr;
 }
 
@@ -413,10 +414,11 @@ static bool textCmd(Cli & cli) {
     tcLogStart();
     TextWriter writer(*os);
     DbLog dlog(&writer, &writer);
-    auto flags = fDbOpenReadOnly | fDbOpenIncludeIncompleteTxns;
+    dlog.open(s_opts.tslfile, 0, fDbOpenReadOnly);
+    auto flags = DbLog::fRecoverIncompleteTxns;
     if (s_opts.all)
-        flags |= fDbOpenIncludeBeforeCheckpoint;
-    dlog.open(s_opts.tslfile, 0, flags);
+        flags |= DbLog::fRecoverBeforeCheckpoint;
+    dlog.recover(flags);
     dlog.close();
     tcLogShutdown(&s_progress);
 
