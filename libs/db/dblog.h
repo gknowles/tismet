@@ -127,7 +127,8 @@ private:
     void logCommit(uint64_t txn);
 
     // returns LSN
-    uint64_t log(Record * log, size_t bytes, int txnType, uint64_t txn = 0);
+    enum class TxnMode { kBegin, kContinue, kCommit };
+    uint64_t log(Record * log, size_t bytes, TxnMode txnMode, uint64_t txn = 0);
 
     void prepareBuffer_LK(
         const Record * log,

@@ -374,7 +374,7 @@ void DbLog::logCommitCheckpoint(uint64_t startLsn) {
     CheckpointCommitRec rec;
     rec.type = kRecTypeCommitCheckpoint;
     rec.startLsn = startLsn;
-    log((Record *) &rec, sizeof(rec), 0);
+    log((Record *) &rec, sizeof(rec), TxnMode::kContinue);
 }
 
 //===========================================================================
@@ -382,7 +382,7 @@ uint64_t DbLog::logBeginTxn(uint16_t localTxn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnBegin;
     rec.localTxn = localTxn;
-    auto lsn = log((Record *) &rec, sizeof(rec), 1);
+    auto lsn = log((Record *) &rec, sizeof(rec), TxnMode::kBegin);
     return getTxn(lsn, localTxn);
 }
 
@@ -391,7 +391,7 @@ void DbLog::logCommit(uint64_t txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
-    log((Record *) &rec, sizeof(rec), -1, txn);
+    log((Record *) &rec, sizeof(rec), TxnMode::kCommit, txn);
 }
 
 //===========================================================================
@@ -399,7 +399,7 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     assert(bytes >= sizeof(DbLog::Record));
     if (txn)
         rec->localTxn = getLocalTxn(txn);
-    auto lsn = log(rec, bytes, 0);
+    auto lsn = log(rec, bytes, TxnMode::kContinue);
     apply(lsn, rec, nullptr);
 }
 

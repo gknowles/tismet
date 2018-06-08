@@ -1156,7 +1156,12 @@ void DbLog::countCommitTxn_LK(uint64_t txn) {
 }
 
 //===========================================================================
-uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
+uint64_t DbLog::log(
+    Record * log,
+    size_t bytes,
+    TxnMode txnMode,
+    uint64_t txn
+) {
     assert(bytes < m_pageSize - kMaxHdrLen);
     assert(bytes == size(log));
 
@@ -1165,23 +1170,23 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
         m_bufAvailCv.wait(lk);
     auto lsn = ++m_lastLsn;
 
-    // Count begin transactions (txnType == 1) on the page their log record
-    // started. This means the current page before logging (since logging can
-    // advance to the next page), UNLESS it's exactly at the end of the page.
-    // In that case the transaction actually starts on the next page, which is
-    // where we'll be after logging.
-    // Transaction commits (txnType == -1) are counted after logging, so it's
-    // always on the page where they finished.
+    // Count transaction beginnings on the page their log record started. This
+    // means the current page before logging (since logging can advance to the
+    // next page), UNLESS it's exactly at the end of the page. In that case the
+    // transaction actually starts on the next page, which is where we'll be
+    // after logging.
+    // Transaction commits are counted after logging, so it's always on the
+    // page where they finished.
     if (m_bufPos == m_pageSize) {
         prepareBuffer_LK(log, 0, bytes);
-        if (txnType > 0) {
+        if (txnMode == TxnMode::kBegin) {
             countBeginTxn_LK();
-        } else if (txnType < 0) {
+        } else if (txnMode == TxnMode::kCommit) {
             countCommitTxn_LK(txn);
         }
         return lsn;
     }
-    if (txnType > 0)
+    if (txnMode == TxnMode::kBegin)
         countBeginTxn_LK();
 
     size_t overflow = 0;
@@ -1200,7 +1205,7 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
             m_bufStates[m_curBuf] = Buffer::PartialDirty;
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
-        if (txnType < 0)
+        if (txnMode == TxnMode::kCommit)
             countCommitTxn_LK(txn);
     } else {
         bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
@@ -1217,7 +1222,7 @@ uint64_t DbLog::log(Record * log, size_t bytes, int txnType, uint64_t txn) {
 
         if (overflow)
             prepareBuffer_LK(log, bytes, overflow);
-        if (txnType < 0)
+        if (txnMode == TxnMode::kCommit)
             countCommitTxn_LK(txn);
 
         lk.unlock();
