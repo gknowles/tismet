@@ -134,19 +134,24 @@ private:
     // points to dirty copy in work view
     std::vector<DbPageHeader *> m_pages;
 
+    // Info about work pages that have been modified in memory but not yet
+    // written to disk.
     struct DirtyPageInfo {
         DbPageHeader * hdr;
         Dim::TimePoint time;
         uint64_t lsn;
     };
+    // List of all dirty pages in order of when they became dirty as measured
+    // by LSN (and therefore also time).
     std::deque<DirtyPageInfo> m_dirtyPages;
 
     // Static copies of old versions of dirty pages, that aren't yet stable,
     // waiting to be written.
     std::deque<DirtyPageInfo> m_oldPages;
 
-    // All WAL for any transaction, that has not been rolled back and included
-    // logs from this or any previous LSN, has been persisted to stable storage.
+    // The LSN up to which all data can be safely recovered. All WAL for any
+    // transaction, that has not been rolled back and includes logs from this
+    // or any previous LSN, has been persisted to stable storage.
     uint64_t m_stableLsn{0};
 
     // Info about WAL pages that have been persisted but with some or all of
@@ -156,6 +161,7 @@ private:
         uint64_t lsn; // first LSN on the page
         Dim::TimePoint time; // time page became stable
         size_t bytes; // bytes on the page
+        size_t updatedPages; // work pages transitioned to dirty by this WAL
     };
     // Stable WAL pages that are within the "checkpoint bytes" threshold
     std::deque<WalPageInfo> m_currentWal;
@@ -165,6 +171,9 @@ private:
     size_t m_overflowBytes{0};
     // Sum of bytes in all stable WAL pages (both current and overflow)
     size_t m_stableBytes{0};
+    std::deque<WalPageInfo> m_pacingWal;
+    // Total number of pages dirtied by stable WAL pages (current and overflow)
+    size_t m_updatedPages{0};
 
     DbReadView m_vdata;
     Dim::FileHandle m_fdata;
@@ -174,6 +183,8 @@ private:
     Dim::UnsignedSet m_freeWorkPages;
 
     Dim::TimerProxy m_saveTimer;
+    // Last time at which the save timer ran.
+    Dim::TimePoint m_lastSaveTime;
 };
 
 

@@ -57,8 +57,10 @@ struct ZeroPage {
 static auto & s_perfPages = uperf("db.work pages (total)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
+static auto & s_perfUnreported = uperf("db.work pages (unreported)");
 static auto & s_perfWrites = uperf("db.work writes (total)");
 static auto & s_perfStableBytes = uperf("db.work stable bytes");
+static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
 
 
 /****************************************************************************
@@ -239,9 +241,12 @@ void DbPage::growToFit(uint32_t pgno) {
 void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
     unique_lock lk{m_workMut};
     m_stableLsn = lsn;
-    s_perfStableBytes += (unsigned) bytes;
-    m_stableBytes += bytes;
-    m_currentWal.push_back({lsn, Clock::now(), bytes});
+    if (bytes) {
+        s_perfStableBytes += (unsigned) bytes;
+        s_perfReqWalPages += 1;
+        m_stableBytes += bytes;
+    }
+    m_currentWal.push_back({lsn, Clock::now(), bytes, 0});
     while (m_stableBytes - m_overflowBytes > m_maxDirtyData) {
         auto wi = m_currentWal.front();
         m_overflowWal.push_back(wi);
@@ -280,11 +285,9 @@ Duration DbPage::untilNextSave_LK() {
             return 0ms;
         auto minTime = Clock::now() - m_maxDirtyAge;
         auto maxWait = front.time - minTime;
-        auto wait = (m_dirtyPages.back().time - minTime) / m_dirtyPages.size();
-        if (wait > maxWait)
-            wait = maxWait;
-        if (wait <= 0ms)
-            return 0ms;
+        auto wait = m_maxDirtyAge / m_updatedPages;
+        if (wait > maxWait) wait = maxWait;
+        if (wait < 0ms) wait = 0ms;
         return wait;
     }
     return kTimerInfinite;
@@ -300,27 +303,52 @@ void DbPage::queueSaveWork_LK() {
 // Remove wal info entries that have had all their pages committed
 void DbPage::removeWalPages_LK(uint64_t lsn) {
     assert(lsn);
-    size_t removed = 0;
+    size_t bytes = 0;
+    size_t pages = 0;
+    size_t updated = 0;
 
     while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
         || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
     ) {
-        auto bytes = m_overflowWal.front().bytes;
-        removed += bytes;
+        auto & pi = m_overflowWal.front();
+        if (auto val = pi.bytes) {
+            bytes += val;
+            pages += 1;
+        }
+        updated += pi.updatedPages;
         m_overflowWal.pop_front();
     }
-    m_overflowBytes -= removed;
+    m_overflowBytes -= bytes;
 
     if (m_overflowWal.empty()) {
         while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
-            auto bytes = m_currentWal.front().bytes;
-            removed += bytes;
+            auto & pi = m_currentWal.front();
+            if (auto val = pi.bytes) {
+                bytes += val;
+                pages += 1;
+            }
+            m_pacingWal.push_back(pi);
             m_currentWal.pop_front();
         }
     }
 
-    s_perfStableBytes -= (unsigned) removed;
-    m_stableBytes -= removed;
+    if (!m_pacingWal.empty()) {
+        auto dirty = !m_dirtyPages.empty();
+        auto minTime = Clock::now() - m_maxDirtyAge;
+        while (!m_pacingWal.empty()) {
+            auto & pi = m_pacingWal.front();
+            if (pi.time > minTime && dirty)
+                break;
+            updated += pi.updatedPages;
+            m_pacingWal.pop_front();
+        }
+    }
+
+    s_perfStableBytes -= (unsigned) bytes;
+    m_stableBytes -= bytes;
+    s_perfReqWalPages -= (unsigned) pages;
+    m_updatedPages -= updated;
+    s_perfUnreported -= (unsigned) updated;
 }
 
 //===========================================================================
@@ -357,27 +385,45 @@ void DbPage::saveOldPages_LK() {
 
 //===========================================================================
 Duration DbPage::onSaveTimer(TimePoint now) {
+    auto lastTime = m_lastSaveTime;
+    m_lastSaveTime = now;
+
     unique_lock lk{m_workMut};
     saveOldPages_LK();
 
     if (m_dirtyPages.empty())
         return kTimerInfinite;
 
-    auto buf = make_unique<char[]>(m_pageSize);
-    auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
-    uint64_t savedLsn = 0;
-    unsigned saved = 0;
     auto minTime = now - m_maxDirtyAge;
     auto minDataLsn = m_overflowBytes
         ? m_currentWal.front().lsn
         : 0;
+    size_t minSaves = 1;
+    if (lastTime) {
+        if (auto elapsed = now - lastTime; elapsed > 0ms) {
+            if (auto multiple = m_maxDirtyAge / elapsed; multiple > 0) {
+                minSaves = m_updatedPages
+                    + now.time_since_epoch().count() % multiple;
+                minSaves /= multiple;
+                if (minSaves <= 0)
+                    minSaves = 1;
+            }
+        }
+    }
+
+    auto buf = make_unique<char[]>(m_pageSize);
+    auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
+    uint64_t savedLsn = 0;
+    unsigned saved = 0;
     while (!m_dirtyPages.empty()) {
         auto dpi = m_dirtyPages.front();
         // Make sure that we've saved:
         //  - at least one page
+        //  - a percentage of pages equal to the percentage of time remaining
+        //      that it's been since the last save event.
         //  - all pages older than max age
         //  - enough pages to clear out the overflow bytes
-        if (saved
+        if (saved >= minSaves
             && dpi.time > minTime
             && dpi.lsn >= minDataLsn
         ) {
@@ -457,6 +503,9 @@ void * DbPage::dirtyPage_LK(
         hdr->flags |= fDbPageDirty;
         m_dirtyPages.push_back({hdr, Clock::now(), lsn});
         s_perfDirtyPages += 1;
+        m_currentWal.back().updatedPages += 1;
+        m_updatedPages += 1;
+        s_perfUnreported += 1;
     }
     hdr->pgno = pgno;
     hdr->lsn = lsn;
