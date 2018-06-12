@@ -114,9 +114,10 @@ private:
 
     Dim::Duration untilNextSave_LK();
     void queueSaveWork_LK();
+    Dim::Duration onSaveTimer(Dim::TimePoint now);
     void removeWalPages_LK(uint64_t saveLsn);
     void saveOldPages_LK();
-    Dim::Duration onSaveTimer(Dim::TimePoint now);
+    void saveWork();
 
     // Variables determined at open
     size_t m_pageSize{0};

@@ -385,6 +385,13 @@ void DbPage::saveOldPages_LK() {
 
 //===========================================================================
 Duration DbPage::onSaveTimer(TimePoint now) {
+    taskPushCompute([&]() { saveWork(); });
+    return kTimerInfinite;
+}
+
+//===========================================================================
+void DbPage::saveWork() {
+    auto now = Clock::now();
     auto lastTime = m_lastSaveTime;
     m_lastSaveTime = now;
 
@@ -392,7 +399,7 @@ Duration DbPage::onSaveTimer(TimePoint now) {
     saveOldPages_LK();
 
     if (m_dirtyPages.empty())
-        return kTimerInfinite;
+        return;
 
     auto minTime = now - m_maxDirtyAge;
     auto minDataLsn = m_overflowBytes
@@ -456,7 +463,7 @@ Duration DbPage::onSaveTimer(TimePoint now) {
     if (m_oldPages.empty() && savedLsn)
         removeWalPages_LK(savedLsn);
 
-    return untilNextSave_LK();
+    queueSaveWork_LK();
 }
 
 //===========================================================================
