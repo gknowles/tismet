@@ -71,7 +71,7 @@ static ExpireTimer s_expireTimer;
 //===========================================================================
 void ExpireTimer::updateInterval(Duration interval) {
     m_expireInterval = interval;
-    timerUpdate(this, timeUntilCheck());
+    timerUpdate(this, timeUntilCheck(), true);
 }
 
 //===========================================================================
