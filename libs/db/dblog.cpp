@@ -387,7 +387,7 @@ bool DbLog::open(string_view logfile, size_t dataPageSize, DbOpenFlags flags) {
         m_numPages = 1;
         s_perfPages += (unsigned) m_numPages;
         m_lastLsn = 0;
-        m_lastLocalTxn = 0;
+        m_localTxns.clear();
         m_checkpointLsn = m_lastLsn + 1;
         logCommitCheckpoint(m_checkpointLsn);
         return true;
@@ -763,10 +763,17 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
 //===========================================================================
 uint64_t DbLog::beginTxn() {
     uint16_t localTxn = 0;
-    for (;;) {
-        localTxn = m_lastLocalTxn.fetch_add(1) + 1;
-        if (localTxn)
-            break;
+    {
+        scoped_lock lk{m_bufMut};
+        if (m_localTxns.empty()) {
+            localTxn = 1;
+        } else {
+            auto txns = *m_localTxns.ranges().begin();
+            localTxn = txns.first > 1 ? 1 : (uint16_t) txns.second + 1;
+            if (localTxn == numeric_limits<uint16_t>::max())
+                logMsgFatal() << "Too many concurrent transactions";
+        }
+        m_localTxns.insert(localTxn);
     }
 
     s_perfCurTxns += 1;
@@ -777,6 +784,13 @@ uint64_t DbLog::beginTxn() {
 
 //===========================================================================
 void DbLog::commit(uint64_t txn) {
+    uint16_t localTxn = getLocalTxn(txn);
+    {
+        scoped_lock lk{m_bufMut};
+        [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
+        assert(found && "Commit of unknown transaction");
+    }
+
     logCommit(txn);
     s_perfCurTxns -= 1;
 }

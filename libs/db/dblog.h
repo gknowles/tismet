@@ -166,7 +166,7 @@ private:
     DbOpenFlags m_openFlags{};
 
     // last assigned
-    std::atomic<uint16_t> m_lastLocalTxn{0};
+    Dim::UnsignedSet m_localTxns;
     uint64_t m_lastLsn{0};
 
     Dim::UnsignedSet m_freePages;
