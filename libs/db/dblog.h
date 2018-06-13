@@ -43,9 +43,9 @@ public:
     class IApplyNotify;
 
     struct Record;
-    static uint16_t size(const Record * log);
-    static uint32_t getPgno(const Record * log);
-    static uint16_t getLocalTxn(const Record * log);
+    static uint16_t size(const Record & log);
+    static uint32_t getPgno(const Record & log);
+    static uint16_t getLocalTxn(const Record & log);
     static void setLocalTxn(Record * log, uint16_t localTxn);
 
     static uint64_t getLsn(uint64_t logPos);
@@ -73,13 +73,14 @@ public:
     bool open(std::string_view file, size_t pageSize, DbOpenFlags flags);
 
     enum RecoverFlags : unsigned {
-        // Redo incomplete transactions during recovery, since they are incomplete
-        // this would normally the database in a corrupt state. Used by wal dump
-        // tool, which completely replaces the normal database apply logic.
+        // Redo incomplete transactions during recovery, since they are
+        // incomplete this would normally the database in a corrupt state. Used
+        // by WAL dump tool, which completely replaces the normal database
+        // apply logic.
         fRecoverIncompleteTxns = 0x01,
 
-        // Include log records from before the last checkpoint, also only for wal
-        // dump tool.
+        // Include log records from before the last checkpoint, also only for
+        // WAL dump tool.
         fRecoverBeforeCheckpoint = 0x02,
     };
     bool recover(RecoverFlags flags = {});
@@ -128,10 +129,15 @@ private:
 
     // returns LSN
     enum class TxnMode { kBegin, kContinue, kCommit };
-    uint64_t log(Record * log, size_t bytes, TxnMode txnMode, uint64_t txn = 0);
+    uint64_t log(
+        const Record & log,
+        size_t bytes,
+        TxnMode txnMode,
+        uint64_t txn = 0
+    );
 
     void prepareBuffer_LK(
-        const Record * log,
+        const Record & log,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
@@ -145,18 +151,19 @@ private:
     void flushWriteBuffer();
 
     struct AnalyzeData;
-    void applyAll(AnalyzeData & data);
-    void apply(uint64_t lsn, const Record * log, AnalyzeData * data = nullptr);
-    void applyUpdate(uint64_t lsn, const Record * log);
-    void applyUpdate(void * page, const Record * log);
-    void applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log);
+    void applyAll(AnalyzeData * data);
+    void apply(AnalyzeData * data, uint64_t lsn, const Record & log);
     void applyCommitCheckpoint(
-        AnalyzeData & data,
+        AnalyzeData * data,
         uint64_t lsn,
         uint64_t startLsn
     );
-    void applyBeginTxn(AnalyzeData & data, uint64_t lsn, uint16_t txn);
-    void applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t txn);
+    void applyBeginTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
+    void applyCommitTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
+    void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log);
+
+    void apply(uint64_t lsn, const Record & log);
+    void applyUpdate(void * page, const Record & log);
 
     IApplyNotify * m_data;
     IPageNotify * m_page;
@@ -248,8 +255,9 @@ public:
     ) = 0;
 
     // Similar to onLogGetUpdatePtr, except that if the page has already been
-    // updated no action is taken and null is returned. A page is already
-    // updated if the on page LSN is greater or equal to the LSN of the update.
+    // updated no action is taken and null is returned. A page is considered
+    // to have been updated if the on page LSN is greater or equal to the LSN
+    // of the update.
     virtual void * onLogGetRedoPtr(
         uint32_t pgno,
         uint64_t lsn,

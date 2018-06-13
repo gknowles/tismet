@@ -493,6 +493,78 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
         checkpointWaitForNext();
 }
 
+
+/****************************************************************************
+*
+*   DbLog - recovery
+*
+***/
+
+//===========================================================================
+bool DbLog::recover(RecoverFlags flags) {
+    if (m_phase != Checkpoint::StartRecovery)
+        return true;
+
+    m_phase = Checkpoint::Complete;
+    m_checkpointStart = Clock::now();
+
+    if (m_openFlags & fDbOpenVerbose)
+        logMsgInfo() << "Load transaction log";
+    if (!loadPages())
+        return false;
+    if (m_pages.empty())
+        return true;
+
+    // Go through log entries looking for last committed checkpoint and the
+    // set of incomplete transactions (so we can avoid trying to redo them
+    // later).
+    if (m_openFlags & fDbOpenVerbose)
+        logMsgInfo() << "Analyze database";
+    m_checkpointLsn = m_pages.front().firstLsn;
+    AnalyzeData data;
+    if (~flags & fRecoverBeforeCheckpoint) {
+        applyAll(&data);
+        if (!data.checkpoint)
+            logMsgFatal() << "Invalid .tsl file, no checkpoint found";
+        m_checkpointLsn = data.checkpoint;
+    }
+
+    if (flags & fRecoverIncompleteTxns) {
+        data.incompleteTxnLsns.clear();
+    } else {
+        for (auto && kv : data.txns)
+            data.incompleteTxnLsns.push_back(kv.second);
+        sort(
+            data.incompleteTxnLsns.begin(),
+            data.incompleteTxnLsns.end(),
+            [](auto & a, auto & b) { return a > b; }
+        );
+        auto i = lower_bound(
+            data.incompleteTxnLsns.begin(),
+            data.incompleteTxnLsns.end(),
+            data.checkpoint
+        );
+        data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
+    }
+
+    // Go through log entries starting with the last committed checkpoint and
+    // redo all complete transactions found.
+    if (m_openFlags & fDbOpenVerbose)
+        logMsgInfo() << "Recover database";
+    data.analyze = false;
+    applyAll(&data);
+    if (~flags & fRecoverIncompleteTxns) {
+        assert(data.incompleteTxnLsns.empty());
+        assert(data.activeTxns.empty());
+    }
+
+    auto & back = m_pages.back();
+    m_stableLsn = back.firstLsn + back.numLogs - 1;
+    m_lastLsn = m_stableLsn;
+    m_page->onLogStable(m_stableLsn, 0);
+    return true;
+}
+
 //===========================================================================
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
@@ -566,7 +638,7 @@ bool DbLog::loadPages() {
 }
 
 //===========================================================================
-void DbLog::applyAll(AnalyzeData & data) {
+void DbLog::applyAll(AnalyzeData * data) {
     LogPage lp;
     auto buf = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
     auto buf2 = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
@@ -587,8 +659,8 @@ void DbLog::applyAll(AnalyzeData & data) {
                 bytesAfter
             );
             log = (Record *) (buf + m_pageSize - bytesBefore);
-            assert(size(log) == bytesBefore + bytesAfter);
-            apply(lp.firstLsn - 1, log, &data);
+            assert(size(*log) == bytesBefore + bytesAfter);
+            apply(data, lp.firstLsn - 1, *log);
         }
         swap(buf, buf2);
 
@@ -596,8 +668,8 @@ void DbLog::applyAll(AnalyzeData & data) {
         lsn = lp.firstLsn;
         while (logPos < lp.lastPos) {
             log = (Record *) (buf + logPos);
-            apply(lsn, log, &data);
-            logPos += size(log);
+            apply(data, lsn, *log);
+            logPos += size(*log);
             lsn += 1;
         }
         assert(logPos == lp.lastPos);
@@ -606,7 +678,7 @@ void DbLog::applyAll(AnalyzeData & data) {
 
     // Initialize log write buffers with last buffer (if partial) found
     // during analyze.
-    if (data.analyze && logPos < m_pageSize) {
+    if (data->analyze && logPos < m_pageSize) {
         memcpy(m_buffers, buf, logPos);
         m_bufPos = logPos;
         m_bufStates[m_curBuf] = Buffer::PartialClean;
@@ -619,112 +691,47 @@ void DbLog::applyAll(AnalyzeData & data) {
 }
 
 //===========================================================================
-bool DbLog::recover(RecoverFlags flags) {
-    if (m_phase != Checkpoint::StartRecovery)
-        return true;
-
-    m_phase = Checkpoint::Complete;
-    m_checkpointStart = Clock::now();
-
-    if (m_openFlags & fDbOpenVerbose)
-        logMsgInfo() << "Load transaction log";
-    if (!loadPages())
-        return false;
-    if (m_pages.empty())
-        return true;
-
-    // Go through log entries looking for last committed checkpoint and the
-    // set of incomplete transactions (so we can avoid trying to redo them
-    // later).
-    if (m_openFlags & fDbOpenVerbose)
-        logMsgInfo() << "Analyze database";
-    m_checkpointLsn = m_pages.front().firstLsn;
-    AnalyzeData data;
-    if (~flags & fRecoverBeforeCheckpoint) {
-        applyAll(data);
-        if (!data.checkpoint)
-            logMsgFatal() << "Invalid .tsl file, no checkpoint found";
-        m_checkpointLsn = data.checkpoint;
-    }
-
-    if (flags & fRecoverIncompleteTxns) {
-        data.incompleteTxnLsns.clear();
-    } else {
-        for (auto && kv : data.txns)
-            data.incompleteTxnLsns.push_back(kv.second);
-        sort(
-            data.incompleteTxnLsns.begin(),
-            data.incompleteTxnLsns.end(),
-            [](auto & a, auto & b) { return a > b; }
-        );
-        auto i = lower_bound(
-            data.incompleteTxnLsns.begin(),
-            data.incompleteTxnLsns.end(),
-            data.checkpoint
-        );
-        data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
-    }
-
-    // Go through log entries starting with the last committed checkpoint and
-    // redo all complete transactions found.
-    if (m_openFlags & fDbOpenVerbose)
-        logMsgInfo() << "Recover database";
-    data.analyze = false;
-    applyAll(data);
-    if (~flags & fRecoverIncompleteTxns) {
-        assert(data.incompleteTxnLsns.empty());
-        assert(data.activeTxns.empty());
-    }
-
-    auto & back = m_pages.back();
-    m_stableLsn = back.firstLsn + back.numLogs - 1;
-    m_lastLsn = m_stableLsn;
-    m_page->onLogStable(m_stableLsn, 0);
-    return true;
-}
-
-//===========================================================================
 void DbLog::applyCommitCheckpoint(
-    AnalyzeData & data,
+    AnalyzeData * data,
     uint64_t lsn,
     uint64_t startLsn
 ) {
-    if (data.analyze) {
+    if (data->analyze) {
         if (startLsn >= m_checkpointLsn)
-            data.checkpoint = startLsn;
+            data->checkpoint = startLsn;
         return;
     }
 
     // redo
-    if (lsn < data.checkpoint)
+    if (lsn < data->checkpoint)
         return;
     m_data->onLogApplyCommitCheckpoint(lsn, startLsn);
 }
 
 //===========================================================================
 void DbLog::applyBeginTxn(
-    AnalyzeData & data,
+    AnalyzeData * data,
     uint64_t lsn,
     uint16_t localTxn
 ) {
-    if (data.analyze) {
-        auto & txnLsn = data.txns[localTxn];
+    if (data->analyze) {
+        auto & txnLsn = data->txns[localTxn];
         if (txnLsn)
-            data.incompleteTxnLsns.push_back(txnLsn);
+            data->incompleteTxnLsns.push_back(txnLsn);
         txnLsn = lsn;
         return;
     }
 
     // redo
-    if (lsn < data.checkpoint)
+    if (lsn < data->checkpoint)
         return;
-    if (!data.incompleteTxnLsns.empty()
-        && lsn == data.incompleteTxnLsns.back()
+    if (!data->incompleteTxnLsns.empty()
+        && lsn == data->incompleteTxnLsns.back()
     ) {
-        data.incompleteTxnLsns.pop_back();
+        data->incompleteTxnLsns.pop_back();
         return;
     }
-    if (!data.activeTxns.insert(localTxn)) {
+    if (!data->activeTxns.insert(localTxn)) {
         logMsgError() << "Duplicate transaction id " << localTxn
             << " at LSN " << lsn;
     }
@@ -732,16 +739,20 @@ void DbLog::applyBeginTxn(
 }
 
 //===========================================================================
-void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
-    if (data.analyze) {
-        data.txns.erase(localTxn);
+void DbLog::applyCommitTxn(
+    AnalyzeData * data,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
+    if (data->analyze) {
+        data->txns.erase(localTxn);
         return;
     }
 
     // redo
-    if (lsn < data.checkpoint)
+    if (lsn < data->checkpoint)
         return;
-    if (!data.activeTxns.erase(localTxn)) {
+    if (!data->activeTxns.erase(localTxn)) {
         // Commits for transaction ids with no preceding begin are allowed
         // and ignored under the assumption that they are the previously
         // played continuations of transactions that begin before the start
@@ -754,16 +765,16 @@ void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
 }
 
 //===========================================================================
-void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
-    if (data.analyze)
+void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
+    if (data->analyze)
         return;
 
     // redo
-    if (lsn < data.checkpoint)
+    if (lsn < data->checkpoint)
         return;
 
     auto localTxn = getLocalTxn(log);
-    if (localTxn && !data.activeTxns.count(localTxn))
+    if (localTxn && !data->activeTxns.count(localTxn))
         return;
 
     auto pgno = getPgno(log);
@@ -771,37 +782,12 @@ void DbLog::applyRedo(AnalyzeData & data, uint64_t lsn, const Record * log) {
         applyUpdate(ptr, log);
 }
 
-//===========================================================================
-uint64_t DbLog::beginTxn() {
-    uint16_t localTxn = 0;
-    {
-        scoped_lock lk{m_bufMut};
-        if (m_localTxns.empty()) {
-            localTxn = 1;
-        } else {
-            auto txns = *m_localTxns.ranges().begin();
-            localTxn = txns.first > 1 ? 1 : (uint16_t) txns.second + 1;
-            if (localTxn == numeric_limits<uint16_t>::max())
-                logMsgFatal() << "Too many concurrent transactions";
-        }
-        m_localTxns.insert(localTxn);
-    }
 
-    s_perfCurTxns += 1;
-    s_perfVolatileTxns += 1;
-    return logBeginTxn(localTxn);
-}
-
-//===========================================================================
-void DbLog::commit(uint64_t txn) {
-    logCommit(txn);
-    s_perfCurTxns -= 1;
-
-    auto localTxn = getLocalTxn(txn);
-    scoped_lock lk{m_bufMut};
-    [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
-    assert(found && "Commit of unknown transaction");
-}
+/****************************************************************************
+*
+*   DbLog - checkpoint
+*
+***/
 
 //===========================================================================
 // Checkpointing places a marker in the log to indicate the start of entries
@@ -915,6 +901,126 @@ void DbLog::checkpointWaitForNext() {
             wait = 0ms;
         timerUpdate(&m_checkpointTimer, wait);
     }
+}
+
+
+/****************************************************************************
+*
+*   DbLog - logging
+*
+***/
+
+//===========================================================================
+uint64_t DbLog::beginTxn() {
+    uint16_t localTxn = 0;
+    {
+        scoped_lock lk{m_bufMut};
+        if (m_localTxns.empty()) {
+            localTxn = 1;
+        } else {
+            auto txns = *m_localTxns.ranges().begin();
+            localTxn = txns.first > 1 ? 1 : (uint16_t) txns.second + 1;
+            if (localTxn == numeric_limits<uint16_t>::max())
+                logMsgFatal() << "Too many concurrent transactions";
+        }
+        m_localTxns.insert(localTxn);
+    }
+
+    s_perfCurTxns += 1;
+    s_perfVolatileTxns += 1;
+    return logBeginTxn(localTxn);
+}
+
+//===========================================================================
+void DbLog::commit(uint64_t txn) {
+    logCommit(txn);
+    s_perfCurTxns -= 1;
+
+    auto localTxn = getLocalTxn(txn);
+    scoped_lock lk{m_bufMut};
+    [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
+    assert(found && "Commit of unknown transaction");
+}
+
+//===========================================================================
+uint64_t DbLog::log(
+    const Record & log,
+    size_t bytes,
+    TxnMode txnMode,
+    uint64_t txn
+) {
+    assert(bytes < m_pageSize - kMaxHdrLen);
+    assert(bytes == size(log));
+
+    unique_lock lk{m_bufMut};
+    while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
+        m_bufAvailCv.wait(lk);
+    auto lsn = ++m_lastLsn;
+
+    // Count transaction beginnings on the page their log record started. This
+    // means the current page before logging (since logging can advance to the
+    // next page), UNLESS it's exactly at the end of the page. In that case the
+    // transaction actually starts on the next page, which is where we'll be
+    // after logging.
+    // Transaction commits are counted after logging, so it's always on the
+    // page where they finished.
+    if (m_bufPos == m_pageSize) {
+        prepareBuffer_LK(log, 0, bytes);
+        if (txnMode == TxnMode::kBegin) {
+            countBeginTxn_LK();
+        } else if (txnMode == TxnMode::kCommit) {
+            countCommitTxn_LK(txn);
+        }
+        return lsn;
+    }
+    if (txnMode == TxnMode::kBegin)
+        countBeginTxn_LK();
+
+    size_t overflow = 0;
+    if (auto avail = m_pageSize - m_bufPos; bytes > avail) {
+        overflow = bytes - avail;
+        bytes = avail;
+    }
+    auto base = bufPtr(m_curBuf) + m_bufPos;
+    memcpy(base, &log, bytes);
+    m_bufPos += bytes;
+
+    if (m_bufPos != m_pageSize) {
+        if (m_bufStates[m_curBuf] == Buffer::PartialClean
+            || m_bufStates[m_curBuf] == Buffer::Empty
+        ) {
+            m_bufStates[m_curBuf] = Buffer::PartialDirty;
+            timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
+        }
+        if (txnMode == TxnMode::kCommit)
+            countCommitTxn_LK(txn);
+    } else {
+        bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
+        m_bufStates[m_curBuf] = Buffer::FullWriting;
+        LogPage lp;
+        auto rawbuf = bufPtr(m_curBuf);
+        unpack(&lp, rawbuf);
+        lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
+        lp.lastPos = (uint16_t) m_bufPos;
+        if (overflow)
+            lp.lastPos -= (uint16_t) bytes;
+        lp.checksum = 0;
+        pack(rawbuf, lp);
+
+        if (overflow)
+            prepareBuffer_LK(log, bytes, overflow);
+        if (txnMode == TxnMode::kCommit)
+            countCommitTxn_LK(txn);
+
+        lk.unlock();
+        if (!writeInProgress) {
+            lp.checksum = hash_crc32c(rawbuf, m_pageSize);
+            pack(rawbuf, lp);
+            auto offset = lp.pgno * m_pageSize;
+            fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
+        }
+    }
+    return lsn;
 }
 
 //===========================================================================
@@ -1098,7 +1204,7 @@ void DbLog::onFileWrite(
 
 //===========================================================================
 void DbLog::prepareBuffer_LK(
-    const Record * log,
+    const Record & log,
     size_t bytesOnOldPage,
     size_t bytesOnNewPage
 ) {
@@ -1143,7 +1249,7 @@ void DbLog::prepareBuffer_LK(
     m_emptyBufs -= 1;
     memcpy(
         rawbuf + hdrLen,
-        (const char *) log + bytesOnOldPage,
+        (const char *) &log + bytesOnOldPage,
         bytesOnNewPage
     );
     m_bufPos = hdrLen + bytesOnNewPage;
@@ -1175,96 +1281,6 @@ void DbLog::countCommitTxn_LK(uint64_t txn) {
         }
         assert(i != m_pages.begin());
     }
-}
-
-//===========================================================================
-uint64_t DbLog::log(
-    Record * log,
-    size_t bytes,
-    TxnMode txnMode,
-    uint64_t txn
-) {
-    assert(bytes < m_pageSize - kMaxHdrLen);
-    assert(bytes == size(log));
-
-    unique_lock lk{m_bufMut};
-    while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
-        m_bufAvailCv.wait(lk);
-    auto lsn = ++m_lastLsn;
-
-    // Count transaction beginnings on the page their log record started. This
-    // means the current page before logging (since logging can advance to the
-    // next page), UNLESS it's exactly at the end of the page. In that case the
-    // transaction actually starts on the next page, which is where we'll be
-    // after logging.
-    // Transaction commits are counted after logging, so it's always on the
-    // page where they finished.
-    if (m_bufPos == m_pageSize) {
-        prepareBuffer_LK(log, 0, bytes);
-        if (txnMode == TxnMode::kBegin) {
-            countBeginTxn_LK();
-        } else if (txnMode == TxnMode::kCommit) {
-            countCommitTxn_LK(txn);
-        }
-        return lsn;
-    }
-    if (txnMode == TxnMode::kBegin)
-        countBeginTxn_LK();
-
-    size_t overflow = 0;
-    if (auto avail = m_pageSize - m_bufPos; bytes > avail) {
-        overflow = bytes - avail;
-        bytes = avail;
-    }
-    auto base = bufPtr(m_curBuf) + m_bufPos;
-    memcpy(base, log, bytes);
-    m_bufPos += bytes;
-
-    if (m_bufPos != m_pageSize) {
-        if (m_bufStates[m_curBuf] == Buffer::PartialClean
-            || m_bufStates[m_curBuf] == Buffer::Empty
-        ) {
-            m_bufStates[m_curBuf] = Buffer::PartialDirty;
-            timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
-        }
-        if (txnMode == TxnMode::kCommit)
-            countCommitTxn_LK(txn);
-    } else {
-        bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
-        m_bufStates[m_curBuf] = Buffer::FullWriting;
-        LogPage lp;
-        auto rawbuf = bufPtr(m_curBuf);
-        unpack(&lp, rawbuf);
-        lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
-        lp.lastPos = (uint16_t) m_bufPos;
-        if (overflow)
-            lp.lastPos -= (uint16_t) bytes;
-        lp.checksum = 0;
-        pack(rawbuf, lp);
-
-        if (overflow)
-            prepareBuffer_LK(log, bytes, overflow);
-        if (txnMode == TxnMode::kCommit)
-            countCommitTxn_LK(txn);
-
-        lk.unlock();
-        if (!writeInProgress) {
-            lp.checksum = hash_crc32c(rawbuf, m_pageSize);
-            pack(rawbuf, lp);
-            auto offset = lp.pgno * m_pageSize;
-            fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
-        }
-    }
-    return lsn;
-}
-
-//===========================================================================
-void DbLog::applyUpdate(uint64_t lsn, const Record * log) {
-    auto pgno = getPgno(log);
-    auto localTxn = getLocalTxn(log);
-    auto ptr = (void *) nullptr;
-    ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
-    applyUpdate(ptr, log);
 }
 
 

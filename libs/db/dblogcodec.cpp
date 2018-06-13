@@ -224,8 +224,8 @@ struct SampleUpdateInt8TxnRec {
 
 //===========================================================================
 // static
-uint16_t DbLog::size(const Record * log) {
-    switch (log->type) {
+uint16_t DbLog::size(const Record & log) {
+    switch (log.type) {
     case kRecTypeCommitCheckpoint:
         return sizeof(CheckpointCommitRec);
     case kRecTypeTxnBegin:
@@ -240,9 +240,9 @@ uint16_t DbLog::size(const Record * log) {
     case kRecTypeRadixInit:
         return sizeof(RadixInitRec);
     case kRecTypeRadixInitList: {
-        auto rec = reinterpret_cast<const RadixInitListRec *>(log);
+        auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
         return offsetof(RadixInitListRec, pages)
-            + rec->numPages * sizeof(*rec->pages);
+            + rec.numPages * sizeof(*rec.pages);
     }
     case kRecTypeRadixErase:
         return sizeof(RadixEraseRec);
@@ -251,9 +251,9 @@ uint16_t DbLog::size(const Record * log) {
     case kRecTypeRadixUpdate:
         return sizeof(RadixUpdateRec);
     case kRecTypeMetricInit: {
-        auto rec = reinterpret_cast<const MetricInitRec *>(log);
+        auto & rec = reinterpret_cast<const MetricInitRec &>(log);
         return offsetof(MetricInitRec, name)
-            + (uint16_t) strlen(rec->name) + 1;
+            + (uint16_t) strlen(rec.name) + 1;
     }
     case kRecTypeMetricUpdate:
         return sizeof(MetricUpdateRec);
@@ -289,15 +289,15 @@ uint16_t DbLog::size(const Record * log) {
         break;
     }
 
-    logMsgFatal() << "Unknown log record type, " << log->type;
+    logMsgFatal() << "Unknown log record type, " << log.type;
     return 0;
 }
 
 //===========================================================================
 // static
-uint32_t DbLog::getPgno(const Record * log) {
-    assert(log->type > kRecTypeTxnCommit);
-    switch (log->type) {
+uint32_t DbLog::getPgno(const Record & log) {
+    assert(log.type > kRecTypeTxnCommit);
+    switch (log.type) {
     case kRecTypeSampleUpdateFloat32Txn:
     case kRecTypeSampleUpdateFloat64Txn:
     case kRecTypeSampleUpdateInt8Txn:
@@ -308,20 +308,20 @@ uint32_t DbLog::getPgno(const Record * log) {
     case kRecTypeSampleUpdateInt8LastTxn:
     case kRecTypeSampleUpdateInt16LastTxn:
     case kRecTypeSampleUpdateInt32LastTxn:
-        return reinterpret_cast<const SampleUpdateInt8TxnRec *>(log)->pgno;
+        return reinterpret_cast<const SampleUpdateInt8TxnRec &>(log).pgno;
     default:
-        return log->pgno;
+        return log.pgno;
     }
 }
 
 //===========================================================================
 // static
-uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
-    assert(log->type >= kRecTypeTxnBegin);
-    switch (log->type) {
+uint16_t DbLog::getLocalTxn(const Record & log) {
+    assert(log.type >= kRecTypeTxnBegin);
+    switch (log.type) {
     case kRecTypeTxnBegin:
     case kRecTypeTxnCommit:
-        return reinterpret_cast<const TransactionRec *>(log)->localTxn;
+        return reinterpret_cast<const TransactionRec &>(log).localTxn;
     case kRecTypeSampleUpdateFloat32Txn:
     case kRecTypeSampleUpdateFloat64Txn:
     case kRecTypeSampleUpdateInt8Txn:
@@ -334,7 +334,7 @@ uint16_t DbLog::getLocalTxn(const DbLog::Record * log) {
     case kRecTypeSampleUpdateInt32LastTxn:
         return 0;
     default:
-        return log->localTxn;
+        return log.localTxn;
     }
 }
 
@@ -374,7 +374,7 @@ void DbLog::logCommitCheckpoint(uint64_t startLsn) {
     CheckpointCommitRec rec;
     rec.type = kRecTypeCommitCheckpoint;
     rec.startLsn = startLsn;
-    log((Record *) &rec, sizeof(rec), TxnMode::kContinue);
+    log((Record &) rec, sizeof(rec), TxnMode::kContinue);
 }
 
 //===========================================================================
@@ -382,7 +382,7 @@ uint64_t DbLog::logBeginTxn(uint16_t localTxn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnBegin;
     rec.localTxn = localTxn;
-    auto lsn = log((Record *) &rec, sizeof(rec), TxnMode::kBegin);
+    auto lsn = log((Record &) rec, sizeof(rec), TxnMode::kBegin);
     return getTxn(lsn, localTxn);
 }
 
@@ -391,7 +391,7 @@ void DbLog::logCommit(uint64_t txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
-    log((Record *) &rec, sizeof(rec), TxnMode::kCommit, txn);
+    log((Record &) rec, sizeof(rec), TxnMode::kCommit, txn);
 }
 
 //===========================================================================
@@ -399,274 +399,292 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     assert(bytes >= sizeof(DbLog::Record));
     if (txn)
         rec->localTxn = getLocalTxn(txn);
-    auto lsn = log(rec, bytes, TxnMode::kContinue);
-    apply(lsn, rec, nullptr);
+    auto lsn = log(*rec, bytes, TxnMode::kContinue);
+    apply(lsn, *rec);
 }
 
 //===========================================================================
-void DbLog::apply(uint64_t lsn, const Record * log, AnalyzeData * data) {
-    switch (log->type) {
+void DbLog::apply(uint64_t lsn, const Record & log) {
+    switch (log.type) {
     case kRecTypeCommitCheckpoint:
-        if (data) {
-            auto rec = reinterpret_cast<const CheckpointCommitRec *>(log);
-            applyCommitCheckpoint(*data, lsn, rec->startLsn);
-        }
-        break;
     case kRecTypeTxnBegin:
-        if (data) {
-            auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyBeginTxn(*data, lsn, rec->localTxn);
-        }
-        break;
     case kRecTypeTxnCommit:
-        if (data) {
-            auto rec = reinterpret_cast<const TransactionRec *>(log);
-            applyCommit(*data, lsn, rec->localTxn);
-        }
-        break;
+        return;
     default:
-        if (data) {
-            applyRedo(*data, lsn, log);
-        } else {
-            applyUpdate(lsn, log);
-        }
         break;
     }
+
+    auto pgno = getPgno(log);
+    auto localTxn = getLocalTxn(log);
+    auto ptr = (void *) nullptr;
+    ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
+    applyUpdate(ptr, log);
 }
 
 //===========================================================================
-void DbLog::applyUpdate(void * page, const Record * log) {
-    switch (log->type) {
+void DbLog::applyUpdate(void * page, const Record & log) {
+    switch (log.type) {
     default:
-        logMsgFatal() << "unknown log record type, " << log->type;
+        logMsgFatal() << "unknown log record type, " << log.type;
         return;
     case kRecTypeZeroInit:
         return m_data->onLogApplyZeroInit(page);
     case kRecTypePageFree:
         return m_data->onLogApplyPageFree(page);
     case kRecTypeSegmentAlloc: {
-        auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data->onLogApplySegmentUpdate(page, rec->refPage, false);
+        auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
+        return m_data->onLogApplySegmentUpdate(page, rec.refPage, false);
     }
     case kRecTypeSegmentFree: {
-        auto rec = reinterpret_cast<const SegmentUpdateRec *>(log);
-        return m_data->onLogApplySegmentUpdate(page, rec->refPage, true);
+        auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
+        return m_data->onLogApplySegmentUpdate(page, rec.refPage, true);
     }
     case kRecTypeRadixInit: {
-        auto rec = reinterpret_cast<const RadixInitRec *>(log);
+        auto & rec = reinterpret_cast<const RadixInitRec &>(log);
         return m_data->onLogApplyRadixInit(
             page,
-            rec->id,
-            rec->height,
+            rec.id,
+            rec.height,
             nullptr,
             nullptr
         );
     }
     case kRecTypeRadixInitList: {
-        auto rec = reinterpret_cast<const RadixInitListRec *>(log);
+        auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
         return m_data->onLogApplyRadixInit(
             page,
-            rec->id,
-            rec->height,
-            rec->pages,
-            rec->pages + rec->numPages
+            rec.id,
+            rec.height,
+            rec.pages,
+            rec.pages + rec.numPages
         );
     }
     case kRecTypeRadixErase: {
-        auto rec = reinterpret_cast<const RadixEraseRec *>(log);
-        return m_data->onLogApplyRadixErase(page, rec->firstPos, rec->lastPos);
+        auto & rec = reinterpret_cast<const RadixEraseRec &>(log);
+        return m_data->onLogApplyRadixErase(page, rec.firstPos, rec.lastPos);
     }
     case kRecTypeRadixPromote: {
-        auto rec = reinterpret_cast<const RadixPromoteRec *>(log);
-        return m_data->onLogApplyRadixPromote(page, rec->refPage);
+        auto & rec = reinterpret_cast<const RadixPromoteRec &>(log);
+        return m_data->onLogApplyRadixPromote(page, rec.refPage);
     }
     case kRecTypeRadixUpdate: {
-        auto rec = reinterpret_cast<const RadixUpdateRec *>(log);
-        return m_data->onLogApplyRadixUpdate(page, rec->refPos, rec->refPage);
+        auto & rec = reinterpret_cast<const RadixUpdateRec &>(log);
+        return m_data->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
     }
 
     case kRecTypeMetricInit: {
-        auto rec = reinterpret_cast<const MetricInitRec *>(log);
+        auto & rec = reinterpret_cast<const MetricInitRec &>(log);
         return m_data->onLogApplyMetricInit(
             page,
-            rec->id,
-            rec->name,
-            rec->creation,
-            rec->sampleType,
-            rec->retention,
-            rec->interval
+            rec.id,
+            rec.name,
+            rec.creation,
+            rec.sampleType,
+            rec.retention,
+            rec.interval
         );
     }
     case kRecTypeMetricUpdate: {
-        auto rec = reinterpret_cast<const MetricUpdateRec *>(log);
+        auto & rec = reinterpret_cast<const MetricUpdateRec &>(log);
         return m_data->onLogApplyMetricUpdate(
             page,
-            rec->creation,
-            rec->sampleType,
-            rec->retention,
-            rec->interval
+            rec.creation,
+            rec.sampleType,
+            rec.retention,
+            rec.interval
         );
     }
     case kRecTypeMetricClearSamples:
         return m_data->onLogApplyMetricClearSamples(page);
     case kRecTypeMetricUpdateLast: {
-        auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
+        auto & rec = reinterpret_cast<const MetricUpdateSamplesRec &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
-            rec->refPos,
-            rec->refPage,
-            rec->refTime,
+            rec.refPos,
+            rec.refPage,
+            rec.refTime,
             false
         );
     }
     case kRecTypeMetricUpdateLastAndIndex: {
-        auto rec = reinterpret_cast<const MetricUpdateSamplesRec *>(log);
+        auto & rec = reinterpret_cast<const MetricUpdateSamplesRec &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
-            rec->refPos,
-            rec->refPage,
-            rec->refTime,
+            rec.refPos,
+            rec.refPage,
+            rec.refTime,
             true
         );
     }
 
     case kRecTypeSampleInit: {
-        auto rec = reinterpret_cast<const SampleInitRec *>(log);
+        auto & rec = reinterpret_cast<const SampleInitRec &>(log);
         return m_data->onLogApplySampleInit(
             page,
-            rec->id,
-            rec->sampleType,
-            rec->pageTime,
-            rec->lastSample
+            rec.id,
+            rec.sampleType,
+            rec.pageTime,
+            rec.lastSample
         );
     }
     case kRecTypeSampleUpdate: {
-        auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->firstSample,
-            rec->lastSample,
-            rec->value,
+            rec.firstSample,
+            rec.lastSample,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateLast: {
-        auto rec = reinterpret_cast<const SampleUpdateRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->firstSample,
-            rec->lastSample,
-            rec->value,
+            rec.firstSample,
+            rec.lastSample,
+            rec.value,
             true
         );
     }
     case kRecTypeSampleUpdateTime: {
-        auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(log);
-        return m_data->onLogApplySampleUpdateTime(page, rec->pageTime);
+        auto & rec = reinterpret_cast<const SampleUpdateTimeRec &>(log);
+        return m_data->onLogApplySampleUpdateTime(page, rec.pageTime);
     }
 
     case kRecTypeSampleUpdateFloat32Txn: {
-        auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateFloat64Txn: {
-        auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateInt8Txn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateInt16Txn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateInt32Txn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             false
         );
     }
     case kRecTypeSampleUpdateFloat32LastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             true
         );
     }
     case kRecTypeSampleUpdateFloat64LastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             true
         );
     }
     case kRecTypeSampleUpdateInt8LastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             true
         );
     }
     case kRecTypeSampleUpdateInt16LastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             true
         );
     }
     case kRecTypeSampleUpdateInt32LastTxn: {
-        auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(log);
+        auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
-            rec->pos,
-            rec->pos,
-            rec->value,
+            rec.pos,
+            rec.pos,
+            rec.value,
             true
         );
     }
 
     } // end case
+}
+
+
+/****************************************************************************
+*
+*   DbLog - recovery
+*
+***/
+
+//===========================================================================
+void DbLog::apply(AnalyzeData * data, uint64_t lsn, const Record & log) {
+    switch (log.type) {
+    case kRecTypeCommitCheckpoint: {
+            auto & rec = reinterpret_cast<const CheckpointCommitRec &>(log);
+            applyCommitCheckpoint(data, lsn, rec.startLsn);
+        }
+        break;
+    case kRecTypeTxnBegin: {
+            auto & rec = reinterpret_cast<const TransactionRec &>(log);
+            applyBeginTxn(data, lsn, rec.localTxn);
+        }
+        break;
+    case kRecTypeTxnCommit: {
+            auto & rec = reinterpret_cast<const TransactionRec &>(log);
+            applyCommitTxn(data, lsn, rec.localTxn);
+        }
+        break;
+    default:
+        applyUpdate(data, lsn, log);
+        break;
+    }
 }
 
 
