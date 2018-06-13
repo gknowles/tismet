@@ -425,6 +425,7 @@ bool DbData::loadMetrics (
         return true;
     }
 
+    logMsgError() << "Bad metric page #" << pgno << ", type " << p->type;
     return false;
 }
 

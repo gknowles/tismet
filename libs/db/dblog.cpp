@@ -724,7 +724,10 @@ void DbLog::applyBeginTxn(
         data.incompleteTxnLsns.pop_back();
         return;
     }
-    data.activeTxns.insert(localTxn);
+    if (!data.activeTxns.insert(localTxn)) {
+        logMsgError() << "Duplicate transaction id " << localTxn 
+            << " at LSN " << lsn;
+    }
     m_data->onLogApplyBeginTxn(lsn, localTxn);
 }
 
@@ -738,7 +741,10 @@ void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
     // redo
     if (lsn < data.checkpoint)
         return;
-    data.activeTxns.erase(localTxn);
+    if (!data.activeTxns.erase(localTxn)) {
+        logMsgError() << "Unmatched transaction commit id " << localTxn
+            << " at LSN " << lsn;
+    }
     m_data->onLogApplyCommitTxn(lsn, localTxn);
 }
 
