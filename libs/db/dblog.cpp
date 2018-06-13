@@ -725,7 +725,7 @@ void DbLog::applyBeginTxn(
         return;
     }
     if (!data.activeTxns.insert(localTxn)) {
-        logMsgError() << "Duplicate transaction id " << localTxn 
+        logMsgError() << "Duplicate transaction id " << localTxn
             << " at LSN " << lsn;
     }
     m_data->onLogApplyBeginTxn(lsn, localTxn);
@@ -742,8 +742,13 @@ void DbLog::applyCommit(AnalyzeData & data, uint64_t lsn, uint16_t localTxn) {
     if (lsn < data.checkpoint)
         return;
     if (!data.activeTxns.erase(localTxn)) {
-        logMsgError() << "Unmatched transaction commit id " << localTxn
-            << " at LSN " << lsn;
+        // Commits for transaction ids with no preceding begin are allowed
+        // and ignored under the assumption that they are the previously
+        // played continuations of transactions that begin before the start
+        // of this recovery.
+        //
+        // With some extra tracking, the rule that every commit of an id after
+        // the first must have a matching begin could be enforced.
     }
     m_data->onLogApplyCommitTxn(lsn, localTxn);
 }
@@ -784,21 +789,18 @@ uint64_t DbLog::beginTxn() {
 
     s_perfCurTxns += 1;
     s_perfVolatileTxns += 1;
-
     return logBeginTxn(localTxn);
 }
 
 //===========================================================================
 void DbLog::commit(uint64_t txn) {
-    uint16_t localTxn = getLocalTxn(txn);
-    {
-        scoped_lock lk{m_bufMut};
-        [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
-        assert(found && "Commit of unknown transaction");
-    }
-
     logCommit(txn);
     s_perfCurTxns -= 1;
+
+    auto localTxn = getLocalTxn(txn);
+    scoped_lock lk{m_bufMut};
+    [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
+    assert(found && "Commit of unknown transaction");
 }
 
 //===========================================================================
