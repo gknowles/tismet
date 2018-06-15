@@ -210,7 +210,12 @@ void DbPage::close() {
     m_pages.clear();
     m_dirtyPages.clear();
     m_oldPages.clear();
+    m_cleanPages.clear();
+    m_pageDebt = 0;
     m_currentWal.clear();
+    m_overflowWal.clear();
+    m_stableBytes = 0;
+    m_overflowBytes = 0;
 
     m_vdata.close();
     fileClose(m_fdata);
@@ -227,15 +232,12 @@ void DbPage::close() {
     m_workPages = 0;
 }
 
-//===========================================================================
-void DbPage::growToFit(uint32_t pgno) {
-    unique_lock lk{m_workMut};
-    if (pgno < m_pages.size())
-        return;
-    assert(pgno == m_pages.size());
-    m_vdata.growToFit(pgno);
-    m_pages.resize(pgno + 1);
-}
+
+/****************************************************************************
+*
+*   DbPage - save and checkpoint
+*
+***/
 
 //===========================================================================
 void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
@@ -246,7 +248,7 @@ void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
         s_perfReqWalPages += 1;
         m_stableBytes += bytes;
     }
-    m_currentWal.push_back({lsn, Clock::now(), bytes, 0});
+    m_currentWal.push_back({lsn, Clock::now(), bytes});
     while (m_stableBytes - m_overflowBytes > m_maxDirtyData) {
         auto wi = m_currentWal.front();
         m_overflowWal.push_back(wi);
@@ -277,110 +279,26 @@ uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
 
 //===========================================================================
 Duration DbPage::untilNextSave_LK() {
-    if (!m_oldPages.empty() && m_stableLsn >= m_oldPages.front().lsn)
+    if (!m_oldPages.empty() && m_stableLsn >= m_oldPages.front()->hdr->lsn)
         return 0ms;
-    if (!m_dirtyPages.empty()) {
-        auto & front = m_dirtyPages.front();
-        if (m_overflowBytes && m_stableLsn >= front.lsn)
-            return 0ms;
-        auto minTime = Clock::now() - m_maxDirtyAge;
-        auto maxWait = front.time - minTime;
-        auto wait = m_maxDirtyAge / m_updatedPages;
-        if (wait > maxWait) wait = maxWait;
-        if (wait < 0ms) wait = 0ms;
-        return wait;
-    }
-    return kTimerInfinite;
+    if (m_dirtyPages.empty())
+        return kTimerInfinite;
+    auto front = m_dirtyPages.front();
+    if (m_overflowBytes && m_stableLsn >= front->hdr->lsn)
+        return 0ms;
+
+    auto minTime = Clock::now() - m_maxDirtyAge;
+    auto maxWait = front->firstTime - minTime;
+    auto wait = m_maxDirtyAge / m_pageDebt;
+    if (wait > maxWait) wait = maxWait;
+    if (wait < 0ms) wait = 0ms;
+    return wait;
 }
 
 //===========================================================================
 void DbPage::queueSaveWork_LK() {
     auto wait = untilNextSave_LK();
     timerUpdate(&m_saveTimer, wait, true);
-}
-
-//===========================================================================
-// Remove wal info entries that have had all their pages committed
-void DbPage::removeWalPages_LK(uint64_t lsn) {
-    assert(lsn);
-    size_t bytes = 0;
-    size_t pages = 0;
-    size_t updated = 0;
-
-    while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
-        || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
-    ) {
-        auto & pi = m_overflowWal.front();
-        if (auto val = pi.bytes) {
-            bytes += val;
-            pages += 1;
-        }
-        updated += pi.updatedPages;
-        m_overflowWal.pop_front();
-    }
-    m_overflowBytes -= bytes;
-
-    if (m_overflowWal.empty()) {
-        while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
-            auto & pi = m_currentWal.front();
-            if (auto val = pi.bytes) {
-                bytes += val;
-                pages += 1;
-            }
-            m_pacingWal.push_back(pi);
-            m_currentWal.pop_front();
-        }
-    }
-
-    if (!m_pacingWal.empty()) {
-        auto dirty = !m_dirtyPages.empty();
-        auto minTime = Clock::now() - m_maxDirtyAge;
-        while (!m_pacingWal.empty()) {
-            auto & pi = m_pacingWal.front();
-            if (pi.time > minTime && dirty)
-                break;
-            updated += pi.updatedPages;
-            m_pacingWal.pop_front();
-        }
-    }
-
-    s_perfStableBytes -= (unsigned) bytes;
-    m_stableBytes -= bytes;
-    s_perfReqWalPages -= (unsigned) pages;
-    m_updatedPages -= updated;
-    s_perfUnreported -= (unsigned) updated;
-}
-
-//===========================================================================
-void DbPage::saveOldPages_LK() {
-    if (m_oldPages.empty())
-        return;
-
-    deque<DirtyPageInfo> pages;
-    uint64_t savedLsn = 0;
-    for (;;) {
-        auto dpi = m_oldPages.front();
-        if (dpi.hdr->lsn > m_stableLsn)
-            break;
-        savedLsn = dpi.lsn;
-        pages.push_back(dpi);
-        m_oldPages.pop_front();
-        if (m_oldPages.empty())
-            break;
-    }
-
-    if (!pages.empty()) {
-        m_workMut.unlock();
-        for (auto && dpi : pages)
-            writePageWait(dpi.hdr);
-        m_workMut.lock();
-        for (auto && dpi : pages) {
-            assert(m_pages[dpi.hdr->pgno] != dpi.hdr);
-            freePage_LK(dpi.hdr);
-        }
-
-        removeWalPages_LK(savedLsn);
-    }
 }
 
 //===========================================================================
@@ -409,7 +327,7 @@ void DbPage::saveWork() {
     if (lastTime) {
         if (auto elapsed = now - lastTime; elapsed > 0ms) {
             if (auto multiple = m_maxDirtyAge / elapsed; multiple > 0) {
-                minSaves = m_updatedPages
+                minSaves = m_pageDebt
                     + now.time_since_epoch().count() % multiple;
                 minSaves /= multiple;
                 if (minSaves <= 0)
@@ -423,7 +341,7 @@ void DbPage::saveWork() {
     uint64_t savedLsn = 0;
     unsigned saved = 0;
     while (!m_dirtyPages.empty()) {
-        auto dpi = m_dirtyPages.front();
+        auto pi = m_dirtyPages.front();
         // Make sure that we've saved:
         //  - at least one page
         //  - a percentage of pages equal to the percentage of time remaining
@@ -431,31 +349,37 @@ void DbPage::saveWork() {
         //  - all pages older than max age
         //  - enough pages to clear out the overflow bytes
         if (saved >= minSaves
-            && dpi.time > minTime
-            && dpi.lsn >= minDataLsn
+            && pi->firstTime > minTime
+            && pi->firstLsn >= minDataLsn
         ) {
             break;
         }
-        m_dirtyPages.pop_front();
         saved += 1;
-        dpi.hdr->flags &= ~fDbPageDirty;
+        m_cleanPages.link(pi);
+        pi->flags &= ~fDbPageDirty;
         s_perfDirtyPages -= 1;
 
-        if (dpi.hdr->lsn > m_stableLsn) {
-            m_oldPages.push_back(dpi);
-            m_oldPages.back().hdr = dupPage_LK(dpi.hdr);
+        if (pi->hdr->lsn > m_stableLsn) {
+            auto npi = new WorkPageInfo;
+            m_oldPages.link(npi);
+            npi->hdr = dupPage_LK(pi->hdr);
+            npi->firstTime = pi->firstTime;
+            npi->firstLsn = pi->firstLsn;
+            npi->pgno = 0;
+            npi->flags = pi->flags;
         } else {
-            savedLsn = dpi.lsn;
-            auto was = dpi.hdr->lsn;
-            memcpy(tmpHdr, dpi.hdr, m_pageSize);
+            savedLsn = pi->firstLsn;
+            auto was = pi->hdr->lsn;
+            memcpy(tmpHdr, pi->hdr, m_pageSize);
             lk.unlock();
             writePageWait(tmpHdr);
             lk.lock();
-            assert(m_pages[dpi.hdr->pgno] == dpi.hdr);
-            if (was == dpi.hdr->lsn) {
+            assert(m_pages[pi->hdr->pgno] == pi);
+            if (was == pi->hdr->lsn) {
                 // the page didn't change, free it
-                m_pages[dpi.hdr->pgno] = nullptr;
-                freePage_LK(dpi.hdr);
+                pi->pgno = pi->hdr->pgno;
+                freePage_LK(pi->hdr);
+                pi->hdr = nullptr;
             }
         }
     }
@@ -467,12 +391,32 @@ void DbPage::saveWork() {
 }
 
 //===========================================================================
-void DbPage::writePageWait(DbPageHeader * hdr) {
-    assert(hdr->pgno != (uint32_t) -1);
-    s_perfWrites += 1;
-    hdr->flags = 0;
-    hdr->checksum = hash_crc32c(hdr, m_pageSize);
-    fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
+void DbPage::saveOldPages_LK() {
+    if (m_oldPages.empty())
+        return;
+
+    List<WorkPageInfo> pages;
+    uint64_t savedLsn = 0;
+    while (auto pi = m_oldPages.front()) {
+        if (pi->hdr->lsn > m_stableLsn)
+            break;
+        savedLsn = pi->firstLsn;
+        pages.link(pi);
+    }
+
+    if (!pages.empty()) {
+        m_workMut.unlock();
+        for (auto && pi : pages)
+            writePageWait(pi.hdr);
+        m_workMut.lock();
+        while (auto pi = pages.front()) {
+            assert(m_pages[pi->hdr->pgno] != pi);
+            freePage_LK(pi->hdr);
+            delete pi;
+        }
+
+        removeWalPages_LK(savedLsn);
+    }
 }
 
 //===========================================================================
@@ -481,6 +425,162 @@ void DbPage::freePage_LK(DbPageHeader * hdr) {
     auto wpno = m_vwork.pgno(hdr);
     m_freeWorkPages.insert(wpno);
     s_perfFreePages += 1;
+}
+
+//===========================================================================
+// Remove WAL info entries that have had all their pages committed
+void DbPage::removeWalPages_LK(uint64_t lsn) {
+    assert(lsn);
+    size_t bytes = 0;
+    size_t pages = 0;
+    size_t debt = 0;
+
+    while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
+        || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
+    ) {
+        auto & pi = m_overflowWal.front();
+        if (auto val = pi.bytes) {
+            bytes += val;
+            pages += 1;
+        }
+        m_overflowWal.pop_front();
+    }
+    m_overflowBytes -= bytes;
+
+    if (m_overflowWal.empty()) {
+        while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
+            auto & pi = m_currentWal.front();
+            if (auto val = pi.bytes) {
+                bytes += val;
+                pages += 1;
+            }
+            m_currentWal.pop_front();
+        }
+    }
+
+    List<WorkPageInfo> tmp;
+    if (!m_cleanPages.empty()) {
+        auto minTime = Clock::now() - m_maxDirtyAge;
+        while (auto pi = m_cleanPages.front()) {
+            if (pi->firstTime > minTime)
+                break;
+            debt += 1;
+            auto pgno = pi->hdr ? pi->hdr->pgno : pi->pgno;
+            assert(m_pages[pgno] == pi);
+            m_pages[pgno] = nullptr;
+            tmp.link(pi);
+        }
+    }
+
+    s_perfStableBytes -= (unsigned) bytes;
+    m_stableBytes -= bytes;
+    s_perfReqWalPages -= (unsigned) pages;
+    m_pageDebt -= debt;
+    s_perfUnreported -= (unsigned) debt;
+
+    if (!tmp.empty()) {
+        m_workMut.unlock();
+        tmp.clear();
+        m_workMut.lock();
+    }
+}
+
+//===========================================================================
+void DbPage::writePageWait(DbPageHeader * hdr) {
+    assert(hdr->pgno != (uint32_t) -1);
+    s_perfWrites += 1;
+    hdr->checksum = 0;
+    hdr->checksum = hash_crc32c(hdr, m_pageSize);
+    fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
+}
+
+
+/****************************************************************************
+*
+*   DbPage - query and update
+*
+***/
+
+//===========================================================================
+void DbPage::growToFit(uint32_t pgno) {
+    unique_lock lk{m_workMut};
+    if (pgno < m_pages.size())
+        return;
+    assert(pgno == m_pages.size());
+    m_vdata.growToFit(pgno);
+    m_pages.resize(pgno + 1);
+}
+
+//===========================================================================
+const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
+    unique_lock lk{m_workMut};
+    assert(pgno < m_pages.size());
+    auto pi = m_pages[pgno];
+    if (pi && pi->hdr)
+        return pi->hdr;
+
+    return m_vdata.rptr(pgno);
+}
+
+//===========================================================================
+void * DbPage::onLogGetRedoPtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
+    if (pgno >= m_pages.size()) {
+        m_vdata.growToFit(pgno);
+        m_pages.resize(pgno + 1);
+    }
+    auto pi = m_pages[pgno];
+    if (!pi || !pi->hdr) {
+        // create new dirty page from clean page
+        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        if (lsn <= src->lsn)
+            return nullptr;
+        if (!pi) {
+            pi = new WorkPageInfo;
+            pi->firstTime = {};
+            pi->firstLsn = 0;
+            pi->flags = {};
+            m_pages[pgno] = pi;
+            m_pageDebt += 1;
+            s_perfUnreported += 1;
+        }
+        pi->hdr = dupPage_LK(src);
+        pi->pgno = 0;
+    } else if (lsn <= pi->hdr->lsn) {
+        return nullptr;
+    }
+    return dirtyPage_LK(pi, pgno, lsn);
+}
+
+//===========================================================================
+void * DbPage::onLogGetUpdatePtr(
+    uint32_t pgno,
+    uint64_t lsn,
+    uint16_t localTxn
+) {
+    assert(lsn);
+    unique_lock lk{m_workMut};
+    assert(pgno < m_pages.size());
+    auto pi = m_pages[pgno];
+    if (!pi || !pi->hdr) {
+        // create new dirty page from clean page
+        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        if (!pi) {
+            pi = new WorkPageInfo;
+            pi->firstTime = {};
+            pi->firstLsn = 0;
+            pi->flags = {};
+            m_pages[pgno] = pi;
+            m_pageDebt += 1;
+            s_perfUnreported += 1;
+        }
+        pi->hdr = dupPage_LK(src);
+        pi->pgno = 0;
+    }
+    return dirtyPage_LK(pi, pgno, lsn);
 }
 
 //===========================================================================
@@ -496,79 +596,26 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
     }
     auto ptr = (DbPageHeader *) m_vwork.wptr(wpno);
     memcpy(ptr, hdr, m_pageSize);
-    ptr->flags = 0;
     return ptr;
 }
 
 //===========================================================================
 void * DbPage::dirtyPage_LK(
-    DbPageHeader * hdr,
+    WorkPageInfo * pi,
     uint32_t pgno,
     uint64_t lsn
 ) {
-    if (~hdr->flags & fDbPageDirty) {
-        hdr->flags |= fDbPageDirty;
-        m_dirtyPages.push_back({hdr, Clock::now(), lsn});
+    assert(pi->hdr && !pi->pgno);
+    if (~pi->flags & fDbPageDirty) {
+        pi->firstTime = Clock::now();
+        pi->firstLsn = lsn;
+        pi->flags |= fDbPageDirty;
+        m_dirtyPages.link(pi);
         s_perfDirtyPages += 1;
-        m_currentWal.back().updatedPages += 1;
-        m_updatedPages += 1;
-        s_perfUnreported += 1;
+        if (m_dirtyPages.front() == pi)
+            queueSaveWork_LK();
     }
-    hdr->pgno = pgno;
-    hdr->lsn = lsn;
-    return hdr;
-}
-
-//===========================================================================
-void * DbPage::onLogGetRedoPtr(
-    uint32_t pgno,
-    uint64_t lsn,
-    uint16_t localTxn
-) {
-    if (pgno >= m_pages.size()) {
-        m_vdata.growToFit(pgno);
-        m_pages.resize(pgno + 1);
-    }
-    auto hdr = m_pages[pgno];
-    if (!hdr) {
-        // create new dirty page from clean page
-        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
-        if (lsn <= src->lsn)
-            return nullptr;
-        hdr = dupPage_LK(src);
-        m_pages[pgno] = hdr;
-    } else {
-        if (lsn <= hdr->lsn)
-            return nullptr;
-    }
-    return dirtyPage_LK(hdr, pgno, lsn);
-}
-
-//===========================================================================
-void * DbPage::onLogGetUpdatePtr(
-    uint32_t pgno,
-    uint64_t lsn,
-    uint16_t localTxn
-) {
-    assert(lsn);
-    unique_lock lk{m_workMut};
-    assert(pgno < m_pages.size());
-    auto hdr = m_pages[pgno];
-    if (!hdr) {
-        // create new dirty page from clean page
-        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
-        hdr = dupPage_LK(src);
-        m_pages[pgno] = hdr;
-    }
-    return dirtyPage_LK(hdr, pgno, lsn);
-}
-
-//===========================================================================
-const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
-    unique_lock lk{m_workMut};
-    assert(pgno < m_pages.size());
-    if (auto hdr = m_pages[pgno])
-        return hdr;
-
-    return m_vdata.rptr(pgno);
+    pi->hdr->pgno = pgno;
+    pi->hdr->lsn = lsn;
+    return pi->hdr;
 }

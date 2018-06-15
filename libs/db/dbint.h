@@ -95,12 +95,14 @@ public:
     bool newFiles() const { return m_newFiles; }
 
 private:
+    struct WorkPageInfo;
+
     bool openData(std::string_view datafile);
     bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
     void freePage_LK(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
-    void * dirtyPage_LK(DbPageHeader * hdr, uint32_t pgno, uint64_t lsn);
+    void * dirtyPage_LK(WorkPageInfo * pi, uint32_t pgno, uint64_t lsn);
 
     // Inherited by DbLog::IPageNotify
     void * onLogGetUpdatePtr(
@@ -131,24 +133,30 @@ private:
 
     mutable std::mutex m_workMut;
 
-    // One entry for every data page, null for unmodified pages, otherwise
-    // points to dirty copy in work view
-    std::vector<DbPageHeader *> m_pages;
-
     // Info about work pages that have been modified in memory but not yet
     // written to disk.
-    struct DirtyPageInfo {
+    struct WorkPageInfo : Dim::ListBaseLink<> {
         DbPageHeader * hdr;
-        Dim::TimePoint time;
-        uint64_t lsn;
+        Dim::TimePoint firstTime; // time page became dirty
+        uint64_t firstLsn; // LSN at which page became dirty
+        uint32_t pgno;
+        DbPageFlags flags;
     };
     // List of all dirty pages in order of when they became dirty as measured
     // by LSN (and therefore also time).
-    std::deque<DirtyPageInfo> m_dirtyPages;
-
+    Dim::List<WorkPageInfo> m_dirtyPages;
     // Static copies of old versions of dirty pages, that aren't yet stable,
     // waiting to be written.
-    std::deque<DirtyPageInfo> m_oldPages;
+    Dim::List<WorkPageInfo> m_oldPages;
+    // Clean pages that were recently dirty in the order they became clean.
+    Dim::List<WorkPageInfo> m_cleanPages;
+    // Number of pages, dirty or clean, that haven't had their cleaning cost
+    // fully repaid.
+    size_t m_pageDebt{0};
+
+    // One entry for every data page, null for untracked pages (which must
+    // therefore also be unmodified pages).
+    std::vector<WorkPageInfo *> m_pages;
 
     // The LSN up to which all data can be safely recovered. All WAL for any
     // transaction, that has not been rolled back and includes logs from this
@@ -162,7 +170,6 @@ private:
         uint64_t lsn; // first LSN on the page
         Dim::TimePoint time; // time page became stable
         size_t bytes; // bytes on the page
-        size_t updatedPages; // work pages transitioned to dirty by this WAL
     };
     // Stable WAL pages that are within the "checkpoint bytes" threshold
     std::deque<WalPageInfo> m_currentWal;
@@ -172,9 +179,6 @@ private:
     size_t m_overflowBytes{0};
     // Sum of bytes in all stable WAL pages (both current and overflow)
     size_t m_stableBytes{0};
-    std::deque<WalPageInfo> m_pacingWal;
-    // Total number of pages dirtied by stable WAL pages (current and overflow)
-    size_t m_updatedPages{0};
 
     DbReadView m_vdata;
     Dim::FileHandle m_fdata;

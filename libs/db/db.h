@@ -40,9 +40,6 @@ void dbClose(DbHandle h);
 
 // Setting a parameter to zero causes that specific parameter to be unchanged.
 struct DbConfig {
-    Dim::Duration pageMaxAge;
-    Dim::Duration pageScanInterval;
-
     Dim::Duration checkpointMaxInterval;
     size_t checkpointMaxData;
 };
@@ -236,9 +233,6 @@ struct DbPageHeader {
     DbPageType type;
     uint32_t pgno;
     uint32_t id;
-    union {
-        uint32_t checksum;
-        uint32_t flags;
-    };
+    uint32_t checksum;
     uint64_t lsn;
 };

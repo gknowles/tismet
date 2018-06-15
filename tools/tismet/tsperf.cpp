@@ -16,7 +16,7 @@ using namespace Dim;
 *
 ***/
 
-const Duration kSampleInterval = 1min;
+using SampleInterval = minutes; // duration<int, ratio<10>>; // minutes;
 
 
 /****************************************************************************
@@ -93,7 +93,7 @@ void SampleTimer::onTask() {
     }
     dbCloseContext(ctx);
     now = Clock::now();
-    auto wait = ceil<minutes>(now) - now;
+    auto wait = ceil<SampleInterval>(now) - now;
     timerUpdate(this, wait);
     s_taskQueued = false;
 }

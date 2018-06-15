@@ -1121,7 +1121,10 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
     assert(last > m_stableLsn);
 
     m_stableLsn = last;
-    m_page->onLogStable(m_stableLsn, m_pageSize * (i - base));
+    m_page->onLogStable(
+        m_stableLsn,
+        fullPageWrite ? m_pageSize * (i - base) : 0
+    );
     while (!m_lsnTasks.empty()) {
         auto & ti = m_lsnTasks.top();
         if (m_stableLsn < ti.waitLsn)

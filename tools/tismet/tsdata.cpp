@@ -143,8 +143,6 @@ void AppXmlNotify::onConfigChange(const XDocument & doc) {
             (size_t) configNumber(doc, "CheckpointMaxData");
         conf.checkpointMaxInterval =
             configDuration(doc, "CheckpointMaxInterval");
-        conf.pageMaxAge = configDuration(doc, "WorkMemoryMaxAge");
-        conf.pageScanInterval = configDuration(doc, "WorkMemoryScanInterval");
         dbConfigure(s_db, conf);
     }
 

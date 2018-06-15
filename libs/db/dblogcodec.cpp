@@ -416,8 +416,7 @@ void DbLog::apply(uint64_t lsn, const Record & log) {
 
     auto pgno = getPgno(log);
     auto localTxn = getLocalTxn(log);
-    auto ptr = (void *) nullptr;
-    ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
+    auto ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
     applyUpdate(ptr, log);
 }
 
