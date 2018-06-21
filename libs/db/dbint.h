@@ -102,7 +102,9 @@ private:
     void writePageWait(DbPageHeader * hdr);
     void freePage_LK(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
-    void * dirtyPage_LK(WorkPageInfo * pi, uint32_t pgno, uint64_t lsn);
+    void * dirtyPage_LK(uint32_t pgno, uint64_t lsn);
+    WorkPageInfo * allocWorkInfo_LK();
+    void freeWorkInfo_LK(WorkPageInfo * pi);
 
     // Inherited by DbLog::IPageNotify
     void * onLogGetUpdatePtr(
@@ -153,6 +155,7 @@ private:
     // Number of pages, dirty or clean, that haven't had their cleaning cost
     // fully repaid.
     size_t m_pageDebt{0};
+    Dim::List<WorkPageInfo> m_freeInfos;
 
     // One entry for every data page, null for untracked pages (which must
     // therefore also be unmodified pages).

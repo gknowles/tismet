@@ -360,7 +360,7 @@ void DbPage::saveWork() {
         s_perfDirtyPages -= 1;
 
         if (pi->hdr->lsn > m_stableLsn) {
-            auto npi = new WorkPageInfo;
+            auto npi = allocWorkInfo_LK();
             m_oldPages.link(npi);
             npi->hdr = dupPage_LK(pi->hdr);
             npi->firstTime = pi->firstTime;
@@ -412,7 +412,7 @@ void DbPage::saveOldPages_LK() {
         while (auto pi = pages.front()) {
             assert(m_pages[pi->hdr->pgno] != pi);
             freePage_LK(pi->hdr);
-            delete pi;
+            freeWorkInfo_LK(pi);
         }
 
         removeWalPages_LK(savedLsn);
@@ -458,7 +458,6 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         }
     }
 
-    List<WorkPageInfo> tmp;
     if (!m_cleanPages.empty()) {
         auto minTime = Clock::now() - m_maxDirtyAge;
         while (auto pi = m_cleanPages.front()) {
@@ -468,7 +467,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
             auto pgno = pi->hdr ? pi->hdr->pgno : pi->pgno;
             assert(m_pages[pgno] == pi);
             m_pages[pgno] = nullptr;
-            tmp.link(pi);
+            freeWorkInfo_LK(pi);
         }
     }
 
@@ -477,12 +476,6 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     s_perfReqWalPages -= (unsigned) pages;
     m_pageDebt -= debt;
     s_perfUnreported -= (unsigned) debt;
-
-    if (!tmp.empty()) {
-        m_workMut.unlock();
-        tmp.clear();
-        m_workMut.lock();
-    }
 }
 
 //===========================================================================
@@ -523,6 +516,24 @@ const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
 }
 
 //===========================================================================
+DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
+    auto pi = m_freeInfos.back();
+    if (!pi)
+        pi = new WorkPageInfo;
+    pi->hdr = nullptr;
+    pi->firstTime = {};
+    pi->firstLsn = 0;
+    pi->flags = {};
+    pi->pgno = 0;
+    return pi;
+}
+
+//===========================================================================
+void DbPage::freeWorkInfo_LK(WorkPageInfo * pi) {
+    m_freeInfos.link(pi);
+}
+
+//===========================================================================
 void * DbPage::onLogGetRedoPtr(
     uint32_t pgno,
     uint64_t lsn,
@@ -538,21 +549,10 @@ void * DbPage::onLogGetRedoPtr(
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
         if (lsn <= src->lsn)
             return nullptr;
-        if (!pi) {
-            pi = new WorkPageInfo;
-            pi->firstTime = {};
-            pi->firstLsn = 0;
-            pi->flags = {};
-            m_pages[pgno] = pi;
-            m_pageDebt += 1;
-            s_perfUnreported += 1;
-        }
-        pi->hdr = dupPage_LK(src);
-        pi->pgno = 0;
     } else if (lsn <= pi->hdr->lsn) {
         return nullptr;
     }
-    return dirtyPage_LK(pi, pgno, lsn);
+    return dirtyPage_LK(pgno, lsn);
 }
 
 //===========================================================================
@@ -564,23 +564,7 @@ void * DbPage::onLogGetUpdatePtr(
     assert(lsn);
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
-    auto pi = m_pages[pgno];
-    if (!pi || !pi->hdr) {
-        // create new dirty page from clean page
-        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
-        if (!pi) {
-            pi = new WorkPageInfo;
-            pi->firstTime = {};
-            pi->firstLsn = 0;
-            pi->flags = {};
-            m_pages[pgno] = pi;
-            m_pageDebt += 1;
-            s_perfUnreported += 1;
-        }
-        pi->hdr = dupPage_LK(src);
-        pi->pgno = 0;
-    }
-    return dirtyPage_LK(pi, pgno, lsn);
+    return dirtyPage_LK(pgno, lsn);
 }
 
 //===========================================================================
@@ -600,11 +584,20 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-void * DbPage::dirtyPage_LK(
-    WorkPageInfo * pi,
-    uint32_t pgno,
-    uint64_t lsn
-) {
+void * DbPage::dirtyPage_LK(uint32_t pgno, uint64_t lsn) {
+    auto pi = m_pages[pgno];
+    if (!pi || !pi->hdr) {
+        // create new dirty page from clean page
+        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        if (!pi) {
+            pi = allocWorkInfo_LK();
+            m_pages[pgno] = pi;
+            m_pageDebt += 1;
+            s_perfUnreported += 1;
+        }
+        pi->hdr = dupPage_LK(src);
+        pi->pgno = 0;
+    }
     assert(pi->hdr && !pi->pgno);
     if (~pi->flags & fDbPageDirty) {
         pi->firstTime = Clock::now();
