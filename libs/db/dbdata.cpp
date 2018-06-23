@@ -1502,7 +1502,7 @@ bool DbData::loadFreePages (DbTxn & txn) {
                 pgno + (unsigned) last - 1
             );
             if (first < m_numPages) {
-                auto num = (unsigned) (min(last, m_numPages) - first);
+                auto num = (unsigned) (min(last, m_numPages - pgno) - first);
                 m_numFreed += num;
                 s_perfFreePages += num;
             }
@@ -1545,6 +1545,7 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
 
     if (m_freePages.empty()) {
+        assert(!m_numFreed);
         auto [segPage, segPos] = segmentPage((uint32_t) m_numPages, m_pageSize);
         assert(segPage == m_numPages && !segPos);
         (void) segPos;

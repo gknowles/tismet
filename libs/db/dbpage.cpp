@@ -57,7 +57,7 @@ struct ZeroPage {
 static auto & s_perfPages = uperf("db.work pages (total)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
-static auto & s_perfUnreported = uperf("db.work pages (unreported)");
+static auto & s_perfAmortized = uperf("db.work pages (amortized)");
 static auto & s_perfWrites = uperf("db.work writes (total)");
 static auto & s_perfStableBytes = uperf("db.work stable bytes");
 static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
@@ -475,7 +475,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     m_stableBytes -= bytes;
     s_perfReqWalPages -= (unsigned) pages;
     m_pageDebt -= debt;
-    s_perfUnreported -= (unsigned) debt;
+    s_perfAmortized -= (unsigned) debt;
 }
 
 //===========================================================================
@@ -593,7 +593,7 @@ void * DbPage::dirtyPage_LK(uint32_t pgno, uint64_t lsn) {
             pi = allocWorkInfo_LK();
             m_pages[pgno] = pi;
             m_pageDebt += 1;
-            s_perfUnreported += 1;
+            s_perfAmortized += 1;
         }
         pi->hdr = dupPage_LK(src);
         pi->pgno = 0;

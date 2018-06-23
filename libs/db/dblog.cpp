@@ -508,8 +508,6 @@ bool DbLog::recover(RecoverFlags flags) {
     m_phase = Checkpoint::Complete;
     m_checkpointStart = Clock::now();
 
-    if (m_openFlags & fDbOpenVerbose)
-        logMsgInfo() << "Load transaction log";
     if (!loadPages())
         return false;
     if (m_pages.empty())
@@ -568,6 +566,8 @@ bool DbLog::recover(RecoverFlags flags) {
 //===========================================================================
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages() {
+    if (m_openFlags & fDbOpenVerbose)
+        logMsgInfo() << "Verify transaction log";
     auto rawbuf = partialPtr(0);
     LogPage lp;
     PageInfo * pi;
