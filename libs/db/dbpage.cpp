@@ -212,6 +212,7 @@ void DbPage::close() {
     m_oldPages.clear();
     m_cleanPages.clear();
     m_pageDebt = 0;
+    m_freeInfos.clear();
     m_currentWal.clear();
     m_overflowWal.clear();
     m_stableBytes = 0;
