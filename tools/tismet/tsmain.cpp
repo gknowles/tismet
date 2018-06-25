@@ -130,24 +130,48 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 *
 ***/
 
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    auto ver = "tismet/"s + kVersion;
-    Cli cli;
-    cli.header(ver + " (" __DATE__ ")");
-    cli.versionOpt(kVersion, "tismet");
-    if (!cli.parse(argc, argv))
-        return appSignalUsageError();
+static auto s_verion = "tismet/"s + kVersion;
 
-    httpRouteSetDefaultReplyHeader(kHttpServer, ver.c_str());
+//===========================================================================
+static bool serveCmd(Cli & cli) {
+    httpRouteSetDefaultReplyHeader(kHttpServer, s_verion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
+
     resLoadWebSite();
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
+    return cli.fail(EX_PENDING, "");
+}
+
+//===========================================================================
+static bool installCmd(Cli & cli) {
+    return true;
+}
+
+//===========================================================================
+static void app(int argc, char * argv[]) {
+    Cli cli;
+    cli.header(s_verion + " (" __DATE__ ")")
+        .helpCmd();
+    cli.versionOpt(kVersion, "tismet");
+    cli.before([](auto & cli, auto & args) {
+        if (args.size() == 1)
+            args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
+        return true;
+    });
+    cli.command("serve")
+        .desc("Run Tismet server and process requests.")
+        .action(serveCmd);
+    cli.command("install")
+        .desc("Install Tismet service.")
+        .action(installCmd);
+
+    (void) cli.exec(argc, argv);
+    return appSignalUsageError();
 }
 
 
