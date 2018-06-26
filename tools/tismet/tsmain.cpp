@@ -148,11 +148,6 @@ static bool serveCmd(Cli & cli) {
 }
 
 //===========================================================================
-static bool installCmd(Cli & cli) {
-    return true;
-}
-
-//===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
     cli.header(s_verion + " (" __DATE__ ")")
@@ -166,9 +161,6 @@ static void app(int argc, char * argv[]) {
     cli.command("serve")
         .desc("Run Tismet server and process requests.")
         .action(serveCmd);
-    cli.command("install")
-        .desc("Install Tismet service.")
-        .action(installCmd);
 
     (void) cli.exec(argc, argv);
     return appSignalUsageError();

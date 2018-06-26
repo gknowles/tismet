@@ -65,6 +65,7 @@
 # tools/tismet/tsgraphite.cpp
 # tools/tismet/tsmain.cpp
 # tools/tismet/tsperf.cpp
+# tools/tismet/tsservice.cpp
 # tools/tsm/intern.h
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
@@ -82,6 +83,7 @@
 # vendor/dimapp/libs/app/appint.h
 # vendor/dimapp/libs/app/config.cpp
 # vendor/dimapp/libs/app/config.h
+# vendor/dimapp/libs/app/console.cpp
 # vendor/dimapp/libs/app/console.h
 # vendor/dimapp/libs/app/env.h
 # vendor/dimapp/libs/app/logfile.cpp
