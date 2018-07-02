@@ -34,6 +34,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include <shellapi.h>
 #pragma pack(pop)
 
 // External library internal headers

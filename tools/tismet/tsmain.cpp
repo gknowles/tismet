@@ -130,11 +130,11 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 *
 ***/
 
-static auto s_verion = "tismet/"s + kVersion;
+static auto s_version = "tismet/"s + kVersion;
 
 //===========================================================================
 static bool serveCmd(Cli & cli) {
-    httpRouteSetDefaultReplyHeader(kHttpServer, s_verion.c_str());
+    httpRouteSetDefaultReplyHeader(kHttpServer, s_version.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
     if (consoleAttached())
@@ -150,7 +150,7 @@ static bool serveCmd(Cli & cli) {
 //===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
-    cli.header(s_verion + " (" __DATE__ ")")
+    cli.header(s_version + " (" __DATE__ ")")
         .helpCmd();
     cli.versionOpt(kVersion, "tismet");
     cli.before([](auto & cli, auto & args) {
@@ -158,6 +158,11 @@ static void app(int argc, char * argv[]) {
             args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
         return true;
     });
+    cli.opt<DWORD>("console")
+        .show(false).desc("Attach to console of other process.")
+        .after([](auto & cli, auto & opt, auto & val) {
+            return !opt || consoleAttach(*opt);
+        });
     cli.command("serve")
         .desc("Run Tismet server and process requests.")
         .action(serveCmd);
