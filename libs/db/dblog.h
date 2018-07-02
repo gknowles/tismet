@@ -121,7 +121,7 @@ private:
         Dim::FileHandle f
     ) override;
 
-    bool loadPages();
+    bool loadPages(Dim::FileHandle flog);
 
     void logCommitCheckpoint(uint64_t startLsn);
     uint64_t logBeginTxn(uint16_t localTxn);
@@ -151,7 +151,7 @@ private:
     void flushWriteBuffer();
 
     struct AnalyzeData;
-    void applyAll(AnalyzeData * data);
+    void applyAll(AnalyzeData * data, Dim::FileHandle flog);
     void apply(AnalyzeData * data, uint64_t lsn, const Record & log);
     void applyCommitCheckpoint(
         AnalyzeData * data,

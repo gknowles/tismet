@@ -219,7 +219,10 @@ bool DbBase::open(string_view name, size_t pageSize, DbOpenFlags flags) {
         return false;
     m_maxNameLen = m_data.queryStats().metricNameSize - 1;
     DbTxn txn{m_log, m_page};
-    return m_data.openForUpdate(txn, this, datafile, flags);
+    if (!m_data.openForUpdate(txn, this, datafile, flags))
+        return false;
+    m_log.checkpoint();
+    return true;
 }
 
 //===========================================================================

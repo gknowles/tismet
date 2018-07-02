@@ -508,7 +508,18 @@ bool DbLog::recover(RecoverFlags flags) {
     m_phase = Checkpoint::Complete;
     m_checkpointStart = Clock::now();
 
-    if (!loadPages())
+    auto logfile = filePath(m_flog);
+    auto flog = fileOpen(
+        logfile,
+        File::fReadOnly | File::fBlocking | File::fDenyNone | File::fSequential
+    );
+    if (!flog) {
+        logMsgError() << "Open failed, " << logfile;
+        return false;
+    }
+    Finally flog_f([&]() { fileClose(flog); });
+
+    if (!loadPages(flog))
         return false;
     if (m_pages.empty())
         return true;
@@ -521,7 +532,7 @@ bool DbLog::recover(RecoverFlags flags) {
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
     if (~flags & fRecoverBeforeCheckpoint) {
-        applyAll(&data);
+        applyAll(&data, flog);
         if (!data.checkpoint)
             logMsgFatal() << "Invalid .tsl file, no checkpoint found";
         m_checkpointLsn = data.checkpoint;
@@ -550,7 +561,7 @@ bool DbLog::recover(RecoverFlags flags) {
     if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Recover database";
     data.analyze = false;
-    applyAll(&data);
+    applyAll(&data, flog);
     if (~flags & fRecoverIncompleteTxns) {
         assert(data.incompleteTxnLsns.empty());
         assert(data.activeTxns.empty());
@@ -565,16 +576,17 @@ bool DbLog::recover(RecoverFlags flags) {
 
 //===========================================================================
 // Creates array of references to last page and its contiguous predecessors
-bool DbLog::loadPages() {
+bool DbLog::loadPages(FileHandle flog) {
     if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Verify transaction log";
+
     auto rawbuf = partialPtr(0);
     LogPage lp;
     PageInfo * pi;
     uint32_t checksum;
     // load info for each page
     for (uint32_t i = 1; i < m_numPages; ++i) {
-        fileReadWait(rawbuf, m_pageSize, m_flog, i * m_pageSize);
+        fileReadWait(rawbuf, m_pageSize, flog, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
         case kPageTypeInvalid:
@@ -595,7 +607,7 @@ bool DbLog::loadPages() {
             lp.checksum = hash_crc32c(rawbuf, m_pageSize);
             if (checksum != lp.checksum) {
                 logMsgError() << "Invalid checksum on page #"
-                    << i << " of " << filePath(m_flog);
+                    << i << " of " << filePath(flog);
                 goto MAKE_FREE;
             }
             pi = &m_pages.emplace_back();
@@ -605,7 +617,7 @@ bool DbLog::loadPages() {
             break;
         default:
             logMsgError() << "Invalid page type(" << mp->type << ") on page #"
-                << i << " of " << filePath(m_flog);
+                << i << " of " << filePath(flog);
         MAKE_FREE:
             mp->type = kPageTypeFree;
             mp->pgno = i;
@@ -638,7 +650,7 @@ bool DbLog::loadPages() {
 }
 
 //===========================================================================
-void DbLog::applyAll(AnalyzeData * data) {
+void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
     LogPage lp;
     auto buf = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
     auto buf2 = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
@@ -649,7 +661,7 @@ void DbLog::applyAll(AnalyzeData * data) {
     auto log = (Record *) nullptr;
 
     for (auto & pi : m_pages) {
-        fileReadWait(buf2, m_pageSize, m_flog, pi.pgno * m_pageSize);
+        fileReadWait(buf2, m_pageSize, flog, pi.pgno * m_pageSize);
         unpack(&lp, buf2);
         if (bytesBefore) {
             auto bytesAfter = lp.firstPos - logHdrLen(lp.type);
