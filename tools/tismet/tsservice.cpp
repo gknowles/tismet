@@ -88,19 +88,24 @@ static bool installCmd(Cli & cli) {
     logMonitor(consoleBasicLogger());
 
     auto success = false;
+    WinServiceConfig sconf;
+    sconf.serviceName = "Tismet";
+    sconf.displayName = "Tismet Server",
+    sconf.desc = "Provides efficient storage, processing, and access to time "
+        "series metrics for graphing and monitoring applications.";
+    sconf.deps = { "Tcpip", "Afd" };
+    sconf.account = "NT Service\\Tismet";
+    sconf.failureFlag = true;
+    sconf.failureReset = 24h;
+    sconf.failureActions = {
+        { WinServiceConfig::Action::kRestart, 10s },
+        { WinServiceConfig::Action::kRestart, 60s },
+        { WinServiceConfig::Action::kRestart, 10min },
+    };
 
     switch (envProcessRights()) {
     case kEnvUserAdmin:
-        success = winSvcInstall(
-            nullptr,
-            "Tismet",
-            "Tismet Server",
-            "Provides efficient storage, processing, and access to time series "
-                "metrics for graphing and monitoring applications.",
-            { "Tcpip", "Afd" },
-            "NT Service\\Tismet",
-            nullptr
-        );
+        success = winSvcInstall(sconf);
         break;
     case kEnvUserRestrictedAdmin:
         success = execElevated(envExecPath(), s_opts.args);
