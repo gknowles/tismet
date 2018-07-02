@@ -158,7 +158,7 @@ static void app(int argc, char * argv[]) {
             args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
         return true;
     });
-    cli.opt<DWORD>("console")
+    cli.opt<unsigned>("console")
         .show(false).desc("Attach to console of other process.")
         .after([](auto & cli, auto & opt, auto & val) {
             return !opt || consoleAttach(*opt);

@@ -13,6 +13,7 @@
 #include "json/json.h"
 #include "msgpack/msgpack.h"
 #include "net/net.h"
+#include "win/win.h"
 #include "wintls/wintls.h"
 
 #include "carbon/carbon.h"
@@ -28,17 +29,6 @@
 #include <regex>
 
 // Platform headers
-#pragma pack(push)
-#pragma pack()
-#define _WIN32_WINNT _WIN32_WINNT_WIN8
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
-#include <shellapi.h>
-#pragma pack(pop)
-
 // External library internal headers
-#include "win/winint.h"
-
 // Internal headers
 #include "intern.h"
