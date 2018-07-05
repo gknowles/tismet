@@ -32,7 +32,7 @@ namespace TismetSocket {
 
 class ICarbonNotify {
 public:
-    virtual ~ICarbonNotify() {}
+    virtual ~ICarbonNotify() = default;
 
     // Returns number of onCarbonValue() calls that requested delayed reads,
     // or EOF on malformed data. When EOF is returned, there may have been any
