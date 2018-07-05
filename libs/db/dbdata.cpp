@@ -16,8 +16,8 @@ using namespace Dim;
 ***/
 
 const DbSampleType kDefaultSampleType = kSampleTypeFloat32;
-const Duration kDefaultRetention = 7 * 24h;
-const Duration kDefaultInterval = 1min;
+constexpr Duration kDefaultRetention = 7 * 24h;
+constexpr Duration kDefaultInterval = 1min;
 
 const unsigned kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());

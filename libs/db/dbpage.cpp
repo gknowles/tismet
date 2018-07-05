@@ -19,7 +19,7 @@ using namespace Dim;
 const size_t kViewSize = 0x100'0000; // 16MiB
 const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
-const uint32_t kFreePageMark = numeric_limits<uint32_t>::max();
+constexpr uint32_t kFreePageMark = numeric_limits<uint32_t>::max();
 
 
 /****************************************************************************

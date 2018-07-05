@@ -22,8 +22,8 @@
 *
 ***/
 
-const unsigned kDefaultMaxCheckpointData = 1'048'576; // 1MiB
-const Dim::Duration kDefaultMaxCheckpointInterval = (std::chrono::hours) 1;
+constexpr unsigned kDefaultMaxCheckpointData = 1'048'576; // 1MiB
+constexpr Dim::Duration kDefaultMaxCheckpointInterval = (std::chrono::hours) 1;
 
 
 /****************************************************************************
