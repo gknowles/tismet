@@ -15,7 +15,6 @@ using namespace Dim;
 *
 ***/
 
-const char kVersion[] = "1.0.0";
 
 
 /****************************************************************************
@@ -130,11 +129,13 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 *
 ***/
 
-static auto s_version = "tismet/"s + kVersion;
+static string s_product = "tismet"s;
+static string s_version;
+static string s_productVersion;
 
 //===========================================================================
 static bool serveCmd(Cli & cli) {
-    httpRouteSetDefaultReplyHeader(kHttpServer, s_version.c_str());
+    httpRouteSetDefaultReplyHeader(kHttpServer, s_productVersion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
     if (consoleAttached())
@@ -149,10 +150,16 @@ static bool serveCmd(Cli & cli) {
 
 //===========================================================================
 static void app(int argc, char * argv[]) {
+    auto vi = envExecVersion();
+    ostringstream os;
+    os << vi.major << '.' << vi.minor << '.' << vi.patch;
+    s_version = os.str();
+    s_productVersion = s_product + "/" + s_version;
+
     Cli cli;
-    cli.header(s_version + " (" __DATE__ ")")
+    cli.header(s_productVersion + " (" __DATE__ ")")
         .helpCmd();
-    cli.versionOpt(kVersion, "tismet");
+    cli.versionOpt(s_version, s_product);
     cli.before([](auto & cli, auto & args) {
         if (args.size() == 1)
             args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
