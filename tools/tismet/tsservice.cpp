@@ -53,7 +53,8 @@ static bool execElevated(string_view prog, const vector<string> & args) {
         tmp += arg;
         tmp += '"';
     }
-    return execElevated(prog, tmp.view()) != -1;
+    int ec;
+    return execElevated(&ec, prog, tmp.view());
 }
 
 

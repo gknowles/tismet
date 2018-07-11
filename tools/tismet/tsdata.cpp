@@ -90,10 +90,10 @@ Duration ExpireTimer::onTimer(TimePoint now) {
     if (appStopping())
         return kTimerInfinite;
 
-    if (m_ids.empty())
+    if (!m_ids)
         dbFindMetrics(&m_ids, s_db);
 
-    if (!m_ids.empty()) {
+    if (m_ids) {
         auto id = m_ids.pop_front();
         dbGetMetricInfo(this, s_db, id);
         return kTimerInfinite;
@@ -113,7 +113,7 @@ bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
         dbEraseMetric(s_db, info.id);
     }
 
-    auto wait = m_ids.empty() ? timeUntilCheck() : 1ms;
+    auto wait = m_ids ? 1ms : timeUntilCheck();
     timerUpdate(this, wait);
     return true;
 }

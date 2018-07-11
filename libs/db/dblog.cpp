@@ -564,7 +564,7 @@ bool DbLog::recover(RecoverFlags flags) {
     applyAll(&data, flog);
     if (~flags & fRecoverIncompleteTxns) {
         assert(data.incompleteTxnLsns.empty());
-        assert(data.activeTxns.empty());
+        assert(!data.activeTxns);
     }
 
     auto & back = m_pages.back();
@@ -927,7 +927,7 @@ uint64_t DbLog::beginTxn() {
     uint16_t localTxn = 0;
     {
         scoped_lock lk{m_bufMut};
-        if (m_localTxns.empty()) {
+        if (!m_localTxns) {
             localTxn = 1;
         } else {
             auto txns = *m_localTxns.ranges().begin();
@@ -1236,7 +1236,7 @@ void DbLog::prepareBuffer_LK(
     lp.type = kPageTypeLog;
     lp.checksum = 0;
     auto hdrLen = logHdrLen(lp.type);
-    if (!m_freePages.empty()) {
+    if (m_freePages) {
         lp.pgno = m_freePages.pop_front();
         s_perfFreePages -= 1;
     } else {

@@ -194,7 +194,7 @@ Node * addPath(QueryInfo * qi) {
 
 //===========================================================================
 static void removeRedundantSegments(PathNode * path) {
-    if (path->segs.empty())
+    if (!path->segs)
         return;
 
     // Double blot segments are redundant if they are separated by zero
@@ -276,7 +276,7 @@ Node * addSegLiteral(
 Node * addSegBlot(QueryInfo * qi, Node * node) {
     assert(node->type == kPathSeg);
     auto seg = static_cast<PathSeg *>(node);
-    if (!seg->nodes.empty() && seg->nodes.back()->type == kSegBlot) {
+    if (seg->nodes && seg->nodes.back()->type == kSegBlot) {
         auto sn = static_cast<SegBlot *>(seg->nodes.back());
         sn->count += 1;
         return nullptr;

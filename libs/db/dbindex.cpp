@@ -174,7 +174,7 @@ void DbIndex::erase(string_view name) {
     for (; numSegs; --numSegs) {
         if (!m_segIds[numSegs - 1].empty())
             break;
-        assert(m_lenIds[numSegs].uset.empty());
+        assert(!m_lenIds[numSegs].uset);
         m_lenIds.resize(numSegs);
         m_segIds.resize(numSegs - 1);
         m_segNames.resize(numSegs - 1);
@@ -183,7 +183,7 @@ void DbIndex::erase(string_view name) {
 
 //===========================================================================
 uint32_t DbIndex::nextId() const {
-    if (!m_unusedIds.empty()) {
+    if (m_unusedIds) {
         return *m_unusedIds.begin();
     } else if (!m_ids.count) {
         return 1;

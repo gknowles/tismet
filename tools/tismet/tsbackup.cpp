@@ -112,7 +112,7 @@ bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
         m_mode = mode;
         m_info = info;
         m_time = Clock::now();
-        if (m_reqIds.empty())
+        if (!m_reqIds)
             return true;
 
         copy_LK(&progress);

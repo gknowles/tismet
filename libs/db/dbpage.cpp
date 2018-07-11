@@ -280,9 +280,9 @@ uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
 
 //===========================================================================
 Duration DbPage::untilNextSave_LK() {
-    if (!m_oldPages.empty() && m_stableLsn >= m_oldPages.front()->hdr->lsn)
+    if (m_oldPages && m_stableLsn >= m_oldPages.front()->hdr->lsn)
         return 0ms;
-    if (m_dirtyPages.empty())
+    if (!m_dirtyPages)
         return kTimerInfinite;
     auto front = m_dirtyPages.front();
     if (m_overflowBytes && m_stableLsn >= front->hdr->lsn)
@@ -317,7 +317,7 @@ void DbPage::saveWork() {
     unique_lock lk{m_workMut};
     saveOldPages_LK();
 
-    if (m_dirtyPages.empty())
+    if (!m_dirtyPages)
         return;
 
     auto minTime = now - m_maxDirtyAge;
@@ -341,7 +341,7 @@ void DbPage::saveWork() {
     auto tmpHdr = reinterpret_cast<DbPageHeader *>(buf.get());
     uint64_t savedLsn = 0;
     unsigned saved = 0;
-    while (!m_dirtyPages.empty()) {
+    while (m_dirtyPages) {
         auto pi = m_dirtyPages.front();
         // Make sure that we've saved:
         //  - at least one page
@@ -385,7 +385,7 @@ void DbPage::saveWork() {
         }
     }
 
-    if (m_oldPages.empty() && savedLsn)
+    if (!m_oldPages && savedLsn)
         removeWalPages_LK(savedLsn);
 
     queueSaveWork_LK();
@@ -393,7 +393,7 @@ void DbPage::saveWork() {
 
 //===========================================================================
 void DbPage::saveOldPages_LK() {
-    if (m_oldPages.empty())
+    if (!m_oldPages)
         return;
 
     List<WorkPageInfo> pages;
@@ -405,7 +405,7 @@ void DbPage::saveOldPages_LK() {
         pages.link(pi);
     }
 
-    if (!pages.empty()) {
+    if (pages) {
         m_workMut.unlock();
         for (auto && pi : pages)
             writePageWait(pi.hdr);
@@ -459,7 +459,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         }
     }
 
-    if (!m_cleanPages.empty()) {
+    if (m_cleanPages) {
         auto minTime = Clock::now() - m_maxDirtyAge;
         while (auto pi = m_cleanPages.front()) {
             if (pi->firstTime > minTime)
@@ -571,13 +571,13 @@ void * DbPage::onLogGetUpdatePtr(
 //===========================================================================
 DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
     auto wpno = (uint32_t) 0;
-    if (m_freeWorkPages.empty()) {
+    if (m_freeWorkPages) {
+        wpno = m_freeWorkPages.pop_front();
+        s_perfFreePages -= 1;
+    } else {
         wpno = (uint32_t) m_workPages++;
         m_vwork.growToFit(wpno);
         s_perfPages += 1;
-    } else {
-        wpno = m_freeWorkPages.pop_front();
-        s_perfFreePages -= 1;
     }
     auto ptr = (DbPageHeader *) m_vwork.wptr(wpno);
     memcpy(ptr, hdr, m_pageSize);

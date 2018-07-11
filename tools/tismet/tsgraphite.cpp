@@ -161,7 +161,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
     string format = "json";
     string target;
     for (auto && param : req.query().parameters) {
-        if (param.values.empty())
+        if (!param.values)
             continue;
         if (param.name == "format") {
             format = param.values.front()->value;
@@ -367,7 +367,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     int maxPoints = 0;
 
     for (auto && param : req.query().parameters) {
-        if (param.values.empty())
+        if (!param.values)
             continue;
         auto value = param.values.front()->value;
         if (param.name == "format") {

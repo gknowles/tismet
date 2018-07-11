@@ -34,7 +34,7 @@ private:
 
     thread::id m_tid;
     ResultInfo m_result;
-    UnsignedSet m_unfinished;
+    UnsignedSet m_unfinishedIds;
 
     size_t m_pos{0};
     TimePoint m_time;
@@ -439,11 +439,11 @@ void DbDataNode::onTask() {
     if (!outputRange(&m_range))
         return;
 
-    assert(m_unfinished.empty());
+    assert(!m_unfinishedIds);
     m_result = {};
     m_result.target = sourceName();
-    dbFindMetrics(&m_unfinished, s_db, m_result.target.get());
-    if (m_unfinished.empty()) {
+    dbFindMetrics(&m_unfinishedIds, s_db, m_result.target.get());
+    if (!m_unfinishedIds) {
         if (outputResult(m_result).pending)
             onSourceStart();
         return;
@@ -455,7 +455,7 @@ void DbDataNode::onTask() {
 void DbDataNode::readMore() {
     m_tid = this_thread::get_id();
     for (;;) {
-        auto id = m_unfinished.pop_front();
+        auto id = m_unfinishedIds.pop_front();
         if (!dbGetSamples(
             this,
             s_db,
@@ -466,7 +466,7 @@ void DbDataNode::readMore() {
         )) {
             return;
         }
-        if (m_unfinished.empty())
+        if (!m_unfinishedIds)
             break;
     }
     m_tid = {};
@@ -526,10 +526,10 @@ void DbDataNode::onDbSeriesEnd(uint32_t id) {
     m_result.name = {};
     m_result.samples = {};
 
-    if (ret.more && m_unfinished.empty())
+    if (ret.more && !m_unfinishedIds)
         ret = outputResult(m_result);
     if (!ret.more) {
-        m_unfinished.clear();
+        m_unfinishedIds.clear();
         if (ret.pending)
             onSourceStart();
         return;
@@ -742,7 +742,7 @@ static ShutdownNotify s_cleanup;
 //===========================================================================
 void ShutdownNotify::onShutdownServer(bool firstTry) {
     shared_lock lk{s_mut};
-    assert(s_execs.empty());
+    assert(!s_execs);
 }
 
 

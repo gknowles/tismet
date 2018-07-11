@@ -1485,7 +1485,7 @@ static BitView segmentBitView(void * hdr, size_t pageSize) {
 //===========================================================================
 bool DbData::loadFreePages (DbTxn & txn) {
     auto pps = pagesPerSegment(m_pageSize);
-    assert(m_freePages.empty());
+    assert(!m_freePages);
     for (uint32_t pgno = 0; pgno < m_numPages; pgno += pps) {
         auto pp = segmentPage(pgno, m_pageSize);
         auto segPage = pp.first;
@@ -1544,7 +1544,7 @@ bool DbData::loadFreePages (DbTxn & txn) {
 uint32_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
 
-    if (m_freePages.empty()) {
+    if (!m_freePages) {
         assert(!m_numFreed);
         auto [segPage, segPos] = segmentPage((uint32_t) m_numPages, m_pageSize);
         assert(segPage == m_numPages && !segPos);
