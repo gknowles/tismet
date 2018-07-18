@@ -187,6 +187,7 @@
 # vendor/dimapp/libs/net/net.h
 # vendor/dimapp/libs/net/pch.cpp
 # vendor/dimapp/libs/net/pch.h
+# vendor/dimapp/libs/net/pipe.h
 # vendor/dimapp/libs/net/socket.h
 # vendor/dimapp/libs/net/sockmgr.cpp
 # vendor/dimapp/libs/net/sockmgr.h
@@ -220,6 +221,7 @@
 # vendor/dimapp/libs/win/wingui.cpp
 # vendor/dimapp/libs/win/winint.h
 # vendor/dimapp/libs/win/winiocp.cpp
+# vendor/dimapp/libs/win/winpipe.cpp
 # vendor/dimapp/libs/win/winplatform.cpp
 # vendor/dimapp/libs/win/winres.cpp
 # vendor/dimapp/libs/win/winsock.cpp
