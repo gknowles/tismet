@@ -13,6 +13,7 @@
 #include "json/json.h"
 #include "msgpack/msgpack.h"
 #include "net/net.h"
+#include "system/system.h"
 #include "win/win.h"
 #include "wintls/wintls.h"
 

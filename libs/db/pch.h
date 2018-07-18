@@ -14,6 +14,7 @@
 #include "app/app.h"
 #include "core/core.h"
 #include "file/file.h"
+#include "system/system.h"
 
 #include "carbon/carbon.h"
 #include "query/query.h"

@@ -12,6 +12,7 @@
 #include "file/file.h"
 #include "msgpack/msgpack.h"
 #include "net/net.h"
+#include "system/system.h"
 
 #include "carbon/carbon.h"
 #include "db/db.h"
