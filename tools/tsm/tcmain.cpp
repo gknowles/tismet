@@ -39,7 +39,7 @@ static void app(int argc, char * argv[]) {
     auto version = string(kVersion) + " (" __DATE__ ")";
     cli.header("tsm v"s + version);
     cli.versionOpt(version, "tsm");
-    cli.desc("Utility for dealing with metrics and with the tismet server.");
+    cli.desc("Utility for dealing with metrics and the tismet server.");
     cli.helpCmd().helpNoArgs();
     (void) cli.exec(argc, argv);
     return appSignalUsageError();
