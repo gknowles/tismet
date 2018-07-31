@@ -71,8 +71,11 @@ struct Function {
     enum Type {
         kAlias,
         kAliasSub,
+        kAverageSeries,
         kColor,
+        kCountSeries,
         kDerivative,
+        kDiffSeries,
         kDrawAsInfinite,
         kHighestCurrent,
         kHighestMax,
@@ -83,12 +86,14 @@ struct Function {
         kMaxSeries,
         kMinSeries,
         kMovingAverage,
+        kMultiplySeries,
         kNonNegativeDerivative,
         kRemoveAboveValue,
         kRemoveBelowValue,
         kScale,
         kScaleToSeconds,
-        kSum,
+        kSumSeries,
+        kStddevSeries,
         kTimeShift,
 
         kFuncTypes

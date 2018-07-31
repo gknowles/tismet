@@ -219,8 +219,11 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 
 FUNC(Alias);
 FUNC(AliasSub);
+FUNC(AverageSeries);
 FUNC(Color);
+FUNC(CountSeries);
 FUNC(Derivative);
+FUNC(DiffSeries);
 FUNC(DrawAsInfinite);
 FUNC(HighestCurrent);
 FUNC(HighestMax);
@@ -231,12 +234,14 @@ FUNC(MaximumAbove);
 FUNC(MaxSeries);
 FUNC(MinSeries);
 FUNC(MovingAverage);
+FUNC(MultiplySeries);
 FUNC(NonNegativeDerivative);
 FUNC(RemoveAboveValue);
 FUNC(RemoveBelowValue);
 FUNC(Scale);
 FUNC(ScaleToSeconds);
-FUNC(Sum);
+FUNC(SumSeries);
+FUNC(StddevSeries);
 FUNC(TimeShift);
 
 #undef FUNC

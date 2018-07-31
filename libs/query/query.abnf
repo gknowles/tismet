@@ -81,13 +81,25 @@ func = fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 
 func =/ fn-aliasSub { End }
-fn-aliasSub = %s"aliasSub(" arg-query "," arg-string "," arg-string ")" { Start }
+fn-aliasSub = %s"aliasSub(" arg-query "," arg-string "," arg-string ")"
+    { Start }
+
+func =/ fn-avg / fn-averageSeries
+fn-avg = %s"avg(" arg-query *( "," arg-query ) ")"
+    { Start, As fn-averageSeries }
+fn-averageSeries = %s"averageSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-color { End }
 fn-color = %s"color(" arg-query "," arg-string ")" { Start }
 
+func =/ fn-countSeries
+fn-countSeries = %s"countSeries(" arg-query *( "," arg-query ) ")" { Start }
+
 func =/ fn-derivative
 fn-derivative = %s"derivative(" arg-query ")" { Start }
+
+func =/ fn-diffSeries
+fn-diffSeries = %s"diffSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-drawAsInfinite
 fn-drawAsInfinite = %s"drawAsInfinite(" arg-query ")" { Start }
@@ -120,6 +132,10 @@ func =/ fn-movingAverage
 fn-movingAverage = %s"movingAverage("
     arg-query "," (arg-string / arg-num) [ "," arg-num ] ")" { Start }
 
+func =/ fn-multiplySeries
+fn-multiplySeries = %s"multiplySeries(" arg-query *( "," arg-query ) ")"
+    { Start }
+
 func =/ fn-nonNegativeDerivative
 fn-nonNegativeDerivative = %s"nonNegativeDerivative("
     arg-query [ "," arg-num ] ")" { Start }
@@ -137,9 +153,11 @@ func =/ fn-scaleToSeconds
 fn-scaleToSeconds = %s"scaleToSeconds(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-sum / fn-sumSeries
-fn-sum = %s"sum(" arg-query *( "," arg-query ) ")" { Start }
-fn-sumSeries = %s"sumSeries("
-    arg-query *( "," arg-query ) ")" { Start, As fn-sum }
+fn-sum = %s"sum(" arg-query *( "," arg-query ) ")" { Start, As fn-sumSeries }
+fn-sumSeries = %s"sumSeries(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-stddevSeries
+fn-stddevSeries = %s"stddevSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-timeShift
 fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }

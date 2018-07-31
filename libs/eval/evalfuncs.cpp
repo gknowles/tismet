@@ -757,9 +757,13 @@ bool FuncHighestMax::onFuncApply(ResultInfo & info) {
 namespace {
 template<Function::Type FT, typename T>
 class Aggregate : public FuncImpl<FT, T> {
+protected:
+    using impl_type = Aggregate;
     bool onFuncApply(ResultInfo & info) override;
 
-    virtual void onAggregate(double & agg, double newVal) = 0;
+    virtual void onResize(int count) {}
+    virtual void onAggregate(double & agg, int pos, double newVal) = 0;
+    virtual void onFinalize() {}
 protected:
     shared_ptr<SampleList> m_samples;
 };
@@ -771,6 +775,7 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
     if (info.samples) {
         if (!m_samples) {
             m_samples = SampleList::dup(*info.samples);
+            onResize(m_samples->count);
         } else if (m_samples->interval == info.samples->interval) {
             auto resize = false;
             auto interval = m_samples->interval;
@@ -802,6 +807,7 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
                     tmp->samples[pos] = NAN;
                 assert(pos == (int) tmp->count);
                 m_samples = tmp;
+                onResize(m_samples->count);
                 slast = first;
                 first = m_samples->first;
             }
@@ -811,15 +817,18 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
             for (; first < ilast; first += interval, ++pos, ++ipos) {
                 auto & sval = m_samples->samples[pos];
                 auto ival = info.samples->samples[ipos];
-                onAggregate(sval, ival);
+                onAggregate(sval, (int) pos, ival);
             }
             assert(pos <= m_samples->count);
         } else {
             // TODO: normalize and consolidate incompatible lists
-            logMsgError() << "Summing incompatible series, " << info.name.get();
+            logMsgError() << "Aggregating incompatible series, "
+                << info.name.get();
         }
         return true;
     }
+
+    onFinalize();
 
     // Output aggregated result and end mark
     info.name = addFuncName(this->type(), info.target);
@@ -832,20 +841,88 @@ bool Aggregate<FT, T>::onFuncApply(ResultInfo & info) {
 }
 
 //===========================================================================
-// sum
+// averageSeries
 //===========================================================================
 namespace {
-class FuncSum : public Aggregate<Function::kSum, FuncSum> {
-    void onAggregate(double & agg, double newVal) override;
+class FuncAverageSeries
+    : public Aggregate<Function::kAverageSeries, FuncAverageSeries>
+{
+    void onResize(int count) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
+    vector<unsigned> m_counts;
 };
 } // namespace
 
 //===========================================================================
-void FuncSum::onAggregate(double & agg, double newVal) {
-    if (isnan(agg)) {
+void FuncAverageSeries::onResize(int count) {
+    m_counts.resize(count, 1);
+}
+
+//===========================================================================
+void FuncAverageSeries::onAggregate(double & agg, int pos, double newVal) {
+    if (!isnan(newVal)) {
+        auto cnt = m_counts[pos]++;
+        agg = (agg * (cnt - 1) + newVal) / cnt;
+    }
+}
+
+//===========================================================================
+// countSeries
+//===========================================================================
+namespace {
+class FuncCountSeries
+    : public Aggregate<Function::kCountSeries, FuncCountSeries>
+{
+    bool onFuncApply(ResultInfo & info) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
+    void onFinalize() override;
+    unsigned m_count{0};
+};
+} // namespace
+
+//===========================================================================
+bool FuncCountSeries::onFuncApply(ResultInfo & info) {
+    if (info.samples)
+        m_count += 1;
+    return impl_type::onFuncApply(info);
+}
+
+//===========================================================================
+void FuncCountSeries::onAggregate(double & agg, int pos, double newVal)
+{}
+
+//===========================================================================
+void FuncCountSeries::onFinalize() {
+    auto * ptr = m_samples->samples,
+        * term = ptr + m_samples->count;
+    for (; ptr != term; ++ptr) {
+        *ptr = m_count;
+    }
+}
+
+//===========================================================================
+// diffSeries
+//===========================================================================
+namespace {
+class FuncDiffSeries : public Aggregate<Function::kDiffSeries, FuncDiffSeries> {
+    bool onFuncApply(ResultInfo & info) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
+    unsigned m_count{0};
+};
+} // namespace
+
+//===========================================================================
+bool FuncDiffSeries::onFuncApply(ResultInfo & info) {
+    m_count += 1;
+    return impl_type::onFuncApply(info);
+}
+
+//===========================================================================
+void FuncDiffSeries::onAggregate(double & agg, int pos, double newVal) {
+    if (m_count == 1) {
         agg = newVal;
     } else if (!isnan(newVal)) {
-        agg += newVal;
+        agg -= newVal;
     }
 }
 
@@ -854,12 +931,12 @@ void FuncSum::onAggregate(double & agg, double newVal) {
 //===========================================================================
 namespace {
 class FuncMaxSeries : public Aggregate<Function::kMaxSeries, FuncMaxSeries> {
-    void onAggregate(double & agg, double newVal) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
 };
 } // namespace
 
 //===========================================================================
-void FuncMaxSeries::onAggregate(double & agg, double newVal) {
+void FuncMaxSeries::onAggregate(double & agg, int pos, double newVal) {
     if (isnan(agg) || newVal > agg)
         agg = newVal;
 }
@@ -869,14 +946,109 @@ void FuncMaxSeries::onAggregate(double & agg, double newVal) {
 //===========================================================================
 namespace {
 class FuncMinSeries : public Aggregate<Function::kMinSeries, FuncMinSeries> {
-    void onAggregate(double & agg, double newVal) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
 };
 } // namespace
 
 //===========================================================================
-void FuncMinSeries::onAggregate(double & agg, double newVal) {
+void FuncMinSeries::onAggregate(double & agg, int pos, double newVal) {
     if (isnan(agg) || newVal < agg)
         agg = newVal;
+}
+
+//===========================================================================
+// multiplySeries
+//===========================================================================
+namespace {
+class FuncMultiplySeries
+    : public Aggregate<Function::kMultiplySeries, FuncMultiplySeries>
+{
+    void onAggregate(double & agg, int pos, double newVal) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncMultiplySeries::onAggregate(double & agg, int pos, double newVal) {
+    if (isnan(agg)) {
+        agg = newVal;
+    } else if (!isnan(newVal)) {
+        agg *= newVal;
+    }
+}
+
+//===========================================================================
+// stddevSeries
+//===========================================================================
+namespace {
+class FuncStddevSeries
+    : public Aggregate<Function::kStddevSeries, FuncStddevSeries>
+{
+    void onResize(int count) override;
+    void onAggregate(double & agg, int pos, double newVal) override;
+    void onFinalize() override;
+    struct Info {
+        double mean;
+        unsigned count;
+    };
+    vector<Info> m_infos;
+};
+} // namespace
+
+//===========================================================================
+void FuncStddevSeries::onResize(int count) {
+    auto base = (int) m_infos.size();
+    m_infos.resize(count);
+    for (int pos = base; pos < count; ++pos) {
+        auto & agg = m_samples->samples[pos];
+        auto & info = m_infos[pos];
+        if (!isnan(agg)) {
+            info.count = 1;
+            info.mean = agg;
+            agg = 0;
+        }
+    }
+}
+
+//===========================================================================
+void FuncStddevSeries::onAggregate(double & agg, int pos, double newVal) {
+    if (!isnan(newVal)) {
+        auto & info = m_infos[pos];
+        if (++info.count == 1) {
+            info.mean = newVal;
+            agg = 0;
+        } else {
+            auto mean = info.mean + (newVal - info.mean) / info.count;
+            agg = agg + (newVal - info.mean) * (newVal - mean);
+            info.mean = mean;
+        }
+    }
+}
+
+//===========================================================================
+void FuncStddevSeries::onFinalize() {
+    int pos = 0;
+    for (auto && info : m_infos) {
+        auto & agg = m_samples->samples[pos++];
+        agg = sqrt(agg / info.count);
+    }
+}
+
+//===========================================================================
+// sumSeries
+//===========================================================================
+namespace {
+class FuncSumSeries : public Aggregate<Function::kSumSeries, FuncSumSeries> {
+    void onAggregate(double & agg, int pos, double newVal) override;
+};
+} // namespace
+
+//===========================================================================
+void FuncSumSeries::onAggregate(double & agg, int pos, double newVal) {
+    if (isnan(agg)) {
+        agg = newVal;
+    } else if (!isnan(newVal)) {
+        agg += newVal;
+    }
 }
 
 

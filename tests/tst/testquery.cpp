@@ -71,7 +71,7 @@ void Test::onTestRun() {
     EXPECT_PARSE("a{,b}", "a{,b}");
     EXPECT_PARSE("a{ [12] , cd[34] }", "a{cd[34],[12]}");
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
-    EXPECT_PARSE("sum(sum(a))", "sum(sum(a))");
+    EXPECT_PARSE("sum(sum(a))", "sumSeries(sumSeries(a))");
     EXPECT_PARSE("**", "**");
     EXPECT_PARSE("**.**.*.**.a.*.**", "*.**.a.*.**");
     EXPECT_PARSE("a**b.**c.**.d.***.e", "a*b.*c.**.d.*.e");
@@ -80,7 +80,7 @@ void Test::onTestRun() {
     EXPECT_PARSE("a.b.c", "a.b.c");
 
     EXPECT_PARSE("alias(a.b, \"legend\" )", "alias(a.b, \"legend\")");
-    EXPECT_PARSE("sum( a )", "sum(a)");
+    EXPECT_PARSE("sum( a )", "sumSeries(a)");
     EXPECT_PARSE("sum(maximumAbove(a.b[12-46], 2))",
-        "sum(maximumAbove(a.b[12346], 2))");
+        "sumSeries(maximumAbove(a.b[12346], 2))");
 }

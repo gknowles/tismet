@@ -304,6 +304,15 @@ static auto s_maxpoints = UnitTest("consolidate points even")
     .out("2.value", 10, 2s, {NAN, 4, 5.5});
 
 //===========================================================================
+// countSeries
+//===========================================================================
+static auto s_countSeries = UnitTest("countSeries")
+    .query("countSeries(*.value)", 0, 2)
+    .in("1.value", 0, 1s, {1,NAN})
+    .in("2.value", 0, 1s, {NAN,2})
+    .out("countSeries(*.value)", 0, 1s, {2, 2});
+
+//===========================================================================
 // keepLastValue
 //===========================================================================
 static auto s_keepLastValue = UnitTest("keepLastValue")
@@ -401,6 +410,17 @@ static auto s_scaleToSeconds = UnitTest("scaleToSeconds")
     .out("scaleToSeconds(4.value)",0,60s, {0.5,1,1.5,2,2.5,3,3.5,4,4.5,NAN});
 
 //===========================================================================
+// stddevSeries
+//===========================================================================
+static auto s_stddevSeries = UnitTest("stddevSeries")
+    .query("stddevSeries(*.value)", 0, 1)
+    .in("1.value", 0, 1s, {1})
+    .in("2.value", 0, 1s, {2})
+    .in("3.value", 0, 1s, {3})
+    .in("4.value", 0, 1s, {4})
+    .out("stddevSeries(*.value)", 0, 1s, {sqrt(5.0 / 4.0)});
+
+//===========================================================================
 // timeShift
 //===========================================================================
 static auto s_timeShift = UnitTest("timeShift")
@@ -444,7 +464,7 @@ void Test::onTestDefine(Cli & cli) {
         subs.choice(ut.name(), ut.name());
     }
     cli.opt(&m_verbose, "v verbose")
-        .desc("Display test progress");
+        .desc("Display test progress.");
 }
 
 //===========================================================================

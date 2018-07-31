@@ -63,8 +63,11 @@ struct StringNode : Node {
 const TokenTable::Token s_funcNames[] = {
     { Function::kAlias,                 "alias" },
     { Function::kAliasSub,              "aliasSub" },
+    { Function::kAverageSeries,         "averageSeries" },
     { Function::kColor,                 "color" },
+    { Function::kCountSeries,           "countSeries" },
     { Function::kDerivative,            "derivative" },
+    { Function::kDiffSeries,            "diffSeries" },
     { Function::kDrawAsInfinite,        "drawAsInfinite" },
     { Function::kHighestCurrent,        "highestCurrent" },
     { Function::kHighestMax,            "highestMax" },
@@ -75,12 +78,14 @@ const TokenTable::Token s_funcNames[] = {
     { Function::kMaxSeries,             "maxSeries" },
     { Function::kMinSeries,             "minSeries" },
     { Function::kMovingAverage,         "movingAverage" },
+    { Function::kMultiplySeries,        "multiplySeries" },
     { Function::kNonNegativeDerivative, "nonNegativeDerivative" },
     { Function::kRemoveAboveValue,      "removeAboveValue" },
     { Function::kRemoveBelowValue,      "removeBelowValue" },
     { Function::kScale,                 "scale" },
     { Function::kScaleToSeconds,        "scaleToSeconds" },
-    { Function::kSum,                   "sum" },
+    { Function::kStddevSeries,          "stddevSeries" },
+    { Function::kSumSeries,             "sumSeries" },
     { Function::kTimeShift,             "timeShift" },
 };
 static_assert(size(s_funcNames) == Function::kFuncTypes);
