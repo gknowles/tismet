@@ -75,8 +75,8 @@ public:
         Dim::TimePoint last;
 
         // "pre" is a request for samples from before the start of the result
-        // range that are needed to make it consistent. These are requested by
-        // functions such as movingAverage and derivative.
+        // range that are needed to make the first values meaningful. These are
+        // requested by functions such as movingAverage and derivative.
         Dim::Duration pretime{};
         unsigned presamples{0};
     };

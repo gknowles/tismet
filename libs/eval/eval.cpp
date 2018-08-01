@@ -792,17 +792,17 @@ void evaluate(
     ex->m_last = last;
     if (maxPoints)
         ex->m_minInterval = (last - first) / maxPoints;
-    SourceNode::ResultRange rr;
-    rr.rn = ex;
-    rr.first = first;
-    rr.last = last;
-    rr.minInterval = ex->m_minInterval;
     auto sn = addSource(ex, target);
     if (!sn) {
         notify->onEvalError("Invalid target parameter: " + string(target));
         return;
     }
-
-    sn->addOutput(rr);
     hostage.release();
+
+    SourceNode::ResultRange rr;
+    rr.rn = ex;
+    rr.first = first;
+    rr.last = last;
+    rr.minInterval = ex->m_minInterval;
+    sn->addOutput(rr);
 }
