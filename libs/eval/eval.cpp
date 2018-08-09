@@ -72,7 +72,6 @@ static DbHandle s_db;
 static shared_mutex s_mut;
 static unordered_map<string_view, shared_ptr<SourceNode>> s_sources;
 static List<Evaluate> s_execs;
-static IFactory<FuncNode> * s_funcFacts[Query::Function::kFuncTypes];
 
 
 /****************************************************************************
@@ -186,12 +185,12 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     if (!Query::getFunc(&qf, *qi.node))
         return {};
     shared_ptr<FuncNode> fnode;
-    if (auto fact = s_funcFacts[qf.type]) {
+    if (auto instance = funcCreate(qf.type)) {
         fnode = shared_ptr<FuncNode>(
-            fact->onFactoryCreate().release(),
+            new FuncNode,
             RefCount::Deleter{}
         );
-        fnode->init(src);
+        fnode->init(src, move(instance));
     } else {
         assert(!"Unsupported function");
         return {};
@@ -325,101 +324,52 @@ bool SourceNode::outputRange(ResultRange * out) {
 }
 
 //===========================================================================
-static shared_ptr<SampleList> consolidateAvg(
-    shared_ptr<SampleList> samples,
-    Duration minInterval
+SourceNode::OutputResultReturn SourceNode::outputResult(
+    const ResultInfo & info
 ) {
-    auto baseInterval = samples->interval;
-    if (baseInterval >= minInterval)
-        return samples;
-
-    auto sps = (minInterval.count() + baseInterval.count() - 1)
-        / baseInterval.count();
-    auto maxInterval = sps * baseInterval;
-    auto first = samples->first;
-    first -= first.time_since_epoch() % maxInterval;
-    auto presamples = (samples->first - first) / baseInterval;
-    auto count = samples->count;
-    auto out = SampleList::alloc(
-        first,
-        maxInterval,
-        (count + presamples + sps - 1) / sps
-    );
-
-    auto sum = 0.0;
-    auto num = presamples;
-    auto nans = presamples;
-    auto optr = out->samples;
-    for (unsigned i = 0; i < samples->count; ++i) {
-        auto val = samples->samples[i];
-        if (num == sps) {
-            *optr++ = nans == num ? NAN : sum / (num - nans);
-            num = 1;
-            if (isnan(val)) {
-                sum = 0;
-                nans = 1;
-            } else {
-                sum = val;
-                nans = 0;
-            }
-        } else {
-            num += 1;
-            if (isnan(val)) {
-                nans += 1;
-            } else {
-                sum += val;
-            }
-        }
-    }
-    *optr++ = (nans == num) ? NAN : sum / (num - nans);
-    assert(optr == out->samples + out->count);
-    return out;
+    outputResultImpl(info);
+    auto more = (bool) info.samples;
+    if (!more)
+        m_outputs.clear();
+    return {more, !m_pendingOutputs.empty()};
 }
 
 //===========================================================================
-SourceNode::OutputResultReturn SourceNode::outputResult(
+void SourceNode::outputResultImpl(
     const ResultInfo & info
 ) {
     scoped_lock lk{m_outMut};
     if (m_outputs.empty())
-        return {false, !m_pendingOutputs.empty()};
-
-    auto baseInterval = info.samples
-        ? info.samples->interval
-        : Duration::max();
-    auto maxInterval = baseInterval;
-    auto nextMin = Duration::max();
-    for (auto && rr : m_outputs) {
-        if (rr.minInterval > maxInterval) {
-            if (rr.minInterval < nextMin)
-                nextMin = rr.minInterval;
-            continue;
-        }
-        rr.rn->onResult(info);
+        return;
+    if (!info.samples) {
+        for (auto && rr : m_outputs)
+            rr.rn->onResult(info);
+        return;
     }
 
-    while (nextMin != Duration::max()) {
+    auto i = m_outputs.begin();
+    auto e = m_outputs.end();
+    sort(i, e, [](auto & a, auto & b) {
+        return a.minInterval < b.minInterval;
+    });
+    auto baseInterval = info.samples->interval;
+    while (i->minInterval <= baseInterval) {
+        i->rn->onResult(info);
+        if (++i == e)
+            return;
+    }
+    for (;;) {
+        baseInterval = i->minInterval;
         ResultInfo out{info};
-        out.samples = consolidateAvg(info.samples, nextMin);
-        auto minInterval = maxInterval;
-        maxInterval = out.samples->interval;
-
-        nextMin = Duration::max();
-        for (auto && rr : m_outputs) {
-            if (rr.minInterval > maxInterval) {
-                if (rr.minInterval < nextMin)
-                    nextMin = rr.minInterval;
-                continue;
-            }
-            if (rr.minInterval < minInterval)
-                continue;
-            rr.rn->onResult(out);
+        out.samples = reduce(info.samples, baseInterval, info.method);
+        for (;;) {
+            i->rn->onResult(out);
+            if (++i == e)
+                return;
+            if (i->minInterval != baseInterval)
+                break;
         }
     }
-    if (!info.samples)
-        m_outputs.clear();
-
-    return {(bool) info.samples, !m_pendingOutputs.empty()};
 }
 
 
@@ -575,15 +525,18 @@ void ResultNode::onResult(const ResultInfo & info) {
 ***/
 
 //===========================================================================
-void FuncNode::init(std::shared_ptr<char[]> sourceName) {
+void FuncNode::init(
+    shared_ptr<char[]> sourceName,
+    unique_ptr<IFuncInstance> instance
+) {
     incRef();
+    m_instance = move(instance);
     SourceNode::init(sourceName);
 }
 
 //===========================================================================
 bool FuncNode::bind(vector<FuncArg> && args) {
-    m_args = move(args);
-    return onFuncBind();
+    return m_instance->onFuncBind(move(args));
 }
 
 //===========================================================================
@@ -592,7 +545,12 @@ void FuncNode::onSourceStart() {
     if (!outputRange(&rr))
         return;
 
-    onFuncAdjustRange(&rr.first, &rr.last, &rr.pretime, &rr.presamples);
+    m_instance->onFuncAdjustRange(
+        &rr.first,
+        &rr.last,
+        &rr.pretime,
+        &rr.presamples
+    );
     m_unfinished = (int) m_sources.size();
     rr.rn = this;
     for (auto && sn : m_sources)
@@ -610,7 +568,7 @@ void FuncNode::onTask() {
         bool more = info.samples || --m_unfinished;
         if (info.samples || !more) {
             lk.unlock();
-            stop = !onFuncApply(info);
+            stop = !m_instance->onFuncApply(this, info);
             if (stop)
                 stopSources();
             lk.lock();
@@ -629,18 +587,9 @@ void FuncNode::onTask() {
 }
 
 //===========================================================================
-bool FuncNode::onFuncBind() {
-    return true;
+void FuncNode::onFuncOutput(ResultInfo & info) {
+    outputResult(info);
 }
-
-//===========================================================================
-void FuncNode::onFuncAdjustRange(
-    TimePoint * first,
-    TimePoint * last,
-    Duration * pretime,
-    unsigned * presamples
-)
-{}
 
 
 /****************************************************************************
@@ -748,22 +697,6 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 
 /****************************************************************************
 *
-*   Internal API
-*
-***/
-
-//===========================================================================
-void Eval::registerFunc(
-    Query::Function::Type type,
-    IFactory<FuncNode> * fact
-) {
-    assert(!s_funcFacts[type]);
-    s_funcFacts[type] = fact;
-}
-
-
-/****************************************************************************
-*
 *   Public API
 *
 ***/
@@ -772,7 +705,6 @@ void Eval::registerFunc(
 void evalInitialize(DbHandle f) {
     shutdownMonitor(&s_cleanup);
     s_db = f;
-    initializeFuncs();
 }
 
 //===========================================================================

@@ -5,7 +5,9 @@
 #pragma once
 
 #include "cppconf/cppconf.h"
+
 #include "core/core.h"
+#include "func/func.h"
 
 #include <bitset>
 #include <memory>
@@ -68,38 +70,7 @@ struct PathSegment {
     PathSegment() { prefix = {}; }
 };
 struct Function {
-    enum Type {
-        kAlias,
-        kAliasSub,
-        kAverageSeries,
-        kColor,
-        kCountSeries,
-        kDerivative,
-        kDiffSeries,
-        kDrawAsInfinite,
-        kHighestCurrent,
-        kHighestMax,
-        kKeepLastValue,
-        kLegendValue,
-        kLineWidth,
-        kMaximumAbove,
-        kMaxSeries,
-        kMinSeries,
-        kMovingAverage,
-        kMultiplySeries,
-        kNonNegativeDerivative,
-        kRemoveAboveValue,
-        kRemoveBelowValue,
-        kScale,
-        kScaleToSeconds,
-        kSumSeries,
-        kStddevSeries,
-        kTimeShift,
-
-        kFuncTypes
-    };
-
-    Type type{kFuncTypes};
+    Eval::Function::Type type{};
     std::vector<const Node *> args;
 };
 
@@ -133,8 +104,6 @@ std::string_view getString(const Node & node);
 
 // Returns false if not a function node
 bool getFunc(Function * out, const Node & node);
-
-const char * getFuncName(Query::Function::Type ftype, const char * defVal = "");
 
 std::string toString(const Node & node);
 

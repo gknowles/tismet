@@ -37,5 +37,5 @@ struct QueryParserBase {
     // Functions
     QueryParserBase(Query::QueryInfo * qry) : m_query{qry} {}
 
-    bool startFunc(Query::Function::Type type);
+    bool startFunc(Eval::Function::Type type);
 };

@@ -14,30 +14,6 @@ namespace Eval {
 
 class SourceNode;
 
-struct SampleList {
-    Dim::TimePoint first;
-    Dim::Duration interval{};
-    unsigned count{0};
-    uint32_t metricId{0};
-
-    // EXTENDS BEYOND END OF STRUCT
-    double samples[1];
-
-    static std::shared_ptr<SampleList> alloc(
-        Dim::TimePoint first,
-        Dim::Duration interval,
-        size_t count
-    );
-    static std::shared_ptr<SampleList> alloc(const SampleList & samples);
-    static std::shared_ptr<SampleList> dup(const SampleList & samples);
-};
-
-struct ResultInfo {
-    std::shared_ptr<char[]> target;
-    std::shared_ptr<char[]> name;
-    std::shared_ptr<SampleList> samples;
-};
-
 class ResultNode
     : public Dim::RefCount
     , public Dim::ITaskNotify
@@ -98,9 +74,11 @@ protected:
     struct OutputResultReturn {
         bool more;      // more series expected for this set of outputs
         bool pending;   // another set of outputs is pending
-    } outputResult(const ResultInfo & info);
+    };
+    OutputResultReturn outputResult(const ResultInfo & info);
 
 private:
+    void outputResultImpl(const ResultInfo & info);
     virtual void onSourceStart() = 0;
 
     std::shared_ptr<char[]> m_source;
@@ -110,43 +88,20 @@ private:
     std::vector<ResultRange> m_pendingOutputs;
 };
 
-struct FuncArg {
-    std::shared_ptr<char[]> string;
-    double number;
-};
-
-class FuncNode : public ResultNode, public SourceNode {
+class FuncNode : public ResultNode, public SourceNode, public IFuncNotify {
 public:
-    void init(std::shared_ptr<char[]> sourceName);
+    void init(
+        std::shared_ptr<char[]> sourceName,
+        std::unique_ptr<IFuncInstance> instance
+    );
     bool bind(std::vector<FuncArg> && args);
 
 protected:
     void onSourceStart() override;
     void onTask() override;
+    void onFuncOutput(ResultInfo & info) override;
 
-    // validate and/or process arguments
-    virtual bool onFuncBind();
-    virtual void onFuncAdjustRange(
-        Dim::TimePoint * first,
-        Dim::TimePoint * last,
-        Dim::Duration * pretime,
-        unsigned * presamples
-    );
-
-    // Perform the function, outputResult() must be called for each result
-    // that should be published.
-    //
-    // Return false to stop receiving results for the current outputs, only
-    // required if the function is to be aborted midstream.
-    virtual bool onFuncApply(ResultInfo & info) = 0;
-
-    virtual Query::Function::Type type() const = 0;
-
-    std::vector<FuncArg> m_args;
+    std::unique_ptr<IFuncInstance> m_instance;
 };
-
-void initializeFuncs();
-
-void registerFunc(Query::Function::Type type, Dim::IFactory<FuncNode> * fact);
 
 } // namespace

@@ -214,7 +214,7 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 
 #define FUNC(name) \
     inline bool QueryParser::onFn ## name ## Start () { \
-        return startFunc(Query::Function::k ## name); \
+        return startFunc({} /* Eval::Function::k ## name */); \
     }
 
 FUNC(Alias);

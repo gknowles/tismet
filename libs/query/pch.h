@@ -8,6 +8,7 @@
 
 // External library public headers
 #include "core/core.h"
+#include "func/func.h"
 
 // Standard headers
 // Platform headers

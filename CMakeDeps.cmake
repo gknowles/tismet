@@ -30,10 +30,15 @@
 # libs/db/pch.h
 # libs/eval/eval.cpp
 # libs/eval/eval.h
-# libs/eval/evalfuncs.cpp
 # libs/eval/intern.h
 # libs/eval/pch.cpp
 # libs/eval/pch.h
+# libs/func/func.cpp
+# libs/func/func.h
+# libs/func/funcagg.cpp
+# libs/func/intern.h
+# libs/func/pch.cpp
+# libs/func/pch.h
 # libs/query/pch.cpp
 # libs/query/pch.h
 # libs/query/query.abnf

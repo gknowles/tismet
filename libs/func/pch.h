@@ -1,30 +1,23 @@
 // Copyright Glen Knowles 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// pch.h - tismet eval
+// pch.h - tismet func
 
 // Public header
-#include "eval/eval.h"
+#include "func/func.h"
 
 // External library public headers
 #include "app/app.h"
 #include "core/core.h"
 #include "db/db.h"
-#include "file/file.h"
-#include "func/func.h"
 #include "query/query.h"
 
 // Standard headers
 #include <cassert>
 #include <cmath>
-#include <condition_variable>
 #include <cstdint>
-#include <deque>
+#include <functional>
 #include <map>
-#include <mutex>
-#include <queue>
-#include <set>
-#include <shared_mutex>
 #include <unordered_map>
 
 // Platform headers

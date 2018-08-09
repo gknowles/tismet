@@ -27,7 +27,7 @@ const unsigned kQueryMaxSize = 8192;
 namespace {
 
 struct FuncNode : Node {
-    Function::Type func;
+    Eval::Function::Type func;
     List<Node> args;
 };
 
@@ -59,37 +59,6 @@ struct NumNode : Node {
 struct StringNode : Node {
     string_view val;
 };
-
-const TokenTable::Token s_funcNames[] = {
-    { Function::kAlias,                 "alias" },
-    { Function::kAliasSub,              "aliasSub" },
-    { Function::kAverageSeries,         "averageSeries" },
-    { Function::kColor,                 "color" },
-    { Function::kCountSeries,           "countSeries" },
-    { Function::kDerivative,            "derivative" },
-    { Function::kDiffSeries,            "diffSeries" },
-    { Function::kDrawAsInfinite,        "drawAsInfinite" },
-    { Function::kHighestCurrent,        "highestCurrent" },
-    { Function::kHighestMax,            "highestMax" },
-    { Function::kKeepLastValue,         "keepLastValue" },
-    { Function::kLegendValue,           "legendValue" },
-    { Function::kLineWidth,             "lineWidth" },
-    { Function::kMaximumAbove,          "maximumAbove" },
-    { Function::kMaxSeries,             "maxSeries" },
-    { Function::kMinSeries,             "minSeries" },
-    { Function::kMovingAverage,         "movingAverage" },
-    { Function::kMultiplySeries,        "multiplySeries" },
-    { Function::kNonNegativeDerivative, "nonNegativeDerivative" },
-    { Function::kRemoveAboveValue,      "removeAboveValue" },
-    { Function::kRemoveBelowValue,      "removeBelowValue" },
-    { Function::kScale,                 "scale" },
-    { Function::kScaleToSeconds,        "scaleToSeconds" },
-    { Function::kStddevSeries,          "stddevSeries" },
-    { Function::kSumSeries,             "sumSeries" },
-    { Function::kTimeShift,             "timeShift" },
-};
-static_assert(size(s_funcNames) == Function::kFuncTypes);
-const TokenTable s_funcNameTbl{s_funcNames};
 
 } // namespace
 
@@ -174,7 +143,7 @@ static bool operator< (const Node & a, const Node & b) {
 ***/
 
 //===========================================================================
-bool QueryParserBase::startFunc (Function::Type type) {
+bool QueryParserBase::startFunc (Eval::Function::Type type) {
     auto func = m_nodes.empty()
         ? addFunc(m_query, type)
         : addFuncArg(m_query, m_nodes.back(), type);
@@ -334,7 +303,7 @@ Node * addSegSegChoices(QueryInfo * qi, Node * node) {
 }
 
 //===========================================================================
-Node * addFunc(QueryInfo * qi, Function::Type type) {
+Node * addFunc(QueryInfo * qi, Eval::Function::Type type) {
     assert(!qi->node);
     auto func = qi->heap.emplace<FuncNode>();
     qi->node = func;
@@ -347,7 +316,7 @@ Node * addFunc(QueryInfo * qi, Function::Type type) {
 Node * addFuncArg(
     QueryInfo * qi,
     Node * node,
-    Function::Type type
+    Eval::Function::Type type
 ) {
     assert(node->type == kFunc);
     auto func = static_cast<FuncNode *>(node);
@@ -487,12 +456,10 @@ static void appendNode (string * out, const Node & node) {
         out->push_back('"');
         break;
     case kFunc:
-        out->append(tokenTableGetName(
-            s_funcNameTbl,
-            static_cast<const FuncNode &>(node).func
-        ));
+        auto & fnode = static_cast<const FuncNode &>(node);
+        out->append(toString(fnode.func));
         out->push_back('(');
-        for (auto && arg : static_cast<const FuncNode &>(node).args) {
+        for (auto && arg : fnode.args) {
             if (first) {
                 first = false;
             } else {
@@ -722,12 +689,4 @@ bool Query::getFunc(
     for (auto && arg : fn.args)
         out->args.push_back(&arg);
     return true;
-}
-
-//===========================================================================
-const char * Query::getFuncName(
-    Query::Function::Type ftype,
-    const char * defVal
-) {
-    return tokenTableGetName(s_funcNameTbl, ftype, defVal);
 }

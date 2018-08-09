@@ -39,11 +39,11 @@ Query::Node * addSegCharChoices(
     std::bitset<256> & vals
 );
 Query::Node * addSegSegChoices(Query::QueryInfo * qi, Query::Node * seg);
-Query::Node * addFunc(Query::QueryInfo * qi, Query::Function::Type type);
+Query::Node * addFunc(Query::QueryInfo * qi, Eval::Function::Type type);
 Query::Node * addFuncArg(
     Query::QueryInfo * qi,
     Query::Node * func,
-    Query::Function::Type type
+    Eval::Function::Type type
 );
 Query::Node * addPathArg(Query::QueryInfo * qi, Query::Node * func);
 Query::Node * addNumArg(
