@@ -10,8 +10,11 @@
 #include <string_view>
 #include <vector>
 
-#if __has_include("funcsenum.h")
-    #include "funcsenum.h"
+// funcenum.h is a generated file that defines values for the Function::Type
+// and Aggregate::Type enums. It is optional here so it can be generated
+// without having to exist first.
+#if __has_include("funcenum.h")
+    #include "funcenum.h"
 #endif
 
 

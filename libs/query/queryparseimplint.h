@@ -212,36 +212,4 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 *
 ***/
 
-#define FUNC(name) \
-    inline bool QueryParser::onFn ## name ## Start () { \
-        return startFunc({} /* Eval::Function::k ## name */); \
-    }
-
-FUNC(Alias);
-FUNC(AliasSub);
-FUNC(AverageSeries);
-FUNC(Color);
-FUNC(CountSeries);
-FUNC(Derivative);
-FUNC(DiffSeries);
-FUNC(DrawAsInfinite);
-FUNC(HighestCurrent);
-FUNC(HighestMax);
-FUNC(KeepLastValue);
-FUNC(LegendValue);
-FUNC(LineWidth);
-FUNC(MaximumAbove);
-FUNC(MaxSeries);
-FUNC(MinSeries);
-FUNC(MovingAverage);
-FUNC(MultiplySeries);
-FUNC(NonNegativeDerivative);
-FUNC(RemoveAboveValue);
-FUNC(RemoveBelowValue);
-FUNC(Scale);
-FUNC(ScaleToSeconds);
-FUNC(SumSeries);
-FUNC(StddevSeries);
-FUNC(TimeShift);
-
-#undef FUNC
+#include "queryparsefuncint.h"

@@ -117,7 +117,6 @@ IFuncFactory::IFuncFactory(string_view name, string_view group)
 {
     s_factories.link(this);
     m_names.push_back(string{name});
-    arg("query", FuncArgInfo::kQuery, true);
 }
 
 //===========================================================================
@@ -237,13 +236,17 @@ bool PassthruBase::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 }
 
 static auto s_aliasSub = PassthruBase::Factory("aliasSub", "Alias")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("search", FuncArgInfo::kString, true)
     .arg("replace", FuncArgInfo::kString, true);
 static auto s_color = PassthruBase::Factory("color", "Graph")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("color", FuncArgInfo::kString, true);
 static auto s_legendValue = PassthruBase::Factory("legendValue", "Alias")
-    .arg("valuesTypes", FuncArgInfo::kString);
+    .arg("query", FuncArgInfo::kQuery, true)
+    .arg("valuesTypes", FuncArgInfo::kString, false, true);
 static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("width", FuncArgInfo::kNum, true);
 
 
@@ -262,6 +265,7 @@ class FuncAlias : public IFuncBase<FuncAlias> {
 };
 } // namespace
 static auto s_alias = FuncAlias::Factory("alias", "Alias")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("name", FuncArgInfo::kString, true);
 
 //===========================================================================
@@ -294,6 +298,7 @@ class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
 } // namespace
 static auto s_consolidateBy =
     FuncConsolidateBy::Factory("consolidateBy", "Special")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("method", FuncArgInfo::kString, true);
 
 //===========================================================================
@@ -345,6 +350,7 @@ class FuncMaximumAbove : public IFilterBase<FuncMaximumAbove> {
 } // namespace
 static auto s_maximumAbove =
     FuncMaximumAbove::Factory("maximumAbove", "Filter Series")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -411,7 +417,8 @@ class FuncDerivative : public ITransformBase<FuncDerivative> {
     ) override;
 };
 } // namespace
-static auto s_derivative = FuncDerivative::Factory("derivative", "Transform");
+static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true);
 
 //===========================================================================
 bool FuncDerivative::onFuncBind(vector<FuncArg> && args) {
@@ -448,6 +455,7 @@ class FuncKeepLastValue : public ITransformBase<FuncKeepLastValue> {
 } // namespace
 static auto s_keepLastValue =
     FuncKeepLastValue::Factory("keepLastValue", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("limit", FuncArgInfo::kNum);
 
 //===========================================================================
@@ -513,7 +521,9 @@ class FuncMovingAverage : public ITransformBase<FuncMovingAverage> {
 } // namespace
 static auto s_movingAverage =
     FuncMovingAverage::Factory("movingAverage", "Calculate")
-    .arg("windowSize", FuncArgInfo::kNumOrString, true);
+    .arg("query", FuncArgInfo::kQuery, true)
+    .arg("windowSize", FuncArgInfo::kNumOrString, true)
+    .arg("xFilesFactor", FuncArgInfo::kNum, false);
 
 //===========================================================================
 bool FuncMovingAverage::onFuncBind(vector<FuncArg> && args) {
@@ -595,6 +605,7 @@ class FuncNonNegativeDerivative
 } // namespace
 static auto s_nonNegativeDerivative =
     FuncNonNegativeDerivative::Factory("nonNegativeDerivative", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("maxValue", FuncArgInfo::kNum);
 
 //===========================================================================
@@ -674,7 +685,8 @@ class FuncDrawAsInfinite : public IConvertBase<FuncDrawAsInfinite> {
 };
 } // namespace
 static auto s_drawAsInfinite =
-    FuncDrawAsInfinite::Factory("drawAsInfinite", "Transform");
+    FuncDrawAsInfinite::Factory("drawAsInfinite", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true);
 
 //===========================================================================
 double FuncDrawAsInfinite::onConvert(double value) {
@@ -699,6 +711,7 @@ class FuncRemoveAboveValue : public IConvertBase<FuncRemoveAboveValue> {
 } // namespace
 static auto s_removeAboveValue =
     FuncRemoveAboveValue::Factory("removeAboveValue", "Filter Data")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -724,6 +737,7 @@ class FuncRemoveBelowValue : public IConvertBase<FuncRemoveBelowValue> {
 } // namespace
 static auto s_removeBelowValue =
     FuncRemoveBelowValue::Factory("removeBelowValue", "Filter Data")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -748,6 +762,7 @@ class FuncScale : public IConvertBase<FuncScale> {
 };
 } // namespace
 static auto s_scale = FuncScale::Factory("scale", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("factor", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -776,6 +791,7 @@ class FuncScaleToSeconds : public IConvertBase<FuncScaleToSeconds> {
 } // namespace
 static auto s_scaleToSeconds =
     FuncScaleToSeconds::Factory("scaleToSeconds", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("seconds", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -816,6 +832,7 @@ class FuncTimeShift : public IFuncBase<FuncTimeShift> {
 };
 } // namespace
 static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("timeShift", FuncArgInfo::kString, true);
 
 //===========================================================================
@@ -869,6 +886,7 @@ class FuncHighestCurrent : public IFuncBase<FuncHighestCurrent> {
 } // namespace
 static auto s_highestCurrent =
     FuncHighestCurrent::Factory("highestCurrent", "Filter Series")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -923,6 +941,7 @@ class FuncHighestMax : public IFuncBase<FuncHighestMax> {
 } // namespace
 static auto s_highestMax =
     FuncHighestMax::Factory("highestMax", "Filter Series")
+    .arg("query", FuncArgInfo::kQuery, true)
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
@@ -1069,6 +1088,7 @@ class FuncAverageSeries : public IAggregateBase<FuncAverageSeries> {
 } // namespace
 static auto s_averageSeries =
     FuncAverageSeries::Factory("averageSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true)
     .alias("avg");
 
 //===========================================================================
@@ -1096,7 +1116,8 @@ class FuncCountSeries : public IAggregateBase<FuncCountSeries> {
 };
 } // namespace
 static auto s_countSeries =
-    FuncCountSeries::Factory("countSeries", "Combine");
+    FuncCountSeries::Factory("countSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 bool FuncCountSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
@@ -1128,7 +1149,8 @@ class FuncDiffSeries : public IAggregateBase<FuncDiffSeries> {
     unsigned m_count{0};
 };
 } // namespace
-static auto s_diffSeries = FuncDiffSeries::Factory("diffSeries", "Combine");
+static auto s_diffSeries = FuncDiffSeries::Factory("diffSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 bool FuncDiffSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
@@ -1153,7 +1175,8 @@ class FuncMaxSeries : public IAggregateBase<FuncMaxSeries> {
     void onAggregate(double & agg, int pos, double newVal) override;
 };
 } // namespace
-static auto s_maxSeries = FuncMaxSeries::Factory("maxSeries", "Combine");
+static auto s_maxSeries = FuncMaxSeries::Factory("maxSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 void FuncMaxSeries::onAggregate(double & agg, int pos, double newVal) {
@@ -1169,7 +1192,8 @@ class FuncMinSeries : public IAggregateBase<FuncMinSeries> {
     void onAggregate(double & agg, int pos, double newVal) override;
 };
 } // namespace
-static auto s_minSeries = FuncMinSeries::Factory("minSeries", "Combine");
+static auto s_minSeries = FuncMinSeries::Factory("minSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 void FuncMinSeries::onAggregate(double & agg, int pos, double newVal) {
@@ -1186,7 +1210,8 @@ class FuncMultiplySeries : public IAggregateBase<FuncMultiplySeries> {
 };
 } // namespace
 static auto s_multiplySeries =
-    FuncMultiplySeries::Factory("multiplySeries", "Combine");
+    FuncMultiplySeries::Factory("multiplySeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 void FuncMultiplySeries::onAggregate(double & agg, int pos, double newVal) {
@@ -1213,7 +1238,8 @@ class FuncStddevSeries : public IAggregateBase<FuncStddevSeries> {
 };
 } // namespace
 static auto s_stddevSeries =
-    FuncStddevSeries::Factory("stddevSeries", "Combine");
+    FuncStddevSeries::Factory("stddevSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
 void FuncStddevSeries::onResize(int count) {
@@ -1263,6 +1289,7 @@ class FuncSumSeries : public IAggregateBase<FuncSumSeries> {
 };
 } // namespace
 static auto s_sumSeries = FuncSumSeries::Factory("sumSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true)
     .alias("sum");
 
 //===========================================================================

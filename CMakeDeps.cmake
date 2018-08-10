@@ -36,6 +36,7 @@
 # libs/func/func.cpp
 # libs/func/func.h
 # libs/func/funcagg.cpp
+# libs/func/funcenum.h
 # libs/func/intern.h
 # libs/func/pch.cpp
 # libs/func/pch.h
@@ -44,9 +45,11 @@
 # libs/query/query.abnf
 # libs/query/query.cpp
 # libs/query/query.h
+# libs/query/queryfunc.abnf
 # libs/query/queryint.h
 # libs/query/queryparse.cpp
 # libs/query/queryparsebaseint.h
+# libs/query/queryparsefuncint.h
 # libs/query/queryparseimplint.h
 # libs/query/queryparseint.h
 # tests/tst/intern.h
@@ -58,6 +61,9 @@
 # tests/tst/testindex.cpp
 # tests/tst/testmain.cpp
 # tests/tst/testquery.cpp
+# tools/genfuncs/gfmain.cpp
+# tools/genfuncs/pch.cpp
+# tools/genfuncs/pch.h
 # tools/tismet/intern.h
 # tools/tismet/logo.bmp
 # tools/tismet/pch.cpp
