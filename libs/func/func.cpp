@@ -299,7 +299,7 @@ class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
 static auto s_consolidateBy =
     FuncConsolidateBy::Factory("consolidateBy", "Special")
     .arg("query", FuncArgInfo::kQuery, true)
-    .arg("method", FuncArgInfo::kString, true);
+    .arg("method", FuncArgInfo::kAggFunc, true);
 
 //===========================================================================
 bool FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {

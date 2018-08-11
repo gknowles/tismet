@@ -23,10 +23,11 @@ namespace Eval {
 
 struct FuncArgInfo {
     enum Type {
-        kQuery,
+        kAggFunc,
         kNum,
-        kString,
         kNumOrString,
+        kQuery,
+        kString,
     };
     std::string name;
     Type type;

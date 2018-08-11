@@ -62,9 +62,10 @@ namespace Aggregate {
 )";
     ids.clear();
     for (auto && f : funcAggEnums()) {
-        if (ids.insert(f.id))
+        if (ids.insert(f.id)) {
             os << "        k" << (char) toupper(*f.name) << f.name + 1
                 << " = " << f.id << ",\n";
+        }
     }
     os << 1 + R"(
     };
@@ -116,6 +117,7 @@ static const char * argTypeName(Eval::FuncArgInfo::Type type) {
     case Eval::FuncArgInfo::kNumOrString: return "(arg-num / arg-string)";
     case Eval::FuncArgInfo::kQuery: return "arg-query";
     case Eval::FuncArgInfo::kString: return "arg-string";
+    case Eval::FuncArgInfo::kAggFunc: return "arg-aggfunc";
     default:
         assert(!"Unknown argument type");
         return "arg-invalid";
@@ -184,6 +186,21 @@ fn-)" << n << R"( = %s")" << n << R"((" )";
         }
         os << '\n';
     }
+
+    os << 1 + R"(
+;----------------------------------------------------------------------------
+; Aggregate functions
+;----------------------------------------------------------------------------
+)";
+    UnsignedSet ids;
+    for (auto && f : funcAggEnums()) {
+        if (ids.insert(f.id)) {
+            os << 1 + R"(
+aggfunc =/ afn-)" << f.name << R"( { As string, Start+, End+ }
+afn-)" << f.name << R"( = %s")" << f.name << "\"\n\n";
+        }
+    }
+
     return os.str();
 }
 

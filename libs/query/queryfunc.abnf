@@ -18,7 +18,7 @@ func =/ fn-color { End }
 fn-color = %s"color(" arg-query "," arg-string ")" { Start }
 
 func =/ fn-consolidateBy { End }
-fn-consolidateBy = %s"consolidateBy(" arg-query "," arg-string ")" { Start }
+fn-consolidateBy = %s"consolidateBy(" arg-query "," arg-aggfunc ")" { Start }
 
 func =/ fn-countSeries { End }
 fn-countSeries = %s"countSeries(" arg-query *( "," arg-query ) ")" { Start }
@@ -42,7 +42,7 @@ func =/ fn-keepLastValue { End }
 fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
 
 func =/ fn-legendValue { End }
-fn-legendValue = %s"legendValue(" arg-query [ "," arg-string ] ")" { Start }
+fn-legendValue = %s"legendValue(" arg-query *( "," arg-string ) ")" { Start }
 
 func =/ fn-lineWidth { End }
 fn-lineWidth = %s"lineWidth(" arg-query "," arg-num ")" { Start }
@@ -86,4 +86,19 @@ fn-sum = %s"sum(" arg-query *( "," arg-query ) ")" { Start, As fn-sumSeries }
 
 func =/ fn-timeShift { End }
 fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }
+
+;----------------------------------------------------------------------------
+; Aggregate functions
+;----------------------------------------------------------------------------
+aggfunc =/ afn-average { As string, Start+, End+ }
+afn-average = %s"average"
+
+aggfunc =/ afn-count { As string, Start+, End+ }
+afn-count = %s"count"
+
+aggfunc =/ afn-max { As string, Start+, End+ }
+afn-max = %s"max"
+
+aggfunc =/ afn-min { As string, Start+, End+ }
+afn-min = %s"min"
 

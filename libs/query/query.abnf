@@ -32,8 +32,8 @@ scl-dash = "-" { Char+, As scl-single }
 scl-range-end = scl-char-nd { Char+ }
 
 ; {,,,}
-seg-seg-list = "{" ssl-segs "}"
-ssl-segs = *WSP [path-seg] *WSP 1*(ssl-comma *WSP path-seg *WSP)
+seg-seg-list = "{" ssl-segs
+ssl-segs = *WSP [path-seg] *WSP 1*(ssl-comma *WSP path-seg *WSP) "}"
     { Start, End, Function }
 ssl-comma = "," { End }
 
@@ -51,6 +51,7 @@ scl-char = scl-char-nd / "-"
 arg-query = *WSP query *WSP { Start }
 arg-num = *WSP number *WSP { End }
 arg-string = *WSP (DQUOTE string DQUOTE / "'" string-ns "'") *WSP
+arg-aggfunc = *WSP (DQUOTE aggfunc DQUOTE / "'" aggfunc "'") *WSP
 
 ; String
 string = *(%x20-21 / %x23-7E) { Start+, End+ }
