@@ -66,7 +66,7 @@ enum DbLogRecType : int8_t {
 
 struct DbLog::Record {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t localTxn;
 };
 
@@ -98,7 +98,7 @@ struct TransactionRec {
 // Segment
 struct SegmentUpdateRec {
     DbLog::Record hdr;
-    uint32_t refPage;
+    pgno_t refPage;
 };
 
 //---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ struct RadixInitListRec {
     uint16_t numPages;
 
     // EXTENDS BEYOND END OF STRUCT
-    uint32_t pages[1];
+    pgno_t pages[1];
 };
 struct RadixEraseRec {
     DbLog::Record hdr;
@@ -124,12 +124,12 @@ struct RadixEraseRec {
 };
 struct RadixPromoteRec {
     DbLog::Record hdr;
-    uint32_t refPage;
+    pgno_t refPage;
 };
 struct RadixUpdateRec {
     DbLog::Record hdr;
     uint16_t refPos;
-    uint32_t refPage;
+    pgno_t refPage;
 };
 
 //---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ struct MetricUpdateRec {
 struct MetricUpdateSamplesRec {
     DbLog::Record hdr;
     uint16_t refPos;
-    uint32_t refPage;
+    pgno_t refPage;
     TimePoint refTime;
 };
 
@@ -182,31 +182,31 @@ struct SampleUpdateTimeRec {
 // Update (with or without last) is also an implicit transaction
 struct SampleUpdateFloat64TxnRec {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t pos;
     double value;
 };
 struct SampleUpdateFloat32TxnRec {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t pos;
     float value;
 };
 struct SampleUpdateInt32TxnRec {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t pos;
     int32_t value;
 };
 struct SampleUpdateInt16TxnRec {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t pos;
     int16_t value;
 };
 struct SampleUpdateInt8TxnRec {
     DbLogRecType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint16_t pos;
     int8_t value;
 };
@@ -295,7 +295,7 @@ uint16_t DbLog::size(const Record & log) {
 
 //===========================================================================
 // static
-uint32_t DbLog::getPgno(const Record & log) {
+pgno_t DbLog::getPgno(const Record & log) {
     assert(log.type > kRecTypeTxnCommit);
     switch (log.type) {
     case kRecTypeSampleUpdateFloat32Txn:
@@ -697,7 +697,7 @@ void DbLog::apply(AnalyzeData * data, uint64_t lsn, const Record & log) {
 template<typename T>
 pair<T *, size_t> DbTxn::alloc(
     DbLogRecType type,
-    uint32_t pgno,
+    pgno_t pgno,
     size_t bytes
 ) {
     assert(bytes >= sizeof(T));
@@ -719,21 +719,21 @@ void DbTxn::log(DbLog::Record * rec, size_t bytes) {
 }
 
 //===========================================================================
-void DbTxn::logZeroInit(uint32_t pgno) {
+void DbTxn::logZeroInit(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
     log(rec, bytes);
 }
 
 //===========================================================================
-void DbTxn::logPageFree(uint32_t pgno) {
+void DbTxn::logPageFree(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
     log(rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logSegmentUpdate(
-    uint32_t pgno,
-    uint32_t refPage,
+    pgno_t pgno,
+    pgno_t refPage,
     bool free
 ) {
     auto [rec, bytes] = alloc<SegmentUpdateRec>(
@@ -746,11 +746,11 @@ void DbTxn::logSegmentUpdate(
 
 //===========================================================================
 void DbTxn::logRadixInit(
-    uint32_t pgno,
+    pgno_t pgno,
     uint32_t id,
     uint16_t height,
-    const uint32_t * firstPage,
-    const uint32_t * lastPage
+    const pgno_t * firstPage,
+    const pgno_t * lastPage
 ) {
     if (firstPage == lastPage) {
         auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);
@@ -778,7 +778,7 @@ void DbTxn::logRadixInit(
 
 //===========================================================================
 void DbTxn::logRadixErase(
-    uint32_t pgno,
+    pgno_t pgno,
     size_t firstPos,
     size_t lastPos
 ) {
@@ -789,7 +789,7 @@ void DbTxn::logRadixErase(
 }
 
 //===========================================================================
-void DbTxn::logRadixPromote(uint32_t pgno, uint32_t refPage) {
+void DbTxn::logRadixPromote(pgno_t pgno, pgno_t refPage) {
     auto [rec, bytes] = alloc<RadixPromoteRec>(kRecTypeRadixPromote, pgno);
     rec->refPage = refPage;
     log(&rec->hdr, bytes);
@@ -797,9 +797,9 @@ void DbTxn::logRadixPromote(uint32_t pgno, uint32_t refPage) {
 
 //===========================================================================
 void DbTxn::logRadixUpdate(
-    uint32_t pgno,
+    pgno_t pgno,
     size_t refPos,
-    uint32_t refPage
+    pgno_t refPage
 ) {
     auto [rec, bytes] = alloc<RadixUpdateRec>(kRecTypeRadixUpdate, pgno);
     rec->refPos = (uint16_t) refPos;
@@ -809,7 +809,7 @@ void DbTxn::logRadixUpdate(
 
 //===========================================================================
 void DbTxn::logMetricInit(
-    uint32_t pgno,
+    pgno_t pgno,
     uint32_t id,
     string_view name,
     TimePoint creation,
@@ -836,7 +836,7 @@ void DbTxn::logMetricInit(
 
 //===========================================================================
 void DbTxn::logMetricUpdate(
-    uint32_t pgno,
+    pgno_t pgno,
     TimePoint creation,
     DbSampleType sampleType,
     Duration retention,
@@ -851,16 +851,16 @@ void DbTxn::logMetricUpdate(
 }
 
 //===========================================================================
-void DbTxn::logMetricClearSamples(uint32_t pgno) {
+void DbTxn::logMetricClearSamples(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeMetricClearSamples, pgno);
     log(rec, bytes);
 }
 
 //===========================================================================
 void DbTxn::logMetricUpdateSamples(
-    uint32_t pgno,
+    pgno_t pgno,
     size_t refPos,
-    uint32_t refPage,
+    pgno_t refPage,
     TimePoint refTime,
     bool updateIndex
 ) {
@@ -876,7 +876,7 @@ void DbTxn::logMetricUpdateSamples(
 
 //===========================================================================
 void DbTxn::logSampleInit(
-    uint32_t pgno,
+    pgno_t pgno,
     uint32_t id,
     DbSampleType sampleType,
     TimePoint pageTime,
@@ -894,7 +894,7 @@ void DbTxn::logSampleInit(
 // This one is not like the others, it represents a transaction with just
 // a single value update.
 void DbTxn::logSampleUpdateTxn(
-    uint32_t pgno,
+    pgno_t pgno,
     size_t pos,
     double value,
     bool updateLast
@@ -953,7 +953,7 @@ void DbTxn::logSampleUpdateTxn(
 
 //===========================================================================
 void DbTxn::logSampleUpdate(
-    uint32_t pgno,
+    pgno_t pgno,
     size_t firstSample,
     size_t lastSample,
     double value,
@@ -970,7 +970,7 @@ void DbTxn::logSampleUpdate(
 }
 
 //===========================================================================
-void DbTxn::logSampleUpdateTime(uint32_t pgno, TimePoint pageTime) {
+void DbTxn::logSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
     auto [rec, bytes] = alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
     log(&rec->hdr, bytes);

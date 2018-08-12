@@ -9,6 +9,9 @@
 #include "core/core.h"
 #include "file/file.h"
 
+#include <limits>
+#include <string_view>
+
 // forward declarations
 struct IDbDataNotify;
 
@@ -18,6 +21,11 @@ struct IDbDataNotify;
 *   Open, close, general configuration, and status commands
 *
 ***/
+
+enum pgno_t : uint32_t {};
+
+constexpr auto kMaxPageNum = (pgno_t) (std::numeric_limits<uint32_t>::max() / 2);
+constexpr auto kFreePageMark = (pgno_t) std::numeric_limits<uint32_t>::max();
 
 struct DbHandle : Dim::HandleBase {};
 
@@ -231,7 +239,7 @@ enum DbPageFlags : uint32_t {
 
 struct DbPageHeader {
     DbPageType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint32_t id;
     uint32_t checksum;
     uint64_t lsn;

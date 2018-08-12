@@ -115,7 +115,7 @@ void Test::onTestRun() {
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
     // add to new page 5. creates sample pages 3, 4, 5
-    // to track the value pages.
+    // to track the values.
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 7);

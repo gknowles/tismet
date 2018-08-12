@@ -22,8 +22,8 @@ constexpr Duration kDefaultInterval = 1min;
 const unsigned kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
-const uint32_t kZeroPageNum = 0;
-const uint32_t kMetricIndexPageNum = 1;
+const auto kZeroPageNum = (pgno_t) 0;
+const auto kMetricIndexPageNum = (pgno_t) 1;
 
 
 /****************************************************************************
@@ -76,7 +76,10 @@ struct DbData::RadixData {
     uint16_t numPages;
 
     // EXTENDS BEYOND END OF STRUCT
-    uint32_t pages[3];
+    pgno_t pages[3];
+
+    const pgno_t * begin() const { return pages; }
+    const pgno_t * end() const { return pages + numPages; }
 };
 
 struct DbData::RadixPage {
@@ -94,7 +97,7 @@ struct DbData::MetricPage {
     Duration interval;
     Duration retention;
     TimePoint lastPageFirstTime;
-    uint32_t lastPage;
+    pgno_t lastPage;
     unsigned lastPagePos;
     DbSampleType sampleType;
 
@@ -165,11 +168,11 @@ constexpr size_t segmentSize(size_t pageSize) {
 }
 
 //===========================================================================
-constexpr pair<uint32_t, size_t> segmentPage(uint32_t pgno, size_t pageSize) {
+constexpr pair<pgno_t, size_t> segmentPage(pgno_t pgno, size_t pageSize) {
     auto pps = pagesPerSegment(pageSize);
     auto segPage = pgno / pps * pps;
     auto segPos = pgno % pps;
-    return {(uint32_t) segPage, segPos};
+    return {(pgno_t) segPage, segPos};
 }
 
 //===========================================================================
@@ -270,10 +273,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
     m_verbose = flags & fDbOpenVerbose;
 
-    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
+    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (!zp->hdr.type) {
         txn.logZeroInit(kZeroPageNum);
-        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(0);
+        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
@@ -365,7 +368,7 @@ void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
 ***/
 
 //===========================================================================
-void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
+void DbData::metricDestructPage (DbTxn & txn, pgno_t pgno) {
     auto mp = txn.viewPage<MetricPage>(pgno);
     radixDestruct(txn, mp->hdr);
 
@@ -379,7 +382,7 @@ void DbData::metricDestructPage (DbTxn & txn, uint32_t pgno) {
 bool DbData::loadMetrics (
     DbTxn & txn,
     IDbDataNotify * notify,
-    uint32_t pgno
+    pgno_t pgno
 ) {
     if (!pgno)
         return true;
@@ -563,7 +566,7 @@ void DbData::updateMetric(
 
     mi.interval = info.interval;
     mi.sampleType = info.type;
-    mi.lastPage = 0;
+    mi.lastPage = {};
     mi.pageFirstTime = {};
     mi.pageLastSample = 0;
     shared_lock lk{m_mposMut};
@@ -612,7 +615,7 @@ void DbData::onLogApplyMetricUpdate(
     mp->sampleType = sampleType;
     mp->retention = retention;
     mp->interval = interval;
-    mp->lastPage = 0;
+    mp->lastPage = {};
     mp->lastPagePos = 0;
     mp->lastPageFirstTime = {};
     auto rd = radixData(mp);
@@ -719,7 +722,7 @@ DbData::MetricPosition DbData::loadMetricPos(
 void DbData::onLogApplyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->s_pageType);
-    mp->lastPage = 0;
+    mp->lastPage = {};
     mp->lastPagePos = 0;
     mp->lastPageFirstTime = {};
     auto rd = radixData(mp);
@@ -731,7 +734,7 @@ void DbData::onLogApplyMetricClearSamples(void * ptr) {
 void DbData::onLogApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
-    uint32_t refPage,
+    pgno_t refPage,
     TimePoint refTime,
     bool updateIndex
 ) {
@@ -849,7 +852,7 @@ void DbData::updateSample(
         if (time >= lastSampleTime + mp->retention) {
             radixDestruct(txn, mp->hdr);
             txn.logMetricClearSamples(mi.infoPage);
-            mi.lastPage = 0;
+            mi.lastPage = {};
             mi.pageFirstTime = {};
             mi.pageLastSample = 0;
             setMetricPos(id, mi);
@@ -909,7 +912,7 @@ void DbData::updateSample(
     }
 
     // update reference to last sample page
-    uint32_t lastPage;
+    pgno_t lastPage;
     if (!radixFind(txn, &lastPage, mi.infoPage, last)) {
         lastPage = allocPgno(txn);
         txn.logSampleInit(lastPage, id, mi.sampleType, endPageTime, 0);
@@ -1102,7 +1105,7 @@ void DbData::getSamples(
     auto numSamples = mp->retention / mp->interval;
     auto numPages = (numSamples - 1) / vpp + 1;
 
-    uint32_t spno;
+    pgno_t spno;
     unsigned sppos;
     if (first >= mi.pageFirstTime) {
         sppos = mp->lastPagePos;
@@ -1111,7 +1114,7 @@ void DbData::getSamples(
         auto off = (mi.pageFirstTime - first - mi.interval) / pageInterval + 1;
         sppos = (uint32_t) (mp->lastPagePos + numPages - off) % numPages;
         if (!radixFind(txn, &spno, mi.infoPage, sppos))
-            spno = 0;
+            spno = {};
     }
 
     DbSeriesInfo dsi;
@@ -1182,7 +1185,7 @@ void DbData::getSamples(
 //===========================================================================
 DbData::RadixData * DbData::radixData(MetricPage * mp) const {
     auto ents = entriesPerMetricPage();
-    auto off = offsetof(RadixData, pages) + ents * sizeof(uint32_t);
+    auto off = offsetof(RadixData, pages) + ents * sizeof(pgno_t);
     auto ptr = (char *) mp + m_pageSize - off;
     return reinterpret_cast<DbData::RadixData *>(ptr);
 }
@@ -1207,13 +1210,13 @@ const DbData::RadixData * DbData::radixData(const DbPageHeader * hdr) const {
 uint16_t DbData::entriesPerMetricPage() const {
     auto off = offsetof(MetricPage, name) + metricNameSize(m_pageSize)
         + offsetof(RadixData, pages);
-    return (uint16_t) (m_pageSize - off) / sizeof(uint32_t);
+    return (uint16_t) (m_pageSize - off) / sizeof(pgno_t);
 }
 
 //===========================================================================
 uint16_t DbData::entriesPerRadixPage() const {
     auto off = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
-    return (uint16_t) (m_pageSize - off) / sizeof(uint32_t);
+    return (uint16_t) (m_pageSize - off) / sizeof(pgno_t);
 }
 
 //===========================================================================
@@ -1249,7 +1252,7 @@ size_t DbData::radixPageEntries(
 }
 
 //===========================================================================
-void DbData::radixDestructPage(DbTxn & txn, uint32_t pgno) {
+void DbData::radixDestructPage(DbTxn & txn, pgno_t pgno) {
     auto rp = txn.viewPage<RadixPage>(pgno);
     radixDestruct(txn, rp->hdr);
 }
@@ -1257,8 +1260,8 @@ void DbData::radixDestructPage(DbTxn & txn, uint32_t pgno) {
 //===========================================================================
 void DbData::radixDestruct(DbTxn & txn, const DbPageHeader & hdr) {
     auto rd = radixData(&hdr);
-    for (int i = 0; i < rd->numPages; ++i) {
-        if (uint32_t p = rd->pages[i])
+    for (auto && p : *rd) {
+        if (p && p <= kMaxPageNum)
             freePage(txn, p);
     }
 }
@@ -1283,7 +1286,7 @@ void DbData::radixErase(
             rpos + lastPos - firstPos
         );
         for (auto i = rpos; i < lastPagePos; ++i) {
-            if (auto p = rd->pages[i])
+            if (auto p = rd->pages[i]; p && p <= kMaxPageNum)
                 freePage(txn, p);
         }
         txn.logRadixErase(hdr->pgno, rpos, lastPagePos);
@@ -1294,9 +1297,9 @@ void DbData::radixErase(
 //===========================================================================
 bool DbData::radixInsert(
     DbTxn & txn,
-    uint32_t root,
+    pgno_t root,
     size_t pos,
-    uint32_t value
+    pgno_t value
 ) {
     auto hdr = txn.viewPage<DbPageHeader>(root);
     auto id = hdr->id;
@@ -1354,8 +1357,8 @@ void DbData::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
-    const uint32_t * firstPgno,
-    const uint32_t * lastPgno
+    const pgno_t * firstPgno,
+    const pgno_t * lastPgno
 ) {
     auto rp = static_cast<RadixPage *>(ptr);
     if (rp->hdr.type == kPageTypeFree) {
@@ -1374,7 +1377,11 @@ void DbData::onLogApplyRadixInit(
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixErase(void * ptr, size_t firstPos, size_t lastPos) {
+void DbData::onLogApplyRadixErase(
+    void * ptr,
+    size_t firstPos,
+    size_t lastPos
+) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1384,7 +1391,7 @@ void DbData::onLogApplyRadixErase(void * ptr, size_t firstPos, size_t lastPos) {
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixPromote(void * ptr, uint32_t refPage) {
+void DbData::onLogApplyRadixPromote(void * ptr, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1394,7 +1401,7 @@ void DbData::onLogApplyRadixPromote(void * ptr, uint32_t refPage) {
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, uint32_t refPage) {
+void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == kPageTypeMetric || hdr->type == kPageTypeRadix);
     auto rd = radixData(hdr);
@@ -1408,7 +1415,7 @@ bool DbData::radixFind(
     DbPageHeader const ** hdr,
     RadixData const ** rd,
     size_t * rpos,
-    uint32_t root,
+    pgno_t root,
     size_t pos
 ) {
     *hdr = txn.viewPage<DbPageHeader>(root);
@@ -1453,8 +1460,8 @@ bool DbData::radixFind(
 //===========================================================================
 bool DbData::radixFind(
     DbTxn & txn,
-    uint32_t * out,
-    uint32_t root,
+    pgno_t * out,
+    pgno_t root,
     size_t pos
 ) {
     const DbPageHeader * hdr;
@@ -1463,7 +1470,7 @@ bool DbData::radixFind(
     if (radixFind(txn, &hdr, &rd, &rpos, root, pos)) {
         *out = rd->pages[rpos];
     } else {
-        *out = 0;
+        *out = {};
     }
     return *out;
 }
@@ -1486,7 +1493,7 @@ static BitView segmentBitView(void * hdr, size_t pageSize) {
 bool DbData::loadFreePages (DbTxn & txn) {
     auto pps = pagesPerSegment(m_pageSize);
     assert(!m_freePages);
-    for (uint32_t pgno = 0; pgno < m_numPages; pgno += pps) {
+    for (pgno_t pgno = {}; pgno < m_numPages; pgno = pgno_t(pgno + pps)) {
         auto pp = segmentPage(pgno, m_pageSize);
         auto segPage = pp.first;
         assert(!pp.second);
@@ -1511,8 +1518,9 @@ bool DbData::loadFreePages (DbTxn & txn) {
     }
 
     // validate that pages in free list are in fact free
-    uint32_t blank = 0;
-    for (auto && pgno : m_freePages) {
+    pgno_t blank = {};
+    for (auto && p : m_freePages) {
+        auto pgno = (pgno_t) p;
         if (pgno >= m_numPages)
             break;
         auto fp = txn.viewPage<DbPageHeader>(pgno);
@@ -1541,12 +1549,12 @@ bool DbData::loadFreePages (DbTxn & txn) {
 }
 
 //===========================================================================
-uint32_t DbData::allocPgno (DbTxn & txn) {
+pgno_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
 
     if (!m_freePages) {
         assert(!m_numFreed);
-        auto [segPage, segPos] = segmentPage((uint32_t) m_numPages, m_pageSize);
+        auto [segPage, segPos] = segmentPage((pgno_t) m_numPages, m_pageSize);
         assert(segPage == m_numPages && !segPos);
         (void) segPos;
         m_numPages += 1;
@@ -1555,7 +1563,7 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
         auto pps = pagesPerSegment(m_pageSize);
         m_freePages.insert(segPage + 1, segPage + pps - 1);
     }
-    auto pgno = m_freePages.pop_front();
+    auto pgno = (pgno_t) m_freePages.pop_front();
     if (pgno < m_numPages) {
         m_numFreed -= 1;
         s_perfFreePages -= 1;
@@ -1576,7 +1584,7 @@ uint32_t DbData::allocPgno (DbTxn & txn) {
 }
 
 //===========================================================================
-void DbData::freePage(DbTxn & txn, uint32_t pgno) {
+void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
 
     assert(pgno < m_numPages);
@@ -1635,7 +1643,7 @@ void DbData::onLogApplyZeroInit(void * ptr) {
 //===========================================================================
 void DbData::onLogApplySegmentUpdate(
     void * ptr,
-    uint32_t refPage,
+    pgno_t refPage,
     bool free
 ) {
     auto sp = static_cast<SegmentPage *>(ptr);

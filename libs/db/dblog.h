@@ -44,7 +44,7 @@ public:
 
     struct Record;
     static uint16_t size(const Record & log);
-    static uint32_t getPgno(const Record & log);
+    static pgno_t getPgno(const Record & log);
     static uint16_t getLocalTxn(const Record & log);
     static void setLocalTxn(Record * log, uint16_t localTxn);
 
@@ -53,7 +53,7 @@ public:
     static uint64_t getTxn(uint64_t lsn, uint16_t localTxn);
 
     struct PageInfo {
-        uint32_t pgno;
+        pgno_t pgno;
         uint64_t firstLsn;
         uint16_t numLogs;
 
@@ -249,7 +249,7 @@ public:
     // action already recorded at the specified LSN. The pgno and lsn fields of
     // the buffer must be set before returning.
     virtual void * onLogGetUpdatePtr(
-        uint32_t pgno,
+        pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
@@ -259,7 +259,7 @@ public:
     // to have been updated if the on page LSN is greater or equal to the LSN
     // of the update.
     virtual void * onLogGetRedoPtr(
-        uint32_t pgno,
+        pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
@@ -304,26 +304,26 @@ public:
     virtual void onLogApplyPageFree(void * ptr) = 0;
     virtual void onLogApplySegmentUpdate(
         void * ptr,
-        uint32_t refPage,
+        pgno_t refPage,
         bool free
     ) = 0;
     virtual void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
-        const uint32_t * firstPgno,
-        const uint32_t * lastPgno
+        const pgno_t * firstPgno,
+        const pgno_t * lastPgno
     ) = 0;
     virtual void onLogApplyRadixErase(
         void * ptr,
         size_t firstPos,
         size_t lastPos
     ) = 0;
-    virtual void onLogApplyRadixPromote(void * ptr, uint32_t refPage) = 0;
+    virtual void onLogApplyRadixPromote(void * ptr, pgno_t refPage) = 0;
     virtual void onLogApplyRadixUpdate(
         void * ptr,
         size_t pos,
-        uint32_t refPage
+        pgno_t refPage
     ) = 0;
     virtual void onLogApplyMetricInit(
         void * ptr,
@@ -345,7 +345,7 @@ public:
     virtual void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
-        uint32_t refPage,
+        pgno_t refPage,
         Dim::TimePoint refTime,
         bool updateIndex
     ) = 0;

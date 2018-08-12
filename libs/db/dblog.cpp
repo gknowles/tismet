@@ -74,7 +74,7 @@ enum PageType {
 
 struct LogPage {
     PageType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint32_t checksum;
     uint64_t firstLsn; // LSN of first record started on page
     uint16_t numLogs; // number of log records started on page
@@ -93,12 +93,12 @@ struct ZeroPage {
 
 struct MinimumPage {
     PageType type;
-    uint32_t pgno;
+    pgno_t pgno;
 };
 
 struct PageHeaderRawV2 {
     PageType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint32_t checksum;
     uint64_t firstLsn;
     uint16_t numLogs;
@@ -109,7 +109,7 @@ struct PageHeaderRawV2 {
 // deprecated 2018-03-23
 struct PageHeaderRawV1 {
     PageType type;
-    uint32_t pgno;
+    pgno_t pgno;
     uint64_t firstLsn;
     uint16_t numLogs;
     uint16_t firstPos;
@@ -439,7 +439,7 @@ void DbLog::close() {
     lk.unlock();
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
-    auto lastPage = (uint32_t) m_numPages - 1;
+    auto lastPage = (pgno_t) m_numPages - 1;
     while (m_freePages.count(lastPage))
         lastPage -= 1;
     fileResize(m_flog, (lastPage + 1) * m_pageSize);
@@ -585,12 +585,12 @@ bool DbLog::loadPages(FileHandle flog) {
     PageInfo * pi;
     uint32_t checksum;
     // load info for each page
-    for (uint32_t i = 1; i < m_numPages; ++i) {
+    for (auto i = (pgno_t) 1; i < m_numPages; i = pgno_t(i + 1)) {
         fileReadWait(rawbuf, m_pageSize, flog, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
         case kPageTypeInvalid:
-            i = (uint32_t) m_numPages;
+            i = (pgno_t) m_numPages;
             break;
         case kPageTypeLogV1:
             unpack(&lp, rawbuf);
@@ -847,7 +847,7 @@ void DbLog::checkpointStableCommit() {
     if (!fileFlush(m_flog))
         logMsgFatal() << "Checkpointing failed.";
 
-    auto lastPgno = uint32_t{0};
+    auto lastPgno = pgno_t{0};
     {
         unique_lock lk{m_bufMut};
         auto lastTxn = m_pages.back().firstLsn;
@@ -1237,10 +1237,10 @@ void DbLog::prepareBuffer_LK(
     lp.checksum = 0;
     auto hdrLen = logHdrLen(lp.type);
     if (m_freePages) {
-        lp.pgno = m_freePages.pop_front();
+        lp.pgno = (pgno_t) m_freePages.pop_front();
         s_perfFreePages -= 1;
     } else {
-        lp.pgno = (uint32_t) m_numPages++;
+        lp.pgno = (pgno_t) m_numPages++;
         s_perfPages += 1;
     }
     if (bytesOnOldPage) {

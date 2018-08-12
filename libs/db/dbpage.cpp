@@ -19,8 +19,6 @@ using namespace Dim;
 const size_t kViewSize = 0x100'0000; // 16MiB
 const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
-constexpr uint32_t kFreePageMark = numeric_limits<uint32_t>::max();
-
 
 /****************************************************************************
 *
@@ -131,9 +129,9 @@ bool DbPage::openData(string_view datafile) {
     }
 
     // Remove trailing blank pages from page count
-    auto lastPage = (uint32_t) (len / m_pageSize);
+    auto lastPage = (pgno_t) (len / m_pageSize);
     while (lastPage) {
-        lastPage -= 1;
+        lastPage = pgno_t(lastPage - 1);
         auto p = static_cast<const DbPageHeader *>(m_vdata.rptr(lastPage));
         if (p->type)
             break;
@@ -366,7 +364,7 @@ void DbPage::saveWork() {
             npi->hdr = dupPage_LK(pi->hdr);
             npi->firstTime = pi->firstTime;
             npi->firstLsn = pi->firstLsn;
-            npi->pgno = 0;
+            npi->pgno = {};
             npi->flags = pi->flags;
         } else {
             savedLsn = pi->firstLsn;
@@ -481,7 +479,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
 
 //===========================================================================
 void DbPage::writePageWait(DbPageHeader * hdr) {
-    assert(hdr->pgno != (uint32_t) -1);
+    assert(hdr->pgno != kFreePageMark);
     s_perfWrites += 1;
     hdr->checksum = 0;
     hdr->checksum = hash_crc32c(hdr, m_pageSize);
@@ -496,7 +494,7 @@ void DbPage::writePageWait(DbPageHeader * hdr) {
 ***/
 
 //===========================================================================
-void DbPage::growToFit(uint32_t pgno) {
+void DbPage::growToFit(pgno_t pgno) {
     unique_lock lk{m_workMut};
     if (pgno < m_pages.size())
         return;
@@ -506,7 +504,7 @@ void DbPage::growToFit(uint32_t pgno) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(uint64_t lsn, uint32_t pgno) const {
+const void * DbPage::rptr(uint64_t lsn, pgno_t pgno) const {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
@@ -525,7 +523,7 @@ DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
     pi->firstTime = {};
     pi->firstLsn = 0;
     pi->flags = {};
-    pi->pgno = 0;
+    pi->pgno = {};
     return pi;
 }
 
@@ -536,7 +534,7 @@ void DbPage::freeWorkInfo_LK(WorkPageInfo * pi) {
 
 //===========================================================================
 void * DbPage::onLogGetRedoPtr(
-    uint32_t pgno,
+    pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
 ) {
@@ -558,7 +556,7 @@ void * DbPage::onLogGetRedoPtr(
 
 //===========================================================================
 void * DbPage::onLogGetUpdatePtr(
-    uint32_t pgno,
+    pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
 ) {
@@ -570,12 +568,12 @@ void * DbPage::onLogGetUpdatePtr(
 
 //===========================================================================
 DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
-    auto wpno = (uint32_t) 0;
+    pgno_t wpno = {};
     if (m_freeWorkPages) {
-        wpno = m_freeWorkPages.pop_front();
+        wpno = (pgno_t) m_freeWorkPages.pop_front();
         s_perfFreePages -= 1;
     } else {
-        wpno = (uint32_t) m_workPages++;
+        wpno = (pgno_t) m_workPages++;
         m_vwork.growToFit(wpno);
         s_perfPages += 1;
     }
@@ -585,7 +583,7 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-void * DbPage::dirtyPage_LK(uint32_t pgno, uint64_t lsn) {
+void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     auto pi = m_pages[pgno];
     if (!pi || !pi->hdr) {
         // create new dirty page from clean page
@@ -597,7 +595,7 @@ void * DbPage::dirtyPage_LK(uint32_t pgno, uint64_t lsn) {
             s_perfAmortized += 1;
         }
         pi->hdr = dupPage_LK(src);
-        pi->pgno = 0;
+        pi->pgno = {};
     }
     assert(pi->hdr && !pi->pgno);
     if (~pi->flags & fDbPageDirty) {

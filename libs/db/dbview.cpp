@@ -77,7 +77,7 @@ void DbFileView<Writable>::close() {
 
 //===========================================================================
 template<bool Writable>
-void DbFileView<Writable>::growToFit(uint32_t pgno) {
+void DbFileView<Writable>::growToFit(pgno_t pgno) {
     auto pos = pgno * m_pageSize;
     if (pos < m_firstViewSize) {
         if (pos < minFirstSize()) {
@@ -107,7 +107,7 @@ void DbFileView<Writable>::growToFit(uint32_t pgno) {
 
 //===========================================================================
 template<bool Writable>
-const void * DbFileView<Writable>::rptr(uint32_t pgno) const {
+const void * DbFileView<Writable>::rptr(pgno_t pgno) const {
     return ptr(pgno);
 }
 
@@ -119,7 +119,7 @@ size_t DbFileView<Writable>::minFirstSize() const {
 
 //===========================================================================
 template<bool Writable>
-auto DbFileView<Writable>::ptr(uint32_t pgno) const
+auto DbFileView<Writable>::ptr(pgno_t pgno) const
     -> Pointer
 {
     auto pos = pgno * m_pageSize;
@@ -134,17 +134,17 @@ auto DbFileView<Writable>::ptr(uint32_t pgno) const
 
 //===========================================================================
 template<bool Writable>
-uint32_t DbFileView<Writable>::pgno(const void * vptr) const {
+pgno_t DbFileView<Writable>::pgno(const void * vptr) const {
     auto ptr = (const char *) vptr;
     if (ptr >= m_view && ptr < m_view + m_firstViewSize)
-        return uint32_t((ptr - m_view) / m_pageSize);
+        return pgno_t((ptr - m_view) / m_pageSize);
     auto num = m_firstViewSize / m_pageSize;
     for (auto && v : m_views) {
         if (ptr >= v && ptr < v + m_viewSize)
-            return uint32_t(num + (ptr - v) / m_pageSize);
+            return pgno_t(num + (ptr - v) / m_pageSize);
         num += m_viewSize / m_pageSize;
     }
-    return numeric_limits<uint32_t>::max();
+    return kMaxPageNum;
 }
 
 
@@ -155,7 +155,7 @@ uint32_t DbFileView<Writable>::pgno(const void * vptr) const {
 ***/
 
 //===========================================================================
-void * DbWriteView::wptr(uint32_t pgno) const {
+void * DbWriteView::wptr(pgno_t pgno) const {
     return ptr(pgno);
 }
 

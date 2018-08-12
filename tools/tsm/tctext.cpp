@@ -39,26 +39,26 @@ private:
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplySegmentUpdate(
         void * ptr,
-        uint32_t refPage,
+        pgno_t refPage,
         bool free
     ) override;
     void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
-        const uint32_t * firstPgno,
-        const uint32_t * lastPgno
+        const pgno_t * firstPgno,
+        const pgno_t * lastPgno
     ) override;
     void onLogApplyRadixErase(
         void * ptr,
         size_t firstPos,
         size_t lastPos
     ) override;
-    void onLogApplyRadixPromote(void * ptr, uint32_t refPage) override;
+    void onLogApplyRadixPromote(void * ptr, pgno_t refPage) override;
     void onLogApplyRadixUpdate(
         void * ptr,
         size_t pos,
-        uint32_t refPage
+        pgno_t refPage
     ) override;
     void onLogApplyMetricInit(
         void * ptr,
@@ -80,7 +80,7 @@ private:
     void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
-        uint32_t refPage,
+        pgno_t refPage,
         TimePoint refTime,
         bool updateIndex
     ) override;
@@ -102,12 +102,12 @@ private:
 
     // Inherited via IPageNotify
     void * onLogGetUpdatePtr(
-        uint32_t pgno,
+        pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) override;
     void * onLogGetRedoPtr(
-        uint32_t pgno,
+        pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) override;
@@ -190,7 +190,7 @@ void TextWriter::onLogApplyPageFree(void * ptr) {
 //===========================================================================
 void TextWriter::onLogApplySegmentUpdate(
     void * ptr,
-    uint32_t refPage,
+    pgno_t refPage,
     bool free
 ) {
     out(ptr) << "free[@" << refPage << "] = " << (free ? 1 : 0) << '\n';
@@ -201,8 +201,8 @@ void TextWriter::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
-    const uint32_t * firstPgno,
-    const uint32_t * lastPgno
+    const pgno_t * firstPgno,
+    const pgno_t * lastPgno
 ) {
     auto & os = out(ptr);
     os << "radix/" << id << ".init = " << height << '\n';
@@ -222,7 +222,7 @@ void TextWriter::onLogApplyRadixErase(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyRadixPromote(void * ptr, uint32_t refPage) {
+void TextWriter::onLogApplyRadixPromote(void * ptr, pgno_t refPage) {
     out(ptr) << "radix.promote(@" << refPage << ")\n";
 }
 
@@ -230,7 +230,7 @@ void TextWriter::onLogApplyRadixPromote(void * ptr, uint32_t refPage) {
 void TextWriter::onLogApplyRadixUpdate(
     void * ptr,
     size_t pos,
-    uint32_t refPage
+    pgno_t refPage
 ) {
     out(ptr) << "radix[" << pos << "] = @" << refPage << '\n';
 }
@@ -276,7 +276,7 @@ void TextWriter::onLogApplyMetricClearSamples(void * ptr) {
 void TextWriter::onLogApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
-    uint32_t refPage,
+    pgno_t refPage,
     TimePoint refTime,
     bool updateIndex
 ) {
@@ -336,7 +336,7 @@ void TextWriter::onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
 
 //===========================================================================
 void * TextWriter::onLogGetUpdatePtr(
-    uint32_t pgno,
+    pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
 ) {
@@ -346,7 +346,7 @@ void * TextWriter::onLogGetUpdatePtr(
 
 //===========================================================================
 void * TextWriter::onLogGetRedoPtr(
-    uint32_t pgno,
+    pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
 ) {
