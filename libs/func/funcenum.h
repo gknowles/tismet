@@ -48,8 +48,15 @@ namespace Aggregate {
     enum Type : int {
         kAverage = 0,
         kCount = 1,
+        kDiff = 2,
+        kLast = 3,
         kMax = 4,
+        kMedian = 5,
         kMin = 6,
+        kMultiply = 7,
+        kRange = 8,
+        kStddev = 9,
+        kSum = 10,
     };
 }
 

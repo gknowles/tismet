@@ -294,14 +294,77 @@ static auto s_maxpoints_odd = UnitTest("consolidate points")
     .in("1.value", 10, 1s, {1,2,3,4,5,6})
     .out("1.value", 8, 2s, {NAN, 1.5, 3.5, 5})
     .in("2.value", 13, 1s, {4,5,6,7,8,9})
-    .out("2.value", 8, 2s, {NAN, NAN, 4, 5})
-;
+    .out("2.value", 8, 2s, {NAN, NAN, 4, 5});
 static auto s_maxpoints = UnitTest("consolidate points even")
     .query("*.value", 10, 6, 3)
     .in("1.value", 10, 1s, {1,2,3,4,5,6})
     .out("1.value", 10, 2s, {1.5, 3.5, 5.5})
     .in("2.value", 13, 1s, {4,5,6,7,8,9})
     .out("2.value", 10, 2s, {NAN, 4, 5.5});
+
+//===========================================================================
+// consolidateBy
+//===========================================================================
+static auto s_consolidateBy_average = UnitTest("consolidateBy_average")
+    .query("consolidateBy(*.value, 'average')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {1.5, 3.5, 5.5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 5.5});
+static auto s_consolidateBy_count = UnitTest("consolidateBy_count")
+    .query("consolidateBy(*.value, 'count')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {2, 2, 2})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {0, 1, 2});
+static auto s_consolidateBy_diff = UnitTest("consolidateBy_diff")
+    .query("consolidateBy(*.value, 'diff')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {-1, -1, -1})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, -1});
+static auto s_consolidateBy_last = UnitTest("consolidateBy_last")
+    .query("consolidateBy(*.value, 'last')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {2, 4, 6})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 6});
+static auto s_consolidateBy_max = UnitTest("consolidateBy_max")
+    .query("consolidateBy(*.value, 'max')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {2, 4, 6})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 6});
+static auto s_consolidateBy_min = UnitTest("consolidateBy_min")
+    .query("consolidateBy(*.value, 'min')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {1, 3, 5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 5});
+static auto s_consolidateBy_multiply = UnitTest("consolidateBy_multiply")
+    .query("consolidateBy(*.value, 'multiply')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {2, 12, 30})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 30});
+static auto s_consolidateBy_range = UnitTest("consolidateBy_range")
+    .query("consolidateBy(*.value, 'range')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {1, 1, 1})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 0, 1});
+static auto s_consolidateBy_stddev = UnitTest("consolidateBy_stddev")
+    .query("consolidateBy(*.value, 'stddev')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {0.5, 0.5, 0.5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 0, 0.5});
+static auto s_consolidateBy_sum = UnitTest("consolidateBy_sum")
+    .query("consolidateBy(*.value, 'sum')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {3, 7, 11})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 11});
 
 //===========================================================================
 // countSeries

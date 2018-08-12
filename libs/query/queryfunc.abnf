@@ -96,9 +96,30 @@ afn-average = %s"average"
 aggfunc =/ afn-count { As string, Start+, End+ }
 afn-count = %s"count"
 
+aggfunc =/ afn-diff { As string, Start+, End+ }
+afn-diff = %s"diff"
+
+aggfunc =/ afn-last { As string, Start+, End+ }
+afn-last = %s"last"
+
 aggfunc =/ afn-max { As string, Start+, End+ }
 afn-max = %s"max"
 
+aggfunc =/ afn-median { As string, Start+, End+ }
+afn-median = %s"median"
+
 aggfunc =/ afn-min { As string, Start+, End+ }
 afn-min = %s"min"
+
+aggfunc =/ afn-multiply { As string, Start+, End+ }
+afn-multiply = %s"multiply"
+
+aggfunc =/ afn-range { As string, Start+, End+ }
+afn-range = %s"range"
+
+aggfunc =/ afn-stddev { As string, Start+, End+ }
+afn-stddev = %s"stddev"
+
+aggfunc =/ afn-sum { As string, Start+, End+ }
+afn-sum = %s"sum"
 

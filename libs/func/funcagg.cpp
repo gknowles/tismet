@@ -36,105 +36,177 @@ using ReduceFn = void (
 } // namespace
 
 //===========================================================================
-static void reduceAverage(
-    double out[],
-    size_t outLen,
-    double in[],
-    size_t inLen,
-    size_t sps,
-    size_t presamples
-) {
-    auto oval = 0.0;
-    auto num = presamples;
-    auto nans = presamples;
-    auto optr = out;
-    for (unsigned i = 0; i < inLen; ++i) {
-        auto val = in[i];
-        if (num == sps) {
-            *optr++ = nans == num ? NAN : oval / (num - nans);
-            num = 1;
-            if (isnan(val)) {
-                oval = 0;
-                nans = 1;
-            } else {
-                oval = val;
-                nans = 0;
-            }
-        } else {
-            num += 1;
-            if (isnan(val)) {
-                nans += 1;
-            } else {
-                oval += val;
-            }
+static double aggAverage(double vals[], size_t count) {
+    double out = 0;
+    int cnt = 0;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (!isnan(*ptr)) {
+            out += *ptr;
+            cnt += 1;
         }
     }
-    *optr++ = (nans == num) ? NAN : oval / (num - nans);
-    assert(optr == out + outLen);
+    return cnt ? out / cnt : NAN;
 }
 
 //===========================================================================
-static void reduceCount(
-    double out[],
-    size_t outLen,
-    double in[],
-    size_t inLen,
-    size_t sps,
-    size_t presamples
-) {
-    auto oval = 0;
-    auto num = presamples;
-    auto optr = out;
-    for (unsigned i = 0; i < inLen; ++i) {
-        auto val = in[i];
-        if (num == sps) {
-            *optr++ = oval;
-            num = 1;
-            if (isnan(val)) {
-                oval = 0;
-            } else {
-                oval = 1;
-            }
-        } else {
-            num += 1;
-            if (!isnan(val))
-                oval += 1;
-        }
-    }
-    *optr++ = oval;
-    assert(optr == out + outLen);
+static double aggCount(double vals[], size_t count) {
+    return (double) count_if(vals, vals + count, [](auto & a) {
+        return !isnan(a);
+    });
 }
 
 //===========================================================================
-static void reduceMax(
-    double out[],
-    size_t outLen,
-    double in[],
-    size_t inLen,
-    size_t sps,
-    size_t presamples
-) {
-    auto oval = (double) NAN;
-    auto num = presamples;
-    auto optr = out;
-    for (unsigned i = 0; i < inLen; ++i) {
-        auto val = in[i];
-        if (num == sps) {
-            *optr++ = oval;
-            num = 1;
-            oval = val;
-        } else {
-            num += 1;
-            if (!(val <= oval) && !isnan(val))
-                oval = val;
+static double aggDiff(double vals[], size_t count) {
+    double out = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        out = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (!isnan(*ptr))
+                out -= *ptr;
         }
+        break;
     }
-    *optr++ = oval;
-    assert(optr == out + outLen);
+    return out;
 }
 
 //===========================================================================
-static void reduceMin(
+static double aggLast(double vals[], size_t count) {
+    while (count && isnan(vals[count - 1]))
+        count -= 1;
+    return count ? vals[count - 1] : NAN;
+}
+
+//===========================================================================
+static double aggMax(double vals[], size_t count) {
+    double out = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        out = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (*ptr > out)
+                out = *ptr;
+        }
+        break;
+    }
+    return out;
+}
+
+//===========================================================================
+static double aggMedian(double vals[], size_t count) {
+    unique_ptr<double[]> tmp;
+    double * nvals;
+    if (count > 1000) {
+        tmp = make_unique<double[]>(count);
+        nvals = tmp.get();
+    } else {
+        nvals = (double *) alloca(count * sizeof(*nvals));
+    }
+    auto ncount = 0;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (!isnan(*ptr))
+            nvals[ncount++] = *ptr;
+    }
+    sort(nvals, nvals + ncount);
+    return (ncount % 2)
+        ? (nvals[ncount / 2] + nvals[ncount / 2 - 1]) / 2
+        : nvals[ncount / 2];
+}
+
+//===========================================================================
+static double aggMin(double vals[], size_t count) {
+    double out = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        out = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (*ptr < out)
+                out = *ptr;
+        }
+        break;
+    }
+    return out;
+}
+
+//===========================================================================
+static double aggMultiply(double vals[], size_t count) {
+    double out = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        out = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (!isnan(*ptr))
+                out *= *ptr;
+        }
+        break;
+    }
+    return out;
+}
+
+//===========================================================================
+static double aggRange(double vals[], size_t count) {
+    double low = NAN;
+    double high = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        low = high = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (*ptr < low)
+                low = *ptr;
+            else if (*ptr > high)
+                high = *ptr;
+        }
+        break;
+    }
+    return high - low;
+}
+
+//===========================================================================
+static double aggStddev(double vals[], size_t count) {
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        double omean = *ptr++;
+        double agg = 0;
+        unsigned cnt = 1;
+        for (; ptr < vals + count; ++ptr) {
+            if (isnan(*ptr))
+                continue;
+            auto val = *ptr;
+            cnt += 1;
+            auto mean = omean + (val - omean) / cnt;
+            agg += (val - omean) * (val - mean);
+            omean = mean;
+        }
+        return sqrt(agg / cnt);
+    }
+    return NAN;
+}
+
+//===========================================================================
+static double aggSum(double vals[], size_t count) {
+    double out = NAN;
+    for (auto ptr = vals; ptr < vals + count; ++ptr) {
+        if (isnan(*ptr))
+            continue;
+        out = *ptr++;
+        for (; ptr < vals + count; ++ptr) {
+            if (!isnan(*ptr))
+                out += *ptr;
+        }
+        break;
+    }
+    return out;
+}
+
+//===========================================================================
+template<double Fn(double vals[], size_t)>
+static void reduce(
     double out[],
     size_t outLen,
     double in[],
@@ -142,22 +214,18 @@ static void reduceMin(
     size_t sps,
     size_t presamples
 ) {
-    auto oval = (double) NAN;
-    auto num = presamples;
+    auto ptr = in;
+    auto eptr = in + inLen;
     auto optr = out;
-    for (unsigned i = 0; i < inLen; ++i) {
-        auto val = in[i];
-        if (num == sps) {
-            *optr++ = oval;
-            num = 1;
-            oval = val;
-        } else {
-            num += 1;
-            if (!(val >= oval) && !isnan(val))
-                oval = val;
-        }
+    auto num = min(sps - presamples, inLen);
+    *optr++ = Fn(ptr, num);
+    ptr += num;
+    while (ptr + sps <= eptr) {
+        *optr++ = Fn(ptr, sps);
+        ptr += sps;
     }
-    *optr++ = oval;
+    if (ptr < eptr)
+        *optr++ = Fn(ptr, eptr - ptr);
     assert(optr == out + outLen);
 }
 
@@ -176,17 +244,17 @@ struct MethodInfo {
 };
 } // namespace
 static MethodInfo s_methods[] = {
-    { reduceAverage, { "average", "avg" } },
-    { reduceCount, { "count" } },
-    { nullptr, { "diff" } },
-    { nullptr, { "last", "current" } },
-    { reduceMax, { "max" } },
-    { nullptr, { "median" } },
-    { reduceMin, { "min" } },
-    { nullptr, { "multiply" } },
-    { nullptr, { "range", "rangeOf" } },
-    { nullptr, { "stddev" } },
-    { nullptr, { "sum", "total" } },
+    { reduce<aggAverage>, { "average", "avg" } },
+    { reduce<aggCount>, { "count" } },
+    { reduce<aggDiff>, { "diff" } },
+    { reduce<aggLast>, { "last", "current" } },
+    { reduce<aggMax>, { "max" } },
+    { reduce<aggMedian>, { "median" } },
+    { reduce<aggMin>, { "min" } },
+    { reduce<aggMultiply>, { "multiply" } },
+    { reduce<aggRange>, { "range", "rangeOf" } },
+    { reduce<aggStddev>, { "stddev" } },
+    { reduce<aggSum>, { "sum", "total" } },
 };
 static vector<TokenTable::Token> s_methodTokens;
 static TokenTable s_methodTbl = [](){
