@@ -29,7 +29,9 @@ path-chars = ALPHA / DIGIT
     / "~"
 
 ; Timestamp
-timestamp = 1*DIGIT { Char+ }
+timestamp = now / timepoint
+now = "-1" { End }
+timepoint = 1*DIGIT { Char+ }
 
 ; Value
 value = int [frac] [exp]

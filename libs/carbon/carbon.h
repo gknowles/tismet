@@ -101,7 +101,11 @@ struct CarbonUpdate {
 // parsed or more data needed). On return if upd.name is empty more data is
 // needed and src is unchanged, otherwise upd is fully populated and src is
 // adjusted to reference the leftover suffix of src that was not parsed.
-bool carbonParse(CarbonUpdate & upd, std::string_view & src);
+bool carbonParse(
+    CarbonUpdate & upd,
+    std::string_view & src,
+    Dim::TimePoint now
+);
 
 void carbonWrite(
     std::ostream & os,

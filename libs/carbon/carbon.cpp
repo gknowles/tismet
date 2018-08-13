@@ -57,13 +57,14 @@ static unsigned s_nextRequestId;
 
 //===========================================================================
 unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
+    auto now = Clock::now();
     CarbonUpdate upd;
     if (!m_buf.empty()) {
         m_buf.append(src);
         src = m_buf;
     }
     unsigned incomplete = 0;
-    while (carbonParse(upd, src)) {
+    while (carbonParse(upd, src, now)) {
         if (upd.name.empty()) {
             if (m_buf.empty()) {
                 m_buf = src;
@@ -170,7 +171,7 @@ AppSocket::MatchType CarbonMatch::onMatch(
 ) {
     assert(fam == TismetSocket::kCarbon);
     CarbonUpdate upd;
-    if (!carbonParse(upd, view))
+    if (!carbonParse(upd, view, {}))
         return AppSocket::kUnsupported;
     if (upd.name.empty()) {
         if (view.size() < kCarbonMaxRecordSize) {
@@ -213,7 +214,7 @@ void carbonAckValue(unsigned reqId, unsigned completed) {
 //      recommended to avoid: non-printable + \^$'"=,
 //  prometheus:
 //      [a-zA-Z_:]([a-zA-Z0-9+:])*
-bool carbonParse(CarbonUpdate & upd, string_view & src) {
+bool carbonParse(CarbonUpdate & upd, string_view & src, TimePoint now) {
     assert(*src.end() == 0);
     upd.name = {};
     if (src.empty())
@@ -224,6 +225,8 @@ bool carbonParse(CarbonUpdate & upd, string_view & src) {
     auto pos = parser.errpos();
     if (!upd.name.empty()) {
         src.remove_prefix(pos + 1);
+        if (!upd.time)
+            upd.time = now;
         return true;
     }
     return !ptr[pos];

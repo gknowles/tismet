@@ -39,7 +39,7 @@ static void parseTest(
     string_view name = "metric"
 ) {
     CarbonUpdate upd;
-    bool result = carbonParse(upd, text);
+    bool result = carbonParse(upd, text, time);
     EXPECT(result);
     EXPECT(upd.name == name);
     EXPECT(upd.value == value);
@@ -74,4 +74,5 @@ void Test::onTestRun() {
     EXPECT_PARSE("metric 0.8e+2 900000000\n", 80, start);
     EXPECT_PARSE("metric -8 900000000\n", -8, start);
     EXPECT_PARSE("metric 8e+2 900000000\n", 800, start);
+    EXPECT_PARSE("metric 0.8 -1\n", 0.8f, start);
 }

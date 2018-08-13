@@ -23,7 +23,7 @@ struct CarbonParserBase {
     int m_frac{0};
     bool m_expMinus{false};
     int m_exp{0};
-    uint64_t m_seconds{0};
+    int64_t m_seconds{0};
 
     CarbonParserBase(CarbonUpdate * upd) : m_upd{upd} {}
 };
