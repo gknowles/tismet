@@ -91,6 +91,7 @@ public:
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
     void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
+
 private:
     void write();
 
@@ -245,6 +246,7 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static bool replayCmd(Cli & cli) {
+    AddrJob job;
     return cli.fail(EX_UNAVAILABLE, "replay not implemented");
     //auto job = make_unique<AddrJob>();
     //if (job->start(cli))
