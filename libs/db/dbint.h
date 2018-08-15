@@ -198,7 +198,7 @@ private:
 
 /****************************************************************************
 *
-*   DbLog
+*   DbTxn
 *
 ***/
 
@@ -244,12 +244,13 @@ public:
         Dim::Duration interval
     );
     void logMetricClearSamples(pgno_t pgno);
+    void logMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample);
     void logMetricUpdateSamples(
         pgno_t pgno,
         size_t refPos,
-        pgno_t refPage,
         Dim::TimePoint refTime,
-        bool updateIndex
+        size_t refSample,
+        pgno_t refPage
     );
     void logSampleInit(
         pgno_t pgno,
@@ -297,7 +298,7 @@ const T * DbTxn::viewPage(pgno_t pgno) const {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(intptr_t(ptr) == intptr_t(&ptr->hdr));
-        assert(ptr->hdr.type == ptr->s_pageType);
+        assert(ptr->hdr.type == ptr->kPageType);
     }
     return ptr;
 }
@@ -422,9 +423,9 @@ public:
     void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
-        pgno_t refPage,
         Dim::TimePoint refTime,
-        bool updateIndex
+        size_t refSample,
+        pgno_t refPage
     ) override;
     void onLogApplySampleInit(
         void * ptr,

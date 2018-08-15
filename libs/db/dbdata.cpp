@@ -49,12 +49,12 @@ enum DbPageType : int32_t {
 };
 
 struct DbData::SegmentPage {
-    static const DbPageType s_pageType = kPageTypeSegment;
+    static const DbPageType kPageType = kPageTypeSegment;
     DbPageHeader hdr;
 };
 
 struct DbData::ZeroPage {
-    static const DbPageType s_pageType = kPageTypeZero;
+    static const DbPageType kPageType = kPageTypeZero;
     union {
         DbPageHeader hdr;
         SegmentPage segment;
@@ -67,7 +67,7 @@ static_assert(is_standard_layout_v<DbData::ZeroPage>);
 static_assert(2 * sizeof(DbData::ZeroPage) <= kMinPageSize);
 
 struct DbData::FreePage {
-    static const DbPageType s_pageType = kPageTypeFree;
+    static const DbPageType kPageType = kPageTypeFree;
     DbPageHeader hdr;
 };
 
@@ -83,7 +83,7 @@ struct DbData::RadixData {
 };
 
 struct DbData::RadixPage {
-    static const DbPageType s_pageType = kPageTypeRadix;
+    static const DbPageType kPageType = kPageTypeRadix;
     DbPageHeader hdr;
 
     // EXTENDS BEYOND END OF STRUCT
@@ -91,13 +91,14 @@ struct DbData::RadixPage {
 };
 
 struct DbData::MetricPage {
-    static const DbPageType s_pageType = kPageTypeMetric;
+    static const DbPageType kPageType = kPageTypeMetric;
     DbPageHeader hdr;
     TimePoint creation;
     Duration interval;
     Duration retention;
     TimePoint lastPageFirstTime;
-    pgno_t lastPage;
+    uint16_t lastPageSample;
+    uint16_t reserved;
     unsigned lastPagePos;
     DbSampleType sampleType;
 
@@ -109,7 +110,7 @@ struct DbData::MetricPage {
 static_assert(sizeof(DbData::MetricPage) <= kMinPageSize);
 
 struct DbData::SamplePage {
-    static const DbPageType s_pageType = kPageTypeSample;
+    static const DbPageType kPageType = kPageTypeSample;
     DbPageHeader hdr;
 
     // time of first sample on page
@@ -243,7 +244,7 @@ inline static size_t queryPageSize(FileHandle f) {
     DbData::ZeroPage zp;
     if (auto bytes = fileReadWait(&zp, sizeof(zp), f, 0); bytes != sizeof(zp))
         return 0;
-    if (zp.hdr.type != zp.s_pageType)
+    if (zp.hdr.type != zp.kPageType)
         return 0;
     if (memcmp(zp.signature, kDataFileSig, sizeof(zp.signature)) != 0)
         return 0;
@@ -412,6 +413,9 @@ bool DbData::loadMetrics (
             if (!notify->onDbSeriesStart(info))
                 return false;
         }
+        pgno_t lastPage;
+        if (!radixFind(txn, &lastPage, pgno, mp->lastPagePos))
+            return false;
         if (appStopping())
             return false;
 
@@ -420,7 +424,7 @@ bool DbData::loadMetrics (
         auto & mi = m_metricPos[mp->hdr.id];
         mi.infoPage = mp->hdr.pgno;
         mi.interval = mp->interval;
-        mi.lastPage = mp->lastPage;
+        mi.lastPage = lastPage;
         mi.sampleType = mp->sampleType;
 
         s_perfCount += 1;
@@ -502,7 +506,7 @@ void DbData::onLogApplyMetricInit(
     } else {
         assert(!mp->hdr.type);
     }
-    mp->hdr.type = mp->s_pageType;
+    mp->hdr.type = mp->kPageType;
     mp->hdr.id = id;
     mp->creation = creation;
     mp->sampleType = sampleType;
@@ -610,14 +614,14 @@ void DbData::onLogApplyMetricUpdate(
     Duration interval
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->s_pageType);
+    assert(mp->hdr.type == mp->kPageType);
     mp->creation = creation;
     mp->sampleType = sampleType;
     mp->retention = retention;
     mp->interval = interval;
-    mp->lastPage = {};
     mp->lastPagePos = 0;
     mp->lastPageFirstTime = {};
+    mp->lastPageSample = 0;
     auto rd = radixData(mp);
     rd->height = 0;
     memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
@@ -709,7 +713,7 @@ DbData::MetricPosition DbData::loadMetricPos(
     auto pageTime = time - lastSample * mi.interval;
     auto spno = allocPgno(txn);
     txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
-    txn.logMetricUpdateSamples(mi.infoPage, 0, spno, pageTime, true);
+    txn.logMetricUpdateSamples(mi.infoPage, 0, pageTime, (size_t) -1, spno);
 
     mi.lastPage = spno;
     mi.pageFirstTime = pageTime;
@@ -721,10 +725,10 @@ DbData::MetricPosition DbData::loadMetricPos(
 //===========================================================================
 void DbData::onLogApplyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->s_pageType);
-    mp->lastPage = {};
+    assert(mp->hdr.type == mp->kPageType);
     mp->lastPagePos = 0;
     mp->lastPageFirstTime = {};
+    mp->lastPageSample = 0;
     auto rd = radixData(mp);
     rd->height = 0;
     memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
@@ -734,16 +738,16 @@ void DbData::onLogApplyMetricClearSamples(void * ptr) {
 void DbData::onLogApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
-    pgno_t refPage,
     TimePoint refTime,
-    bool updateIndex
+    size_t refSample,
+    pgno_t refPage
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
-    assert(mp->hdr.type == mp->s_pageType);
-    mp->lastPage = refPage;
+    assert(mp->hdr.type == mp->kPageType);
     mp->lastPagePos = (unsigned) pos;
     mp->lastPageFirstTime = refTime;
-    if (updateIndex) {
+    mp->lastPageSample = (uint16_t) refSample;
+    if (refPage) {
         auto rd = radixData(mp);
         rd->pages[pos] = refPage;
     }
@@ -926,7 +930,13 @@ void DbData::updateSample(
     } else {
         txn.logSampleUpdateTime(lastPage, endPageTime);
     }
-    txn.logMetricUpdateSamples(mi.infoPage, last, lastPage, endPageTime, false);
+    txn.logMetricUpdateSamples(
+        mi.infoPage,
+        last,
+        endPageTime,
+        (size_t) -1,
+        {}
+    );
 
     mi.lastPage = lastPage;
     mi.pageFirstTime = endPageTime;
@@ -938,25 +948,22 @@ void DbData::updateSample(
 }
 
 //===========================================================================
-static void setSample(float * out, double value) {
-    *out = (float) value;
-}
-
-//===========================================================================
-static void setSample(double * out, double value) {
-    *out = (double) value;
-}
-
-//===========================================================================
-template<typename T, typename = enable_if_t<is_integral_v<T>>>
+template<typename T>
 static void setSample(T * out, double value) {
-    const auto maxval = numeric_limits<T>::max();
-    const auto minval = -maxval;
-    T ival = isnan(value) ? minval - 1
-        : value < minval ? minval
-        : value > maxval ? maxval
-        : (T) value;
-    *out = ival;
+    if constexpr (is_floating_point_v<T>) {
+        *out = (T) value;
+    } else if constexpr (is_integral_v<T>) {
+        const auto maxval = numeric_limits<T>::max();
+        const auto minval = -maxval;
+        T ival = isnan(value) ? minval - 1
+            : value < minval ? minval
+            : value > maxval ? maxval
+            : (T) value;
+        *out = ival;
+    } else {
+        assert(!"Sample type must be numeric");
+        *out = NAN;
+    }
 }
 
 //===========================================================================
@@ -1000,7 +1007,7 @@ static void clearSamples(
         memset(
             sp->samples.i8 + firstPos,
             -128,
-            (lastPos - firstPos) * sizeof(int8_t)
+            (lastPos - firstPos) * sizeof(*sp->samples.i8)
         );
         break;
     case kSampleTypeInt16:
@@ -1031,13 +1038,13 @@ void DbData::onLogApplySampleInit(
     } else {
         assert(!sp->hdr.type);
     }
-    sp->hdr.type = sp->s_pageType;
+    sp->hdr.type = sp->kPageType;
     sp->hdr.id = id;
     sp->sampleType = sampleType;
     sp->pageLastSample = (uint16_t) lastSample;
     sp->pageFirstTime = pageTime;
-    auto vpp = samplesPerPage(sampleType);
-    clearSamples(sp, 0, vpp);
+    auto spp = samplesPerPage(sampleType);
+    clearSamples(sp, 0, spp);
 }
 
 //===========================================================================
@@ -1049,7 +1056,7 @@ void DbData::onLogApplySampleUpdate(
     bool updateLast
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
-    assert(sp->hdr.type == sp->s_pageType);
+    assert(sp->hdr.type == sp->kPageType);
     clearSamples(sp, firstPos, lastPos);
     if (!isnan(value))
         setSample(sp, lastPos, value);
@@ -1060,7 +1067,7 @@ void DbData::onLogApplySampleUpdate(
 //===========================================================================
 void DbData::onLogApplySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
     auto sp = static_cast<SamplePage *>(ptr);
-    assert(sp->hdr.type == sp->s_pageType);
+    assert(sp->hdr.type == sp->kPageType);
     sp->pageFirstTime = pageTime;
     sp->pageLastSample = 0;
     setSample(sp, 0, NAN);
@@ -1100,10 +1107,10 @@ void DbData::getSamples(
     if (first > last)
         return noSamples(notify, id, name, stype, last, mi.interval);
 
-    auto vpp = samplesPerPage(mi.sampleType);
-    auto pageInterval = vpp * mi.interval;
+    auto spp = samplesPerPage(mi.sampleType);
+    auto pageInterval = spp * mi.interval;
     auto numSamples = mp->retention / mp->interval;
-    auto numPages = (numSamples - 1) / vpp + 1;
+    auto numPages = (numSamples - 1) / spp + 1;
 
     pgno_t spno;
     unsigned sppos;
@@ -1129,18 +1136,21 @@ void DbData::getSamples(
             first -= pageInterval - mi.interval;
             auto pageOff = (mi.pageFirstTime - first) / pageInterval - 1;
             first = mi.pageFirstTime - pageOff * pageInterval;
+        } else if (spno >= kMaxPageNum) {
+            //auto value = (double) spno - kMaxPageNum - kMaxPageNum / 2;
+
         } else {
             auto sp = txn.viewPage<SamplePage>(spno);
             auto fpt = sp->pageFirstTime;
             auto vpos = (first - fpt) / mi.interval;
-            auto pageLastSample = sp->pageLastSample == vpp
-                ? vpp - 1
+            auto pageLastSample = sp->pageLastSample == spp
+                ? spp - 1
                 : sp->pageLastSample;
             auto lastPageTime = fpt + pageLastSample * mi.interval;
             if (vpos < 0) {
                 // in the old section of the tip page in the ring buffer
-                vpos += numPages * vpp;
-                vpos = vpos % vpp;
+                vpos += numPages * spp;
+                vpos = vpos % spp;
                 assert(vpos);
                 lastPageTime = fpt - (numPages - 1) * pageInterval
                     - mi.interval;
@@ -1185,7 +1195,7 @@ void DbData::getSamples(
 //===========================================================================
 DbData::RadixData * DbData::radixData(MetricPage * mp) const {
     auto ents = entriesPerMetricPage();
-    auto off = offsetof(RadixData, pages) + ents * sizeof(pgno_t);
+    auto off = offsetof(RadixData, pages) + ents * sizeof(*RadixData::pages);
     auto ptr = (char *) mp + m_pageSize - off;
     return reinterpret_cast<DbData::RadixData *>(ptr);
 }
@@ -1210,13 +1220,13 @@ const DbData::RadixData * DbData::radixData(const DbPageHeader * hdr) const {
 uint16_t DbData::entriesPerMetricPage() const {
     auto off = offsetof(MetricPage, name) + metricNameSize(m_pageSize)
         + offsetof(RadixData, pages);
-    return (uint16_t) (m_pageSize - off) / sizeof(pgno_t);
+    return (uint16_t) (m_pageSize - off) / sizeof(*RadixData::pages);
 }
 
 //===========================================================================
 uint16_t DbData::entriesPerRadixPage() const {
     auto off = offsetof(RadixPage, rd) + offsetof(RadixData, pages);
-    return (uint16_t) (m_pageSize - off) / sizeof(pgno_t);
+    return (uint16_t) (m_pageSize - off) / sizeof(*RadixData::pages);
 }
 
 //===========================================================================
@@ -1285,11 +1295,16 @@ void DbData::radixErase(
             (size_t) rd->numPages,
             rpos + lastPos - firstPos
         );
+        bool changed = false;
         for (auto i = rpos; i < lastPagePos; ++i) {
-            if (auto p = rd->pages[i]; p && p <= kMaxPageNum)
-                freePage(txn, p);
+            if (auto p = rd->pages[i]) {
+                changed = true;
+                if (p <= kMaxPageNum)
+                    freePage(txn, p);
+            }
         }
-        txn.logRadixErase(hdr->pgno, rpos, lastPagePos);
+        if (changed)
+            txn.logRadixErase(hdr->pgno, rpos, lastPagePos);
         firstPos = firstPos + lastPagePos - rpos;
     }
 }
@@ -1366,7 +1381,7 @@ void DbData::onLogApplyRadixInit(
     } else {
         assert(!rp->hdr.type);
     }
-    rp->hdr.type = rp->s_pageType;
+    rp->hdr.type = rp->kPageType;
     rp->hdr.id = id;
     rp->rd.height = height;
     rp->rd.numPages = entriesPerRadixPage();
@@ -1485,7 +1500,7 @@ bool DbData::radixFind(
 //===========================================================================
 static BitView segmentBitView(void * hdr, size_t pageSize) {
     auto base = (uint64_t *) ((char *) hdr + pageSize / 2);
-    auto words = pageSize / 2 / sizeof(uint64_t);
+    auto words = pageSize / 2 / sizeof(*base);
     return {base, words};
 }
 
@@ -1627,7 +1642,7 @@ void DbData::onLogApplyPageFree(void * ptr) {
 void DbData::onLogApplyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(!zp->hdr.type);
-    zp->hdr.type = zp->s_pageType;
+    zp->hdr.type = zp->kPageType;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
     auto segSize = segmentSize(m_pageSize);
@@ -1649,7 +1664,7 @@ void DbData::onLogApplySegmentUpdate(
     auto sp = static_cast<SegmentPage *>(ptr);
     auto bits = segmentBitView(sp, m_pageSize);
     if (!sp->hdr.type) {
-        sp->hdr.type = sp->s_pageType;
+        sp->hdr.type = sp->kPageType;
         sp->hdr.id = 0;
         if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
             auto [segPage, segPos] = segmentPage(sp->hdr.pgno, m_pageSize);

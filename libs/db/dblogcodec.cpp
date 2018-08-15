@@ -32,8 +32,14 @@ enum DbLogRecType : int8_t {
     kRecTypeMetricInit          = 13, // [metric] name, id, retention, interval
     kRecTypeMetricUpdate        = 14, // [metric] retention, interval
     kRecTypeMetricClearSamples  = 15, // [metric] (clears index & last)
-    kRecTypeMetricUpdateLast    = 16, // [metric] refPos, refPage
-    kRecTypeMetricUpdateLastAndIndex = 17, // [metric] refPos, refPage
+    kRecTypeMetricUpdatePos     = 32, // [metric] refPos, refTime
+    kRecTypeMetricUpdatePosAndIndex = 33, // [metric] refPos, refTime, refPage
+    kRecTypeMetricUpdateSample  = 34, // [metric] refSample
+    kRecTypeMetricUpdateSampleAndIndex = 35, // [metric] refPos, refTime,
+                                      // refSample, refPage
+    // [metric] page, refSample (non-standard layout)
+    kRecTypeMetricUpdateSampleTxn = 36,
+
     kRecTypeSampleInit          = 18, // [sample] id, pageTime, lastPos
     kRecTypeSampleUpdate        = 19, // [sample] first, last, value
                                       //    [first, last) = NANs, last = value
@@ -58,7 +64,11 @@ enum DbLogRecType : int8_t {
     kRecTypeSampleUpdateInt16LastTxn    = 29,
     kRecTypeSampleUpdateInt32LastTxn    = 31,
 
-    kRecType_NextAvailable = 32,
+    // Deprecated 2018-08-13
+    kRecTypeMetricUpdateLast         = 16, // [metric] refPos, refPage, refTime
+    kRecTypeMetricUpdateLastAndIndex = 17, // [metric] refPos, refPage, refTime
+
+    kRecType_NextAvailable = 37,
 };
 
 #pragma pack(push)
@@ -152,7 +162,38 @@ struct MetricUpdateRec {
     Duration retention;
     Duration interval;
 };
-struct MetricUpdateSamplesRec {
+struct MetricUpdatePosRec {
+    DbLog::Record hdr;
+    uint16_t refPos;
+    TimePoint refTime;
+};
+struct MetricUpdatePosAndIndexRec {
+    DbLog::Record hdr;
+    uint16_t refPos;
+    TimePoint refTime;
+    pgno_t refPage;
+};
+
+// Also an implicit transaction, non-standard format
+struct MetricUpdateSampleTxnRec {
+    DbLogRecType type;
+    pgno_t pgno;
+    uint16_t refSample;
+};
+
+struct MetricUpdateSampleRec {
+    DbLog::Record hdr;
+    uint16_t refSample;
+};
+struct MetricUpdateSampleAndIndexRec {
+    DbLog::Record hdr;
+    uint16_t refPos;
+    TimePoint refTime;
+    uint16_t refSample;
+    pgno_t refPage;
+};
+// Deprecated 2018-08-13
+struct MetricUpdateSampleRec_Old {
     DbLog::Record hdr;
     uint16_t refPos;
     pgno_t refPage;
@@ -259,9 +300,16 @@ uint16_t DbLog::size(const Record & log) {
         return sizeof(MetricUpdateRec);
     case kRecTypeMetricClearSamples:
         return sizeof(Record);
-    case kRecTypeMetricUpdateLast:
-    case kRecTypeMetricUpdateLastAndIndex:
-        return sizeof(MetricUpdateSamplesRec);
+    case kRecTypeMetricUpdatePos:
+        return sizeof(MetricUpdatePosRec);
+    case kRecTypeMetricUpdatePosAndIndex:
+        return sizeof(MetricUpdatePosAndIndexRec);
+    case kRecTypeMetricUpdateSample:
+        return sizeof(MetricUpdateSampleRec);
+    case kRecTypeMetricUpdateSampleAndIndex:
+        return sizeof(MetricUpdateSampleAndIndexRec);
+    case kRecTypeMetricUpdateSampleTxn:
+        return sizeof(MetricUpdateSampleTxnRec);
     case kRecTypeSampleInit:
         return sizeof(SampleInitRec);
     case kRecTypeSampleUpdateFloat32Txn:
@@ -287,6 +335,11 @@ uint16_t DbLog::size(const Record & log) {
     case kRecType_NextAvailable:
         // only defined to suppress "not handled" warning
         break;
+
+    // Deprecated 2018-08-14
+    case kRecTypeMetricUpdateLast:
+    case kRecTypeMetricUpdateLastAndIndex:
+        return sizeof(MetricUpdateSampleRec_Old);
     }
 
     logMsgFatal() << "Unknown log record type, " << log.type;
@@ -322,6 +375,7 @@ uint16_t DbLog::getLocalTxn(const Record & log) {
     case kRecTypeTxnBegin:
     case kRecTypeTxnCommit:
         return reinterpret_cast<const TransactionRec &>(log).localTxn;
+    case kRecTypeMetricUpdateSampleTxn:
     case kRecTypeSampleUpdateFloat32Txn:
     case kRecTypeSampleUpdateFloat64Txn:
     case kRecTypeSampleUpdateInt8Txn:
@@ -495,24 +549,76 @@ void DbLog::applyUpdate(void * page, const Record & log) {
     }
     case kRecTypeMetricClearSamples:
         return m_data->onLogApplyMetricClearSamples(page);
-    case kRecTypeMetricUpdateLast: {
-        auto & rec = reinterpret_cast<const MetricUpdateSamplesRec &>(log);
+    case kRecTypeMetricUpdatePos: {
+        auto & rec = reinterpret_cast<const MetricUpdatePosRec &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
-            rec.refPage,
             rec.refTime,
-            false
+            (size_t) -1,
+            {}
+        );
+    }
+    case kRecTypeMetricUpdatePosAndIndex: {
+        auto & rec = reinterpret_cast<const MetricUpdatePosAndIndexRec &>(log);
+        return m_data->onLogApplyMetricUpdateSamples(
+            page,
+            rec.refPos,
+            rec.refTime,
+            (size_t) -1,
+            rec.refPage
+        );
+    }
+    case kRecTypeMetricUpdateSampleTxn: {
+        auto & rec = reinterpret_cast<const MetricUpdateSampleTxnRec &>(log);
+        return m_data->onLogApplyMetricUpdateSamples(
+            page,
+            (size_t) -1,
+            {},
+            rec.refSample,
+            {}
+        );
+    }
+    case kRecTypeMetricUpdateSample: {
+        auto & rec = reinterpret_cast<const MetricUpdateSampleRec &>(log);
+        return m_data->onLogApplyMetricUpdateSamples(
+            page,
+            (size_t) -1,
+            {},
+            rec.refSample,
+            {}
+        );
+    }
+    case kRecTypeMetricUpdateSampleAndIndex: {
+        auto & rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec &>(log);
+        return m_data->onLogApplyMetricUpdateSamples(
+            page,
+            rec.refPos,
+            rec.refTime,
+            rec.refSample,
+            rec.refPage
+        );
+    }
+
+    // Deprecated 2018-08-14
+    case kRecTypeMetricUpdateLast: {
+        auto & rec = reinterpret_cast<const MetricUpdateSampleRec_Old &>(log);
+        return m_data->onLogApplyMetricUpdateSamples(
+            page,
+            rec.refPos,
+            rec.refTime,
+            0,
+            {}
         );
     }
     case kRecTypeMetricUpdateLastAndIndex: {
-        auto & rec = reinterpret_cast<const MetricUpdateSamplesRec &>(log);
+        auto & rec = reinterpret_cast<const MetricUpdateSampleRec_Old &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
-            rec.refPage,
             rec.refTime,
-            true
+            0,
+            rec.refPage
         );
     }
 
@@ -857,20 +963,60 @@ void DbTxn::logMetricClearSamples(pgno_t pgno) {
 }
 
 //===========================================================================
+void DbTxn::logMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample) {
+    if (m_txn)
+        return logMetricUpdateSamples(pgno, (size_t) -1, {}, refSample, {});
+
+    MetricUpdateSampleTxnRec rec;
+    rec.type = kRecTypeMetricUpdateSampleTxn;
+    rec.pgno = pgno;
+    rec.refSample = (uint16_t) refSample;
+    m_log.logAndApply(0, (DbLog::Record *) &rec, sizeof(rec));
+}
+
+//===========================================================================
 void DbTxn::logMetricUpdateSamples(
     pgno_t pgno,
     size_t refPos,
-    pgno_t refPage,
     TimePoint refTime,
-    bool updateIndex
+    size_t refSample,
+    pgno_t refPage
 ) {
-    auto type = updateIndex
-        ? kRecTypeMetricUpdateLastAndIndex
-        : kRecTypeMetricUpdateLast;
-    auto [rec, bytes] = alloc<MetricUpdateSamplesRec>(type, pgno);
+    if (!refTime) {
+        assert(refPos == -1 && !refPage);
+        auto [rec, bytes] =
+            alloc<MetricUpdateSampleRec>(kRecTypeMetricUpdateSample, pgno);
+        rec->refSample = (uint16_t) refSample;
+        return log(&rec->hdr, bytes);
+    }
+    if (refSample != -1) {
+        assert(refPos != -1 && refPage);
+        auto [rec, bytes] = alloc<MetricUpdateSampleAndIndexRec>(
+            kRecTypeMetricUpdateSampleAndIndex,
+            pgno
+        );
+        rec->refPos = (uint16_t) refPos;
+        rec->refTime = refTime;
+        rec->refSample = (uint16_t) refSample;
+        rec->refPage = refPage;
+        return log(&rec->hdr, bytes);
+    }
+    if (!refPage) {
+        assert(refPos != -1 && refSample == -1);
+        auto [rec, bytes] =
+            alloc<MetricUpdatePosRec>(kRecTypeMetricUpdatePos, pgno);
+        rec->refPos = (uint16_t) refPos;
+        rec->refTime = refTime;
+        return log(&rec->hdr, bytes);
+    }
+    assert(refPos != -1);
+    auto [rec, bytes] = alloc<MetricUpdatePosAndIndexRec>(
+        kRecTypeMetricUpdatePosAndIndex,
+        pgno
+    );
     rec->refPos = (uint16_t) refPos;
-    rec->refPage = refPage;
     rec->refTime = refTime;
+    rec->refPage = refPage;
     log(&rec->hdr, bytes);
 }
 

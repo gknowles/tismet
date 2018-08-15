@@ -345,9 +345,9 @@ public:
     virtual void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
-        pgno_t refPage,
         Dim::TimePoint refTime,
-        bool updateIndex
+        size_t refSample,
+        pgno_t refPage
     ) = 0;
     virtual void onLogApplySampleInit(
         void * ptr,

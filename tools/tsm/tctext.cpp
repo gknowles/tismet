@@ -80,9 +80,9 @@ private:
     void onLogApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
-        pgno_t refPage,
         TimePoint refTime,
-        bool updateIndex
+        size_t refSample,
+        pgno_t refPage
     ) override;
     void onLogApplySampleInit(
         void * ptr,
@@ -276,16 +276,23 @@ void TextWriter::onLogApplyMetricClearSamples(void * ptr) {
 void TextWriter::onLogApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
-    pgno_t refPage,
     TimePoint refTime,
-    bool updateIndex
+    size_t refSample,
+    pgno_t refPage
 ) {
     auto & os = out(ptr);
-    if (updateIndex)
+    if (refPage)
         os << "metric.samples[" << pos << "] = @" << refPage << "; ";
-    os << "metric.samples.last = " << pos << " / "
-        << "@" << refPage << " / " << timeStr(refTime)
-        << '\n';
+    os << "metric.samples.last = ";
+    if (refTime)
+        os << pos << " / ";
+    if (refPage)
+        os << "@" << refPage;
+    if (refSample != (size_t) -1)
+        os << '.' << refSample;
+    if (refTime)
+        os << " / " << timeStr(refTime);
+    os << '\n';
 }
 
 //===========================================================================
