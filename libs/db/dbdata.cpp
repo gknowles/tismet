@@ -18,6 +18,7 @@ using namespace Dim;
 const DbSampleType kDefaultSampleType = kSampleTypeFloat32;
 constexpr Duration kDefaultRetention = 7 * 24h;
 constexpr Duration kDefaultInterval = 1min;
+static_assert(kDefaultRetention >= kDefaultInterval);
 
 const unsigned kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
@@ -790,19 +791,18 @@ void DbData::updateSample(
                 s_perfOld += 1;
                 return;
             }
-            auto off = (mi.pageFirstTime - time - mi.interval)
-                / pageInterval + 1;
-            auto dpages = (mp->retention + pageInterval - mi.interval)
+
+            auto numSamples = mp->retention / mp->interval;
+            auto numPages = (numSamples - 1) / spp + 1;
+            auto poff = (mi.pageFirstTime - time + pageInterval - mi.interval)
                 / pageInterval;
-            auto pagePos =
-                (uint32_t) (mp->lastPagePos + dpages - off) % dpages;
-            if (pagePos == mp->lastPagePos) {
+            auto pageTime = mi.pageFirstTime - poff * pageInterval;
+            auto sppos = (mp->lastPagePos + numPages - poff) % numPages;
+            if (sppos == mp->lastPagePos) {
                 // Still on the tip page of the ring buffer, but in the old
                 // samples section.
-                auto pageTime = mi.pageFirstTime - off * pageInterval;
                 ent = (time - pageTime) / mi.interval;
-            } else if (!radixFind(txn, &spno, mi.infoPage, pagePos)) {
-                auto pageTime = mi.pageFirstTime - off * pageInterval;
+            } else if (!radixFind(txn, &spno, mi.infoPage, sppos)) {
                 spno = allocPgno(txn);
                 txn.logSampleInit(
                     spno,
@@ -814,7 +814,7 @@ void DbData::updateSample(
                 bool inserted [[maybe_unused]] = radixInsert(
                     txn,
                     mi.infoPage,
-                    pagePos,
+                    sppos,
                     spno
                 );
                 assert(inserted);
@@ -1112,14 +1112,18 @@ void DbData::getSamples(
     auto numSamples = mp->retention / mp->interval;
     auto numPages = (numSamples - 1) / spp + 1;
 
+    // Offset, in pages, from page being processed to the very last sample
+    // page. Must be in [0, numPages - 1]
+    auto poff = (mi.pageFirstTime - first + pageInterval - mi.interval)
+        / pageInterval;
+
     pgno_t spno;
     unsigned sppos;
     if (first >= mi.pageFirstTime) {
         sppos = mp->lastPagePos;
         spno = mi.lastPage;
     } else {
-        auto off = (mi.pageFirstTime - first - mi.interval) / pageInterval + 1;
-        sppos = (uint32_t) (mp->lastPagePos + numPages - off) % numPages;
+        sppos = (uint32_t) (mp->lastPagePos + numPages - poff) % numPages;
         if (!radixFind(txn, &spno, mi.infoPage, sppos))
             spno = {};
     }
@@ -1131,44 +1135,60 @@ void DbData::getSamples(
     dsi.interval = mi.interval;
     unsigned count = 0;
     for (;;) {
+        assert(poff == (mi.pageFirstTime - first + pageInterval - mi.interval)
+            / pageInterval);
+        auto fpt = mi.pageFirstTime - poff * pageInterval;
         if (!spno) {
-            // round up to first time on next page
-            first -= pageInterval - mi.interval;
-            auto pageOff = (mi.pageFirstTime - first) / pageInterval - 1;
-            first = mi.pageFirstTime - pageOff * pageInterval;
-        } else if (spno >= kMaxPageNum) {
-            //auto value = (double) spno - kMaxPageNum - kMaxPageNum / 2;
-
+            // Missing page, interpreted as all NANs, which means there's
+            // nothing to report and we just advance to first time on next
+            // page.
+            first = fpt + pageInterval;
         } else {
-            auto sp = txn.viewPage<SamplePage>(spno);
-            auto fpt = sp->pageFirstTime;
-            auto vpos = (first - fpt) / mi.interval;
-            auto pageLastSample = sp->pageLastSample == spp
-                ? spp - 1
-                : sp->pageLastSample;
-            auto lastPageTime = fpt + pageLastSample * mi.interval;
-            if (vpos < 0) {
-                // in the old section of the tip page in the ring buffer
-                vpos += numPages * spp;
-                vpos = vpos % spp;
-                assert(vpos);
+            double value = NAN;
+            const SamplePage * sp = nullptr;
+            auto lastSample = spp - 1;
+            if (spno < kMaxPageNum) {
+                // Physical page, get values from the page
+                sp = txn.viewPage<SamplePage>(spno);
+                assert(fpt == sp->pageFirstTime);
+                if (sppos == mp->lastPagePos) {
+                    assert(sp->pageLastSample != spp);
+                    lastSample = sp->pageLastSample;
+                }
+            } else {
+                // Virtual page, get the cached value that is the same for
+                // every sample on the page.
+                if (sppos == mp->lastPagePos)
+                    lastSample = mp->lastPageSample;
+                value = (double) spno - kMaxPageNum - kMaxPageNum / 2;
+            }
+            auto lastPageTime = fpt + lastSample * mi.interval;
+            auto ent = (first - fpt) / mi.interval;
+            if (ent < 0) {
+                // In the old samples section of the tip page in the ring
+                // buffer.
+                ent += numPages * spp;
+                ent %= spp;
+                assert(ent);
                 lastPageTime = fpt - (numPages - 1) * pageInterval
                     - mi.interval;
             }
             if (last < lastPageTime)
                 lastPageTime = last;
-            for (; first <= lastPageTime; first += mi.interval, ++vpos) {
-                auto value = getSample(sp, vpos);
-                if (!isnan(value)) {
-                    if (!count++) {
-                        dsi.first = first;
-                        dsi.last = last + mi.interval;
-                        if (!notify->onDbSeriesStart(dsi))
-                            return;
-                    }
-                    if (!notify->onDbSample(id, first, value))
+            for (; first <= lastPageTime; first += mi.interval, ++ent) {
+                if (sp) {
+                    value = getSample(sp, ent);
+                    if (isnan(value))
+                        continue;
+                }
+                if (!count++) {
+                    dsi.first = first;
+                    dsi.last = last + mi.interval;
+                    if (!notify->onDbSeriesStart(dsi))
                         return;
                 }
+                if (!notify->onDbSample(id, first, value))
+                    return;
             }
         }
         if (first > last)
@@ -1177,6 +1197,7 @@ void DbData::getSamples(
         // advance to next page
         sppos = (sppos + 1) % numPages;
         radixFind(txn, &spno, mi.infoPage, sppos);
+        poff -= 1;
     }
     if (!count) {
         return noSamples(notify, id, name, stype, last, mi.interval);

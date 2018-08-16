@@ -114,8 +114,7 @@ void Test::onTestRun() {
     dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 5);
-    // add to new page 5. creates sample pages 3, 4, 5
-    // to track the values.
+    // add to new page 5. leaves sample pages 3, 4 unallocated
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 7);
