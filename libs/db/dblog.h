@@ -354,7 +354,8 @@ public:
         uint32_t id,
         DbSampleType sampleType,
         Dim::TimePoint pageTime,
-        size_t lastSample
+        size_t lastSample,
+        double fill
     ) = 0;
     virtual void onLogApplySampleUpdate(
         void * ptr,

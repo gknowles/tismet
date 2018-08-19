@@ -40,7 +40,9 @@ enum DbLogRecType : int8_t {
     // [metric] page, refSample (non-standard layout)
     kRecTypeMetricUpdateSampleTxn = 36,
 
-    kRecTypeSampleInit          = 18, // [sample] id, pageTime, lastPos
+    kRecTypeSampleInit          = 18, // [sample] id, stype, pageTime, lastPos
+    kRecTypeSampleInitFill      = 37, // [sample] id, stype, pageTime, lastPos,
+                                      //    value
     kRecTypeSampleUpdate        = 19, // [sample] first, last, value
                                       //    [first, last) = NANs, last = value
     kRecTypeSampleUpdateLast    = 20, // [sample] first, last, value
@@ -68,7 +70,7 @@ enum DbLogRecType : int8_t {
     kRecTypeMetricUpdateLast         = 16, // [metric] refPos, refPage, refTime
     kRecTypeMetricUpdateLastAndIndex = 17, // [metric] refPos, refPage, refTime
 
-    kRecType_NextAvailable = 37,
+    kRecType_NextAvailable = 38,
 };
 
 #pragma pack(push)
@@ -209,6 +211,14 @@ struct SampleInitRec {
     TimePoint pageTime;
     uint16_t lastSample;
 };
+struct SampleInitFillRec {
+    DbLog::Record hdr;
+    uint32_t id;
+    DbSampleType sampleType;
+    TimePoint pageTime;
+    uint16_t lastSample;
+    double value;
+};
 struct SampleUpdateRec {
     DbLog::Record hdr;
     uint16_t firstSample;
@@ -312,6 +322,8 @@ uint16_t DbLog::size(const Record & log) {
         return sizeof(MetricUpdateSampleTxnRec);
     case kRecTypeSampleInit:
         return sizeof(SampleInitRec);
+    case kRecTypeSampleInitFill:
+        return sizeof(SampleInitFillRec);
     case kRecTypeSampleUpdateFloat32Txn:
     case kRecTypeSampleUpdateFloat32LastTxn:
         return sizeof(SampleUpdateFloat32TxnRec);
@@ -629,7 +641,19 @@ void DbLog::applyUpdate(void * page, const Record & log) {
             rec.id,
             rec.sampleType,
             rec.pageTime,
-            rec.lastSample
+            rec.lastSample,
+            NAN
+        );
+    }
+    case kRecTypeSampleInitFill: {
+        auto & rec = reinterpret_cast<const SampleInitFillRec &>(log);
+        return m_data->onLogApplySampleInit(
+            page,
+            rec.id,
+            rec.sampleType,
+            rec.pageTime,
+            rec.lastSample,
+            rec.value
         );
     }
     case kRecTypeSampleUpdate: {
@@ -1033,6 +1057,24 @@ void DbTxn::logSampleInit(
     rec->sampleType = sampleType;
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
+    log(&rec->hdr, bytes);
+}
+
+//===========================================================================
+void DbTxn::logSampleInit(
+    pgno_t pgno,
+    uint32_t id,
+    DbSampleType sampleType,
+    TimePoint pageTime,
+    size_t lastSample,
+    double fill
+) {
+    auto [rec, bytes] = alloc<SampleInitFillRec>(kRecTypeSampleInitFill, pgno);
+    rec->id = id;
+    rec->sampleType = sampleType;
+    rec->pageTime = pageTime;
+    rec->lastSample = (uint16_t) lastSample;
+    rec->value = fill;
     log(&rec->hdr, bytes);
 }
 

@@ -17,6 +17,13 @@ static_assert(kDefaultPageSize == Dim::pow2Ceil(kDefaultPageSize));
 const unsigned kMinPageSize = 128;
 static_assert(kDefaultPageSize % kMinPageSize == 0);
 
+static_assert(std::is_same_v<std::underlying_type_t<pgno_t>, uint32_t>);
+const auto kMaxPageNum = (pgno_t) 0x7fff'ffff;
+const auto kFreePageMark = (pgno_t) 0xffff'ffff;
+
+const int kMaxVirtualSample = 0x3fff'ffff;
+const int kMinVirtualSample = -kMaxVirtualSample;
+
 
 /****************************************************************************
 *
@@ -259,6 +266,14 @@ public:
         Dim::TimePoint pageTime,
         size_t lastSample
     );
+    void logSampleInit(
+        pgno_t pgno,
+        uint32_t id,
+        DbSampleType sampleType,
+        Dim::TimePoint pageTime,
+        size_t lastSample,
+        double fill
+    );
     void logSampleUpdateTxn(
         pgno_t pgno,
         size_t pos,
@@ -432,7 +447,8 @@ public:
         uint32_t id,
         DbSampleType sampleType,
         Dim::TimePoint pageTime,
-        size_t lastSample
+        size_t lastSample,
+        double fill
     ) override;
     void onLogApplySampleUpdate(
         void * ptr,
@@ -479,7 +495,12 @@ private:
         size_t lastPos
     );
     void radixDestructPage(DbTxn & txn, pgno_t pgno);
-    bool radixInsert(DbTxn & txn, pgno_t root, size_t pos, pgno_t value);
+    bool radixInsertOrAssign(
+        DbTxn & txn,
+        pgno_t root,
+        size_t pos,
+        pgno_t value
+    );
 
     // Returns false if pos is past the end of the index.
     bool radixFind(

@@ -89,7 +89,8 @@ private:
         uint32_t id,
         DbSampleType sampleType,
         TimePoint pageTime,
-        size_t lastSample
+        size_t lastSample,
+        double fill
     ) override;
     void onLogApplySampleUpdate(
         void * ptr,
@@ -301,9 +302,10 @@ void TextWriter::onLogApplySampleInit(
     uint32_t id,
     DbSampleType sampleType,
     TimePoint pageTime,
-    size_t lastSample
+    size_t lastSample,
+    double fill
 ) {
-    out(ptr) << "samples/" << id << ".init = "
+    out(ptr) << "samples/" << id << ".init = " << fill << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
         << timeStr(pageTime) << ", "
         << lastSample << "\n";

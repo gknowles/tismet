@@ -22,11 +22,6 @@ struct IDbDataNotify;
 *
 ***/
 
-enum pgno_t : uint32_t {};
-
-constexpr auto kMaxPageNum = (pgno_t) (std::numeric_limits<uint32_t>::max() / 2);
-constexpr auto kFreePageMark = (pgno_t) std::numeric_limits<uint32_t>::max();
-
 struct DbHandle : Dim::HandleBase {};
 
 enum DbOpenFlags : unsigned {
@@ -230,6 +225,8 @@ void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 *   Internals for special utility programs
 *
 ***/
+
+enum pgno_t : uint32_t {};
 
 enum DbPageType : int32_t;
 
