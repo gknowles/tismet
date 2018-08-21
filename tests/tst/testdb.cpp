@@ -25,6 +25,63 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Series
+*
+***/
+
+namespace {
+
+struct Series : IDbDataNotify {
+    string m_name;
+    uint32_t m_id;
+    TimePoint m_first;
+    Duration m_interval;
+    unsigned m_count;
+    vector<double> m_samples;
+
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSample(
+        uint32_t id,
+        Dim::TimePoint time,
+        double value
+    ) override;
+};
+
+} // namespace
+
+//===========================================================================
+bool Series::onDbSeriesStart(const DbSeriesInfo & info) {
+    m_name = info.name;
+    m_id = info.id;
+    m_first = info.first;
+    m_interval = info.interval;
+    m_count = 0;
+    if (!m_interval.count()) {
+        m_samples.clear();
+    } else {
+        auto count = (info.last - info.first) / info.interval;
+        m_samples.resize(count, NAN);
+    }
+    return true;
+}
+
+//===========================================================================
+bool Series::onDbSample(
+    uint32_t id,
+    Dim::TimePoint time,
+    double value
+) {
+    auto pos = (time - m_first) / m_interval;
+    assert(pos >= 0 && pos < (int) m_samples.size());
+    m_samples[pos] = value;
+    if (!isnan(value))
+        m_count += 1;
+    return true;
+}
+
+
+/****************************************************************************
+*
 *   Test
 *
 ***/
@@ -69,7 +126,8 @@ void Test::onTestRun() {
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
     EXPECT(stats.freePages == 0);
-    auto pgt = stats.samplesPerPage[kSampleTypeFloat32] * 1min;
+    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto pgt = spp * 1min;
 
     auto ctx = dbOpenContext(h);
     uint32_t id;
@@ -178,6 +236,68 @@ void Test::onTestRun() {
     id = found.pop_front();
     dbEraseMetric(h, id);
     dbInsertMetric(&id, h, "replacement.metric.1");
+    dbCloseContext(ctx);
+    dbClose(h);
+
+    h = dbOpen(dat);
+    ctx = dbOpenContext(h);
+    EXPECT(h);
+    dbFindMetrics(&found, h);
+    for (auto && id : found)
+        dbEraseMetric(h, id);
+    stats = dbQueryStats(h);
+    dbInsertMetric(&id, h, "this.is.metric.1");
+    EXPECT(id == 1);
+    dbUpdateSample(h, id, start, 1.0);
+    info.type = kSampleTypeFloat32;
+    info.retention = duration_cast<Duration>(3 * pgt);
+    info.interval = 1min;
+    dbUpdateMetric(h, id, info);
+    auto pageStart = start;
+    auto oldFree = dbQueryStats(h).freePages - 1;
+    for (;;) {
+        dbUpdateSample(h, id, pageStart, 1.0);
+        stats = dbQueryStats(h);
+        if (oldFree != stats.freePages)
+            break;
+        pageStart += 1min;
+    }
+    oldFree = stats.freePages;
+    // fill with homogeneous values to trigger conversion to virtual page
+    for (auto time = pageStart; time < pageStart + pgt; time += 1min) {
+        dbUpdateSample(h, id, time, 1.0);
+    }
+    stats = dbQueryStats(h);
+    EXPECT(oldFree == stats.freePages - 1);
+
+    // completely fill sample pages
+    for (auto i = 0u; i < 3 * spp; ++i) {
+        dbUpdateSample(h, id, start + i * 1min, 1.0);
+    }
+    stats = dbQueryStats(h);
+
+    // change all historical sample values
+    for (auto i = 0u; i < 3 * spp; ++i) {
+        dbUpdateSample(h, id, start + i * 1min, 2.0);
+    }
+    stats = dbQueryStats(h);
+
+    // age out all sample values
+    for (auto i = 3 * spp; i < 6 * spp; ++i) {
+        dbUpdateSample(h, id, start + i * 1min, 3.0);
+    }
+    stats = dbQueryStats(h);
+
+    Series samples;
+    dbGetSamples(
+        &samples,
+        h,
+        id,
+        start + (3 * spp - 1) * 1min,
+        start + (3 * spp + 2) * 1min
+    );
+    EXPECT(samples.m_count == 3);
+
     dbCloseContext(ctx);
     dbClose(h);
 }

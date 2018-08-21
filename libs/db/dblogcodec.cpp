@@ -1014,7 +1014,7 @@ void DbTxn::logMetricUpdateSamples(
         return log(&rec->hdr, bytes);
     }
     if (refSample != -1) {
-        assert(refPos != -1 && refPage);
+        assert(refPos != -1);
         auto [rec, bytes] = alloc<MetricUpdateSampleAndIndexRec>(
             kRecTypeMetricUpdateSampleAndIndex,
             pgno

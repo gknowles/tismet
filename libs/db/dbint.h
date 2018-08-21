@@ -515,7 +515,18 @@ private:
     // past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
 
+    pgno_t sampleMakePhysical(
+        DbTxn & txn,
+        uint32_t id,
+        DbData::MetricPosition & mi,
+        size_t sppos,
+        Dim::TimePoint pageTime,
+        size_t lastSample,
+        pgno_t vpage = {}
+    );
+    bool sampleTryMakeVirtual(DbTxn & txn, MetricPosition & mi, pgno_t spno);
     size_t samplesPerPage(DbSampleType type) const;
+
     MetricPosition getMetricPos(uint32_t id) const;
     void setMetricPos(uint32_t id, const MetricPosition & mi);
     MetricPosition loadMetricPos(const DbTxn & txn, uint32_t id);
