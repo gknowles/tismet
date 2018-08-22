@@ -956,11 +956,9 @@ bool FuncHighestMax::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     auto best = -numeric_limits<double>::infinity();
     bool found = false;
     if (info.samples) {
-        auto ptr = info.samples->samples;
-        auto eptr = ptr + info.samples->count;
-        for (; ptr != eptr; ++ptr) {
-            if (*ptr > best) {
-                best = *ptr;
+        for (auto && ref : *info.samples) {
+            if (ref > best) {
+                best = ref;
                 found = true;
             }
         }
@@ -997,7 +995,7 @@ protected:
     using impl_type = IAggregateBase;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
-    virtual void onResize(int count) {}
+    virtual void onResize(int prefix, int suffix) {}
     virtual void onAggregate(double & agg, int pos, double newVal) = 0;
     virtual void onFinalize() {}
 protected:
@@ -1011,7 +1009,7 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     if (info.samples) {
         if (!m_samples) {
             m_samples = SampleList::dup(*info.samples);
-            onResize(m_samples->count);
+            onResize(0, m_samples->count);
         } else if (m_samples->interval == info.samples->interval) {
             auto resize = false;
             auto interval = m_samples->interval;
@@ -1036,14 +1034,16 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
                 auto pos = 0;
                 for (; first < m_samples->first; first += interval, ++pos)
                     tmp->samples[pos] = NAN;
+                auto prefix = pos;
                 auto spos = 0;
                 for (; first < slast; first += interval, ++pos, ++spos)
                     tmp->samples[pos] = m_samples->samples[spos];
+                auto postfix = pos;
                 for (; first < last; first += interval, ++pos)
                     tmp->samples[pos] = NAN;
                 assert(pos == (int) tmp->count);
                 m_samples = tmp;
-                onResize(m_samples->count);
+                onResize(prefix, m_samples->count - postfix);
                 slast = first;
                 first = m_samples->first;
             }
@@ -1081,7 +1081,7 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 //===========================================================================
 namespace {
 class FuncAverageSeries : public IAggregateBase<FuncAverageSeries> {
-    void onResize(int count) override;
+    void onResize(int prefix, int postfix) override;
     void onAggregate(double & agg, int pos, double newVal) override;
     vector<unsigned> m_counts;
 };
@@ -1092,8 +1092,9 @@ static auto s_averageSeries =
     .alias("avg");
 
 //===========================================================================
-void FuncAverageSeries::onResize(int count) {
-    m_counts.resize(count, 1);
+void FuncAverageSeries::onResize(int prefix, int postfix) {
+    m_counts.insert(m_counts.begin(), prefix, 1);
+    m_counts.resize(m_counts.size() + postfix, 1);
 }
 
 //===========================================================================
@@ -1132,11 +1133,8 @@ void FuncCountSeries::onAggregate(double & agg, int pos, double newVal)
 
 //===========================================================================
 void FuncCountSeries::onFinalize() {
-    auto * ptr = m_samples->samples,
-        * term = ptr + m_samples->count;
-    for (; ptr != term; ++ptr) {
-        *ptr = m_count;
-    }
+    for (auto && ref : *m_samples)
+        ref = m_count;
 }
 
 //===========================================================================
@@ -1146,7 +1144,7 @@ namespace {
 class FuncDiffSeries : public IAggregateBase<FuncDiffSeries> {
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
     void onAggregate(double & agg, int pos, double newVal) override;
-    unsigned m_count{0};
+    bool m_firstArg{false};
 };
 } // namespace
 static auto s_diffSeries = FuncDiffSeries::Factory("diffSeries", "Combine")
@@ -1154,14 +1152,27 @@ static auto s_diffSeries = FuncDiffSeries::Factory("diffSeries", "Combine")
 
 //===========================================================================
 bool FuncDiffSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
-    m_count += 1;
-    return impl_type::onFuncApply(notify, info);
+    m_firstArg = (info.argPos == 0);
+    if (!info.samples || m_samples)
+        return impl_type::onFuncApply(notify, info);
+
+    m_samples = SampleList::dup(*info.samples);
+    if (!m_firstArg) {
+        for (auto && ref : *m_samples)
+            ref = -ref;
+    }
+    onResize(0, m_samples->count);
+    return true;
 }
 
 //===========================================================================
 void FuncDiffSeries::onAggregate(double & agg, int pos, double newVal) {
-    if (m_count == 1) {
-        agg = newVal;
+    if (m_firstArg) {
+        if (isnan(newVal)) {
+            agg = newVal;
+        } else {
+            agg += newVal;
+        }
     } else if (!isnan(newVal)) {
         agg -= newVal;
     }
@@ -1227,7 +1238,7 @@ void FuncMultiplySeries::onAggregate(double & agg, int pos, double newVal) {
 //===========================================================================
 namespace {
 class FuncStddevSeries : public IAggregateBase<FuncStddevSeries> {
-    void onResize(int count) override;
+    void onResize(int prefix, int postfix) override;
     void onAggregate(double & agg, int pos, double newVal) override;
     void onFinalize() override;
     struct Info {
@@ -1242,10 +1253,10 @@ static auto s_stddevSeries =
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-void FuncStddevSeries::onResize(int count) {
-    auto base = (int) m_infos.size();
-    m_infos.resize(count);
-    for (int pos = base; pos < count; ++pos) {
+void FuncStddevSeries::onResize(int prefix, int postfix) {
+    m_infos.insert(m_infos.begin(), prefix, {});
+    m_infos.resize(m_infos.size() + postfix, {});
+    auto fn = [&](auto pos) {
         auto & agg = m_samples->samples[pos];
         auto & info = m_infos[pos];
         if (!isnan(agg)) {
@@ -1253,7 +1264,11 @@ void FuncStddevSeries::onResize(int count) {
             info.mean = agg;
             agg = 0;
         }
-    }
+    };
+    for (auto pos = 0; pos < prefix; ++pos)
+        fn(pos);
+    for (auto pos = m_infos.size() - postfix; pos < m_infos.size(); ++pos)
+        fn(pos);
 }
 
 //===========================================================================

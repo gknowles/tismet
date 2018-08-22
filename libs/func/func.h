@@ -50,12 +50,17 @@ struct SampleList {
     static std::shared_ptr<SampleList> alloc(const SampleList & samples);
     static std::shared_ptr<SampleList> dup(const SampleList & samples);
 };
+inline double * begin(SampleList & samples) { return samples.samples; }
+inline double * end(SampleList & samples) {
+    return samples.samples + samples.count;
+}
 
 struct ResultInfo {
     std::shared_ptr<char[]> target;
     std::shared_ptr<char[]> name;
     std::shared_ptr<SampleList> samples;
     Aggregate::Type method{};
+    int argPos{-1};
 };
 
 struct FuncArg {

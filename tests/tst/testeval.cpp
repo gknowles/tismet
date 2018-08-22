@@ -376,6 +376,16 @@ static auto s_countSeries = UnitTest("countSeries")
     .out("countSeries(*.value)", 0, 1s, {2, 2});
 
 //===========================================================================
+// diffSeries
+//===========================================================================
+static auto s_diffSeries = UnitTest("diffSeries")
+    .query("diffSeries(all.total, alias(*.value, 'values'))", 0, 9)
+    .in("all.total", 0, 1s, {10,10,10,10,NAN,NAN,NAN,NAN,10})
+    .in("1.value", 0, 1s, {NAN,NAN,2,2,NAN,NAN,2,2,3})
+    .in("2.value", 0, 1s, {NAN,2,NAN,2,NAN,2,NAN,2,3})
+    .out("diffSeries(*.value)", 0, 1s, {10,8,8,6,NAN,NAN,NAN,NAN,4});
+
+//===========================================================================
 // keepLastValue
 //===========================================================================
 static auto s_keepLastValue = UnitTest("keepLastValue")

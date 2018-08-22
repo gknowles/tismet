@@ -46,6 +46,7 @@ class SourceNode {
 public:
     struct ResultRange {
         ResultNode * rn{};
+        int argPos{-1};
         Dim::Duration minInterval{};
         Dim::TimePoint first;
         Dim::TimePoint last;

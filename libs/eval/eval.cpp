@@ -353,8 +353,10 @@ void SourceNode::outputResultImpl(
         return a.minInterval < b.minInterval;
     });
     auto baseInterval = info.samples->interval;
+    ResultInfo out{info};
     while (i->minInterval <= baseInterval) {
-        i->rn->onResult(info);
+        out.argPos = i->argPos;
+        i->rn->onResult(out);
         if (++i == e)
             return;
     }
@@ -363,6 +365,7 @@ void SourceNode::outputResultImpl(
         ResultInfo out{info};
         out.samples = reduce(info.samples, baseInterval, info.method);
         for (;;) {
+            out.argPos = i->argPos;
             i->rn->onResult(out);
             if (++i == e)
                 return;
@@ -553,8 +556,11 @@ void FuncNode::onSourceStart() {
     );
     m_unfinished = (int) m_sources.size();
     rr.rn = this;
-    for (auto && sn : m_sources)
+    rr.argPos = 0;
+    for (auto && sn : m_sources) {
         sn->addOutput(rr);
+        rr.argPos += 1;
+    }
 }
 
 //===========================================================================
