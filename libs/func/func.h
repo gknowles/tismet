@@ -74,6 +74,19 @@ public:
     virtual void onFuncOutput(ResultInfo & info) = 0;
 };
 
+struct FuncContext {
+    int argPos{-1};
+    Dim::Duration minInterval{};
+    Dim::TimePoint first;
+    Dim::TimePoint last;
+
+    // "pre" is a request for samples from before the start of the result
+    // range that are needed to make the first values meaningful. These are
+    // requested by functions such as movingAverage and derivative.
+    Dim::Duration pretime{};
+    unsigned presamples{0};
+};
+
 class IFuncInstance {
 public:
     virtual ~IFuncInstance() = default;
@@ -86,12 +99,7 @@ public:
     // maxSeries(A).
     virtual IFuncInstance * onFuncBind(std::vector<FuncArg> && args) = 0;
 
-    virtual void onFuncAdjustRange(
-        Dim::TimePoint * first,
-        Dim::TimePoint * last,
-        Dim::Duration * pretime,
-        unsigned * presamples
-    ) = 0;
+    virtual void onFuncAdjustContext(FuncContext * rr) = 0;
 
     // Perform the function, outputResult() must be called for each result
     // that should be published.

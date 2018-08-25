@@ -389,6 +389,9 @@ static auto s_countSeries_one = UnitTest("countSeries_one")
     .query("countSeries(*.value)", 0, 2)
     .in("1.value", 0, 1s, {1,NAN})
     .out("countSeries(*.value)", 0, 1s, {1, 1});
+static auto s_countSeries_zero = UnitTest("countSeries_zero")
+    .query("countSeries(*.value)", 0, 2)
+    .out("countSeries(*.value)", 0, 1s, {0, 0});
 
 //===========================================================================
 // diffSeries

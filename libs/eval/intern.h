@@ -44,25 +44,15 @@ protected:
 
 class SourceNode {
 public:
-    struct ResultRange {
+    struct SourceContext : FuncContext {
         ResultNode * rn{};
-        int argPos{-1};
-        Dim::Duration minInterval{};
-        Dim::TimePoint first;
-        Dim::TimePoint last;
-
-        // "pre" is a request for samples from before the start of the result
-        // range that are needed to make the first values meaningful. These are
-        // requested by functions such as movingAverage and derivative.
-        Dim::Duration pretime{};
-        unsigned presamples{0};
     };
 
 public:
     virtual ~SourceNode();
     void init(std::shared_ptr<char[]> name);
 
-    void addOutput(const ResultRange & rr);
+    void addOutput(const SourceContext & context);
     void removeOutput(ResultNode * rn);
 
 protected:
@@ -70,7 +60,7 @@ protected:
 
     // Sets first, last, pretime, and presamples
     // Returns false if outputs and pendingOutputs are empty
-    bool outputRange(ResultRange * rr);
+    bool outputContext(SourceContext * context);
 
     struct OutputResultReturn {
         bool more;      // more series expected for this set of outputs
@@ -85,8 +75,8 @@ private:
     std::shared_ptr<char[]> m_source;
 
     mutable std::mutex m_outMut;
-    std::vector<ResultRange> m_outputs;
-    std::vector<ResultRange> m_pendingOutputs;
+    std::vector<SourceContext> m_outputs;
+    std::vector<SourceContext> m_pendingOutputs;
 };
 
 class FuncNode : public ResultNode, public SourceNode, public IFuncNotify {

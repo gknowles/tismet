@@ -43,12 +43,7 @@ public:
     Function::Type type() const override;
 
     IFuncInstance * onFuncBind(std::vector<FuncArg> && args) override;
-    void onFuncAdjustRange(
-        TimePoint * first,
-        TimePoint * last,
-        Duration * pretime,
-        unsigned * presamples
-    ) override;
+    void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override = 0;
 
 protected:
@@ -57,7 +52,6 @@ protected:
 
 private:
     friend Factory;
-    Duration m_oldPretime{};
     Function::Type m_type{};
 };
 
@@ -205,15 +199,9 @@ IFuncInstance * IFuncBase<T>::onFuncBind(vector<FuncArg> && args) {
 
 //===========================================================================
 template<typename T>
-void IFuncBase<T>::onFuncAdjustRange(
-    TimePoint * first,
-    TimePoint * last,
-    Duration * pretime,
-    unsigned * presamples
-) {
-    m_oldPretime = *pretime;
-    *pretime += m_pretime;
-    *presamples += m_presamples;
+void IFuncBase<T>::onFuncAdjustContext(FuncContext * context) {
+    context->pretime += m_pretime;
+    context->presamples += m_presamples;
 }
 
 
@@ -875,12 +863,7 @@ double FuncScaleToSeconds::onConvert(double value) {
 namespace {
 class FuncTimeShift : public IFuncBase<FuncTimeShift> {
     IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
-    void onFuncAdjustRange(
-        TimePoint * first,
-        TimePoint * last,
-        Duration * pretime,
-        unsigned * presamples
-    ) override;
+    void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
     Duration m_shift{};
@@ -901,14 +884,9 @@ IFuncInstance * FuncTimeShift::onFuncBind(vector<FuncArg> && args) {
 }
 
 //===========================================================================
-void FuncTimeShift::onFuncAdjustRange(
-    TimePoint * first,
-    TimePoint * last,
-    Duration * pretime,
-    unsigned * presamples
-) {
-    *first += m_shift;
-    *last += m_shift;
+void FuncTimeShift::onFuncAdjustContext(FuncContext * context) {
+    context->first += m_shift;
+    context->last += m_shift;
 }
 
 //===========================================================================
@@ -1191,19 +1169,39 @@ void FuncAverageSeries::onCombineClear() {
 //===========================================================================
 namespace {
 class FuncCountSeries : public ICombineBase<FuncCountSeries> {
+    void onFuncAdjustContext(FuncContext * context) override;
     void onCombineApply(
         ResultInfo & info,
         TimePoint last,
         TimePoint sfirst
     ) override;
     void onCombineFinalize() override;
-    void onCombineClear() override;
-    unsigned m_count{1};
+    unsigned m_count{};
+    TimePoint m_first;
+    TimePoint m_last;
+    Duration m_interval;
 };
 } // namespace
 static auto s_countSeries =
     FuncCountSeries::Factory("countSeries", "Combine")
     .arg("query", FuncArgInfo::kQuery, true, true);
+
+//===========================================================================
+void FuncCountSeries::onFuncAdjustContext(FuncContext * context) {
+    impl_type::onFuncAdjustContext(context);
+
+    m_interval = context->minInterval;
+    if (!m_interval.count())
+        m_interval = 1s;
+    m_first = context->first
+        - context->pretime
+        - context->presamples * m_interval;
+    m_first -= m_first.time_since_epoch() % m_interval;
+    m_last = context->last + m_interval;
+    m_last -= m_last.time_since_epoch() % m_interval;
+
+    m_count = 1;
+}
 
 //===========================================================================
 void FuncCountSeries::onCombineApply(
@@ -1216,13 +1214,13 @@ void FuncCountSeries::onCombineApply(
 
 //===========================================================================
 void FuncCountSeries::onCombineFinalize() {
+    if (!m_samples) {
+        auto num = (m_last - m_first) / m_interval;
+        m_samples = SampleList::alloc(m_first, m_interval, num);
+        m_count = 0;
+    }
     for (auto && ref : *m_samples)
         ref = m_count;
-}
-
-//===========================================================================
-void FuncCountSeries::onCombineClear() {
-    m_count = 1;
 }
 
 //===========================================================================

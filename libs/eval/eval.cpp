@@ -30,7 +30,7 @@ private:
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
 
-    ResultRange m_range;
+    SourceContext m_context;
 
     thread::id m_tid;
     ResultInfo m_result;
@@ -281,9 +281,9 @@ void SourceNode::init(shared_ptr<char[]> name) {
 }
 
 //===========================================================================
-void SourceNode::addOutput(const ResultRange & rr) {
+void SourceNode::addOutput(const SourceContext & context) {
     unique_lock lk{m_outMut};
-    m_pendingOutputs.push_back(rr);
+    m_pendingOutputs.push_back(context);
     if (m_pendingOutputs.size() != 1 || !m_outputs.empty())
         return;
 
@@ -302,7 +302,7 @@ void SourceNode::removeOutput(ResultNode * rn) {
 }
 
 //===========================================================================
-bool SourceNode::outputRange(ResultRange * out) {
+bool SourceNode::outputContext(SourceContext * out) {
     out->first = TimePoint::max();
     out->last = TimePoint::min();
     out->pretime = {};
@@ -389,7 +389,7 @@ void DbDataNode::onSourceStart() {
 
 //===========================================================================
 void DbDataNode::onTask() {
-    if (!outputRange(&m_range))
+    if (!outputContext(&m_context))
         return;
 
     assert(!m_unfinishedIds);
@@ -413,9 +413,9 @@ void DbDataNode::readMore() {
             this,
             s_db,
             id,
-            m_range.first - m_range.pretime,
-            m_range.last,
-            m_range.presamples
+            m_context.first - m_context.pretime,
+            m_context.last,
+            m_context.presamples
         )) {
             return;
         }
@@ -430,11 +430,11 @@ bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!info.type)
         return true;
 
-    auto first = m_range.first
-        - m_range.pretime
-        - m_range.presamples * info.interval;
+    auto first = m_context.first
+        - m_context.pretime
+        - m_context.presamples * info.interval;
     first -= first.time_since_epoch() % info.interval;
-    auto last = m_range.last + info.interval;
+    auto last = m_context.last + info.interval;
     last -= last.time_since_epoch() % info.interval;
     auto count = (last - first) / info.interval;
     assert(info.first == info.last || first <= info.first && last >= info.last);
@@ -547,22 +547,17 @@ bool FuncNode::bind(vector<FuncArg> && args) {
 
 //===========================================================================
 void FuncNode::onSourceStart() {
-    ResultRange rr;
-    if (!outputRange(&rr))
+    SourceContext context;
+    if (!outputContext(&context))
         return;
 
-    m_instance->onFuncAdjustRange(
-        &rr.first,
-        &rr.last,
-        &rr.pretime,
-        &rr.presamples
-    );
+    m_instance->onFuncAdjustContext(&context);
     m_unfinished = (int) m_sources.size();
-    rr.rn = this;
-    rr.argPos = 0;
+    context.rn = this;
+    context.argPos = 0;
     for (auto && sn : m_sources) {
-        sn->addOutput(rr);
-        rr.argPos += 1;
+        sn->addOutput(context);
+        context.argPos += 1;
     }
 }
 
@@ -740,10 +735,10 @@ void evaluate(
     }
     hostage.release();
 
-    SourceNode::ResultRange rr;
-    rr.rn = ex;
-    rr.first = first;
-    rr.last = last;
-    rr.minInterval = ex->m_minInterval;
-    sn->addOutput(rr);
+    SourceNode::SourceContext context;
+    context.rn = ex;
+    context.first = first;
+    context.last = last;
+    context.minInterval = ex->m_minInterval;
+    sn->addOutput(context);
 }
