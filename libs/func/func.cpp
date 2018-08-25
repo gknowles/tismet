@@ -42,7 +42,7 @@ public:
 public:
     Function::Type type() const override;
 
-    bool onFuncBind(std::vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(std::vector<FuncArg> && args) override;
     void onFuncAdjustRange(
         TimePoint * first,
         TimePoint * last,
@@ -199,8 +199,8 @@ Function::Type IFuncBase<T>::type() const {
 
 //===========================================================================
 template<typename T>
-bool IFuncBase<T>::onFuncBind(vector<FuncArg> && args) {
-    return true;
+IFuncInstance * IFuncBase<T>::onFuncBind(vector<FuncArg> && args) {
+    return this;
 }
 
 //===========================================================================
@@ -258,7 +258,7 @@ static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
 
 namespace {
 class FuncAlias : public IFuncBase<FuncAlias> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
     shared_ptr<char[]> m_name;
@@ -269,9 +269,9 @@ static auto s_alias = FuncAlias::Factory("alias", "Alias")
     .arg("name", FuncArgInfo::kString, true);
 
 //===========================================================================
-bool FuncAlias::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncAlias::onFuncBind(vector<FuncArg> && args) {
     m_name = args[0].string;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -284,13 +284,49 @@ bool FuncAlias::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 /****************************************************************************
 *
+*   Rebinding function implementations
+*
+***/
+
+namespace {
+class FuncAggregate : public IFuncBase<FuncAggregate> {
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
+};
+} // namespace
+static auto s_aggregate = FuncAggregate::Factory("aggregate", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true)
+    .arg("aggFunc", FuncArgInfo::kAggFunc, true);
+
+//===========================================================================
+IFuncInstance * FuncAggregate::onFuncBind(vector<FuncArg> && args) {
+    auto aggtype = fromString(args[0].string.get(), Aggregate::kAverage);
+    auto fname = string(toString(aggtype, "")) + "Series";
+    args.erase(args.begin());
+    auto type = fromString(fname, Function::kSumSeries);
+    auto func = funcCreate(type);
+    auto bound = func->onFuncBind(move(args));
+    if (bound == func.get())
+        func.release();
+    return bound;
+}
+
+//===========================================================================
+bool FuncAggregate::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
+    assert(!"onFuncApply not implemented by aggregate base function");
+    return false;
+}
+
+
+/****************************************************************************
+*
 *   FuncConsolidateBy
 *
 ***/
 
 namespace {
 class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
     Aggregate::Type m_method;
@@ -302,9 +338,9 @@ static auto s_consolidateBy =
     .arg("method", FuncArgInfo::kAggFunc, true);
 
 //===========================================================================
-bool FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {
     m_method = fromString(args[0].string.get(), Aggregate::Type{});
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -343,7 +379,7 @@ bool IFilterBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 //===========================================================================
 namespace {
 class FuncMaximumAbove : public IFilterBase<FuncMaximumAbove> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFilter(const ResultInfo & info) override;
     double m_limit{};
 };
@@ -354,9 +390,9 @@ static auto s_maximumAbove =
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncMaximumAbove::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncMaximumAbove::onFuncBind(vector<FuncArg> && args) {
     m_limit = args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -378,11 +414,11 @@ template<typename T>
 class ITransformBase : public IFuncBase<T> {
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
-    virtual void onTransformStart(Duration interval) {}
     virtual void onTransform(
         double * optr,
         const double * ptr,
-        const double * eptr
+        const double * eptr,
+        Duration interval
     ) = 0;
 };
 } // namespace
@@ -393,11 +429,10 @@ bool ITransformBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     if (info.samples) {
         info.name = addFuncName(this->type(), info.name);
         auto out = SampleList::alloc(*info.samples);
-        onTransformStart(out->interval);
         auto optr = out->samples;
         auto ptr = info.samples->samples;
         auto eptr = ptr + info.samples->count;
-        onTransform(optr, ptr, eptr);
+        onTransform(optr, ptr, eptr, out->interval);
         info.samples = out;
     }
     notify->onFuncOutput(info);
@@ -409,11 +444,12 @@ bool ITransformBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 //===========================================================================
 namespace {
 class FuncDerivative : public ITransformBase<FuncDerivative> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     void onTransform(
         double * optr,
         const double * ptr,
-        const double * eptr
+        const double * eptr,
+        Duration interval
     ) override;
 };
 } // namespace
@@ -421,16 +457,17 @@ static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
     .arg("query", FuncArgInfo::kQuery, true);
 
 //===========================================================================
-bool FuncDerivative::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncDerivative::onFuncBind(vector<FuncArg> && args) {
     m_presamples = 1;
-    return true;
+    return this;
 }
 
 //===========================================================================
 void FuncDerivative::onTransform(
     double * optr,
     const double * ptr,
-    const double * eptr
+    const double * eptr,
+    Duration interval
 ) {
     *optr++ = NAN;
     for (; ptr != eptr - 1; ++ptr) {
@@ -443,11 +480,12 @@ void FuncDerivative::onTransform(
 //===========================================================================
 namespace {
 class FuncKeepLastValue : public ITransformBase<FuncKeepLastValue> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     void onTransform(
         double * optr,
         const double * ptr,
-        const double * eptr
+        const double * eptr,
+        Duration interval
     ) override;
 
     double m_limit;
@@ -459,17 +497,18 @@ static auto s_keepLastValue =
     .arg("limit", FuncArgInfo::kNum);
 
 //===========================================================================
-bool FuncKeepLastValue::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncKeepLastValue::onFuncBind(vector<FuncArg> && args) {
     m_limit = args.empty() ? 0 : (int) args[0].number;
     m_presamples = 1;
-    return true;
+    return this;
 }
 
 //===========================================================================
 void FuncKeepLastValue::onTransform(
     double * optr,
     const double * ptr,
-    const double * eptr
+    const double * eptr,
+    Duration interval
 ) {
     auto base = ptr;
     int nans = 0;
@@ -508,12 +547,12 @@ void FuncKeepLastValue::onTransform(
 //===========================================================================
 namespace {
 class FuncMovingAverage : public ITransformBase<FuncMovingAverage> {
-    bool onFuncBind(vector<FuncArg> && args) override;
-    void onTransformStart(Duration interval) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     void onTransform(
         double * optr,
         const double * ptr,
-        const double * eptr
+        const double * eptr,
+        Duration interval
     ) override;
 
     unsigned m_count{};
@@ -526,41 +565,39 @@ static auto s_movingAverage =
     .arg("xFilesFactor", FuncArgInfo::kNum, false);
 
 //===========================================================================
-bool FuncMovingAverage::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncMovingAverage::onFuncBind(vector<FuncArg> && args) {
     if (auto arg0 = args[0].string.get()) {
         if (parse(&m_pretime, arg0))
-            return true;
+            return this;
         m_presamples = strToUint(arg0);
     } else {
         m_presamples = (unsigned) args[0].number;
     }
     if (m_presamples)
         m_presamples -= 1;
-    return true;
-}
-
-//===========================================================================
-void FuncMovingAverage::onTransformStart(Duration interval) {
-    if (m_pretime.count()) {
-        auto pretime = m_pretime - m_pretime % interval;
-        m_count = unsigned(pretime / interval) + 1;
-        return;
-    }
-
-    m_count = m_presamples + 1;
+    return this;
 }
 
 //===========================================================================
 void FuncMovingAverage::onTransform(
     double * optr,
     const double * ptr,
-    const double * eptr
+    const double * eptr,
+    Duration interval
 ) {
+    unsigned count;
+    if (m_pretime.count()) {
+        auto pretime = m_pretime - m_pretime % interval;
+        count = unsigned(pretime / interval) + 1;
+    } else {
+        count = m_presamples + 1;
+    }
+
     auto pre = ptr;
-    assert(pre + m_count <= eptr);
+    assert(pre + count <= eptr);
     double sum = 0;
     unsigned nans = 0;
-    for (unsigned i = 1; i <= m_count; ++i, ++ptr) {
+    for (unsigned i = 1; i <= count; ++i, ++ptr) {
         if (isnan(*ptr)) {
             if (++nans == i) {
                 *optr++ = NAN;
@@ -569,7 +606,7 @@ void FuncMovingAverage::onTransform(
         } else {
             sum += *ptr;
         }
-        *optr++ = sum / m_count;
+        *optr++ = sum / count;
     }
     for (; ptr != eptr; ++ptr, ++pre) {
         if (isnan(*ptr)) {
@@ -582,7 +619,7 @@ void FuncMovingAverage::onTransform(
         } else {
             sum -= *pre;
         }
-        *optr++ = (nans == m_count) ? NAN : sum / m_count;
+        *optr++ = (nans == count) ? NAN : sum / count;
     }
 }
 
@@ -593,11 +630,12 @@ namespace {
 class FuncNonNegativeDerivative
     : public ITransformBase<FuncNonNegativeDerivative>
 {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     void onTransform(
         double * optr,
         const double * ptr,
-        const double * eptr
+        const double * eptr,
+        Duration interval
     ) override;
 
     double m_limit;
@@ -609,17 +647,18 @@ static auto s_nonNegativeDerivative =
     .arg("maxValue", FuncArgInfo::kNum);
 
 //===========================================================================
-bool FuncNonNegativeDerivative::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncNonNegativeDerivative::onFuncBind(vector<FuncArg> && args) {
     m_limit = args.empty() ? HUGE_VAL : args[0].number;
     m_presamples = 1;
-    return true;
+    return this;
 }
 
 //===========================================================================
 void FuncNonNegativeDerivative::onTransform(
     double * optr,
     const double * ptr,
-    const double * eptr
+    const double * eptr,
+    Duration interval
 ) {
     *optr++ = NAN;
     auto prev = *ptr;
@@ -677,6 +716,22 @@ bool IConvertBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 }
 
 //===========================================================================
+// absolute
+//===========================================================================
+namespace {
+class FuncAbsolute : public IConvertBase<FuncAbsolute> {
+    double onConvert(double value) override;
+};
+} // namespace
+static auto s_absolute = FuncAbsolute::Factory("absolute", "Transform")
+    .arg("query", FuncArgInfo::kQuery, true);
+
+//===========================================================================
+double FuncAbsolute::onConvert(double value) {
+    return abs(value);
+}
+
+//===========================================================================
 // drawAsInfinite
 //===========================================================================
 namespace {
@@ -704,7 +759,7 @@ double FuncDrawAsInfinite::onConvert(double value) {
 //===========================================================================
 namespace {
 class FuncRemoveAboveValue : public IConvertBase<FuncRemoveAboveValue> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     double onConvert(double value) override;
     double m_limit{};
 };
@@ -715,9 +770,9 @@ static auto s_removeAboveValue =
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncRemoveAboveValue::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncRemoveAboveValue::onFuncBind(vector<FuncArg> && args) {
     m_limit = args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -730,7 +785,7 @@ double FuncRemoveAboveValue::onConvert(double value) {
 //===========================================================================
 namespace {
 class FuncRemoveBelowValue : public IConvertBase<FuncRemoveBelowValue> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     double onConvert(double value) override;
     double m_limit{};
 };
@@ -741,9 +796,9 @@ static auto s_removeBelowValue =
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncRemoveBelowValue::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncRemoveBelowValue::onFuncBind(vector<FuncArg> && args) {
     m_limit = args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -756,7 +811,7 @@ double FuncRemoveBelowValue::onConvert(double value) {
 //===========================================================================
 namespace {
 class FuncScale : public IConvertBase<FuncScale> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     double onConvert(double value) override;
     double m_factor;
 };
@@ -766,9 +821,9 @@ static auto s_scale = FuncScale::Factory("scale", "Transform")
     .arg("factor", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncScale::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncScale::onFuncBind(vector<FuncArg> && args) {
     m_factor = args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -781,7 +836,7 @@ double FuncScale::onConvert(double value) {
 //===========================================================================
 namespace {
 class FuncScaleToSeconds : public IConvertBase<FuncScaleToSeconds> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     double onConvert(double value) override;
     void onConvertStart(Duration interval) override;
 
@@ -795,9 +850,9 @@ static auto s_scaleToSeconds =
     .arg("seconds", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncScaleToSeconds::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncScaleToSeconds::onFuncBind(vector<FuncArg> && args) {
     m_seconds = args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -819,7 +874,7 @@ double FuncScaleToSeconds::onConvert(double value) {
 
 namespace {
 class FuncTimeShift : public IFuncBase<FuncTimeShift> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     void onFuncAdjustRange(
         TimePoint * first,
         TimePoint * last,
@@ -836,13 +891,13 @@ static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
     .arg("timeShift", FuncArgInfo::kString, true);
 
 //===========================================================================
-bool FuncTimeShift::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncTimeShift::onFuncBind(vector<FuncArg> && args) {
     auto tmp = string(args[0].string.get());
     if (tmp[0] != '+' && tmp[0] != '-')
         tmp = "-" + tmp;
     if (!parse(&m_shift, tmp.c_str()))
-        return false;
-    return true;
+        return nullptr;
+    return this;
 }
 
 //===========================================================================
@@ -878,7 +933,7 @@ bool FuncTimeShift::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncHighestCurrent : public IFuncBase<FuncHighestCurrent> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
     multimap<double, ResultInfo> m_best;
     unsigned m_allowed;
@@ -890,9 +945,9 @@ static auto s_highestCurrent =
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncHighestCurrent::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncHighestCurrent::onFuncBind(vector<FuncArg> && args) {
     m_allowed = (unsigned) args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -933,7 +988,7 @@ bool FuncHighestCurrent::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncHighestMax : public IFuncBase<FuncHighestMax> {
-    bool onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
     multimap<double, ResultInfo> m_best;
     unsigned m_allowed;
@@ -945,9 +1000,9 @@ static auto s_highestMax =
     .arg("n", FuncArgInfo::kNum, true);
 
 //===========================================================================
-bool FuncHighestMax::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncHighestMax::onFuncBind(vector<FuncArg> && args) {
     m_allowed = (unsigned) args[0].number;
-    return true;
+    return this;
 }
 
 //===========================================================================
@@ -984,20 +1039,26 @@ bool FuncHighestMax::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 /****************************************************************************
 *
-*   IAggregateBase - combined samples for a single time interval
+*   ICombineBase - combine samples for a single time interval
 *
 ***/
 
 namespace {
 template<typename T>
-class IAggregateBase : public IFuncBase<T> {
+class ICombineBase : public IFuncBase<T> {
 protected:
-    using impl_type = IAggregateBase;
+    using impl_type = ICombineBase;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
-    virtual void onResize(int prefix, int suffix) {}
-    virtual void onAggregate(double & agg, int pos, double newVal) = 0;
-    virtual void onFinalize() {}
+    virtual void onCombineApply(
+        ResultInfo & info,
+        TimePoint last,
+        TimePoint sfirst
+    );
+    virtual void onCombineResize(int prefix, int suffix) {}
+    virtual void onCombineValue(double & agg, int pos, double newVal) {};
+    virtual void onCombineFinalize() {}
+    virtual void onCombineClear() {}
 protected:
     shared_ptr<SampleList> m_samples;
 };
@@ -1005,11 +1066,11 @@ protected:
 
 //===========================================================================
 template<typename T>
-bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
+bool ICombineBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     if (info.samples) {
         if (!m_samples) {
             m_samples = SampleList::dup(*info.samples);
-            onResize(0, m_samples->count);
+            onCombineResize(0, m_samples->count);
         } else if (m_samples->interval == info.samples->interval) {
             auto resize = false;
             auto interval = m_samples->interval;
@@ -1043,19 +1104,11 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
                     tmp->samples[pos] = NAN;
                 assert(pos == (int) tmp->count);
                 m_samples = tmp;
-                onResize(prefix, m_samples->count - postfix);
+                onCombineResize(prefix, m_samples->count - postfix);
                 slast = first;
                 first = m_samples->first;
             }
-            auto ipos = 0;
-            auto pos = (info.samples->first - first) / interval;
-            first = info.samples->first;
-            for (; first < ilast; first += interval, ++pos, ++ipos) {
-                auto & sval = m_samples->samples[pos];
-                auto ival = info.samples->samples[ipos];
-                onAggregate(sval, (int) pos, ival);
-            }
-            assert(pos <= m_samples->count);
+            onCombineApply(info, ilast, first);
         } else {
             // TODO: normalize and consolidate incompatible lists
             logMsgError() << "Aggregating incompatible series, "
@@ -1064,7 +1117,7 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
         return true;
     }
 
-    onFinalize();
+    onCombineFinalize();
 
     // Output aggregated result and end mark
     info.name = addFuncName(this->type(), info.target);
@@ -1073,16 +1126,39 @@ bool IAggregateBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     info.name = {};
     info.samples = {};
     notify->onFuncOutput(info);
+
+    onCombineClear();
+    m_samples.reset();
     return true;
+}
+
+//===========================================================================
+template<typename T>
+void ICombineBase<T>::onCombineApply(
+    ResultInfo & info,
+    TimePoint last,
+    TimePoint sfirst
+) {
+    auto interval = info.samples->interval;
+    auto pos = 0;
+    auto first = info.samples->first;
+    auto spos = (first - sfirst) / interval;
+    for (; first < last; first += interval, ++pos, ++spos) {
+        auto & sval = m_samples->samples[spos];
+        auto val = info.samples->samples[pos];
+        onCombineValue(sval, (int) spos, val);
+    }
+    assert(spos <= m_samples->count);
 }
 
 //===========================================================================
 // averageSeries
 //===========================================================================
 namespace {
-class FuncAverageSeries : public IAggregateBase<FuncAverageSeries> {
-    void onResize(int prefix, int postfix) override;
-    void onAggregate(double & agg, int pos, double newVal) override;
+class FuncAverageSeries : public ICombineBase<FuncAverageSeries> {
+    void onCombineResize(int prefix, int postfix) override;
+    void onCombineValue(double & agg, int pos, double newVal) override;
+    void onCombineClear() override;
     vector<unsigned> m_counts;
 };
 } // namespace
@@ -1092,13 +1168,13 @@ static auto s_averageSeries =
     .alias("avg");
 
 //===========================================================================
-void FuncAverageSeries::onResize(int prefix, int postfix) {
+void FuncAverageSeries::onCombineResize(int prefix, int postfix) {
     m_counts.insert(m_counts.begin(), prefix, 1);
     m_counts.resize(m_counts.size() + postfix, 1);
 }
 
 //===========================================================================
-void FuncAverageSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncAverageSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (!isnan(newVal)) {
         auto cnt = m_counts[pos]++;
         agg = (agg * (cnt - 1) + newVal) / cnt;
@@ -1106,14 +1182,23 @@ void FuncAverageSeries::onAggregate(double & agg, int pos, double newVal) {
 }
 
 //===========================================================================
+void FuncAverageSeries::onCombineClear() {
+    m_counts.clear();
+}
+
+//===========================================================================
 // countSeries
 //===========================================================================
 namespace {
-class FuncCountSeries : public IAggregateBase<FuncCountSeries> {
-    bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
-    void onAggregate(double & agg, int pos, double newVal) override;
-    void onFinalize() override;
-    unsigned m_count{0};
+class FuncCountSeries : public ICombineBase<FuncCountSeries> {
+    void onCombineApply(
+        ResultInfo & info,
+        TimePoint last,
+        TimePoint sfirst
+    ) override;
+    void onCombineFinalize() override;
+    void onCombineClear() override;
+    unsigned m_count{1};
 };
 } // namespace
 static auto s_countSeries =
@@ -1121,29 +1206,32 @@ static auto s_countSeries =
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-bool FuncCountSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
-    if (info.samples)
-        m_count += 1;
-    return impl_type::onFuncApply(notify, info);
+void FuncCountSeries::onCombineApply(
+    ResultInfo & info,
+    TimePoint last,
+    TimePoint sfirst
+) {
+    m_count += 1;
 }
 
 //===========================================================================
-void FuncCountSeries::onAggregate(double & agg, int pos, double newVal)
-{}
-
-//===========================================================================
-void FuncCountSeries::onFinalize() {
+void FuncCountSeries::onCombineFinalize() {
     for (auto && ref : *m_samples)
         ref = m_count;
+}
+
+//===========================================================================
+void FuncCountSeries::onCombineClear() {
+    m_count = 1;
 }
 
 //===========================================================================
 // diffSeries
 //===========================================================================
 namespace {
-class FuncDiffSeries : public IAggregateBase<FuncDiffSeries> {
+class FuncDiffSeries : public ICombineBase<FuncDiffSeries> {
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
-    void onAggregate(double & agg, int pos, double newVal) override;
+    void onCombineValue(double & agg, int pos, double newVal) override;
     bool m_firstArg{false};
 };
 } // namespace
@@ -1158,15 +1246,20 @@ bool FuncDiffSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
     m_samples = SampleList::dup(*info.samples);
     if (!m_firstArg) {
-        for (auto && ref : *m_samples)
-            ref = -ref;
+        for (auto && ref : *m_samples) {
+            if (isnan(ref)) {
+                ref = 0;
+            } else {
+                ref = -ref;
+            }
+        }
     }
-    onResize(0, m_samples->count);
+    onCombineResize(0, m_samples->count);
     return true;
 }
 
 //===========================================================================
-void FuncDiffSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncDiffSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (m_firstArg) {
         if (isnan(newVal)) {
             agg = newVal;
@@ -1179,35 +1272,100 @@ void FuncDiffSeries::onAggregate(double & agg, int pos, double newVal) {
 }
 
 //===========================================================================
+// lastSeries
+//===========================================================================
+namespace {
+class FuncLastSeries : public ICombineBase<FuncLastSeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
+};
+} // namespace
+static auto s_lastSeries =
+    FuncLastSeries::Factory("lastSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
+
+//===========================================================================
+void FuncLastSeries::onCombineValue(double & agg, int pos, double newVal) {
+    if (!isnan(newVal))
+        agg = newVal;
+}
+
+//===========================================================================
 // maxSeries
 //===========================================================================
 namespace {
-class FuncMaxSeries : public IAggregateBase<FuncMaxSeries> {
-    void onAggregate(double & agg, int pos, double newVal) override;
+class FuncMaxSeries : public ICombineBase<FuncMaxSeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
 };
 } // namespace
 static auto s_maxSeries = FuncMaxSeries::Factory("maxSeries", "Combine")
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-void FuncMaxSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncMaxSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (isnan(agg) || newVal > agg)
         agg = newVal;
+}
+
+//===========================================================================
+// medianSeries
+//===========================================================================
+namespace {
+class FuncMedianSeries : public ICombineBase<FuncMedianSeries> {
+    void onCombineResize(int prefix, int postfix) override;
+    void onCombineValue(double & agg, int pos, double newVal) override;
+    void onCombineFinalize() override;
+    void onCombineClear() override;
+    vector<vector<double>> m_samplesByPos;
+};
+} // namespace
+static auto s_medianSeries = FuncMedianSeries::Factory("medianSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
+
+//===========================================================================
+void FuncMedianSeries::onCombineResize(int prefix, int postfix) {
+    if (m_samplesByPos.empty()) {
+        assert(!prefix);
+        m_samplesByPos.resize(postfix);
+        for (auto i = 0; i < postfix; ++i)
+            m_samplesByPos[i].push_back(m_samples->samples[i]);
+        return;
+    }
+    vector<double> val(m_samplesByPos[0].size(), NAN);
+    m_samplesByPos.insert(m_samplesByPos.begin(), prefix, val);
+    m_samplesByPos.resize(m_samplesByPos.size() + postfix, val);
+}
+
+//===========================================================================
+void FuncMedianSeries::onCombineValue(double & agg, int pos, double newVal) {
+    m_samplesByPos[pos].push_back(newVal);
+}
+
+//===========================================================================
+void FuncMedianSeries::onCombineFinalize() {
+    for (auto i = 0; i < m_samplesByPos.size(); ++i) {
+        auto & agg = m_samples->samples[i];
+        agg = aggMedian(m_samplesByPos[i].data(), m_samplesByPos[i].size());
+    }
+}
+
+//===========================================================================
+void FuncMedianSeries::onCombineClear() {
+    m_samplesByPos.clear();
 }
 
 //===========================================================================
 // minSeries
 //===========================================================================
 namespace {
-class FuncMinSeries : public IAggregateBase<FuncMinSeries> {
-    void onAggregate(double & agg, int pos, double newVal) override;
+class FuncMinSeries : public ICombineBase<FuncMinSeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
 };
 } // namespace
 static auto s_minSeries = FuncMinSeries::Factory("minSeries", "Combine")
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-void FuncMinSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncMinSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (isnan(agg) || newVal < agg)
         agg = newVal;
 }
@@ -1216,8 +1374,8 @@ void FuncMinSeries::onAggregate(double & agg, int pos, double newVal) {
 // multiplySeries
 //===========================================================================
 namespace {
-class FuncMultiplySeries : public IAggregateBase<FuncMultiplySeries> {
-    void onAggregate(double & agg, int pos, double newVal) override;
+class FuncMultiplySeries : public ICombineBase<FuncMultiplySeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
 };
 } // namespace
 static auto s_multiplySeries =
@@ -1225,7 +1383,7 @@ static auto s_multiplySeries =
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-void FuncMultiplySeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncMultiplySeries::onCombineValue(double & agg, int pos, double newVal) {
     if (isnan(agg)) {
         agg = newVal;
     } else if (!isnan(newVal)) {
@@ -1234,13 +1392,61 @@ void FuncMultiplySeries::onAggregate(double & agg, int pos, double newVal) {
 }
 
 //===========================================================================
+// rangeSeries
+//===========================================================================
+namespace {
+class FuncRangeSeries : public ICombineBase<FuncRangeSeries> {
+    void onCombineResize(int prefix, int postfix) override;
+    void onCombineValue(double & agg, int pos, double newVal) override;
+    void onCombineFinalize() override;
+    void onCombineClear() override;
+    vector<double> m_minSamples;
+};
+} // namespace
+static auto s_rangeSeries = FuncRangeSeries::Factory("rangeSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
+
+//===========================================================================
+void FuncRangeSeries::onCombineResize(int prefix, int postfix) {
+    m_minSamples.insert(m_minSamples.begin(), prefix, NAN);
+    m_minSamples.resize(m_minSamples.size() + postfix, NAN);
+}
+
+//===========================================================================
+void FuncRangeSeries::onCombineValue(double & agg, int pos, double newVal) {
+    auto & aggMin = m_minSamples[pos];
+    if (isnan(agg)) {
+        agg = aggMin = newVal;
+    } else {
+        if (newVal > agg)
+            agg = newVal;
+        if (newVal < aggMin)
+            aggMin = newVal;
+    }
+}
+
+//===========================================================================
+void FuncRangeSeries::onCombineFinalize() {
+    for (auto i = 0; i < m_minSamples.size(); ++i) {
+        auto & agg = m_samples->samples[i];
+        agg -= m_minSamples[i];
+    }
+}
+
+//===========================================================================
+void FuncRangeSeries::onCombineClear() {
+    m_minSamples.clear();
+}
+
+//===========================================================================
 // stddevSeries
 //===========================================================================
 namespace {
-class FuncStddevSeries : public IAggregateBase<FuncStddevSeries> {
-    void onResize(int prefix, int postfix) override;
-    void onAggregate(double & agg, int pos, double newVal) override;
-    void onFinalize() override;
+class FuncStddevSeries : public ICombineBase<FuncStddevSeries> {
+    void onCombineResize(int prefix, int postfix) override;
+    void onCombineValue(double & agg, int pos, double newVal) override;
+    void onCombineFinalize() override;
+    void onCombineClear() override;
     struct Info {
         double mean;
         unsigned count;
@@ -1253,7 +1459,7 @@ static auto s_stddevSeries =
     .arg("query", FuncArgInfo::kQuery, true, true);
 
 //===========================================================================
-void FuncStddevSeries::onResize(int prefix, int postfix) {
+void FuncStddevSeries::onCombineResize(int prefix, int postfix) {
     m_infos.insert(m_infos.begin(), prefix, {});
     m_infos.resize(m_infos.size() + postfix, {});
     auto fn = [&](auto pos) {
@@ -1272,7 +1478,7 @@ void FuncStddevSeries::onResize(int prefix, int postfix) {
 }
 
 //===========================================================================
-void FuncStddevSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncStddevSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (!isnan(newVal)) {
         auto & info = m_infos[pos];
         if (++info.count == 1) {
@@ -1287,7 +1493,7 @@ void FuncStddevSeries::onAggregate(double & agg, int pos, double newVal) {
 }
 
 //===========================================================================
-void FuncStddevSeries::onFinalize() {
+void FuncStddevSeries::onCombineFinalize() {
     int pos = 0;
     for (auto && info : m_infos) {
         auto & agg = m_samples->samples[pos++];
@@ -1296,11 +1502,16 @@ void FuncStddevSeries::onFinalize() {
 }
 
 //===========================================================================
+void FuncStddevSeries::onCombineClear() {
+    m_infos.clear();
+}
+
+//===========================================================================
 // sumSeries
 //===========================================================================
 namespace {
-class FuncSumSeries : public IAggregateBase<FuncSumSeries> {
-    void onAggregate(double & agg, int pos, double newVal) override;
+class FuncSumSeries : public ICombineBase<FuncSumSeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
 };
 } // namespace
 static auto s_sumSeries = FuncSumSeries::Factory("sumSeries", "Combine")
@@ -1308,7 +1519,7 @@ static auto s_sumSeries = FuncSumSeries::Factory("sumSeries", "Combine")
     .alias("sum");
 
 //===========================================================================
-void FuncSumSeries::onAggregate(double & agg, int pos, double newVal) {
+void FuncSumSeries::onCombineValue(double & agg, int pos, double newVal) {
     if (isnan(agg)) {
         agg = newVal;
     } else if (!isnan(newVal)) {

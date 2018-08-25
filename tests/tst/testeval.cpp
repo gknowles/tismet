@@ -303,6 +303,17 @@ static auto s_maxpoints = UnitTest("consolidate points even")
     .out("2.value", 10, 2s, {NAN, 4, 5.5});
 
 //===========================================================================
+// aggregate
+//===========================================================================
+static auto s_aggregate_median = UnitTest("aggregate_median")
+    .query("aggregate(*.value, 'median')", 0, 6)
+    .in("1.value", 0, 1s, {NAN,NAN,NAN,NAN,1,4})
+    .in("2.value", 0, 1s, {NAN,NAN,1,  2,  2,3})
+    .in("3.value", 0, 1s, {NAN,NAN,2,  1,  3,2})
+    .in("4.value", 0, 1s, {NAN,1,  1,  2,  3,1})
+    .out("medianSeries(*.value)", 0, 1s, {NAN, 1, 1, 2, 2.5, 2.5});
+
+//===========================================================================
 // consolidateBy
 //===========================================================================
 static auto s_consolidateBy_average = UnitTest("consolidateBy_average")
@@ -374,6 +385,10 @@ static auto s_countSeries = UnitTest("countSeries")
     .in("1.value", 0, 1s, {1,NAN})
     .in("2.value", 0, 1s, {NAN,2})
     .out("countSeries(*.value)", 0, 1s, {2, 2});
+static auto s_countSeries_one = UnitTest("countSeries_one")
+    .query("countSeries(*.value)", 0, 2)
+    .in("1.value", 0, 1s, {1,NAN})
+    .out("countSeries(*.value)", 0, 1s, {1, 1});
 
 //===========================================================================
 // diffSeries

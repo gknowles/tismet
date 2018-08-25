@@ -4,6 +4,12 @@
 ;----------------------------------------------------------------------------
 ; Functions
 ;----------------------------------------------------------------------------
+func =/ fn-absolute { End }
+fn-absolute = %s"absolute(" arg-query ")" { Start }
+
+func =/ fn-aggregate { End }
+fn-aggregate = %s"aggregate(" arg-query "," arg-aggfunc ")" { Start }
+
 func =/ fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 
@@ -41,6 +47,9 @@ fn-highestMax = %s"highestMax(" arg-query "," arg-num ")" { Start }
 func =/ fn-keepLastValue { End }
 fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
 
+func =/ fn-lastSeries { End }
+fn-lastSeries = %s"lastSeries(" arg-query *( "," arg-query ) ")" { Start }
+
 func =/ fn-legendValue { End }
 fn-legendValue = %s"legendValue(" arg-query *( "," arg-string ) ")" { Start }
 
@@ -53,6 +62,9 @@ fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
 func =/ fn-maxSeries { End }
 fn-maxSeries = %s"maxSeries(" arg-query *( "," arg-query ) ")" { Start }
 
+func =/ fn-medianSeries { End }
+fn-medianSeries = %s"medianSeries(" arg-query *( "," arg-query ) ")" { Start }
+
 func =/ fn-minSeries { End }
 fn-minSeries = %s"minSeries(" arg-query *( "," arg-query ) ")" { Start }
 
@@ -64,6 +76,9 @@ fn-multiplySeries = %s"multiplySeries(" arg-query *( "," arg-query ) ")" { Start
 
 func =/ fn-nonNegativeDerivative { End }
 fn-nonNegativeDerivative = %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
+
+func =/ fn-rangeSeries { End }
+fn-rangeSeries = %s"rangeSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-removeAboveValue { End }
 fn-removeAboveValue = %s"removeAboveValue(" arg-query "," arg-num ")" { Start }

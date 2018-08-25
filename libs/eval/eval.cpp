@@ -539,7 +539,10 @@ void FuncNode::init(
 
 //===========================================================================
 bool FuncNode::bind(vector<FuncArg> && args) {
-    return m_instance->onFuncBind(move(args));
+    auto ptr = m_instance->onFuncBind(move(args));
+    if (ptr != m_instance.get())
+        m_instance.reset(ptr);
+    return (bool) m_instance;
 }
 
 //===========================================================================

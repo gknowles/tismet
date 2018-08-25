@@ -36,7 +36,7 @@ using ReduceFn = void (
 } // namespace
 
 //===========================================================================
-static double aggAverage(double vals[], size_t count) {
+double Eval::aggAverage(const double vals[], size_t count) {
     double out = 0;
     int cnt = 0;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
@@ -49,14 +49,14 @@ static double aggAverage(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggCount(double vals[], size_t count) {
+double Eval::aggCount(const double vals[], size_t count) {
     return (double) count_if(vals, vals + count, [](auto & a) {
         return !isnan(a);
     });
 }
 
 //===========================================================================
-static double aggDiff(double vals[], size_t count) {
+double Eval::aggDiff(const double vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -72,14 +72,14 @@ static double aggDiff(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggLast(double vals[], size_t count) {
+double Eval::aggLast(const double vals[], size_t count) {
     while (count && isnan(vals[count - 1]))
         count -= 1;
     return count ? vals[count - 1] : NAN;
 }
 
 //===========================================================================
-static double aggMax(double vals[], size_t count) {
+double Eval::aggMax(const double vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -95,7 +95,7 @@ static double aggMax(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggMedian(double vals[], size_t count) {
+double Eval::aggMedian(const double vals[], size_t count) {
     unique_ptr<double[]> tmp;
     double * nvals;
     if (count > 1000) {
@@ -109,14 +109,16 @@ static double aggMedian(double vals[], size_t count) {
         if (!isnan(*ptr))
             nvals[ncount++] = *ptr;
     }
+    if (!ncount)
+        return NAN;
     sort(nvals, nvals + ncount);
     return (ncount % 2)
-        ? (nvals[ncount / 2] + nvals[ncount / 2 - 1]) / 2
-        : nvals[ncount / 2];
+        ? nvals[ncount / 2]
+        : (nvals[ncount / 2] + nvals[ncount / 2 - 1]) / 2;
 }
 
 //===========================================================================
-static double aggMin(double vals[], size_t count) {
+double Eval::aggMin(const double vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -132,7 +134,7 @@ static double aggMin(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggMultiply(double vals[], size_t count) {
+double Eval::aggMultiply(const double vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -148,7 +150,7 @@ static double aggMultiply(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggRange(double vals[], size_t count) {
+double Eval::aggRange(const double vals[], size_t count) {
     double low = NAN;
     double high = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
@@ -167,7 +169,7 @@ static double aggRange(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggStddev(double vals[], size_t count) {
+double Eval::aggStddev(const double vals[], size_t count) {
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
             continue;
@@ -189,7 +191,7 @@ static double aggStddev(double vals[], size_t count) {
 }
 
 //===========================================================================
-static double aggSum(double vals[], size_t count) {
+double Eval::aggSum(const double vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -205,7 +207,7 @@ static double aggSum(double vals[], size_t count) {
 }
 
 //===========================================================================
-template<double Fn(double vals[], size_t)>
+template<double Fn(const double vals[], size_t)>
 static void reduce(
     double out[],
     size_t outLen,

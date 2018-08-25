@@ -80,8 +80,12 @@ public:
 
     virtual Function::Type type() const = 0;
 
-    // validate and/or process arguments
-    virtual bool onFuncBind(std::vector<FuncArg> && args) = 0;
+    // Validate and/or process arguments, and return the function instance to
+    // use. Usually returns this or nullptr for errors, but may return an
+    // entirely new function. For exaample aggregate(A, 'max') might bind into
+    // maxSeries(A).
+    virtual IFuncInstance * onFuncBind(std::vector<FuncArg> && args) = 0;
+
     virtual void onFuncAdjustRange(
         Dim::TimePoint * first,
         Dim::TimePoint * last,
@@ -103,6 +107,18 @@ std::shared_ptr<SampleList> reduce(
     Dim::Duration minInterval,
     Aggregate::Type method
 );
+
+double aggAverage(const double vals[], size_t count);
+double aggCount(const double vals[], size_t count);
+double aggDiff(const double vals[], size_t count);
+double aggLast(const double vals[], size_t count);
+double aggMax(const double vals[], size_t count);
+double aggMedian(const double vals[], size_t count);
+double aggMin(const double vals[], size_t count);
+double aggMultiply(const double vals[], size_t count);
+double aggRange(const double vals[], size_t count);
+double aggStddev(const double vals[], size_t count);
+double aggSum(const double vals[], size_t count);
 
 } // namespace
 

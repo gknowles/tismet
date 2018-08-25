@@ -11,6 +11,16 @@
 ***/
 
 //===========================================================================
+inline bool QueryParser::onFnAbsoluteStart () {
+    return startFunc(Eval::Function::kAbsolute);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnAggregateStart () {
+    return startFunc(Eval::Function::kAggregate);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnAliasStart () {
     return startFunc(Eval::Function::kAlias);
 }
@@ -71,6 +81,11 @@ inline bool QueryParser::onFnKeepLastValueStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnLastSeriesStart () {
+    return startFunc(Eval::Function::kLastSeries);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnLegendValueStart () {
     return startFunc(Eval::Function::kLegendValue);
 }
@@ -91,6 +106,11 @@ inline bool QueryParser::onFnMaximumAboveStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnMedianSeriesStart () {
+    return startFunc(Eval::Function::kMedianSeries);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnMinSeriesStart () {
     return startFunc(Eval::Function::kMinSeries);
 }
@@ -108,6 +128,11 @@ inline bool QueryParser::onFnMultiplySeriesStart () {
 //===========================================================================
 inline bool QueryParser::onFnNonNegativeDerivativeStart () {
     return startFunc(Eval::Function::kNonNegativeDerivative);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnRangeSeriesStart () {
+    return startFunc(Eval::Function::kRangeSeries);
 }
 
 //===========================================================================
