@@ -614,8 +614,10 @@ bool DbBase::getSamples(
 //===========================================================================
 DbHandle dbOpen(string_view name, size_t pageSize, DbOpenFlags flags) {
     auto db = make_unique<DbBase>();
-    if (!db->open(name, pageSize, flags))
+    if (!db->open(name, pageSize, flags)) {
+        db->close();
         return DbHandle{};
+    }
 
     scoped_lock lk{s_mut};
     auto h = s_files.insert(db.release());

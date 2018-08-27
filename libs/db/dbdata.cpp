@@ -690,9 +690,15 @@ DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
 
     // Update metric info from sample page if it has no page data.
     if (mi.infoPage && mi.lastPage && !mi.pageFirstTime) {
-        auto sp = txn.viewPage<SamplePage>(mi.lastPage);
-        mi.pageFirstTime = sp->pageFirstTime;
-        mi.pageLastSample = sp->pageLastSample;
+        if (mi.lastPage > kMaxPageNum) {
+            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+            mi.pageFirstTime = mp->lastPageFirstTime;
+            mi.pageLastSample = mp->lastPageSample;
+        } else {
+            auto sp = txn.viewPage<SamplePage>(mi.lastPage);
+            mi.pageFirstTime = sp->pageFirstTime;
+            mi.pageLastSample = sp->pageLastSample;
+        }
         setMetricPos(id, mi);
     }
     return mi;
@@ -1733,6 +1739,8 @@ bool DbData::loadFreePages (DbTxn & txn) {
             }
             first = bits.find(last);
         }
+        if (appStopping())
+            return false;
     }
 
     // validate that pages in free list are in fact free
@@ -1754,6 +1762,8 @@ bool DbData::loadFreePages (DbTxn & txn) {
         } else if (!blank) {
             blank = pgno;
         }
+        if (appStopping())
+            return false;
     }
     if (blank && blank < m_numPages) {
         auto trimmed = (unsigned) (m_numPages - blank);
