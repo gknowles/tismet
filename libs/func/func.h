@@ -13,8 +13,8 @@
 // funcenum.h is a generated file that defines values for the Function::Type
 // and Aggregate::Type enums. It is optional here so it can be generated
 // without having to exist first.
-#if __has_include("funcenum.h")
-    #include "funcenum.h"
+#if __has_include("fnenum.h")
+    #include "fnenum.h"
 #endif
 
 
@@ -76,9 +76,11 @@ public:
 
 struct FuncContext {
     int argPos{-1};
-    Dim::Duration minInterval{};
     Dim::TimePoint first;
     Dim::TimePoint last;
+
+    Dim::Duration minInterval{};
+    Aggregate::Type method{};
 
     // "pre" is a request for samples from before the start of the result
     // range that are needed to make the first values meaningful. These are
@@ -113,7 +115,7 @@ public:
 std::shared_ptr<SampleList> reduce(
     std::shared_ptr<SampleList> samples,
     Dim::Duration minInterval,
-    Aggregate::Type method
+    Aggregate::Type method = {} // defaults to kAverage
 );
 
 double aggAverage(const double vals[], size_t count);
@@ -129,6 +131,8 @@ double aggStddev(const double vals[], size_t count);
 double aggSum(const double vals[], size_t count);
 
 } // namespace
+
+void funcInitialize();
 
 std::unique_ptr<Eval::IFuncInstance> funcCreate(Eval::Function::Type type);
 

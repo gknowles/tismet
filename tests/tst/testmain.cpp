@@ -99,6 +99,7 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
+    funcInitialize();
     int code = appRun(app, argc, argv);
     return code;
 }

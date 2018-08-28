@@ -9,8 +9,6 @@
 // External library public headers
 #include "app/app.h"
 #include "core/core.h"
-#include "db/db.h"
-#include "query/query.h"
 
 // Standard headers
 #include <cassert>
@@ -18,6 +16,10 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 #include <unordered_map>
 
 // Platform headers

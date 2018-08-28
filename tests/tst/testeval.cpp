@@ -25,7 +25,7 @@ using namespace Dim;
 
 namespace {
 
-struct Series {
+struct TestEvalSeries {
     string name;
     TimePoint first;
     Duration interval{};
@@ -41,7 +41,7 @@ public:
         string_view query,
         time_t first,
         unsigned querySeconds,
-        unsigned maxPoints = numeric_limits<time_t>::max()
+        unsigned maxPoints = 0
     );
     UnitTest & in(
         string_view name,
@@ -71,10 +71,10 @@ private:
     TimePoint m_first;
     TimePoint m_last;
     unsigned m_maxPoints;
-    vector<Series> m_in;
-    vector<Series> m_out;
+    vector<TestEvalSeries> m_in;
+    vector<TestEvalSeries> m_out;
 
-    vector<Series> m_found;
+    vector<TestEvalSeries> m_found;
     string m_errmsg;
     bool m_done;
 };
@@ -100,7 +100,7 @@ static condition_variable s_cv;
 ***/
 
 //===========================================================================
-static bool operator==(const Series & a, const Series & b) {
+static bool operator==(const TestEvalSeries & a, const TestEvalSeries & b) {
     if (a.samples.size() != b.samples.size())
         return false;
     for (int i = 0; i < a.samples.size(); ++i) {
@@ -116,7 +116,7 @@ static bool operator==(const Series & a, const Series & b) {
 }
 
 //===========================================================================
-static bool operator<(const Series & a, const Series & b) {
+static bool operator<(const TestEvalSeries & a, const TestEvalSeries & b) {
     if (int rc = a.name.compare(b.name))
         return rc < 0;
     if (int64_t rc = (a.first - b.first).count())

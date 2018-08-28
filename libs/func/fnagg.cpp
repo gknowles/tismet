@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// funcagg.cpp - tismet func
+// fnagg.cpp - tismet func
 #include "pch.h"
 #pragma hdrstop
 
@@ -246,6 +246,7 @@ struct MethodInfo {
 };
 } // namespace
 static MethodInfo s_methods[] = {
+    { nullptr, { "" } },
     { reduce<aggAverage>, { "average", "avg" } },
     { reduce<aggCount>, { "count" } },
     { reduce<aggDiff>, { "diff" } },
@@ -259,7 +260,7 @@ static MethodInfo s_methods[] = {
     { reduce<aggSum>, { "sum", "total" } },
 };
 static vector<TokenTable::Token> s_methodTokens;
-static TokenTable s_methodTbl = [](){
+const TokenTable s_methodTbl = [](){
     sort(begin(s_methods), end(s_methods), [](auto & a, auto & b) {
         return strcmp(a.names.front(), b.names.front()) < 0;
     });
@@ -275,6 +276,7 @@ static TokenTable s_methodTbl = [](){
     }
     return TokenTable{s_methodTokens.data(), s_methodTokens.size()};
 }();
+const Aggregate::Type s_defMethod = fromString("average", Aggregate::Type{});
 
 
 /****************************************************************************
@@ -296,12 +298,12 @@ const TokenTable & funcAggEnums() {
 ***/
 
 //===========================================================================
-const char * toString(Eval::Aggregate::Type ftype, const char def[]) {
+const char * toString(Aggregate::Type ftype, const char def[]) {
     return tokenTableGetName(s_methodTbl, ftype, def);
 }
 
 //===========================================================================
-Aggregate::Type fromString(std::string_view src, Eval::Aggregate::Type def) {
+Aggregate::Type fromString(std::string_view src, Aggregate::Type def) {
     return tokenTableGetEnum(s_methodTbl, src, def);
 }
 
@@ -315,6 +317,8 @@ shared_ptr<SampleList> Eval::reduce(
     if (baseInterval >= minInterval)
         return samples;
 
+    if (!method)
+        method = s_defMethod;
     auto methodFn = s_methods[(int) method].fn;
     auto sps = (minInterval.count() + baseInterval.count() - 1)
         / baseInterval.count();

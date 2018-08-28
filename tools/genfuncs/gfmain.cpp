@@ -45,6 +45,7 @@ namespace Eval {
 
 namespace Function {
     enum Type : int {
+        kInvalid = 0,
 )";
     UnsignedSet ids;
     for (auto && f : funcEnums()) {
@@ -59,6 +60,7 @@ namespace Function {
 
 namespace Aggregate {
     enum Type : int {
+        kInvalid = 0,
 )";
     ids.clear();
     for (auto && f : funcAggEnums()) {
@@ -233,9 +235,11 @@ static void updateFile(string_view fname, string_view content) {
 
 //===========================================================================
 static void app(int argc, char * argv[]) {
+    funcInitialize();
+
     Cli cli;
     auto version = string(kVersion) + " (" __DATE__ ")";
-    cli.header("genfuncs v"s + version);
+    cli.header("genfn v"s + version);
     cli.versionOpt(version, "tsm");
     cli.desc("Code generation for metric function enums, abnf, and parser.");
     cli.helpNoArgs();
@@ -251,7 +255,7 @@ static void app(int argc, char * argv[]) {
         );
     }
 
-    auto funcenum_h = *root / "libs/func/funcenum.h";
+    auto funcenum_h = *root / "libs/func/fnenum.h";
     updateFile(funcenum_h, genFuncEnum(funcenum_h));
     auto query_h = *root / "libs/query/queryparsefuncint.h";
     updateFile(query_h, genQueryFunc(query_h));

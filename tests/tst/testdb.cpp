@@ -25,13 +25,13 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Series
+*   TestDbSeries
 *
 ***/
 
 namespace {
 
-struct Series : IDbDataNotify {
+struct TestDbSeries : IDbDataNotify {
     string m_name;
     uint32_t m_id;
     TimePoint m_first;
@@ -50,7 +50,7 @@ struct Series : IDbDataNotify {
 } // namespace
 
 //===========================================================================
-bool Series::onDbSeriesStart(const DbSeriesInfo & info) {
+bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & info) {
     m_name = info.name;
     m_id = info.id;
     m_first = info.first;
@@ -66,7 +66,7 @@ bool Series::onDbSeriesStart(const DbSeriesInfo & info) {
 }
 
 //===========================================================================
-bool Series::onDbSample(
+bool TestDbSeries::onDbSample(
     uint32_t id,
     Dim::TimePoint time,
     double value
@@ -288,7 +288,7 @@ void Test::onTestRun() {
     }
     stats = dbQueryStats(h);
 
-    Series samples;
+    TestDbSeries samples;
     dbGetSamples(
         &samples,
         h,

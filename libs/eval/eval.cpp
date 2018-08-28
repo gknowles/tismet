@@ -226,45 +226,6 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
 
 /****************************************************************************
 *
-*   SampleList
-*
-***/
-
-//===========================================================================
-// static
-shared_ptr<SampleList> SampleList::alloc(
-    TimePoint first,
-    Duration interval,
-    size_t count
-) {
-    auto vptr = new char[
-        offsetof(SampleList, samples) + count * sizeof(*SampleList::samples)
-    ];
-    auto list = new(vptr) SampleList{first, interval, (uint32_t) count};
-    return shared_ptr<SampleList>(list);
-}
-
-//===========================================================================
-// static
-shared_ptr<SampleList> SampleList::alloc(const SampleList & samples) {
-    return alloc(samples.first, samples.interval, samples.count);
-}
-
-//===========================================================================
-// static
-shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
-    auto out = alloc(samples);
-    memcpy(
-        out->samples,
-        samples.samples,
-        out->count * sizeof(*out->samples)
-    );
-    return out;
-}
-
-
-/****************************************************************************
-*
 *   SourceNode
 *
 ***/
@@ -307,6 +268,8 @@ bool SourceNode::outputContext(SourceContext * out) {
     out->last = TimePoint::min();
     out->pretime = {};
     out->presamples = 0;
+    out->minInterval = {};
+    out->method = {};
 
     scoped_lock lk{m_outMut};
     if (m_outputs.empty()) {
@@ -314,11 +277,11 @@ bool SourceNode::outputContext(SourceContext * out) {
             return false;
         m_outputs.swap(m_pendingOutputs);
     }
-    for (auto && rr : m_outputs) {
-        out->first = min(out->first, rr.first);
-        out->last = max(out->last, rr.last);
-        out->pretime = max(out->pretime, rr.pretime);
-        out->presamples = max(out->presamples, rr.presamples);
+    for (auto && ctx : m_outputs) {
+        out->first = min(out->first, ctx.first);
+        out->last = max(out->last, ctx.last);
+        out->pretime = max(out->pretime, ctx.pretime);
+        out->presamples = max(out->presamples, ctx.presamples);
     }
     return true;
 }
@@ -342,8 +305,8 @@ void SourceNode::outputResultImpl(
     if (m_outputs.empty())
         return;
     if (!info.samples) {
-        for (auto && rr : m_outputs)
-            rr.rn->onResult(info);
+        for (auto && ctx : m_outputs)
+            ctx.rn->onResult(info);
         return;
     }
 
@@ -707,6 +670,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 
 //===========================================================================
 void evalInitialize(DbHandle f) {
+    funcInitialize();
     shutdownMonitor(&s_cleanup);
     s_db = f;
 }

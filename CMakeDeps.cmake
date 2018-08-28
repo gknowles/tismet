@@ -33,10 +33,14 @@
 # libs/eval/intern.h
 # libs/eval/pch.cpp
 # libs/eval/pch.h
-# libs/func/func.cpp
+# libs/func/fnagg.cpp
+# libs/func/fnbase.cpp
+# libs/func/fncombine.cpp
+# libs/func/fnenum.h
+# libs/func/fnfilter.cpp
+# libs/func/fnxfrmlist.cpp
+# libs/func/fnxfrmvalue.cpp
 # libs/func/func.h
-# libs/func/funcagg.cpp
-# libs/func/funcenum.h
 # libs/func/intern.h
 # libs/func/pch.cpp
 # libs/func/pch.h
