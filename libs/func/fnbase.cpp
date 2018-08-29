@@ -258,6 +258,15 @@ static vector<IFuncFactory *> s_funcVec;
 static vector<TokenTable::Token> s_funcTokens;
 static TokenTable s_funcTbl;
 
+const TokenTable::Token s_argTypes[] = {
+    { FuncArgInfo::kAggFunc, "aggFunc" },
+    { FuncArgInfo::kNum, "num" },
+    { FuncArgInfo::kNumOrString, "numOrString" },
+    { FuncArgInfo::kQuery, "query" },
+    { FuncArgInfo::kString, "string" },
+};
+const TokenTable s_argTypeTbl(s_argTypes);
+
 
 /****************************************************************************
 *
@@ -351,3 +360,7 @@ Function::Type fromString(string_view src, Function::Type def) {
     return tokenTableGetEnum(s_funcTbl, src, def);
 }
 
+//===========================================================================
+const char * toString(Eval::FuncArgInfo::Type atype, const char def[]) {
+    return tokenTableGetName(s_argTypeTbl, atype, def);
+}

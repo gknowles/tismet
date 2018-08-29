@@ -4,7 +4,7 @@
 // func.h - tismet func
 #pragma once
 
-#include "core/time.h"
+#include "core/core.h"
 
 #include <memory>
 #include <string_view>
@@ -144,3 +144,51 @@ Eval::Aggregate::Type fromString(
     std::string_view src,
     Eval::Aggregate::Type def
 );
+
+
+/****************************************************************************
+*
+*   Function factories
+*
+***/
+
+namespace Eval {
+
+struct FuncArgInfo {
+    enum Type {
+        kAggFunc,
+        kNum,
+        kNumOrString,
+        kQuery,
+        kString,
+    };
+    std::string name;
+    Type type;
+    bool require{false};
+    bool multiple{false};
+};
+
+class IFuncFactory
+    : public Dim::ListBaseLink<>
+    , public Dim::IFactory<IFuncInstance> {
+public:
+    IFuncFactory(std::string_view name, std::string_view group);
+    IFuncFactory(const IFuncFactory & from);
+    IFuncFactory(IFuncFactory && from);
+
+    // Inherited via IFactory
+    std::unique_ptr<IFuncInstance> onFactoryCreate() override = 0;
+
+    Function::Type m_type{};
+    std::vector<std::string> m_names;
+    std::string m_group;
+    std::vector<FuncArgInfo> m_args;
+};
+
+} // namespace
+
+const Dim::TokenTable & funcEnums();
+const Dim::TokenTable & funcAggEnums();
+const Dim::List<Eval::IFuncFactory> & funcFactories();
+
+const char * toString(Eval::FuncArgInfo::Type atype, const char def[] = "");

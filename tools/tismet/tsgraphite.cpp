@@ -624,7 +624,6 @@ void RenderJson::onEvalError(string_view errmsg) {
     delete this;
 }
 
-
 //===========================================================================
 // RenderAlternativeStorage
 //===========================================================================
@@ -707,6 +706,69 @@ bool RenderAlternativeStorage::onDbSample(
 
 /****************************************************************************
 *
+*   FunctionIndex
+*
+***/
+
+namespace {
+
+class FunctionIndex : public IHttpRouteNotify {
+    void onHttpRequest(unsigned reqId, HttpRequest & req) override;
+};
+
+} // namespace
+
+//===========================================================================
+void FunctionIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
+    bool started = false;
+    HttpResponse res;
+    res.addHeader(kHttpContentType, "application/json");
+    res.addHeader(kHttp_Status, "200");
+    JBuilder bld(&res.body());
+    bld.object();
+    bld.member("aggFunctions").array();
+    for (auto && f : funcAggEnums()) {
+        auto name = string_view{f.name};
+        started = xferIfFull(res, started, reqId, name.size());
+        bld.value(name);
+    }
+    bld.end();
+    bld.member("functions").array();
+    for (auto && f : funcFactories()) {
+        bld.object();
+        bld.member("name", f.m_names[0]);
+        if (f.m_names.size() > 1) {
+            bld.member("aliases").array();
+            for (auto i = 1; i < f.m_names.size(); ++i) {
+                bld.value(f.m_names[i]);
+            }
+            bld.end();
+        }
+        bld.member("group", f.m_group);
+        if (!f.m_args.empty()) {
+            bld.member("args").array();
+            for (auto & arg : f.m_args) {
+                bld.object();
+                bld.member("name", arg.name);
+                bld.member("type", toString(arg.type));
+                if (arg.require)
+                    bld.member("require", true);
+                if (arg.multiple)
+                    bld.member("multiple", true);
+                bld.end();
+            }
+            bld.end();
+        }
+        bld.end();
+    }
+    bld.end();
+    bld.end();
+    xferRest(move(res), started, reqId);
+}
+
+
+/****************************************************************************
+*
 *   Public API
 *
 ***/
@@ -714,6 +776,7 @@ bool RenderAlternativeStorage::onDbSample(
 static MetricIndex s_index;
 static MetricFind s_find;
 static Render s_render;
+static FunctionIndex s_func;
 
 //===========================================================================
 void tsGraphiteInitialize() {
@@ -723,4 +786,5 @@ void tsGraphiteInitialize() {
     httpRouteAdd(&s_render, "/render", fHttpMethodGet);
     httpRouteAdd(&s_render, "/render/", fHttpMethodGet);
     httpRouteAdd(&s_render, "/render", fHttpMethodPost);
+    httpRouteAdd(&s_func, "/functions/index.json", fHttpMethodGet);
 }

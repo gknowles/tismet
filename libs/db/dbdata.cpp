@@ -846,7 +846,7 @@ void DbData::updateSample(
             if (time >= mi.pageFirstTime // new samples section on tip page
                 || ent != kInvalidPos    // old section on tip page
             ) {
-                // updating sample on tip page
+                // converting last page
                 assert(sppos == kInvalidPos);
                 auto mp = txn.viewPage<MetricPage>(mi.infoPage);
                 spno = sampleMakePhysical(
@@ -858,9 +858,11 @@ void DbData::updateSample(
                     mp->lastPageSample,
                     spno
                 );
+                // update references to last page
                 mi.lastPage = spno;
                 setMetricPos(id, mi);
             } else {
+                // converting old page
                 spno = sampleMakePhysical(
                     txn,
                     id,

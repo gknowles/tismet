@@ -12,37 +12,6 @@
 
 namespace Eval {
 
-struct FuncArgInfo {
-    enum Type {
-        kAggFunc,
-        kNum,
-        kNumOrString,
-        kQuery,
-        kString,
-    };
-    std::string name;
-    Type type;
-    bool require{false};
-    bool multiple{false};
-};
-
-class IFuncFactory
-    : public Dim::ListBaseLink<>
-    , public Dim::IFactory<IFuncInstance> {
-public:
-    IFuncFactory(std::string_view name, std::string_view group);
-    IFuncFactory(const IFuncFactory & from);
-    IFuncFactory(IFuncFactory && from);
-
-    // Inherited via IFactory
-    std::unique_ptr<IFuncInstance> onFactoryCreate() override = 0;
-
-    Function::Type m_type{};
-    std::vector<std::string> m_names;
-    std::string m_group;
-    std::vector<FuncArgInfo> m_args;
-};
-
 template<typename T>
 class FuncFactory : public IFuncFactory {
 public:
@@ -85,10 +54,6 @@ std::shared_ptr<char[]> addFuncName(
 );
 
 } // namespace
-
-const Dim::TokenTable & funcEnums();
-const Dim::TokenTable & funcAggEnums();
-const Dim::List<Eval::IFuncFactory> & funcFactories();
 
 void funcCombineInitialize();
 void funcFilterInitialize();
