@@ -114,6 +114,9 @@ afn-count = %s"count"
 aggfunc =/ afn-diff { As string, Start+, End+ }
 afn-diff = %s"diff"
 
+aggfunc =/ afn-first { As string, Start+, End+ }
+afn-first = %s"first"
+
 aggfunc =/ afn-last { As string, Start+, End+ }
 afn-last = %s"last"
 

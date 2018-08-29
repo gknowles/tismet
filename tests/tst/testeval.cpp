@@ -334,6 +334,12 @@ static auto s_consolidateBy_diff = UnitTest("consolidateBy_diff")
     .out("1.value", 10, 2s, {-1, -1, -1})
     .in("2.value", 13, 1s, {4,5,6,7,8,9})
     .out("2.value", 10, 2s, {NAN, 4, -1});
+static auto s_consolidateBy_first = UnitTest("consolidateBy_first")
+    .query("consolidateBy(*.value, 'first')", 10, 6, 3)
+    .in("1.value", 10, 1s, {1,2,3,4,5,6})
+    .out("1.value", 10, 2s, {1, 3, 5})
+    .in("2.value", 13, 1s, {4,5,6,7,8,9})
+    .out("2.value", 10, 2s, {NAN, 4, 5});
 static auto s_consolidateBy_last = UnitTest("consolidateBy_last")
     .query("consolidateBy(*.value, 'last')", 10, 6, 3)
     .in("1.value", 10, 1s, {1,2,3,4,5,6})

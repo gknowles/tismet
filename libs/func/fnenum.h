@@ -56,14 +56,15 @@ namespace Aggregate {
         kAverage = 1,
         kCount = 2,
         kDiff = 3,
-        kLast = 4,
-        kMax = 5,
-        kMedian = 6,
-        kMin = 7,
-        kMultiply = 8,
-        kRange = 9,
-        kStddev = 10,
-        kSum = 11,
+        kFirst = 4,
+        kLast = 5,
+        kMax = 6,
+        kMedian = 7,
+        kMin = 8,
+        kMultiply = 9,
+        kRange = 10,
+        kStddev = 11,
+        kSum = 12,
     };
 }
 

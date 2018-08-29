@@ -72,10 +72,22 @@ double Eval::aggDiff(const double vals[], size_t count) {
 }
 
 //===========================================================================
+double Eval::aggFirst(const double vals[], size_t count) {
+    auto evals = vals + count;
+    for (; vals < evals; ++vals) {
+        if (!isnan(*vals))
+            return *vals;
+    }
+    return NAN;
+}
+
+//===========================================================================
 double Eval::aggLast(const double vals[], size_t count) {
-    while (count && isnan(vals[count - 1]))
-        count -= 1;
-    return count ? vals[count - 1] : NAN;
+    while (count--) {
+        if (!isnan(vals[count]))
+            return vals[count];
+    }
+    return NAN;
 }
 
 //===========================================================================
@@ -250,6 +262,7 @@ static MethodInfo s_methods[] = {
     { reduce<aggAverage>, { "average", "avg" } },
     { reduce<aggCount>, { "count" } },
     { reduce<aggDiff>, { "diff" } },
+    { reduce<aggFirst>, { "first" } },
     { reduce<aggLast>, { "last", "current" } },
     { reduce<aggMax>, { "max" } },
     { reduce<aggMedian>, { "median" } },

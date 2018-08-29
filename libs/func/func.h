@@ -121,6 +121,7 @@ std::shared_ptr<SampleList> reduce(
 double aggAverage(const double vals[], size_t count);
 double aggCount(const double vals[], size_t count);
 double aggDiff(const double vals[], size_t count);
+double aggFirst(const double vals[], size_t count);
 double aggLast(const double vals[], size_t count);
 double aggMax(const double vals[], size_t count);
 double aggMedian(const double vals[], size_t count);
