@@ -328,6 +328,28 @@ void FuncDiffSeries::onCombineValue(double & agg, int pos, double newVal) {
 
 /****************************************************************************
 *
+*   firstSeries
+*
+***/
+
+namespace {
+class FuncFirstSeries : public ICombineBase<FuncFirstSeries> {
+    void onCombineValue(double & agg, int pos, double newVal) override;
+};
+} // namespace
+static auto s_firstSeries =
+    FuncFirstSeries::Factory("firstSeries", "Combine")
+    .arg("query", FuncArgInfo::kQuery, true, true);
+
+//===========================================================================
+void FuncFirstSeries::onCombineValue(double & agg, int pos, double newVal) {
+    if (isnan(agg))
+        agg = newVal;
+}
+
+
+/****************************************************************************
+*
 *   lastSeries
 *
 ***/

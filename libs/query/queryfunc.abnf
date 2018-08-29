@@ -38,6 +38,9 @@ fn-diffSeries = %s"diffSeries(" arg-query *( "," arg-query ) ")" { Start }
 func =/ fn-drawAsInfinite { End }
 fn-drawAsInfinite = %s"drawAsInfinite(" arg-query ")" { Start }
 
+func =/ fn-firstSeries { End }
+fn-firstSeries = %s"firstSeries(" arg-query *( "," arg-query ) ")" { Start }
+
 func =/ fn-highestCurrent { End }
 fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
 

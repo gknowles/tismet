@@ -66,6 +66,11 @@ inline bool QueryParser::onFnDrawAsInfiniteStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnFirstSeriesStart () {
+    return startFunc(Eval::Function::kFirstSeries);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnHighestCurrentStart () {
     return startFunc(Eval::Function::kHighestCurrent);
 }
