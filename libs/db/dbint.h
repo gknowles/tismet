@@ -142,6 +142,8 @@ private:
 
     mutable std::mutex m_workMut;
 
+    bool m_saveInProgress{false}; // is saveWork() task running?
+
     // Info about work pages that have been modified in memory but not yet
     // written to disk.
     struct WorkPageInfo : Dim::ListBaseLink<> {
