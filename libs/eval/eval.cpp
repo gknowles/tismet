@@ -151,8 +151,15 @@ static shared_ptr<char[]> toSharedString(string_view src) {
 //===========================================================================
 static shared_ptr<SourceNode> addSource(
     ResultNode * rn,
-    shared_ptr<SourceNode> src
+    shared_ptr<SourceNode> src,
+    bool updateGlobal = true
 ) {
+    if (updateGlobal) {
+        scoped_lock lk{s_mut};
+        auto ib = s_sources.insert({src->sourceName().get(), src});
+        if (!ib.second)
+            src = ib.first->second;
+    }
     rn->m_sources.push_back(src);
     return src;
 }
@@ -161,7 +168,7 @@ static shared_ptr<SourceNode> addSource(
 static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     shared_lock lk{s_mut};
     if (auto si = s_sources.find(srcv); si != s_sources.end())
-        return addSource(rn, si->second);
+        return addSource(rn, si->second, false);
     lk.unlock();
 
     auto src = toSharedString(srcv);
@@ -173,10 +180,6 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     if (type == Query::kPath) {
         auto sn = make_shared<DbDataNode>();
         sn->init(src);
-        {
-            scoped_lock lk{s_mut};
-            s_sources[src.get()] = sn;
-        }
         return addSource(rn, sn);
     }
 
@@ -194,10 +197,6 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     } else {
         assert(!"Unsupported function");
         return {};
-    }
-    {
-        scoped_lock lk{s_mut};
-        s_sources[src.get()] = fnode;
     }
     vector<FuncArg> fargs;
     for (auto && arg : qf.args) {

@@ -55,9 +55,9 @@ public:
     void addOutput(const SourceContext & context);
     void removeOutput(ResultNode * rn);
 
-protected:
     std::shared_ptr<char[]> sourceName() const { return m_source; }
 
+protected:
     // Sets first, last, pretime, and presamples
     // Returns false if outputs and pendingOutputs are empty
     bool outputContext(SourceContext * context);
