@@ -313,10 +313,16 @@ void DbPage::saveWork() {
     m_lastSaveTime = now;
 
     unique_lock lk{m_workMut};
+    if (m_saveInProgress)
+        return;
+    m_saveInProgress = true;
+    
     saveOldPages_LK();
 
-    if (!m_dirtyPages)
+    if (!m_dirtyPages) {
+        m_saveInProgress = false;
         return;
+    }
 
     auto minTime = now - m_maxDirtyAge;
     auto minDataLsn = m_overflowBytes
@@ -386,6 +392,7 @@ void DbPage::saveWork() {
     if (!m_oldPages && savedLsn)
         removeWalPages_LK(savedLsn);
 
+    m_saveInProgress = false;
     queueSaveWork_LK();
 }
 
