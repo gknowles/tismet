@@ -31,6 +31,16 @@ inline bool QueryParser::onFnAliasSubStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnAverageAboveStart () {
+    return startFunc(Eval::Function::kAverageAbove);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnAverageBelowStart () {
+    return startFunc(Eval::Function::kAverageBelow);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnAverageSeriesStart () {
     return startFunc(Eval::Function::kAverageSeries);
 }
@@ -51,6 +61,16 @@ inline bool QueryParser::onFnCountSeriesStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnCurrentAboveStart () {
+    return startFunc(Eval::Function::kCurrentAbove);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnCurrentBelowStart () {
+    return startFunc(Eval::Function::kCurrentBelow);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnDerivativeStart () {
     return startFunc(Eval::Function::kDerivative);
 }
@@ -63,6 +83,11 @@ inline bool QueryParser::onFnDiffSeriesStart () {
 //===========================================================================
 inline bool QueryParser::onFnDrawAsInfiniteStart () {
     return startFunc(Eval::Function::kDrawAsInfinite);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnFilterSeriesStart () {
+    return startFunc(Eval::Function::kFilterSeries);
 }
 
 //===========================================================================
@@ -111,6 +136,11 @@ inline bool QueryParser::onFnMaximumAboveStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnMaximumBelowStart () {
+    return startFunc(Eval::Function::kMaximumBelow);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnMedianSeriesStart () {
     return startFunc(Eval::Function::kMedianSeries);
 }
@@ -118,6 +148,16 @@ inline bool QueryParser::onFnMedianSeriesStart () {
 //===========================================================================
 inline bool QueryParser::onFnMinSeriesStart () {
     return startFunc(Eval::Function::kMinSeries);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnMinimumAboveStart () {
+    return startFunc(Eval::Function::kMinimumAbove);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnMinimumBelowStart () {
+    return startFunc(Eval::Function::kMinimumBelow);
 }
 
 //===========================================================================

@@ -24,8 +24,6 @@ using namespace Eval;
 *
 ***/
 
-static List<IFuncFactory> s_factories;
-
 
 /****************************************************************************
 *
@@ -68,6 +66,40 @@ shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
 
 /****************************************************************************
 *
+*   FuncArg
+*
+***/
+
+//===========================================================================
+FuncArg::Enum::Enum(std::string name, const Dim::TokenTable * tbl)
+    : name{name}
+    , table{tbl}
+{
+    funcEnums().link(this);
+}
+
+
+/****************************************************************************
+*
+*   Function instance
+*
+***/
+
+//===========================================================================
+IFuncInstance * Eval::bind(
+    Function::Type type,
+    std::vector<FuncArg> && args
+) {
+    auto func = funcCreate(type);
+    auto bound = func->onFuncBind(move(args));
+    if (bound == func.get())
+        func.release();
+    return bound;
+}
+
+
+/****************************************************************************
+*
 *   IFuncFactory
 *
 ***/
@@ -76,7 +108,7 @@ shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
 IFuncFactory::IFuncFactory(string_view name, string_view group)
     : m_group{group}
 {
-    s_factories.link(this);
+    funcFactories().link(this);
     m_names.push_back(string{name});
 }
 
@@ -87,7 +119,7 @@ IFuncFactory::IFuncFactory(const IFuncFactory & from)
     , m_group(from.m_group)
     , m_args(from.m_args)
 {
-    s_factories.link(this);
+    funcFactories().link(this);
 }
 
 //===========================================================================
@@ -97,7 +129,7 @@ IFuncFactory::IFuncFactory(IFuncFactory && from)
     , m_group(move(from.m_group))
     , m_args(move(from.m_args))
 {
-    s_factories.link(this);
+    funcFactories().link(this);
 }
 
 
@@ -120,18 +152,18 @@ bool PassthruBase::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 }
 
 static auto s_aliasSub = PassthruBase::Factory("aliasSub", "Alias")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("search", FuncArgInfo::kString, true)
-    .arg("replace", FuncArgInfo::kString, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("search", FuncArg::kString, true)
+    .arg("replace", FuncArg::kString, true);
 static auto s_color = PassthruBase::Factory("color", "Graph")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("color", FuncArgInfo::kString, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("color", FuncArg::kString, true);
 static auto s_legendValue = PassthruBase::Factory("legendValue", "Alias")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("valuesTypes", FuncArgInfo::kString, false, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("valuesTypes", FuncArg::kString, false, true);
 static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("width", FuncArgInfo::kNum, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("width", FuncArg::kNum, true);
 
 
 /****************************************************************************
@@ -149,8 +181,8 @@ class FuncAlias : public IFuncBase<FuncAlias> {
 };
 } // namespace
 static auto s_alias = FuncAlias::Factory("alias", "Alias")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("name", FuncArgInfo::kString, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("name", FuncArg::kString, true);
 
 //===========================================================================
 IFuncInstance * FuncAlias::onFuncBind(vector<FuncArg> && args) {
@@ -182,8 +214,8 @@ class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
 } // namespace
 static auto s_consolidateBy =
     FuncConsolidateBy::Factory("consolidateBy", "Special")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("method", FuncArgInfo::kAggFunc, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("method", "aggFunc", true);
 
 //===========================================================================
 IFuncInstance * FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {
@@ -215,8 +247,8 @@ class FuncTimeShift : public IFuncBase<FuncTimeShift> {
 };
 } // namespace
 static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("timeShift", FuncArgInfo::kString, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("timeShift", FuncArg::kString, true);
 
 //===========================================================================
 IFuncInstance * FuncTimeShift::onFuncBind(vector<FuncArg> && args) {
@@ -259,11 +291,11 @@ static vector<TokenTable::Token> s_funcTokens;
 static TokenTable s_funcTbl;
 
 const TokenTable::Token s_argTypes[] = {
-    { FuncArgInfo::kAggFunc, "aggFunc" },
-    { FuncArgInfo::kNum, "num" },
-    { FuncArgInfo::kNumOrString, "numOrString" },
-    { FuncArgInfo::kQuery, "query" },
-    { FuncArgInfo::kString, "string" },
+    { FuncArg::kEnum, "enum" },
+    { FuncArg::kNum, "num" },
+    { FuncArg::kNumOrString, "numOrString" },
+    { FuncArg::kQuery, "query" },
+    { FuncArg::kString, "string" },
 };
 const TokenTable s_argTypeTbl(s_argTypes);
 
@@ -300,13 +332,20 @@ shared_ptr<char[]> Eval::addFuncName(
 }
 
 //===========================================================================
-const TokenTable & funcEnums() {
+const TokenTable & funcIds() {
     return s_funcTbl;
 }
 
 //===========================================================================
-const List<IFuncFactory> & funcFactories() {
+List<IFuncFactory> & funcFactories() {
+    static List<IFuncFactory> s_factories;
     return s_factories;
+}
+
+//===========================================================================
+List<FuncArg::Enum> & funcEnums() {
+    static List<FuncArg::Enum> s_enums;
+    return s_enums;
 }
 
 
@@ -327,7 +366,7 @@ void funcInitialize() {
     funcXfrmValueInitialize();
 
     s_funcVec.push_back(nullptr);
-    for (auto && f : s_factories)
+    for (auto && f : funcFactories())
         s_funcVec.push_back(&f);
     sort(s_funcVec.begin() + 1, s_funcVec.end(), [](auto & a, auto & b) {
         return a->m_names.front() < b->m_names.front();
@@ -341,7 +380,7 @@ void funcInitialize() {
             token.name = n.c_str();
         }
     }
-    s_funcTbl = TokenTable{s_funcTokens.data(), s_funcTokens.size()};
+    s_funcTbl = TokenTable{s_funcTokens};
 }
 
 //===========================================================================
@@ -361,6 +400,6 @@ Function::Type fromString(string_view src, Function::Type def) {
 }
 
 //===========================================================================
-const char * toString(Eval::FuncArgInfo::Type atype, const char def[]) {
+const char * toString(Eval::FuncArg::Type atype, const char def[]) {
     return tokenTableGetName(s_argTypeTbl, atype, def);
 }

@@ -67,11 +67,11 @@ static Test s_test;
 void Test::onTestRun() {
     auto start = timeFromUnix(900'000'000);
 
+    EXPECT_PARSE("sum(sum(a))", "sumSeries(sumSeries(a))");
     EXPECT_PARSE("a.b{,d}", "a.b{,d}");
     EXPECT_PARSE("a{,b}", "a{,b}");
     EXPECT_PARSE("a{ [12] , cd[34] }", "a{cd[34],[12]}");
     EXPECT_PARSE("a.{ xxx ,zzz,xxx, yyyyy }.b", "a.{xxx,yyyyy,zzz}.b");
-    EXPECT_PARSE("sum(sum(a))", "sumSeries(sumSeries(a))");
     EXPECT_PARSE("**", "**");
     EXPECT_PARSE("**.**.*.**.a.*.**", "*.**.a.*.**");
     EXPECT_PARSE("a**b.**c.**.d.***.e", "a*b.*c.**.d.*.e");

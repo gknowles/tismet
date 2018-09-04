@@ -252,25 +252,25 @@ static void reduce(
 
 namespace {
 struct MethodInfo {
+    AggFn * aggFn;
     ReduceFn * fn;
     vector<const char *> names;
-    Aggregate::Type type{};
 };
 } // namespace
 static MethodInfo s_methods[] = {
-    { nullptr, { "" } },
-    { reduce<aggAverage>, { "average", "avg" } },
-    { reduce<aggCount>, { "count" } },
-    { reduce<aggDiff>, { "diff" } },
-    { reduce<aggFirst>, { "first" } },
-    { reduce<aggLast>, { "last", "current" } },
-    { reduce<aggMax>, { "max" } },
-    { reduce<aggMedian>, { "median" } },
-    { reduce<aggMin>, { "min" } },
-    { reduce<aggMultiply>, { "multiply" } },
-    { reduce<aggRange>, { "range", "rangeOf" } },
-    { reduce<aggStddev>, { "stddev" } },
-    { reduce<aggSum>, { "sum", "total" } },
+    { nullptr, nullptr, { "" } },
+    { aggAverage,  reduce<aggAverage>,  { "average", "avg" } },
+    { aggCount,    reduce<aggCount>,    { "count" } },
+    { aggDiff,     reduce<aggDiff>,     { "diff" } },
+    { aggFirst,    reduce<aggFirst>,    { "first" } },
+    { aggLast,     reduce<aggLast>,     { "last", "current" } },
+    { aggMax,      reduce<aggMax>,      { "max" } },
+    { aggMedian,   reduce<aggMedian>,   { "median" } },
+    { aggMin,      reduce<aggMin>,      { "min" } },
+    { aggMultiply, reduce<aggMultiply>, { "multiply" } },
+    { aggRange,    reduce<aggRange>,    { "range", "rangeOf" } },
+    { aggStddev,   reduce<aggStddev>,   { "stddev" } },
+    { aggSum,      reduce<aggSum>,      { "sum", "total" } },
 };
 static vector<TokenTable::Token> s_methodTokens;
 const TokenTable s_methodTbl = [](){
@@ -278,30 +278,21 @@ const TokenTable s_methodTbl = [](){
         return strcmp(a.names.front(), b.names.front()) < 0;
     });
     for (unsigned i = 0; i < size(s_methods); ++i) {
-        auto & m = s_methods[i];
-        if (m.fn) {
-            for (auto && n : m.names) {
+        auto & v = s_methods[i];
+        if (v.fn) {
+            for (auto && n : v.names) {
                 auto & token = s_methodTokens.emplace_back();
                 token.id = i;
                 token.name = n;
             }
         }
     }
-    return TokenTable{s_methodTokens.data(), s_methodTokens.size()};
+    return TokenTable{s_methodTokens};
 }();
+
+static FuncArg::Enum s_methodEnum{"aggFunc", &s_methodTbl};
+
 const Aggregate::Type s_defMethod = fromString("average", Aggregate::Type{});
-
-
-/****************************************************************************
-*
-*   Internal API
-*
-***/
-
-//===========================================================================
-const TokenTable & funcAggEnums() {
-    return s_methodTbl;
-}
 
 
 /****************************************************************************
@@ -309,6 +300,11 @@ const TokenTable & funcAggEnums() {
 *   Public API
 *
 ***/
+
+//===========================================================================
+Aggregate::Type Aggregate::defaultType() {
+    return s_defMethod;
+}
 
 //===========================================================================
 const char * toString(Aggregate::Type ftype, const char def[]) {
@@ -331,7 +327,7 @@ shared_ptr<SampleList> Eval::reduce(
         return samples;
 
     if (!method)
-        method = s_defMethod;
+        method = Aggregate::defaultType();
     auto methodFn = s_methods[(int) method].fn;
     auto sps = (minInterval.count() + baseInterval.count() - 1)
         / baseInterval.count();
@@ -355,4 +351,11 @@ shared_ptr<SampleList> Eval::reduce(
         presamples
     );
     return out;
+}
+
+//===========================================================================
+Eval::AggFn * Eval::aggFunc(Aggregate::Type method) {
+    if (!method)
+        method = Aggregate::defaultType();
+    return s_methods[(int) method].aggFn;
 }

@@ -69,7 +69,7 @@ class FuncDerivative : public IXfrmListBase<FuncDerivative> {
 };
 } // namespace
 static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true);
+    .arg("query", FuncArg::kQuery, true);
 
 //===========================================================================
 IFuncInstance * FuncDerivative::onFuncBind(vector<FuncArg> && args) {
@@ -112,8 +112,8 @@ class FuncKeepLastValue : public IXfrmListBase<FuncKeepLastValue> {
 } // namespace
 static auto s_keepLastValue =
     FuncKeepLastValue::Factory("keepLastValue", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("limit", FuncArgInfo::kNum);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("limit", FuncArg::kNum);
 
 //===========================================================================
 IFuncInstance * FuncKeepLastValue::onFuncBind(vector<FuncArg> && args) {
@@ -183,9 +183,9 @@ class FuncMovingAverage : public IXfrmListBase<FuncMovingAverage> {
 } // namespace
 static auto s_movingAverage =
     FuncMovingAverage::Factory("movingAverage", "Calculate")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("windowSize", FuncArgInfo::kNumOrString, true)
-    .arg("xFilesFactor", FuncArgInfo::kNum, false);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("windowSize", FuncArg::kNumOrString, true)
+    .arg("xFilesFactor", FuncArg::kNum, false);
 
 //===========================================================================
 IFuncInstance * FuncMovingAverage::onFuncBind(vector<FuncArg> && args) {
@@ -270,8 +270,8 @@ class FuncNonNegativeDerivative
 } // namespace
 static auto s_nonNegativeDerivative =
     FuncNonNegativeDerivative::Factory("nonNegativeDerivative", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("maxValue", FuncArgInfo::kNum);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("maxValue", FuncArg::kNum);
 
 //===========================================================================
 IFuncInstance * FuncNonNegativeDerivative::onFuncBind(vector<FuncArg> && args) {

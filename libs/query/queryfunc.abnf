@@ -8,13 +8,19 @@ func =/ fn-absolute { End }
 fn-absolute = %s"absolute(" arg-query ")" { Start }
 
 func =/ fn-aggregate { End }
-fn-aggregate = %s"aggregate(" arg-query "," arg-aggfunc ")" { Start }
+fn-aggregate = %s"aggregate(" arg-query "," arg-aggFunc ")" { Start }
 
 func =/ fn-alias { End }
 fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
 
 func =/ fn-aliasSub { End }
 fn-aliasSub = %s"aliasSub(" arg-query "," arg-string "," arg-string ")" { Start }
+
+func =/ fn-averageAbove { End }
+fn-averageAbove = %s"averageAbove(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-averageBelow { End }
+fn-averageBelow = %s"averageBelow(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-averageSeries / fn-avg { End }
 fn-averageSeries = %s"averageSeries(" arg-query *( "," arg-query ) ")" { Start }
@@ -24,10 +30,16 @@ func =/ fn-color { End }
 fn-color = %s"color(" arg-query "," arg-string ")" { Start }
 
 func =/ fn-consolidateBy { End }
-fn-consolidateBy = %s"consolidateBy(" arg-query "," arg-aggfunc ")" { Start }
+fn-consolidateBy = %s"consolidateBy(" arg-query "," arg-aggFunc ")" { Start }
 
 func =/ fn-countSeries { End }
 fn-countSeries = %s"countSeries(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-currentAbove { End }
+fn-currentAbove = %s"currentAbove(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-currentBelow { End }
+fn-currentBelow = %s"currentBelow(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-derivative { End }
 fn-derivative = %s"derivative(" arg-query ")" { Start }
@@ -37,6 +49,9 @@ fn-diffSeries = %s"diffSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-drawAsInfinite { End }
 fn-drawAsInfinite = %s"drawAsInfinite(" arg-query ")" { Start }
+
+func =/ fn-filterSeries { End }
+fn-filterSeries = %s"filterSeries(" arg-query "," arg-aggFunc "," arg-operator "," arg-num ")" { Start }
 
 func =/ fn-firstSeries { End }
 fn-firstSeries = %s"firstSeries(" arg-query *( "," arg-query ) ")" { Start }
@@ -62,11 +77,20 @@ fn-lineWidth = %s"lineWidth(" arg-query "," arg-num ")" { Start }
 func =/ fn-maximumAbove { End }
 fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
 
+func =/ fn-maximumBelow { End }
+fn-maximumBelow = %s"maximumBelow(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-maxSeries { End }
 fn-maxSeries = %s"maxSeries(" arg-query *( "," arg-query ) ")" { Start }
 
 func =/ fn-medianSeries { End }
 fn-medianSeries = %s"medianSeries(" arg-query *( "," arg-query ) ")" { Start }
+
+func =/ fn-minimumAbove { End }
+fn-minimumAbove = %s"minimumAbove(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-minimumBelow { End }
+fn-minimumBelow = %s"minimumBelow(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-minSeries { End }
 fn-minSeries = %s"minSeries(" arg-query *( "," arg-query ) ")" { Start }
@@ -106,41 +130,38 @@ func =/ fn-timeShift { End }
 fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }
 
 ;----------------------------------------------------------------------------
-; Aggregate functions
+; Enumeration arguments
 ;----------------------------------------------------------------------------
-aggfunc =/ afn-average { As string, Start+, End+ }
-afn-average = %s"average"
+arg-aggFunc = *WSP (DQUOTE enum-aggFunc DQUOTE / "'" enum-aggFunc "'") *WSP
+enum-aggFunc =/ %s"average" { As string, Start+, End+ }
+enum-aggFunc =/ %s"avg" { As string, Start+, End+ }
+enum-aggFunc =/ %s"count" { As string, Start+, End+ }
+enum-aggFunc =/ %s"diff" { As string, Start+, End+ }
+enum-aggFunc =/ %s"first" { As string, Start+, End+ }
+enum-aggFunc =/ %s"last" { As string, Start+, End+ }
+enum-aggFunc =/ %s"current" { As string, Start+, End+ }
+enum-aggFunc =/ %s"max" { As string, Start+, End+ }
+enum-aggFunc =/ %s"median" { As string, Start+, End+ }
+enum-aggFunc =/ %s"min" { As string, Start+, End+ }
+enum-aggFunc =/ %s"multiply" { As string, Start+, End+ }
+enum-aggFunc =/ %s"range" { As string, Start+, End+ }
+enum-aggFunc =/ %s"rangeOf" { As string, Start+, End+ }
+enum-aggFunc =/ %s"stddev" { As string, Start+, End+ }
+enum-aggFunc =/ %s"sum" { As string, Start+, End+ }
+enum-aggFunc =/ %s"total" { As string, Start+, End+ }
 
-aggfunc =/ afn-count { As string, Start+, End+ }
-afn-count = %s"count"
-
-aggfunc =/ afn-diff { As string, Start+, End+ }
-afn-diff = %s"diff"
-
-aggfunc =/ afn-first { As string, Start+, End+ }
-afn-first = %s"first"
-
-aggfunc =/ afn-last { As string, Start+, End+ }
-afn-last = %s"last"
-
-aggfunc =/ afn-max { As string, Start+, End+ }
-afn-max = %s"max"
-
-aggfunc =/ afn-median { As string, Start+, End+ }
-afn-median = %s"median"
-
-aggfunc =/ afn-min { As string, Start+, End+ }
-afn-min = %s"min"
-
-aggfunc =/ afn-multiply { As string, Start+, End+ }
-afn-multiply = %s"multiply"
-
-aggfunc =/ afn-range { As string, Start+, End+ }
-afn-range = %s"range"
-
-aggfunc =/ afn-stddev { As string, Start+, End+ }
-afn-stddev = %s"stddev"
-
-aggfunc =/ afn-sum { As string, Start+, End+ }
-afn-sum = %s"sum"
+arg-operator = *WSP (DQUOTE enum-operator DQUOTE / "'" enum-operator "'") *WSP
+enum-operator =/ %s"eq" { As string, Start+, End+ }
+enum-operator =/ %s"=" { As string, Start+, End+ }
+enum-operator =/ %s"ne" { As string, Start+, End+ }
+enum-operator =/ %s"!=" { As string, Start+, End+ }
+enum-operator =/ %s"<>" { As string, Start+, End+ }
+enum-operator =/ %s"gt" { As string, Start+, End+ }
+enum-operator =/ %s">" { As string, Start+, End+ }
+enum-operator =/ %s"ge" { As string, Start+, End+ }
+enum-operator =/ %s">=" { As string, Start+, End+ }
+enum-operator =/ %s"lt" { As string, Start+, End+ }
+enum-operator =/ %s"<" { As string, Start+, End+ }
+enum-operator =/ %s"le" { As string, Start+, End+ }
+enum-operator =/ %s"<=" { As string, Start+, End+ }
 

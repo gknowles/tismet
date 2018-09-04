@@ -20,7 +20,13 @@ public:
 
     FuncFactory & arg(
         std::string_view name,
-        FuncArgInfo::Type type,
+        FuncArg::Type type,
+        bool require = false,
+        bool multiple = false
+    );
+    FuncFactory & arg(
+        std::string_view name,
+        const char enumName[],
         bool require = false,
         bool multiple = false
     );
@@ -37,7 +43,7 @@ public:
 
     IFuncInstance * onFuncBind(std::vector<FuncArg> && args) override;
     void onFuncAdjustContext(FuncContext * context) override;
-    bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override = 0;
+    bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
 protected:
     Dim::Duration m_pretime{};
@@ -79,11 +85,30 @@ std::unique_ptr<Eval::IFuncInstance> Eval::FuncFactory<T>::onFactoryCreate() {
 template<typename T>
 Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
     std::string_view name,
-    FuncArgInfo::Type type,
+    FuncArg::Type type,
     bool require,
     bool multiple
 ) {
-    auto arg = FuncArgInfo{std::string(name), type, require, multiple};
+    auto arg = FuncArgInfo{std::string(name), type, {}, require, multiple};
+    m_args.push_back(std::move(arg));
+    return *this;
+}
+
+//===========================================================================
+template<typename T>
+Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
+    std::string_view name,
+    const char enumName[],
+    bool require,
+    bool multiple
+) {
+    auto arg = FuncArgInfo{
+        std::string(name),
+        FuncArg::kEnum,
+        enumName,
+        require,
+        multiple
+    };
     m_args.push_back(std::move(arg));
     return *this;
 }
@@ -121,4 +146,11 @@ template<typename T>
 void Eval::IFuncBase<T>::onFuncAdjustContext(Eval::FuncContext * context) {
     context->pretime += m_pretime;
     context->presamples += m_presamples;
+}
+
+//===========================================================================
+template<typename T>
+bool Eval::IFuncBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
+    assert(!"onFuncApply not implemented by base function");
+    return false;
 }

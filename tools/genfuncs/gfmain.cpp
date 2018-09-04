@@ -48,7 +48,7 @@ namespace Function {
         kInvalid = 0,
 )";
     UnsignedSet ids;
-    for (auto && f : funcEnums()) {
+    for (auto && f : funcIds()) {
         if (ids.insert(f.id)) {
             os << "        k" << (char) toupper(*f.name) << f.name + 1
                 << " = " << f.id << ",\n";
@@ -57,21 +57,24 @@ namespace Function {
     os << 1 + R"(
     };
 }
-
-namespace Aggregate {
+)";
+    for (auto && e : funcEnums()) {
+        os << 1 + R"(
+namespace )" << (char) toupper(e.name[0]) << e.name.c_str() + 1 << R"( {
     enum Type : int {
         kInvalid = 0,
 )";
-    ids.clear();
-    for (auto && f : funcAggEnums()) {
-        if (ids.insert(f.id)) {
-            os << "        k" << (char) toupper(*f.name) << f.name + 1
-                << " = " << f.id << ",\n";
+        ids.clear();
+        for (auto && t : *e.table) {
+            if (!ids.insert(t.id))
+                continue;
+            os << "        k" << (char) toupper(*t.name) << t.name + 1
+                << " = " << t.id << ",\n";
         }
+        os << "    };\n"
+            << "}\n";
     }
     os << 1 + R"(
-    };
-}
 
 } // namespace
 )";
@@ -96,7 +99,7 @@ static string genQueryFunc(string_view fname) {
 ***/
 )";
     UnsignedSet ids;
-    for (auto && f : funcEnums()) {
+    for (auto && f : funcIds()) {
         if (!ids.insert(f.id))
             continue;
         auto name = string(f.name);
@@ -113,13 +116,13 @@ inline bool QueryParser::onFn)" << name << R"(Start () {
 }
 
 //===========================================================================
-static const char * argTypeName(Eval::FuncArgInfo::Type type) {
-    switch (type) {
-    case Eval::FuncArgInfo::kNum: return "arg-num";
-    case Eval::FuncArgInfo::kNumOrString: return "(arg-num / arg-string)";
-    case Eval::FuncArgInfo::kQuery: return "arg-query";
-    case Eval::FuncArgInfo::kString: return "arg-string";
-    case Eval::FuncArgInfo::kAggFunc: return "arg-aggfunc";
+static string argTypeName(const Eval::FuncArgInfo & arg) {
+    switch (arg.type) {
+    case Eval::FuncArg::kNum: return "arg-num";
+    case Eval::FuncArg::kNumOrString: return "(arg-num / arg-string)";
+    case Eval::FuncArg::kQuery: return "arg-query";
+    case Eval::FuncArg::kString: return "arg-string";
+    case Eval::FuncArg::kEnum: return "arg-"s + arg.enumName;
     default:
         assert(!"Unknown argument type");
         return "arg-invalid";
@@ -132,7 +135,7 @@ static void genAbnfArg(
     const Eval::FuncArgInfo & arg,
     bool first
 ) {
-    auto aname = argTypeName(arg.type);
+    auto aname = argTypeName(arg);
     if (first && arg.multiple) {
         assert(arg.require && "First argument must not be optional");
         os << aname << " *( \",\" " << aname << " ) ";
@@ -191,16 +194,17 @@ fn-)" << n << R"( = %s")" << n << R"((" )";
 
     os << 1 + R"(
 ;----------------------------------------------------------------------------
-; Aggregate functions
+; Enumeration arguments
 ;----------------------------------------------------------------------------
 )";
-    UnsignedSet ids;
-    for (auto && f : funcAggEnums()) {
-        if (ids.insert(f.id)) {
-            os << 1 + R"(
-aggfunc =/ afn-)" << f.name << R"( { As string, Start+, End+ }
-afn-)" << f.name << R"( = %s")" << f.name << "\"\n\n";
+    for (auto && e : funcEnums()) {
+        os << "arg-" << e.name << " = *WSP (DQUOTE enum-" << e.name << " DQUOTE"
+            << " / \"'\" enum-" << e.name << " \"'\") *WSP\n";
+        for (auto && t : *e.table) {
+            os << "enum-" << e.name << " =/ %s\"" << t.name << "\" "
+                << "{ As string, Start+, End+ }\n";
         }
+        os << '\n';
     }
 
     return os.str();
@@ -208,17 +212,24 @@ afn-)" << f.name << R"( = %s")" << f.name << "\"\n\n";
 
 //===========================================================================
 static void updateFile(string_view fname, string_view content) {
+    vector<string_view> lines;
+    split(&lines, content, '\n');
+    string ncontent{lines[0]};
+    for (auto i = 1; i < lines.size(); ++i) {
+        ncontent += "\r\n";
+        ncontent += lines[i];
+    }
     string ocontent;
     if (fileExists(fname))
         fileLoadBinaryWait(&ocontent, fname);
-    if (ocontent == content) {
+    if (ocontent == ncontent) {
         cout << fname << ", no change\n";
     } else {
         auto f = fileOpen(
             fname,
             File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
         );
-        fileAppendWait(f, content.data(), content.size());
+        fileAppendWait(f, ncontent.data(), ncontent.size());
         fileClose(f);
         cout << fname << ", ";
         ConsoleScopedAttr attr(kConsoleHighlight);

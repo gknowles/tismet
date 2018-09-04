@@ -31,6 +31,7 @@ namespace Function {
 }
 namespace Aggregate {
     enum Type : int;
+    Type defaultType();
 }
 
 struct SampleList {
@@ -64,8 +65,23 @@ struct ResultInfo {
 };
 
 struct FuncArg {
-    std::shared_ptr<char[]> string;
+    struct Enum : Dim::ListBaseLink<> {
+        const std::string name;
+        const Dim::TokenTable * const table{nullptr};
+
+        Enum(std::string name, const Dim::TokenTable * tbl);
+    };
+    enum Type {
+        kEnum,
+        kNum,
+        kNumOrString,
+        kQuery,
+        kString,
+    };
+    enum EnumType : int;
+
     double number;
+    std::shared_ptr<char[]> string;
 };
 
 class IFuncNotify {
@@ -111,13 +127,20 @@ public:
     virtual bool onFuncApply(IFuncNotify * notify, ResultInfo & info) = 0;
 };
 
-
+IFuncInstance * bind(
+    Function::Type type,
+    std::vector<FuncArg> && args
+);
 std::shared_ptr<SampleList> reduce(
     std::shared_ptr<SampleList> samples,
     Dim::Duration minInterval,
-    Aggregate::Type method = {} // defaults to kAverage
+    Aggregate::Type method = {} // use defaultType()
 );
 
+using AggFn = double(const double vals[], size_t count);
+AggFn * aggFunc(
+    Aggregate::Type method = {} // use defaultType()
+);
 double aggAverage(const double vals[], size_t count);
 double aggCount(const double vals[], size_t count);
 double aggDiff(const double vals[], size_t count);
@@ -156,15 +179,9 @@ Eval::Aggregate::Type fromString(
 namespace Eval {
 
 struct FuncArgInfo {
-    enum Type {
-        kAggFunc,
-        kNum,
-        kNumOrString,
-        kQuery,
-        kString,
-    };
     std::string name;
-    Type type;
+    FuncArg::Type type{};
+    const char * enumName{nullptr};
     bool require{false};
     bool multiple{false};
 };
@@ -188,8 +205,8 @@ public:
 
 } // namespace
 
-const Dim::TokenTable & funcEnums();
-const Dim::TokenTable & funcAggEnums();
-const Dim::List<Eval::IFuncFactory> & funcFactories();
+const Dim::TokenTable & funcIds();
+Dim::List<Eval::IFuncFactory> & funcFactories();
+Dim::List<Eval::FuncArg::Enum> & funcEnums();
 
-const char * toString(Eval::FuncArgInfo::Type atype, const char def[] = "");
+const char * toString(Eval::FuncArg::Type atype, const char def[] = "");

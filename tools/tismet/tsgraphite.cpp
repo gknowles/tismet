@@ -722,18 +722,15 @@ class FunctionIndex : public IHttpRouteNotify {
 void FunctionIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     bool started = false;
     HttpResponse res;
+
+    unordered_map<string_view, const TokenTable *> evalues;
+    for (auto && e : funcEnums())
+        evalues[e.name] = e.table;
+
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
     JBuilder bld(&res.body());
-    bld.object();
-    bld.member("aggFunctions").array();
-    for (auto && f : funcAggEnums()) {
-        auto name = string_view{f.name};
-        started = xferIfFull(res, started, reqId, name.size());
-        bld.value(name);
-    }
-    bld.end();
-    bld.member("functions").array();
+    bld.array();
     for (auto && f : funcFactories()) {
         bld.object();
         bld.member("name", f.m_names[0]);
@@ -755,13 +752,18 @@ void FunctionIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
                     bld.member("require", true);
                 if (arg.multiple)
                     bld.member("multiple", true);
+                if (arg.type == Eval::FuncArg::kEnum) {
+                    bld.member("values").array();
+                    for (auto & v : *evalues[arg.enumName])
+                        bld.value(v.name);
+                    bld.end();
+                }
                 bld.end();
             }
             bld.end();
         }
         bld.end();
     }
-    bld.end();
     bld.end();
     xferRest(move(res), started, reqId);
 }

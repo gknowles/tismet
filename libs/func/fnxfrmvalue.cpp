@@ -62,7 +62,7 @@ class FuncAbsolute : public IXfrmValueBase<FuncAbsolute> {
 };
 } // namespace
 static auto s_absolute = FuncAbsolute::Factory("absolute", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true);
+    .arg("query", FuncArg::kQuery, true);
 
 //===========================================================================
 double FuncAbsolute::onConvert(double value) {
@@ -83,7 +83,7 @@ class FuncDrawAsInfinite : public IXfrmValueBase<FuncDrawAsInfinite> {
 } // namespace
 static auto s_drawAsInfinite =
     FuncDrawAsInfinite::Factory("drawAsInfinite", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true);
+    .arg("query", FuncArg::kQuery, true);
 
 //===========================================================================
 double FuncDrawAsInfinite::onConvert(double value) {
@@ -112,8 +112,8 @@ class FuncRemoveAboveValue : public IXfrmValueBase<FuncRemoveAboveValue> {
 } // namespace
 static auto s_removeAboveValue =
     FuncRemoveAboveValue::Factory("removeAboveValue", "Filter Data")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("n", FuncArgInfo::kNum, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
 IFuncInstance * FuncRemoveAboveValue::onFuncBind(vector<FuncArg> && args) {
@@ -142,8 +142,8 @@ class FuncRemoveBelowValue : public IXfrmValueBase<FuncRemoveBelowValue> {
 } // namespace
 static auto s_removeBelowValue =
     FuncRemoveBelowValue::Factory("removeBelowValue", "Filter Data")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("n", FuncArgInfo::kNum, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
 IFuncInstance * FuncRemoveBelowValue::onFuncBind(vector<FuncArg> && args) {
@@ -171,8 +171,8 @@ class FuncScale : public IXfrmValueBase<FuncScale> {
 };
 } // namespace
 static auto s_scale = FuncScale::Factory("scale", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("factor", FuncArgInfo::kNum, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("factor", FuncArg::kNum, true);
 
 //===========================================================================
 IFuncInstance * FuncScale::onFuncBind(vector<FuncArg> && args) {
@@ -204,8 +204,8 @@ class FuncScaleToSeconds : public IXfrmValueBase<FuncScaleToSeconds> {
 } // namespace
 static auto s_scaleToSeconds =
     FuncScaleToSeconds::Factory("scaleToSeconds", "Transform")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("seconds", FuncArgInfo::kNum, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("seconds", FuncArg::kNum, true);
 
 //===========================================================================
 IFuncInstance * FuncScaleToSeconds::onFuncBind(vector<FuncArg> && args) {

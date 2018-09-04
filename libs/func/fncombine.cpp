@@ -53,30 +53,19 @@ protected:
 namespace {
 class FuncAggregate : public IFuncBase<FuncAggregate> {
     IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
-    bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 };
 } // namespace
 static auto s_aggregate = FuncAggregate::Factory("aggregate", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true)
-    .arg("aggFunc", FuncArgInfo::kAggFunc, true);
+    .arg("query", FuncArg::kQuery, true)
+    .arg("aggFunc", "aggFunc", true);
 
 //===========================================================================
 IFuncInstance * FuncAggregate::onFuncBind(vector<FuncArg> && args) {
-    auto aggtype = fromString(args[0].string.get(), Aggregate::kAverage);
+    auto aggtype = fromString(args[0].string.get(), Aggregate::defaultType());
     auto fname = string(toString(aggtype, "")) + "Series";
     args.erase(args.begin());
     auto type = fromString(fname, Function::kSumSeries);
-    auto func = funcCreate(type);
-    auto bound = func->onFuncBind(move(args));
-    if (bound == func.get())
-        func.release();
-    return bound;
-}
-
-//===========================================================================
-bool FuncAggregate::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
-    assert(!"onFuncApply not implemented by aggregate base function");
-    return false;
+    return bind(type, move(args));
 }
 
 
@@ -190,7 +179,7 @@ class FuncAverageSeries : public ICombineBase<FuncAverageSeries> {
 } // namespace
 static auto s_averageSeries =
     FuncAverageSeries::Factory("averageSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true)
+    .arg("query", FuncArg::kQuery, true, true)
     .alias("avg");
 
 //===========================================================================
@@ -236,7 +225,7 @@ class FuncCountSeries : public ICombineBase<FuncCountSeries> {
 } // namespace
 static auto s_countSeries =
     FuncCountSeries::Factory("countSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncCountSeries::onFuncAdjustContext(FuncContext * context) {
@@ -290,7 +279,7 @@ class FuncDiffSeries : public ICombineBase<FuncDiffSeries> {
 };
 } // namespace
 static auto s_diffSeries = FuncDiffSeries::Factory("diffSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 bool FuncDiffSeries::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
@@ -339,7 +328,7 @@ class FuncFirstSeries : public ICombineBase<FuncFirstSeries> {
 } // namespace
 static auto s_firstSeries =
     FuncFirstSeries::Factory("firstSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncFirstSeries::onCombineValue(double & agg, int pos, double newVal) {
@@ -361,7 +350,7 @@ class FuncLastSeries : public ICombineBase<FuncLastSeries> {
 } // namespace
 static auto s_lastSeries =
     FuncLastSeries::Factory("lastSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncLastSeries::onCombineValue(double & agg, int pos, double newVal) {
@@ -382,7 +371,7 @@ class FuncMaxSeries : public ICombineBase<FuncMaxSeries> {
 };
 } // namespace
 static auto s_maxSeries = FuncMaxSeries::Factory("maxSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncMaxSeries::onCombineValue(double & agg, int pos, double newVal) {
@@ -406,8 +395,9 @@ class FuncMedianSeries : public ICombineBase<FuncMedianSeries> {
     vector<vector<double>> m_samplesByPos;
 };
 } // namespace
-static auto s_medianSeries = FuncMedianSeries::Factory("medianSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+static auto s_medianSeries =
+    FuncMedianSeries::Factory("medianSeries", "Combine")
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncMedianSeries::onCombineResize(int prefix, int postfix) {
@@ -454,7 +444,7 @@ class FuncMinSeries : public ICombineBase<FuncMinSeries> {
 };
 } // namespace
 static auto s_minSeries = FuncMinSeries::Factory("minSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncMinSeries::onCombineValue(double & agg, int pos, double newVal) {
@@ -476,7 +466,7 @@ class FuncMultiplySeries : public ICombineBase<FuncMultiplySeries> {
 } // namespace
 static auto s_multiplySeries =
     FuncMultiplySeries::Factory("multiplySeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncMultiplySeries::onCombineValue(double & agg, int pos, double newVal) {
@@ -504,7 +494,7 @@ class FuncRangeSeries : public ICombineBase<FuncRangeSeries> {
 };
 } // namespace
 static auto s_rangeSeries = FuncRangeSeries::Factory("rangeSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncRangeSeries::onCombineResize(int prefix, int postfix) {
@@ -560,7 +550,7 @@ class FuncStddevSeries : public ICombineBase<FuncStddevSeries> {
 } // namespace
 static auto s_stddevSeries =
     FuncStddevSeries::Factory("stddevSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true);
+    .arg("query", FuncArg::kQuery, true, true);
 
 //===========================================================================
 void FuncStddevSeries::onCombineResize(int prefix, int postfix) {
@@ -623,7 +613,7 @@ class FuncSumSeries : public ICombineBase<FuncSumSeries> {
 };
 } // namespace
 static auto s_sumSeries = FuncSumSeries::Factory("sumSeries", "Combine")
-    .arg("query", FuncArgInfo::kQuery, true, true)
+    .arg("query", FuncArg::kQuery, true, true)
     .alias("sum");
 
 //===========================================================================
