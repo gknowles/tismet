@@ -29,7 +29,7 @@ namespace Eval {
 namespace Function {
     enum Type : int;
 }
-namespace Aggregate {
+namespace AggFunc {
     enum Type : int;
     Type defaultType();
 }
@@ -60,7 +60,7 @@ struct ResultInfo {
     std::shared_ptr<char[]> target;
     std::shared_ptr<char[]> name;
     std::shared_ptr<SampleList> samples;
-    Aggregate::Type method{};
+    AggFunc::Type method{};
     int argPos{-1};
 };
 
@@ -96,7 +96,7 @@ struct FuncContext {
     Dim::TimePoint last;
 
     Dim::Duration minInterval{};
-    Aggregate::Type method{};
+    AggFunc::Type method{};
 
     // "pre" is a request for samples from before the start of the result
     // range that are needed to make the first values meaningful. These are
@@ -134,12 +134,12 @@ IFuncInstance * bind(
 std::shared_ptr<SampleList> reduce(
     std::shared_ptr<SampleList> samples,
     Dim::Duration minInterval,
-    Aggregate::Type method = {} // use defaultType()
+    AggFunc::Type method = {} // use defaultType()
 );
 
 using AggFn = double(const double vals[], size_t count);
 AggFn * aggFunc(
-    Aggregate::Type method = {} // use defaultType()
+    AggFunc::Type method = {} // use defaultType()
 );
 double aggAverage(const double vals[], size_t count);
 double aggCount(const double vals[], size_t count);
@@ -163,10 +163,10 @@ std::unique_ptr<Eval::IFuncInstance> funcCreate(Eval::Function::Type type);
 const char * toString(Eval::Function::Type ftype, const char def[] = "");
 Eval::Function::Type fromString(std::string_view src, Eval::Function::Type def);
 
-const char * toString(Eval::Aggregate::Type ftype, const char def[] = "");
-Eval::Aggregate::Type fromString(
+const char * toString(Eval::AggFunc::Type ftype, const char def[] = "");
+Eval::AggFunc::Type fromString(
     std::string_view src,
-    Eval::Aggregate::Type def
+    Eval::AggFunc::Type def
 );
 
 

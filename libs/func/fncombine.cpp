@@ -61,7 +61,7 @@ static auto s_aggregate = FuncAggregate::Factory("aggregate", "Combine")
 
 //===========================================================================
 IFuncInstance * FuncAggregate::onFuncBind(vector<FuncArg> && args) {
-    auto aggtype = fromString(args[0].string.get(), Aggregate::defaultType());
+    auto aggtype = fromString(args[0].string.get(), AggFunc::defaultType());
     auto fname = string(toString(aggtype, "")) + "Series";
     args.erase(args.begin());
     auto type = fromString(fname, Function::kSumSeries);

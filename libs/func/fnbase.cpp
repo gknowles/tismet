@@ -208,8 +208,7 @@ namespace {
 class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
     IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
-
-    Aggregate::Type m_method;
+    AggFunc::Type m_method;
 };
 } // namespace
 static auto s_consolidateBy =
@@ -219,7 +218,7 @@ static auto s_consolidateBy =
 
 //===========================================================================
 IFuncInstance * FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {
-    m_method = fromString(args[0].string.get(), Aggregate::Type{});
+    m_method = fromString(args[0].string.get(), AggFunc::Type{});
     return this;
 }
 

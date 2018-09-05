@@ -55,149 +55,157 @@ const FuncArg::Enum s_operEnum{"operator", &s_operTbl};
 
 /****************************************************************************
 *
-*   IFilterBase
+*   filterSeries
 *
 ***/
 
 namespace {
 
-template<typename T>
-class IFilterBase : public IFuncBase<T> {
+template<int Agg, int Op>
+class FilterSeries : public IFuncBase<FilterSeries<Agg,Op>> {
 public:
+    class Factory;
+    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
-    virtual bool onFilter(const ResultInfo & info);
 protected:
     double m_limit{};
     AggFn * m_aggFn;
     OperFn * m_operFn;
 };
 
+template<int Agg, int Op>
+class FilterSeries<Agg, Op>::Factory : public FuncFactory<FilterSeries> {
+public:
+    Factory(string_view name);
+};
+
 } // namespace
 
 //===========================================================================
-template<typename T>
-bool IFilterBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
-    if (!info.samples || onFilter(info))
-        notify->onFuncOutput(info);
+template<int Agg, int Op>
+IFuncInstance * FilterSeries<Agg, Op>::onFuncBind(
+    vector<FuncArg> && args
+) {
+    if constexpr (Agg != 0) {
+        m_aggFn = aggFunc((AggFunc::Type) Agg);
+        m_operFn = s_opers[Op].fn;
+        m_limit = args[0].number;
+    } else {
+        m_aggFn = aggFunc((AggFunc::Type)(int) args[0].number);
+        m_operFn = s_opers[(int) args[1].number].fn;
+        m_limit = args[2].number;
+    }
+    return this;
+}
+
+//===========================================================================
+template<int Agg, int Op>
+bool FilterSeries<Agg, Op>::onFuncApply(
+    IFuncNotify * notify,
+    ResultInfo & info
+) {
+    if (info.samples) {
+        auto agg = m_aggFn(info.samples->samples, info.samples->count);
+        if (!m_operFn(agg, m_limit))
+            return true;
+    }
+    notify->onFuncOutput(info);
     return true;
 }
 
 //===========================================================================
-template<typename T>
-bool IFilterBase<T>::onFilter(const ResultInfo & info) {
-    auto agg = m_aggFn(info.samples->samples, info.samples->count);
-    return m_operFn(agg, m_limit);
-}
-
-
-/****************************************************************************
-*
-*   filterSeries
-*
-***/
-
-namespace {
-class FilterSeries : public IFilterBase<FilterSeries> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
-};
-} // namespace
-static auto s_filterSeries =
-    FilterSeries::Factory("filterSeries", "Filter Series")
-    .arg("query", FuncArg::kQuery, true)
-    .arg("func", "aggFunc", true)
-    .arg("operator", "operator", true)
-    .arg("threshold", FuncArg::kNum, true);
-
-//===========================================================================
-IFuncInstance * FilterSeries::onFuncBind(vector<FuncArg> && args) {
-    m_aggFn = aggFunc((Aggregate::Type)(int) args[0].number);
-    m_operFn = s_opers[(int) args[1].number].fn;
-    m_limit = args[2].number;
-    return this;
-}
-
-
-/****************************************************************************
-*
-*   Delegate to filterSeries
-*
-***/
-
-//===========================================================================
-namespace {
 template<int Agg, int Op>
-class FilterSeriesBase : public IFilterBase<FilterSeriesBase<Agg,Op>> {
-public:
-    class Factory : public FuncFactory<FilterSeriesBase> {
-    public:
-        Factory(string_view name)
-            : FuncFactory<FilterSeriesBase>(name, "Filter Series")
-        {
-            this->arg("query", FuncArg::kQuery, true);
-            this->arg("n", FuncArg::kNum, true);
-        }
-    };
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override {
-        this->m_aggFn = aggFunc((Aggregate::Type) Agg);
-        this->m_operFn = s_opers[Op].fn;
-        this->m_limit = args[0].number;
-        return this;
+FilterSeries<Agg, Op>::Factory::Factory(string_view name)
+    : FuncFactory<FilterSeries>(name, "Filter Series")
+{
+    this->arg("query", FuncArg::kQuery, true);
+    if constexpr (Agg != 0) {
+        this->arg("n", FuncArg::kNum, true);
+    } else {
+        this->arg("func", "aggFunc", true);
+        this->arg("operator", "operator", true);
+        this->arg("threshold", FuncArg::kNum, true);
     }
-};
-} // namespace
+}
 
+static auto s_filterSeries =
+    FilterSeries<0, 0>::Factory("filterSeries");
 static auto s_averageAbove =
-    FilterSeriesBase<AggFunc::kAverage, Operator::kGt>::Factory("averageAbove");
+    FilterSeries<AggFunc::kAverage, Operator::kGt>::Factory("averageAbove");
 static auto s_averageBelow =
-    FilterSeriesBase<AggFunc::kAverage, Operator::kLt>::Factory("averageBelow");
+    FilterSeries<AggFunc::kAverage, Operator::kLt>::Factory("averageBelow");
 static auto s_currentAbove =
-    FilterSeriesBase<AggFunc::kLast, Operator::kGt>::Factory("currentAbove");
+    FilterSeries<AggFunc::kLast, Operator::kGt>::Factory("currentAbove");
 static auto s_currentBelow =
-    FilterSeriesBase<AggFunc::kLast, Operator::kLt>::Factory("currentBelow");
+    FilterSeries<AggFunc::kLast, Operator::kLt>::Factory("currentBelow");
 static auto s_maximumAbove =
-    FilterSeriesBase<AggFunc::kMax, Operator::kGt>::Factory("maximumAbove");
+    FilterSeries<AggFunc::kMax, Operator::kGt>::Factory("maximumAbove");
 static auto s_maximumBelow =
-    FilterSeriesBase<AggFunc::kMax, Operator::kLt>::Factory("maximumBelow");
+    FilterSeries<AggFunc::kMax, Operator::kLt>::Factory("maximumBelow");
 static auto s_minimumAbove =
-    FilterSeriesBase<AggFunc::kMin, Operator::kGt>::Factory("minimumAbove");
+    FilterSeries<AggFunc::kMin, Operator::kGt>::Factory("minimumAbove");
 static auto s_minimumBelow =
-    FilterSeriesBase<AggFunc::kMin, Operator::kLt>::Factory("minimumBelow");
+    FilterSeries<AggFunc::kMin, Operator::kLt>::Factory("minimumBelow");
 
 
 /****************************************************************************
 *
-*   IFilterBestBase
+*   FilterBest
 *
 ***/
 
 namespace {
 
-template<typename T>
-class IFilterBestBase : public IFuncBase<T> {
+template<int Agg, int Op>
+class FilterBest : public IFuncBase<FilterBest<Agg,Op>> {
+public:
+    class Factory;
     IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
-
-    virtual double onFilterScore(SampleList & samples) = 0;
-    virtual void onFilterUpdate(double score, ResultInfo & info) = 0;
-
 protected:
     multimap<double, ResultInfo> m_best;
-    unsigned m_allowed;
+    unsigned m_allowed{0};
+    AggFn * m_aggFn{nullptr};
+};
+
+template<int Agg, int Op>
+class FilterBest<Agg, Op>::Factory : public FuncFactory<FilterBest> {
+public:
+    Factory(string_view name);
 };
 
 } // namespace
 
 //===========================================================================
-template<typename T>
-IFuncInstance * IFilterBestBase<T>::onFuncBind(vector<FuncArg> && args) {
-    m_allowed = (unsigned) args[0].number;
+template<int Agg, int Op>
+IFuncInstance * FilterBest<Agg, Op>::onFuncBind(
+    vector<FuncArg> && args
+) {
+    if constexpr (Agg != 0) {
+        m_aggFn = aggFunc((AggFunc::Type) Agg);
+        m_allowed = (unsigned) args[0].number;
+    } else {
+        if (args.size() == 2) {
+            m_allowed = (unsigned) args[0].number;
+            auto afn = fromString(args[1].string.get(), AggFunc::kInvalid);
+            m_aggFn = aggFunc(afn);
+        } else if (args.size() == 1) {
+            m_allowed = (unsigned) args[0].number;
+            m_aggFn = aggFunc((AggFunc::Type)(int) args[1].number);
+        } else {
+            m_allowed = 1;
+            m_aggFn = aggFunc(AggFunc::kAverage);
+        }
+    }
     return this;
 }
 
 //===========================================================================
-template<typename T>
-bool IFilterBestBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
-    // last non-NAN sample in list
+template<int Agg, int Op>
+bool FilterBest<Agg, Op>::onFuncApply(
+    IFuncNotify * notify,
+    ResultInfo & info
+) {
     if (!info.samples) {
         for (auto && out : m_best)
             notify->onFuncOutput(out.second);
@@ -208,92 +216,55 @@ bool IFilterBestBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
         return true;
     }
 
-    auto best = onFilterScore(*info.samples);
+    auto best = m_aggFn(info.samples->samples, info.samples->count);
     if (!isnan(best)) {
         if (m_best.size() < m_allowed) {
             m_best.emplace(best, info);
-        } else if (m_allowed >= 0) {
-            onFilterUpdate(best, info);
+        } else if (m_allowed > 0) {
+            if constexpr (Op == Operator::kLt) {
+                if (auto i = m_best.end()--; best < i->first) {
+                    m_best.erase(i);
+                    m_best.emplace(best, info);
+                }
+            } else {
+                if (auto i = m_best.begin(); best > i->first) {
+                    m_best.erase(i);
+                    m_best.emplace(best, info);
+                }
+            }
         }
     }
     return true;
 }
 
+//===========================================================================
+template<int Agg, int Op>
+FilterBest<Agg, Op>::Factory::Factory(string_view name)
+    : FuncFactory<FilterBest>(name, "Filter Series")
+{
+    this->arg("query", FuncArg::kQuery, true);
+    if constexpr (Agg != 0) {
+        this->arg("n", FuncArg::kNum, true);
+    } else {
+        this->arg("n", FuncArg::kNum);
+        this->arg("func", "aggFunc");
+    }
+}
 
-/****************************************************************************
-*
-*   highestCurrent
-*
-***/
-
-namespace {
-class FuncHighestCurrent : public IFilterBestBase<FuncHighestCurrent> {
-    double onFilterScore(SampleList & samples) override;
-    void onFilterUpdate(double score, ResultInfo & info) override;
-};
-} // namespace
+static auto s_highest =
+    FilterBest<0, Operator::kGt>::Factory("highest");
+static auto s_highestAverage =
+    FilterBest<AggFunc::kAverage, Operator::kGt>::Factory("highestAverage");
 static auto s_highestCurrent =
-    FuncHighestCurrent::Factory("highestCurrent", "Filter Series")
-    .arg("query", FuncArg::kQuery, true)
-    .arg("n", FuncArg::kNum, true);
-
-//===========================================================================
-double FuncHighestCurrent::onFilterScore(SampleList & samples) {
-    // last non-NAN sample in list
-    for (int i = samples.count; i-- > 0;) {
-        if (auto score = samples.samples[i]; !isnan(score))
-            return score;
-    }
-    return NAN;
-}
-
-//===========================================================================
-void FuncHighestCurrent::onFilterUpdate(double score, ResultInfo & info) {
-    if (auto i = m_best.begin(); score > i->first) {
-        m_best.erase(i);
-        m_best.emplace(score, info);
-    }
-}
-
-
-/****************************************************************************
-*
-*   highestMax
-*
-***/
-
-namespace {
-class FuncHighestMax : public IFilterBestBase<FuncHighestMax> {
-    double onFilterScore(SampleList & samples) override;
-    void onFilterUpdate(double score, ResultInfo & info) override;
-};
-} // namespace
+    FilterBest<AggFunc::kLast, Operator::kGt>::Factory("highestCurrent");
 static auto s_highestMax =
-    FuncHighestMax::Factory("highestMax", "Filter Series")
-    .arg("query", FuncArg::kQuery, true)
-    .arg("n", FuncArg::kNum, true);
-
-//===========================================================================
-double FuncHighestMax::onFilterScore(SampleList & samples) {
-    // largest non-NAN sample in list
-    auto score = -numeric_limits<double>::infinity();
-    bool found = false;
-    for (auto && ref : samples) {
-        if (ref > score) {
-            score = ref;
-            found = true;
-        }
-    }
-    return found ? score : NAN;
-}
-
-//===========================================================================
-void FuncHighestMax::onFilterUpdate(double score, ResultInfo & info) {
-    if (auto i = m_best.begin(); score > i->first) {
-        m_best.erase(i);
-        m_best.emplace(score, info);
-    }
-}
+    FilterBest<AggFunc::kMax, Operator::kGt>::Factory("highestMax");
+static auto s_lowest =
+    FilterBest<0, Operator::kLt>::Factory("lowest");
+static auto s_lowestAverage =
+    FilterBest<AggFunc::kAverage, Operator::kLt>::Factory("lowestAverage");
+static auto s_lowestCurrent =
+    FilterBest<AggFunc::kLast, Operator::kLt>::Factory("lowestCurrent");
 
 
 /****************************************************************************

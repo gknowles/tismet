@@ -292,7 +292,7 @@ const TokenTable s_methodTbl = [](){
 
 static FuncArg::Enum s_methodEnum{"aggFunc", &s_methodTbl};
 
-const Aggregate::Type s_defMethod = fromString("average", Aggregate::Type{});
+const AggFunc::Type s_defMethod = fromString("average", AggFunc::Type{});
 
 
 /****************************************************************************
@@ -302,17 +302,17 @@ const Aggregate::Type s_defMethod = fromString("average", Aggregate::Type{});
 ***/
 
 //===========================================================================
-Aggregate::Type Aggregate::defaultType() {
+AggFunc::Type AggFunc::defaultType() {
     return s_defMethod;
 }
 
 //===========================================================================
-const char * toString(Aggregate::Type ftype, const char def[]) {
+const char * toString(AggFunc::Type ftype, const char def[]) {
     return tokenTableGetName(s_methodTbl, ftype, def);
 }
 
 //===========================================================================
-Aggregate::Type fromString(std::string_view src, Aggregate::Type def) {
+AggFunc::Type fromString(std::string_view src, AggFunc::Type def) {
     return tokenTableGetEnum(s_methodTbl, src, def);
 }
 
@@ -320,14 +320,14 @@ Aggregate::Type fromString(std::string_view src, Aggregate::Type def) {
 shared_ptr<SampleList> Eval::reduce(
     shared_ptr<SampleList> samples,
     Duration minInterval,
-    Aggregate::Type method
+    AggFunc::Type method
 ) {
     auto baseInterval = samples->interval;
     if (baseInterval >= minInterval)
         return samples;
 
     if (!method)
-        method = Aggregate::defaultType();
+        method = AggFunc::defaultType();
     auto methodFn = s_methods[(int) method].fn;
     auto sps = (minInterval.count() + baseInterval.count() - 1)
         / baseInterval.count();
@@ -354,8 +354,8 @@ shared_ptr<SampleList> Eval::reduce(
 }
 
 //===========================================================================
-Eval::AggFn * Eval::aggFunc(Aggregate::Type method) {
+Eval::AggFn * Eval::aggFunc(AggFunc::Type method) {
     if (!method)
-        method = Aggregate::defaultType();
+        method = AggFunc::defaultType();
     return s_methods[(int) method].aggFn;
 }

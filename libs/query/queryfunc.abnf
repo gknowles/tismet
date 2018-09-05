@@ -56,6 +56,12 @@ fn-filterSeries = %s"filterSeries(" arg-query "," arg-aggFunc "," arg-operator "
 func =/ fn-firstSeries { End }
 fn-firstSeries = %s"firstSeries(" arg-query *( "," arg-query ) ")" { Start }
 
+func =/ fn-highest { End }
+fn-highest = %s"highest(" arg-query [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
+
+func =/ fn-highestAverage { End }
+fn-highestAverage = %s"highestAverage(" arg-query "," arg-num ")" { Start }
+
 func =/ fn-highestCurrent { End }
 fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
 
@@ -73,6 +79,15 @@ fn-legendValue = %s"legendValue(" arg-query *( "," arg-string ) ")" { Start }
 
 func =/ fn-lineWidth { End }
 fn-lineWidth = %s"lineWidth(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-lowest { End }
+fn-lowest = %s"lowest(" arg-query [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
+
+func =/ fn-lowestAverage { End }
+fn-lowestAverage = %s"lowestAverage(" arg-query "," arg-num ")" { Start }
+
+func =/ fn-lowestCurrent { End }
+fn-lowestCurrent = %s"lowestCurrent(" arg-query "," arg-num ")" { Start }
 
 func =/ fn-maximumAbove { End }
 fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }

@@ -96,6 +96,16 @@ inline bool QueryParser::onFnFirstSeriesStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnHighestStart () {
+    return startFunc(Eval::Function::kHighest);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnHighestAverageStart () {
+    return startFunc(Eval::Function::kHighestAverage);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnHighestCurrentStart () {
     return startFunc(Eval::Function::kHighestCurrent);
 }
@@ -123,6 +133,21 @@ inline bool QueryParser::onFnLegendValueStart () {
 //===========================================================================
 inline bool QueryParser::onFnLineWidthStart () {
     return startFunc(Eval::Function::kLineWidth);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnLowestStart () {
+    return startFunc(Eval::Function::kLowest);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnLowestAverageStart () {
+    return startFunc(Eval::Function::kLowestAverage);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnLowestCurrentStart () {
+    return startFunc(Eval::Function::kLowestCurrent);
 }
 
 //===========================================================================
