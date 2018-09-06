@@ -50,6 +50,9 @@ static_assert(size(s_logTypeInfo) == kLogTypes);
 
 //===========================================================================
 void ConsoleLogger::onLog(LogType type, string_view msg) {
+    if (type < appLogLevel())
+        return;
+
     auto now = Clock::now();
     Time8601Str nowStr{now, 3, timeZoneMinutes(now)};
     scoped_lock lk{m_mut};

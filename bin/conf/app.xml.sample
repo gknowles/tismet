@@ -10,6 +10,7 @@ Tismet Configuration File.
   <DisableInactiveTimeout value="0"/>
   <Port value="41000"/>
   <EnableGui value="1"/>
+  <LogLevel value="warn"/>
 
   <CheckpointMaxData value="1G"/>
   <CheckpointMaxInterval value="1h"/>
