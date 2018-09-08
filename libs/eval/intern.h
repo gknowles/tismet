@@ -69,7 +69,7 @@ protected:
     OutputResultReturn outputResult(const ResultInfo & info);
 
 private:
-    void outputResultImpl(const ResultInfo & info);
+    void outputResultImpl_LK(const ResultInfo & info);
     virtual void onSourceStart() = 0;
 
     std::shared_ptr<char[]> m_source;

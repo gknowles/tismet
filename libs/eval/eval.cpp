@@ -47,7 +47,7 @@ public:
 
     void onTask() override;
 
-    // Return false when done receiving results, either normally or because
+    // Returns false when done receiving results, either normally or because
     // it was aborted.
     bool onEvalApply(ResultInfo & info);
 
@@ -289,7 +289,8 @@ bool SourceNode::outputContext(SourceContext * out) {
 SourceNode::OutputResultReturn SourceNode::outputResult(
     const ResultInfo & info
 ) {
-    outputResultImpl(info);
+    scoped_lock lk{m_outMut};
+    outputResultImpl_LK(info);
     auto more = (bool) info.samples;
     if (!more)
         m_outputs.clear();
@@ -297,10 +298,9 @@ SourceNode::OutputResultReturn SourceNode::outputResult(
 }
 
 //===========================================================================
-void SourceNode::outputResultImpl(
+void SourceNode::outputResultImpl_LK(
     const ResultInfo & info
 ) {
-    scoped_lock lk{m_outMut};
     if (m_outputs.empty())
         return;
     if (!info.samples) {
