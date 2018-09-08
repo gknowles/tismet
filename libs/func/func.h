@@ -122,7 +122,7 @@ public:
     // Perform the function, outputResult() must be called for each result
     // that should be published.
     //
-    // Return false to stop receiving results for the current outputs, only
+    // Returns false to stop receiving results for the current outputs, only
     // required if the function is to be aborted midstream.
     virtual bool onFuncApply(IFuncNotify * notify, ResultInfo & info) = 0;
 };

@@ -39,7 +39,7 @@ public:
     // number of onCarbonValue calls before the error was detected.
     unsigned append(unsigned reqId, std::string_view data);
 
-    // Return false for each value that has its processing delayed. All delayed
+    // Returns false for each value that has its processing delayed. All delayed
     // values must be accounted for after they have completed by calls to
     // carbonAckValue.
     virtual bool onCarbonValue(
