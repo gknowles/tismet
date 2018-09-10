@@ -286,21 +286,20 @@ bool SourceNode::outputContext(SourceContext * out) {
 }
 
 //===========================================================================
-SourceNode::OutputResultReturn SourceNode::outputResult(
-    const ResultInfo & info
-) {
-    scoped_lock lk{m_outMut};
+void SourceNode::outputResult(const ResultInfo & info) {
+    unique_lock lk{m_outMut};
     outputResultImpl_LK(info);
-    auto more = (bool) info.samples;
-    if (!more)
+    if (!info.samples) {
         m_outputs.clear();
-    return {more, !m_pendingOutputs.empty()};
+        if (!m_pendingOutputs.empty()) {
+            lk.unlock();
+            onSourceStart();
+        }
+    }
 }
 
 //===========================================================================
-void SourceNode::outputResultImpl_LK(
-    const ResultInfo & info
-) {
+void SourceNode::outputResultImpl_LK(const ResultInfo & info) {
     if (m_outputs.empty())
         return;
     if (!info.samples) {
@@ -358,12 +357,11 @@ void DbDataNode::onTask() {
     m_result = {};
     m_result.target = sourceName();
     dbFindMetrics(&m_unfinishedIds, s_db, m_result.target.get());
-    if (!m_unfinishedIds) {
-        if (outputResult(m_result).pending)
-            onSourceStart();
+    if (m_unfinishedIds) {
+        readMore();
         return;
     }
-    readMore();
+    outputResult(m_result);
 }
 
 //===========================================================================
@@ -436,22 +434,20 @@ void DbDataNode::onDbSeriesEnd(uint32_t id) {
             samples[m_pos] = NAN;
         assert(m_pos == count);
     }
-    auto ret = outputResult(m_result);
-
+    auto out = m_result;
     m_result.name = {};
     m_result.samples = {};
+    outputResult(out);
 
-    if (ret.more && !m_unfinishedIds)
-        ret = outputResult(m_result);
-    if (!ret.more) {
-        m_unfinishedIds.clear();
-        if (ret.pending)
-            onSourceStart();
+    if (m_unfinishedIds) {
+        if (m_tid != this_thread::get_id())
+            readMore();
         return;
     }
 
-    if (m_tid != this_thread::get_id())
-        readMore();
+    out.name = {};
+    out.samples = {};
+    outputResult(out);
 }
 
 

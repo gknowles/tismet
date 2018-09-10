@@ -62,11 +62,7 @@ protected:
     // Returns false if outputs and pendingOutputs are empty
     bool outputContext(SourceContext * context);
 
-    struct OutputResultReturn {
-        bool more;      // more series expected for this set of outputs
-        bool pending;   // another set of outputs is pending
-    };
-    OutputResultReturn outputResult(const ResultInfo & info);
+    void outputResult(const ResultInfo & info);
 
 private:
     void outputResultImpl_LK(const ResultInfo & info);
