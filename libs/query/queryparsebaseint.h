@@ -20,18 +20,18 @@ struct QueryParserBase {
     Query::QueryInfo * m_query;
     std::vector<Query::Node *> m_nodes;
 
-    const char * m_start{nullptr};
-    const char * m_end{nullptr};
+    const char * m_start{};
+    const char * m_end{};
 
-    bool m_pathSeg{false}; // true if pathSeg just ended
+    bool m_pathSeg{}; // true if pathSeg just ended
 
-    bool m_minus{false};
-    int64_t m_int{0};
-    int m_frac{0};
-    bool m_expMinus{false};
-    int m_exp{0};
+    bool m_minus{};
+    int64_t m_int{};
+    int m_frac{};
+    bool m_expMinus{};
+    int m_exp{};
 
-    unsigned char m_charStart{0};
+    unsigned char m_charStart{};
     std::bitset<256> m_chars;
 
     // Functions

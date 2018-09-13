@@ -56,7 +56,7 @@ public:
     // it was aborted.
     bool onEvalApply(ResultInfo & info);
 
-    IEvalNotify * m_notify{nullptr};
+    IEvalNotify * m_notify{};
     DbContextHandle m_ctx;
     TimePoint m_first;
     TimePoint m_last;

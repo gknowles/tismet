@@ -67,7 +67,7 @@ struct ResultInfo {
 struct FuncArg {
     struct Enum : Dim::ListBaseLink<> {
         const std::string name;
-        const Dim::TokenTable * const table{nullptr};
+        const Dim::TokenTable * const table{};
 
         Enum(std::string name, const Dim::TokenTable * tbl);
     };
@@ -181,9 +181,9 @@ namespace Eval {
 struct FuncArgInfo {
     std::string name;
     FuncArg::Type type{};
-    const char * enumName{nullptr};
-    bool require{false};
-    bool multiple{false};
+    const char * enumName{};
+    bool require{};
+    bool multiple{};
 };
 
 class IFuncFactory

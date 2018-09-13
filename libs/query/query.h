@@ -65,7 +65,7 @@ struct PathSegment {
         unsigned count;
     };
     PathType type{kExact};
-    const Node * node{nullptr};
+    const Node * node{};
 
     PathSegment() { prefix = {}; }
 };
@@ -75,8 +75,8 @@ struct Function {
 };
 
 struct QueryInfo {
-    char * text{nullptr};   // normalized query string
-    Node * node{nullptr};
+    char * text{}; // normalized query string
+    Node * node{};
     PathType type{kExact};
     Dim::TempHeap heap;
 };

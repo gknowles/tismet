@@ -220,13 +220,13 @@ private:
     std::vector<Buffer> m_bufStates;
 
     // page aligned buffers
-    char * m_buffers{nullptr};
-    char * m_partialBuffers{nullptr};
+    char * m_buffers{};
+    char * m_partialBuffers{};
 
-    unsigned m_numBufs{0};
-    unsigned m_emptyBufs{0};
-    unsigned m_curBuf{0};
-    size_t m_bufPos{0};
+    unsigned m_numBufs{};
+    unsigned m_emptyBufs{};
+    unsigned m_curBuf{};
+    size_t m_bufPos{};
 };
 
 //===========================================================================

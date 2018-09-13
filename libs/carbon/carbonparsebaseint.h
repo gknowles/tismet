@@ -16,14 +16,14 @@
 struct CarbonParserBase {
     CarbonUpdate * m_upd;
 
-    const char * m_nameStart{nullptr};
-    const char * m_nameEnd{nullptr};
-    bool m_minus{false};
-    int64_t m_int{0};
-    int m_frac{0};
-    bool m_expMinus{false};
-    int m_exp{0};
-    int64_t m_seconds{0};
+    const char * m_nameStart{};
+    const char * m_nameEnd{};
+    bool m_minus{};
+    int64_t m_int{};
+    int m_frac{};
+    bool m_expMinus{};
+    int m_exp{};
+    int64_t m_seconds{};
 
     CarbonParserBase(CarbonUpdate * upd) : m_upd{upd} {}
 };

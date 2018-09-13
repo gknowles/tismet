@@ -402,7 +402,7 @@ static bool textCmd(Cli & cli) {
         return cli.badUsage("No value given for <wal file[.tsl]>");
     s_opts.tslfile.defaultExt("tsl");
 
-    ostream * os{nullptr};
+    ostream * os = nullptr;
     ofstream ofile;
     if (!s_opts.ofile)
         s_opts.ofile.assign(s_opts.tslfile).setExt("txt");

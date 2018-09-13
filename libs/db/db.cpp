@@ -122,18 +122,18 @@ private:
 
     RunMode m_backupMode{kRunStopped};
     DbProgressInfo m_info;
-    IDbProgressNotify * m_backer{nullptr};
+    IDbProgressNotify * m_backer{};
     vector<pair<Path, Path>> m_backupFiles;
     FileAppendStream m_dstFile;
 
     mutable shared_mutex m_indexMut;
-    uint64_t m_instance{0};
+    uint64_t m_instance{};
     DbIndex m_leaf;
     DbIndex m_branch;
 
     DbPage m_page;
     DbData m_data;
-    unsigned m_maxNameLen{0};
+    unsigned m_maxNameLen{};
     DbLog m_log; // MUST be last! (and destroyed first)
 };
 
