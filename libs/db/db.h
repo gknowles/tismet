@@ -179,7 +179,8 @@ struct IDbDataNotify {
         double value
     ) { return false; }
 };
-// Returns true if it completed synchronously
+// Returns true if it completed synchronously, false if the request was
+// queued.
 bool dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,

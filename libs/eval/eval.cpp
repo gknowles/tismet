@@ -32,7 +32,12 @@ private:
 
     SourceContext m_context;
 
-    thread::id m_tid;
+    // Used in the onDb*() callbacks to determine if it's a synchronous callback
+    // from an active readMore() loop or an async callback resuming activity
+    // from another thread. This is used to decide if a new readMore loop
+    // needs to be started.
+    thread::id m_readTid;
+
     ResultInfo m_result;
     UnsignedSet m_unfinishedIds;
 
@@ -353,22 +358,28 @@ void DbDataNode::onTask() {
     if (!outputContext(&m_context))
         return;
 
+    assert(m_readTid != this_thread::get_id());
     assert(!m_unfinishedIds);
     m_result = {};
     m_result.target = sourceName();
     dbFindMetrics(&m_unfinishedIds, s_db, m_result.target.get());
-    if (m_unfinishedIds) {
-        readMore();
-        return;
-    }
-    outputResult(m_result);
+    readMore();
 }
 
 //===========================================================================
 void DbDataNode::readMore() {
-    m_tid = this_thread::get_id();
-    for (;;) {
+    m_readTid = this_thread::get_id();
+
+    for (auto finished = !m_unfinishedIds; !finished; ) {
         auto id = m_unfinishedIds.pop_front();
+
+        // Capture whether there are still unfinished ids before calling
+        // dbGetSamples(). This is because dbGetSamples() may queue the
+        // execution to a different thread, and then that thread could complete
+        // the results, start pending outputs, and make a new set of unfinished
+        // ids, all before dbGetSamples returns.
+        finished = !m_unfinishedIds;
+
         if (!dbGetSamples(
             this,
             s_db,
@@ -377,12 +388,17 @@ void DbDataNode::readMore() {
             m_context.last,
             m_context.presamples
         )) {
+            // Request was queued. We don't reset the read tid so when the
+            // callback runs it knows it was call from outside of readMore()
+            // and must call it again to process the rest of the unfinished.
             return;
         }
-        if (!m_unfinishedIds)
-            break;
     }
-    m_tid = {};
+
+    m_readTid = thread::id{};
+    m_result.name = {};
+    m_result.samples = {};
+    outputResult(m_result);
 }
 
 //===========================================================================
@@ -435,19 +451,13 @@ void DbDataNode::onDbSeriesEnd(uint32_t id) {
         assert(m_pos == count);
     }
     auto out = m_result;
-    m_result.name = {};
-    m_result.samples = {};
     outputResult(out);
 
-    if (m_unfinishedIds) {
-        if (m_tid != this_thread::get_id())
-            readMore();
-        return;
+    if (m_unfinishedIds && m_readTid != this_thread::get_id()) {
+        // Called from a new thread without an active readMore loop, start
+        // a new loop to process the rest of the unfinished ids.
+        readMore();
     }
-
-    out.name = {};
-    out.samples = {};
-    outputResult(out);
 }
 
 
