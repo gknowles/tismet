@@ -96,6 +96,12 @@ static bool installCmd(Cli & cli) {
         "series metrics for graphing and monitoring applications.";
     sconf.deps = { "Tcpip", "Afd" };
     sconf.account = "NT Service\\Tismet";
+    sconf.sidType = WinServiceConfig::SidType::kUnrestricted;
+    sconf.privs = {
+        "SeChangeNotifyPrivilege",
+        //"SeManageVolumePrivilege", // SetFileValidData
+        //"SeLockMemoryPrivilege", // VirtualAlloc with MEM_LARGE_PAGES
+    };
     sconf.failureFlag = true;
     sconf.failureReset = 24h;
     sconf.failureActions = {
