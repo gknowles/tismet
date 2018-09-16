@@ -54,7 +54,7 @@ static bool execElevated(string_view prog, const vector<string> & args) {
         tmp += '"';
     }
     int ec;
-    return execElevated(&ec, prog, tmp.view());
+    return execElevatedWait(&ec, prog, tmp.view());
 }
 
 
@@ -99,8 +99,8 @@ static bool installCmd(Cli & cli) {
     sconf.sidType = WinServiceConfig::SidType::kUnrestricted;
     sconf.privs = {
         "SeChangeNotifyPrivilege",
-        //"SeManageVolumePrivilege", // SetFileValidData
-        //"SeLockMemoryPrivilege", // VirtualAlloc with MEM_LARGE_PAGES
+        // "SeManageVolumePrivilege",   // SetFileValidData
+        // "SeLockMemoryPrivilege",     // VirtualAlloc with MEM_LARGE_PAGES
     };
     sconf.failureFlag = true;
     sconf.failureReset = 24h;
