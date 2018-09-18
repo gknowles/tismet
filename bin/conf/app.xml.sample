@@ -11,6 +11,8 @@ Tismet Configuration File.
   <Port value="41000"/>
   <EnableGui value="1"/>
   <LogLevel value="warn"/>
+  <DataDir value="data"/>
+  <LogDir value="log"/>
 
   <CheckpointMaxData value="1G"/>
   <CheckpointMaxInterval value="1h"/>
