@@ -560,7 +560,7 @@ static MatchResult matchSegment(
         );
 
     default:
-        assert(0 && "not a path segment node type");
+        assert(!"not a path segment node type");
         return kNoMatch;
     }
 }

@@ -220,7 +220,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     configMonitor("app.xml", &s_appXml);
-    string path;
+    Path path;
     appDataPath(&path, "metrics");
     s_db = dbOpen(path, 0, fDbOpenVerbose | fDbOpenCreat);
     if (!s_db) {
@@ -232,7 +232,7 @@ void tsDataInitialize() {
 
 //===========================================================================
 void tsDataBackup(IDbProgressNotify * notify) {
-    string path;
+    Path path;
     appDataPath(&path, "backup/metrics");
     dbBackup(notify, s_db, path);
 }
