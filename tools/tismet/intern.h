@@ -4,6 +4,9 @@
 // intern.h - tismet
 #pragma once
 
+// Application
+std::string_view tsProductVersion();
+
 // Performance counters
 void tsPerfInitialize();
 
@@ -11,6 +14,7 @@ void tsPerfInitialize();
 void tsDataInitialize();
 void tsDataBackup(IDbProgressNotify * notify);
 DbHandle tsDataHandle();
+const Dim::Path & tsDataPath();
 DbContextHandle tsDataOpenContext();
 
 // Returns false if the metric is not being stored
@@ -27,5 +31,6 @@ void tsBackupStart();
 // Carbon
 void tsCarbonInitialize();
 
-// Graphite Web API
+// Web API
+void tsWebInitialize();
 void tsGraphiteInitialize();

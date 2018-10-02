@@ -78,7 +78,7 @@ void ExpireTimer::updateInterval(Duration interval) {
 Duration ExpireTimer::timeUntilCheck() {
     if (!m_expireInterval.count())
         return kTimerInfinite;
-    auto now = Clock::now();
+    auto now = timeNow();
     auto ticks = now.time_since_epoch().count();
     auto interval = m_expireInterval.count();
     auto wait = Duration{interval - ticks % interval};
@@ -107,7 +107,7 @@ bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
     if (!info.type)
         return true;
 
-    auto now = Clock::now();
+    auto now = timeNow();
     if (now >= info.first + 2 * (info.last - info.first)) {
         s_perfExpired += 1;
         dbEraseMetric(s_db, info.id);
@@ -216,15 +216,21 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 *
 ***/
 
+static Path s_dbPath;
+
+//===========================================================================
+const Path & tsDataPath() {
+    return s_dbPath;
+}
+
 //===========================================================================
 void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     configMonitor("app.xml", &s_appXml);
-    Path path;
-    appDataPath(&path, "metrics");
-    s_db = dbOpen(path, 0, fDbOpenVerbose | fDbOpenCreat);
+    appDataPath(&s_dbPath, "metrics");
+    s_db = dbOpen(s_dbPath, 0, fDbOpenVerbose | fDbOpenCreat);
     if (!s_db) {
-        logMsgError() << "Unable to open database, " << path;
+        logMsgError() << "Unable to open database, " << s_dbPath;
         return appSignalShutdown(EX_DATAERR);
     }
     configChange("app.xml", &s_appXml);

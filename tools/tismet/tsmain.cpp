@@ -53,8 +53,8 @@ void ConsoleLogger::onLog(LogType type, string_view msg) {
     if (type < appLogLevel())
         return;
 
-    auto now = Clock::now();
-    Time8601Str nowStr{now, 3, timeZoneMinutes(now)};
+    auto now = timeNow();
+    Time8601Str nowStr{now, 3};
     scoped_lock lk{m_mut};
     cout << nowStr.view() << ' ';
     if (type >= size(s_logTypeInfo))
@@ -99,6 +99,7 @@ static InitializeTask s_initTask;
 void InitializeTask::onTask() {
     winTlsInitialize();
     appTlsInitialize();
+    tsWebInitialize();
     tsDataInitialize();
     if (!appStopping()) {
         evalInitialize(tsDataHandle());
@@ -195,4 +196,16 @@ int main(int argc, char *argv[]) {
 
     int code = appRun(app, argc, argv, fAppServer);
     return code;
+}
+
+
+/****************************************************************************
+*
+*   Public API
+*
+***/
+
+//===========================================================================
+string_view tsProductVersion() {
+    return s_productVersion;
 }

@@ -81,6 +81,7 @@
 # tools/tismet/tsmain.cpp
 # tools/tismet/tsperf.cpp
 # tools/tismet/tsservice.cpp
+# tools/tismet/tsweb.cpp
 # tools/tsm/intern.h
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
