@@ -57,7 +57,7 @@ static unsigned s_nextRequestId;
 
 //===========================================================================
 unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
-    auto now = Clock::now();
+    auto now = timeNow();
     CarbonUpdate upd;
     if (!m_buf.empty()) {
         m_buf.append(src);

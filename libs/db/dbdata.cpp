@@ -453,7 +453,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         pgno,
         id,
         name,
-        Clock::now(),
+        timeNow(),
         kDefaultSampleType,
         kDefaultRetention,
         kDefaultInterval

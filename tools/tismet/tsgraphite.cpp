@@ -404,7 +404,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
         return httpRouteReply(reqId, req, 400, "Missing parameter: 'target'");
 
     if (!now)
-        now = Clock::now();
+        now = timeNow();
     if (!from)
         from = now + relFrom;
     if (!until)

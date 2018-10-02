@@ -159,7 +159,7 @@ ostream & TextWriter::out(void * ptr) {
 
 //===========================================================================
 string_view TextWriter::timeStr(TimePoint time) {
-    m_ts.set(time, 0, timeZoneMinutes(time));
+    m_ts.set(time);
     return m_ts.view();
 }
 

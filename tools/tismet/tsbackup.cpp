@@ -34,7 +34,7 @@ private:
 
     RunMode m_mode{kRunStopped};
     DbProgressInfo m_info{};
-    Dim::TimePoint m_time{};
+    Dim::TimePoint m_time;
     UnsignedSet m_reqIds;
     mutable mutex m_mut;
 };
@@ -67,7 +67,7 @@ void BackupProgress::buildResponse(
     out->addHeader(kHttpContentType, "application/xml");
     out->addHeader(kHttp_Status, "200");
     XBuilder bld(&out->body());
-    Time8601Str ts(progress.m_time, 3, timeZoneMinutes(progress.m_time));
+    Time8601Str ts(progress.m_time, 3);
     bld.start("Backup")
         .attr("status", toString(progress.m_mode))
         .attr("time", ts.c_str());
@@ -111,7 +111,7 @@ bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
         scoped_lock lk{m_mut};
         m_mode = mode;
         m_info = info;
-        m_time = Clock::now();
+        m_time = timeNow();
         if (!m_reqIds)
             return true;
 

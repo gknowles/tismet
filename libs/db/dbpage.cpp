@@ -100,7 +100,7 @@ bool DbPage::open(
         close();
         return false;
     }
-    m_currentWal.push_back({0, Clock::now()});
+    m_currentWal.push_back({0, timeNow()});
 
     return true;
 }
@@ -247,7 +247,7 @@ void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
         s_perfReqWalPages += 1;
         m_stableBytes += bytes;
     }
-    m_currentWal.push_back({lsn, Clock::now(), bytes});
+    m_currentWal.push_back({lsn, timeNow(), bytes});
     while (m_stableBytes - m_overflowBytes > m_maxDirtyData) {
         auto wi = m_currentWal.front();
         m_overflowWal.push_back(wi);
@@ -286,7 +286,7 @@ Duration DbPage::untilNextSave_LK() {
     if (m_overflowBytes && m_stableLsn >= front->hdr->lsn)
         return 0ms;
 
-    auto minTime = Clock::now() - m_maxDirtyAge;
+    auto minTime = timeNow() - m_maxDirtyAge;
     auto maxWait = front->firstTime - minTime;
     auto wait = m_maxDirtyAge / m_pageDebt;
     if (wait > maxWait) wait = maxWait;
@@ -308,7 +308,7 @@ Duration DbPage::onSaveTimer(TimePoint now) {
 
 //===========================================================================
 void DbPage::saveWork() {
-    auto now = Clock::now();
+    auto now = timeNow();
     auto lastTime = m_lastSaveTime;
     m_lastSaveTime = now;
 
@@ -316,7 +316,7 @@ void DbPage::saveWork() {
     if (m_saveInProgress)
         return;
     m_saveInProgress = true;
-    
+
     saveOldPages_LK();
 
     if (!m_dirtyPages) {
@@ -465,7 +465,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     }
 
     if (m_cleanPages) {
-        auto minTime = Clock::now() - m_maxDirtyAge;
+        auto minTime = timeNow() - m_maxDirtyAge;
         while (auto pi = m_cleanPages.front()) {
             if (pi->firstTime > minTime)
                 break;
@@ -606,7 +606,7 @@ void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     }
     assert(pi->hdr && !pi->pgno);
     if (~pi->flags & fDbPageDirty) {
-        pi->firstTime = Clock::now();
+        pi->firstTime = timeNow();
         pi->firstLsn = lsn;
         pi->flags |= fDbPageDirty;
         m_dirtyPages.link(pi);

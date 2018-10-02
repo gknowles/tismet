@@ -506,7 +506,7 @@ bool DbLog::recover(RecoverFlags flags) {
         return true;
 
     m_phase = Checkpoint::Complete;
-    m_checkpointStart = Clock::now();
+    m_checkpointStart = timeNow();
 
     auto logfile = filePath(m_flog);
     auto flog = fileOpen(
@@ -815,7 +815,7 @@ void DbLog::checkpoint() {
 
     if (m_openFlags & fDbOpenVerbose)
         logMsgInfo() << "Checkpoint started";
-    m_checkpointStart = Clock::now();
+    m_checkpointStart = timeNow();
     m_checkpointData = 0;
     m_phase = Checkpoint::WaitForPageFlush;
     s_perfCps += 1;
@@ -906,7 +906,7 @@ void DbLog::checkpointTruncateCommit() {
 void DbLog::checkpointWaitForNext() {
     if (!m_closing) {
         Duration wait = 0ms;
-        auto elapsed = Clock::now() - m_checkpointStart;
+        auto elapsed = timeNow() - m_checkpointStart;
         if (elapsed < m_maxCheckpointInterval)
             wait = m_maxCheckpointInterval - elapsed;
         if (m_checkpointData >= m_maxCheckpointData)

@@ -112,7 +112,7 @@ void tcLogStart(
     const DbProgressInfo * limit,
     chrono::duration<double> timeLimit
 ) {
-    s_startTime = Clock::now();
+    s_startTime = timeNow();
     if (limit
         && (limit->totalFiles
             || limit->totalMetrics
@@ -130,7 +130,7 @@ void tcLogStart(
 
 //===========================================================================
 void tcLogShutdown(const DbProgressInfo * total) {
-    TimePoint finish = Clock::now();
+    TimePoint finish = timeNow();
     chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
