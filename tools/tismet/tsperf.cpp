@@ -59,7 +59,7 @@ Duration SampleTimer::onTimer(TimePoint now) {
 
 //===========================================================================
 void SampleTimer::onTask() {
-    auto now = Clock::now();
+    auto now = timeNow();
     auto f = tsDataHandle();
     auto ctx = tsDataOpenContext();
     perfGetValues(&m_vals);
@@ -92,7 +92,7 @@ void SampleTimer::onTask() {
         dbUpdateSample(f, id, now, val.raw);
     }
     dbCloseContext(ctx);
-    now = Clock::now();
+    now = timeNow();
     auto wait = ceil<SampleInterval>(now) - now;
     timerUpdate(this, wait);
     s_taskQueued = false;
@@ -130,5 +130,6 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 
 //===========================================================================
 void tsPerfInitialize() {
+    shutdownMonitor(&s_cleanup);
     timerUpdate(&s_sampleTimer, 0ms);
 }
