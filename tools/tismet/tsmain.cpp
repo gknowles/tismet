@@ -145,7 +145,6 @@ static bool serveCmd(Cli & cli) {
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
 
-    resLoadWebSite();
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";

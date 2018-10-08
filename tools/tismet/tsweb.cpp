@@ -69,4 +69,7 @@ static JsonAbout s_jsonAbout;
 //===========================================================================
 void tsWebInitialize() {
     httpRouteAdd(&s_jsonAbout, "/srv/about.json", fHttpMethodGet);
+
+    resLoadWebSite("/admin");
+    httpRouteAddRedirect("/", "/admin/");
 }
