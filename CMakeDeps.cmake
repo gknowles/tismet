@@ -73,6 +73,7 @@
 # tools/tismet/pch.cpp
 # tools/tismet/pch.h
 # tools/tismet/resource.h
+# tools/tismet/tismet.manifest
 # tools/tismet/tismet.rc
 # tools/tismet/tsbackup.cpp
 # tools/tismet/tscarbon.cpp
