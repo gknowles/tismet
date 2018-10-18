@@ -62,9 +62,11 @@
 # a CMakeLists.txt file. It is expected to be a compatible version of this
 # file, and only it's lib projects will be included in the root solution.
 
-cmake_minimum_required (VERSION 3.6)
+cmake_minimum_required(VERSION 3.6)
+option(BUILD_PROJECT_NAME "Override name of project to build" OFF)
 option(LINK_STATIC_RUNTIME "Link with static c++ runtime" ON)
 option(BUILD_SHARED_LIBS "Build DLLs instead of static libs" OFF)
+option(BUILD_TESTING "Enable test generation for ctest" ON)
 option(BUILD_UNICODE "Build with Unicode charset" OFF)
 option(INSTALL_LIBS "Install includes libs" OFF)
 option(INSTALL_TOOLS "Install includes tool binaries" OFF)
@@ -272,7 +274,7 @@ function(add_lib_project tgt srcdir)
 endfunction()
 
 function(add_file_project tgt)
-    file(GLOB sources LIST_DIRECTORIES false ${ARGN})
+    set(sources ${ARGN})
     list(LENGTH sources num)
     if(num)
         list(APPEND deps ${sources})
@@ -291,13 +293,6 @@ endfunction()
 #
 ####
 
-# Get name of project from containing directory. Strip version suffixes like
-# "-1.2.3" from the that vcpkg likes to add when building things.
-get_filename_component(prjname "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
-string(REGEX REPLACE "(-[\.0-9\-]*)$" "" prjname ${prjname})
-project(${prjname})
-string(TOUPPER "${prjname}" DEFINE_PREFIX)
-
 get_property(parent DIRECTORY PROPERTY PARENT_DIRECTORY)
 if("${parent}" STREQUAL "")
     set(ROOT_PROJECT true)
@@ -305,12 +300,27 @@ else()
     set(ROOT_PROJECT false)
 endif()
 
-# In order to make a copy of the solution to the source root (where it's
+if(BUILD_PROJECT_NAME AND ROOT_PROJECT)
+    project(${BUILD_PROJECT_NAME})
+else()
+    # Get name of project from containing directory. Strip version suffixes
+    # such as "-1.2.3-2" from the name.
+    get_filename_component(prjname "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
+    string(REGEX REPLACE "(-[\.0-9\-]*)$" "" prjname ${prjname})
+    project(${prjname})
+endif()
+string(TOUPPER "${PROJECT_NAME}" DEFINE_PREFIX)
+
+# OUT_OF_TREE is 0 if binary dir is a subdirectory of source dir, else non-zero.
+string(FIND "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/"
+    OUT_OF_TREE)
+
+# In order to put a copy of the solution in the source root (where it's
 # required to be for the github integration) we need to copy - and tweak - it
 # post generation. But cmake doesn't allow for post generation hooks, so we
 # launch another instance of cmake and then transform and copy the solution
 # file after that instance returns.
-if(MSVC AND ROOT_PROJECT AND NOT RECURSIVE_GENERATE)
+if(MSVC AND ROOT_PROJECT AND NOT RECURSIVE_GENERATE AND NOT OUT_OF_TREE)
     message(STATUS "Recursive generate started")
     execute_process(
         COMMAND ${CMAKE_COMMAND}
@@ -354,9 +364,11 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER cmake)
 
 set(CMAKE_CONFIGURATION_TYPES Debug Release)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+if(NOT OUT_OF_TREE)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+endif()
 
 if(MSVC)
     # "/EHsc" - exceptions from c++ only (not from structured or "C")
@@ -474,17 +486,20 @@ if(NOT ROOT_PROJECT)
 endif()
 
 # file targets
-add_file_project(about
+file(GLOB sources
     LICENSE
     .clang-format
     .travis.yml
     appveyor.yml
     *.md
     *.props
-    configure.bat
-    docs/*)
-add_file_project(conf
-    bin/conf/*)
+    configure.bat)
+file(GLOB_RECURSE allnames docs/*)
+list(APPEND sources ${allnames})
+add_file_project(about ${sources})
+
+file(GLOB_RECURSE sources bin/conf/*)
+add_file_project(conf ${sources})
 
 # tool targets
 file(GLOB allnames tools/*)
@@ -500,6 +515,9 @@ foreach(var ${allnames})
 endforeach()
 
 # test targets
+if(BUILD_TESTING)
+    enable_testing()
+endif()
 file(GLOB allnames tests/*)
 foreach(var ${allnames})
     if(IS_DIRECTORY "${var}")

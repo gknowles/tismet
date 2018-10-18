@@ -42,19 +42,13 @@ static CmdOpts s_opts;
 ***/
 
 //===========================================================================
-static bool execElevated(string_view prog, const vector<string> & args) {
-    CharBuf tmp;
-    tmp += "--console=";
-    tmp += StrFrom<unsigned>(envProcessId());
-    for (auto && arg : args) {
-        if (&arg == args.data())
-            continue;
-        tmp += " \"";
-        tmp += arg;
-        tmp += '"';
-    }
+static bool execElevated(string_view prog, const vector<string> & rawArgs) {
+    auto args = rawArgs;
+    args[0] = "--console=";
+    args[0] += StrFrom<unsigned>(envProcessId());
+    auto argline = Cli::toCmdline(args);
     int ec;
-    return execElevatedWait(&ec, prog, tmp.view());
+    return execElevatedWait(&ec, prog, argline);
 }
 
 
