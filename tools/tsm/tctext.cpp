@@ -114,12 +114,10 @@ private:
     ) override;
 
     ostream & out(void * ptr);
-    string_view timeStr(TimePoint time);
 
     // Data members
     ostream & m_os;
     DbPageHeader m_hdr;
-    Time8601Str m_ts;
 };
 
 } // namespace
@@ -155,12 +153,6 @@ ostream & TextWriter::out(void * ptr) {
         << '.' << hdr->checksum // localTxn smuggled through as checksum
         << " @" << hdr->pgno << ": ";
     return m_os;
-}
-
-//===========================================================================
-string_view TextWriter::timeStr(TimePoint time) {
-    m_ts.set(time);
-    return m_ts.view();
 }
 
 //===========================================================================
@@ -247,7 +239,7 @@ void TextWriter::onLogApplyMetricInit(
     Duration interval
 ) {
     out(ptr) << name << "/" << id << ".init = "
-        << timeStr(creation) << ", "
+        << creation << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
         << toString(retention, DurationFormat::kTwoPart) << ", "
         << toString(interval, DurationFormat::kTwoPart) << '\n';
@@ -262,7 +254,7 @@ void TextWriter::onLogApplyMetricUpdate(
     Duration interval
 ) {
     out(ptr) << "metric = "
-        << timeStr(creation) << ", "
+        << creation << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
         << toString(retention, DurationFormat::kTwoPart) << ", "
         << toString(interval, DurationFormat::kTwoPart) << '\n';
@@ -292,7 +284,7 @@ void TextWriter::onLogApplyMetricUpdateSamples(
     if (refSample != (size_t) -1)
         os << '.' << refSample;
     if (refTime)
-        os << " / " << timeStr(refTime);
+        os << " / " << refTime;
     os << '\n';
 }
 
@@ -307,7 +299,7 @@ void TextWriter::onLogApplySampleInit(
 ) {
     out(ptr) << "samples/" << id << ".init = " << fill << ", "
         << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << timeStr(pageTime) << ", "
+        << pageTime << ", "
         << lastSample << "\n";
 }
 
@@ -340,7 +332,7 @@ void TextWriter::onLogApplySampleUpdate(
 
 //===========================================================================
 void TextWriter::onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
-    out(ptr) << "samples.time = " << timeStr(pageTime) << '\n';
+    out(ptr) << "samples.time = " << pageTime << '\n';
 }
 
 //===========================================================================

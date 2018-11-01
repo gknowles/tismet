@@ -42,10 +42,10 @@ private:
     bool onFileRead(
         size_t * bytesUsed,
         string_view data,
+        bool more,
         int64_t offset,
         FileHandle f
     ) override;
-    void onFileEnd(int64_t offset, FileHandle f) override;
 
     // Inherited via IParserNotify
     bool startArray(size_t length) override;
@@ -130,17 +130,16 @@ DumpReader::DumpReader()
 bool DumpReader::onFileRead(
     size_t * bytesUsed,
     string_view data,
+    bool more,
     int64_t offset,
     FileHandle f
 ) {
     auto ec = m_parser.parse(bytesUsed, data);
     s_progress.bytes += *bytesUsed;
-    return !ec || ec == errc::operation_in_progress;
-}
-
-//===========================================================================
-void DumpReader::onFileEnd(int64_t offset, FileHandle f) {
-    onDumpEnd();
+    more = more && (!ec || ec == errc::operation_in_progress);
+    if (!more)
+        onDumpEnd();
+    return more;
 }
 
 //===========================================================================

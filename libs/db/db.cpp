@@ -108,10 +108,10 @@ private:
     bool onFileRead(
         size_t * bytesUsed,
         string_view data,
+        bool more,
         int64_t offset,
         FileHandle f
     ) override;
-    void onFileEnd(int64_t offset, FileHandle f) override;
 
     struct RequestBucket {
         mutex mut;
@@ -331,6 +331,7 @@ void DbBase::backupNextFile() {
 bool DbBase::onFileRead(
     size_t * bytesUsed,
     string_view data,
+    bool more,
     int64_t offset,
     FileHandle f
 ) {
@@ -339,20 +340,16 @@ bool DbBase::onFileRead(
     m_dstFile.append(data);
     if (m_backer && !m_backer->onDbProgress(m_backupMode, m_info)) {
         m_backupMode = kRunStopping;
-        return false;
-    }
-    return true;
-}
-
-//===========================================================================
-void DbBase::onFileEnd(int64_t offset, FileHandle f) {
-    m_dstFile.close();
-    if (m_backupMode == kRunStopping) {
         m_backupFiles.clear();
-    } else {
-        m_info.files += 1;
+        more = false;
     }
-    backupNextFile();
+    if (!more) {
+        m_dstFile.close();
+        if (m_backupMode != kRunStopping)
+            m_info.files += 1;
+        backupNextFile();
+    }
+    return more;
 }
 
 

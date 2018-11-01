@@ -357,7 +357,7 @@ private:
 // Render
 //===========================================================================
 void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
-    string format;
+    string_view format;
     vector<string_view> targets;
     TimePoint from;
     TimePoint until;
@@ -410,7 +410,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     if (!until)
         until = now + relUntil;
 
-    auto ftype = tokenTableGetEnum(s_formatTbl, format.data(), kFormatInvalid);
+    auto ftype = tokenTableGetEnum(s_formatTbl, format, kFormatInvalid);
     switch (ftype) {
     case kFormatJson:
         break;
@@ -425,7 +425,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
             reqId,
             req,
             400,
-            "Missing or unknown format: '"s + format + "'"
+            "Missing or unknown format: '" + string(format) + "'"
         );
     }
 
