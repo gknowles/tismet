@@ -75,13 +75,13 @@ static bool reportStatus(XNode * node) {
     if (!val)
         return false;
     auto mode = fromString(val, kRunStopping);
-    DbProgressInfo info = {};
+    s_info = {};
     auto e = firstChild(node, "Files");
-    info.files = strToInt(attrValue(e, "value", ""));
-    info.totalFiles = strToInt(attrValue(e, "total", "-1"));
+    s_info.files = strToInt(attrValue(e, "value", ""));
+    s_info.totalFiles = strToInt(attrValue(e, "total", "-1"));
     e = firstChild(node, "Bytes");
-    info.bytes = strToInt64(attrValue(e, "value", ""));
-    info.totalBytes = strToInt64(attrValue(e, "total", "-1"));
+    s_info.bytes = strToInt64(attrValue(e, "value", ""));
+    s_info.totalBytes = strToInt64(attrValue(e, "total", "-1"));
 
     if (++s_statusLines > 1)
         consoleRedoLine();
