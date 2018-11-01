@@ -12,14 +12,17 @@ Time series metric collection
 
 - Windows server
 - Metric database with transactional write-ahead logging.
-- Alternative storage provider for Graphite
-  - Takes the place of both whisper and carbon-cache
-- Collection protocols supported
+- Collection protocols
   - Graphite plaintext protocol
+- Query protocols
+  - Alternative storage provider for Graphite (Takes the place of both whisper
+    and carbon-cache).
+  - Subset of Graphite Render API (Works as a standalone backend for Grafana).
 
 #### Limitations
 - Requires HTTP/2
-- Graphite must be version 1.1 or later
+- When used as alternative storage provider
+  - Graphite must be version 1.1 or later
 
 
 ## Building
@@ -44,10 +47,10 @@ testing.
 
 
 ## Running
-Tismet can run from the command line or as a service. The easiest way to
-install it as a service is:
+The Tismet server can run from the command line or as a service. The easiest
+way to install it as a service is:
 ~~~ batch
-sc create Tismet binPath= <installPath>\tismet.exe start= auto depend= Tcpip/Afd
+tismet install
 ~~~
 
 When run, Tismet accesses directories relative to the executable:
@@ -120,6 +123,9 @@ STORAGE_FINDERS = (
 ~~~ python
 CLUSTER_SERVERS = ["proxy-to-tismet.example.com"]
 ~~~
+
+
+## Configuring Grafana
 
 
 ## Making backups
