@@ -24,13 +24,13 @@ class JsonAbout : public IHttpRouteNotify {
 
 //===========================================================================
 static void addPath(IJBuilder * out, string_view name, string_view path) {
-    auto mname = string(name); mname += "Path";
-    out->member(mname, path);
-    mname = name; mname += "SpaceAvail";
+    out->member(name);
+    out->object();
+    out->member("path", path);
     auto ds = envDiskSpace(path);
-    out->member(mname, ds.avail);
-    mname = name; mname += "SpaceTotal";
-    out->member(mname, ds.total);
+    out->member("spaceAvail", ds.avail);
+    out->member("spaceTotal", ds.total);
+    out->end();
 }
 
 //===========================================================================
@@ -39,14 +39,14 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     HttpResponse res;
     JBuilder bld(&res.body());
     bld.object();
-    bld.member("now", Time8601Str{now}.c_str());
+    bld.member("now", now);
     bld.member("version", tsProductVersion());
     bld.member("service", bool(appFlags() & fAppIsService));
-    bld.member("startTime", Time8601Str{envProcessStartTime()}.c_str());
+    bld.member("startTime", envProcessStartTime());
     bld.member("rootDir", appRootDir());
-    addPath(&bld, "data", tsDataPath().parentPath());
-    addPath(&bld, "log", appLogDir());
-    addPath(&bld, "crash", appCrashDir());
+    addPath(&bld, "dataDir", tsDataPath().parentPath());
+    addPath(&bld, "logDir", appLogDir());
+    addPath(&bld, "crashDir", appCrashDir());
     bld.member("config");
     configWriteRules(&bld);
     bld.member("account");
