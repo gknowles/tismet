@@ -782,11 +782,11 @@ static FunctionIndex s_func;
 
 //===========================================================================
 void tsGraphiteInitialize() {
-    httpRouteAdd(&s_index, "/metrics/index.json", fHttpMethodGet);
-    httpRouteAdd(&s_find, "/metrics/find", fHttpMethodGet);
-    httpRouteAdd(&s_find, "/metrics/find/", fHttpMethodGet);
-    httpRouteAdd(&s_render, "/render", fHttpMethodGet);
-    httpRouteAdd(&s_render, "/render/", fHttpMethodGet);
+    httpRouteAdd(&s_index, "/metrics/index.json");
+    httpRouteAdd(&s_find, "/metrics/find");
+    httpRouteAdd(&s_find, "/metrics/find/");
+    httpRouteAdd(&s_render, "/render");
+    httpRouteAdd(&s_render, "/render/");
     httpRouteAdd(&s_render, "/render", fHttpMethodPost);
-    httpRouteAdd(&s_func, "/functions/index.json", fHttpMethodGet);
+    httpRouteAdd(&s_func, "/functions/index.json");
 }

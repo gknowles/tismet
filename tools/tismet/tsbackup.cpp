@@ -181,7 +181,7 @@ static BackupQuery s_backQuery;
 //===========================================================================
 void tsBackupInitialize() {
     httpRouteAdd(&s_backStart, "/backup", fHttpMethodPost);
-    httpRouteAdd(&s_backQuery, "/backup", fHttpMethodGet);
+    httpRouteAdd(&s_backQuery, "/backup");
 }
 
 //===========================================================================

@@ -65,11 +65,12 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
 ***/
 
 static JsonAbout s_jsonAbout;
+static HttpRouteRedirectNotify s_redirectAdmin("/admin/");
 
 //===========================================================================
 void tsWebInitialize() {
-    httpRouteAdd(&s_jsonAbout, "/srv/about.json", fHttpMethodGet);
+    httpRouteAdd(&s_jsonAbout, "/srv/about.json");
 
     resLoadWebSite("/admin");
-    httpRouteAddRedirect("/", "/admin/");
+    httpRouteAdd(&s_redirectAdmin, "/");
 }
