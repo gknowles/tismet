@@ -71,6 +71,6 @@ static HttpRouteRedirectNotify s_redirectAdmin("/admin/");
 void tsWebInitialize() {
     httpRouteAdd(&s_jsonAbout, "/srv/about.json");
 
-    resLoadWebSite("/admin");
+    resLoadWebSite("/admin", {}, resWebSiteContent());
     httpRouteAdd(&s_redirectAdmin, "/");
 }

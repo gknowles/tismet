@@ -34,3 +34,5 @@ void tsCarbonInitialize();
 // Web API
 void tsWebInitialize();
 void tsGraphiteInitialize();
+
+std::string_view resWebSiteContent();
