@@ -86,6 +86,7 @@ public:
 protected:
     void onSourceStart() override;
     void onTask() override;
+    bool onFuncSource(std::string_view src) override;
     void onFuncOutput(ResultInfo & info) override;
 
     std::unique_ptr<IFuncInstance> m_instance;

@@ -118,9 +118,11 @@ inline bool QueryParser::onFn)" << name << R"(Start () {
 //===========================================================================
 static string argTypeName(const Eval::FuncArgInfo & arg) {
     switch (arg.type) {
+    case Eval::FuncArg::kFunc: return "arg-func";
     case Eval::FuncArg::kNum: return "arg-num";
     case Eval::FuncArg::kNumOrString: return "(arg-num / arg-string)";
-    case Eval::FuncArg::kQuery: return "arg-query";
+    case Eval::FuncArg::kPath: return "arg-path";
+    case Eval::FuncArg::kPathOrFunc: return "arg-path-or-func";
     case Eval::FuncArg::kString: return "arg-string";
     case Eval::FuncArg::kEnum: return "arg-"s + arg.enumName;
     default:

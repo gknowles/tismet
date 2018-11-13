@@ -9,7 +9,9 @@
 %api.parser.file.h = queryparseint.h
 %api.base.file.h = queryparsebaseint.h
 
-
+;----------------------------------------------------------------------------
+; Root
+;----------------------------------------------------------------------------
 query = path / func { Function }
 
 ;----------------------------------------------------------------------------
@@ -48,7 +50,9 @@ scl-char = scl-char-nd / "-"
 ;----------------------------------------------------------------------------
 ; Function arguments
 ;----------------------------------------------------------------------------
-arg-query = *WSP query *WSP { Start }
+arg-func = *WSP func *WSP
+arg-path = *WSP path *WSP
+arg-path-or-func = *WSP query *WSP
 arg-num = *WSP number *WSP { End }
 arg-string = *WSP (DQUOTE string DQUOTE / "'" string-ns "'") *WSP
 arg-aggfunc = *WSP (DQUOTE aggfunc DQUOTE / "'" aggfunc "'") *WSP

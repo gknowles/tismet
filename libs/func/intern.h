@@ -41,7 +41,11 @@ public:
 public:
     Function::Type type() const override;
 
-    IFuncInstance * onFuncBind(std::vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(
+        IFuncNotify * notify,
+        std::vector<FuncArg> && args
+    ) override;
+    virtual IFuncInstance * onFuncBind(std::vector<FuncArg> && args);
     void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
@@ -78,7 +82,7 @@ template<typename T>
 std::unique_ptr<Eval::IFuncInstance> Eval::FuncFactory<T>::onFactoryCreate() {
     auto ptr = std::make_unique<T>();
     ptr->m_type = m_type;
-    return move(ptr);
+    return ptr;
 }
 
 //===========================================================================
@@ -136,6 +140,28 @@ Eval::Function::Type Eval::IFuncBase<T>::type() const {
 //===========================================================================
 template<typename T>
 Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
+    Eval::IFuncNotify * notify,
+    std::vector<FuncArg> && args
+) {
+    auto oi = args.begin();
+    for (auto && arg : args) {
+        switch (arg.type) {
+        case FuncArg::kFunc:
+        case FuncArg::kPath:
+            if (!notify->onFuncSource(arg.string.get()))
+                return nullptr;
+            break;
+        default:
+            *oi++ = std::move(arg);
+        }
+    }
+    args.resize(oi - args.begin());
+    return onFuncBind(std::move(args));
+}
+
+//===========================================================================
+template<typename T>
+Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
     std::vector<FuncArg> && args
 ) {
     return this;
@@ -150,7 +176,10 @@ void Eval::IFuncBase<T>::onFuncAdjustContext(Eval::FuncContext * context) {
 
 //===========================================================================
 template<typename T>
-bool Eval::IFuncBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
+bool Eval::IFuncBase<T>::onFuncApply(
+    Eval::IFuncNotify * notify,
+    ResultInfo & info
+) {
     assert(!"onFuncApply not implemented by base function");
     return false;
 }

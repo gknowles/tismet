@@ -69,7 +69,7 @@ class FuncDerivative : public IXfrmListBase<FuncDerivative> {
 };
 } // namespace
 static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
-    .arg("query", FuncArg::kQuery, true);
+    .arg("query", FuncArg::kPathOrFunc, true);
 
 //===========================================================================
 IFuncInstance * FuncDerivative::onFuncBind(vector<FuncArg> && args) {
@@ -112,7 +112,7 @@ class FuncKeepLastValue : public IXfrmListBase<FuncKeepLastValue> {
 } // namespace
 static auto s_keepLastValue =
     FuncKeepLastValue::Factory("keepLastValue", "Transform")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("limit", FuncArg::kNum);
 
 //===========================================================================
@@ -183,7 +183,7 @@ class FuncMovingAverage : public IXfrmListBase<FuncMovingAverage> {
 } // namespace
 static auto s_movingAverage =
     FuncMovingAverage::Factory("movingAverage", "Calculate")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("windowSize", FuncArg::kNumOrString, true)
     .arg("xFilesFactor", FuncArg::kNum, false);
 
@@ -270,7 +270,7 @@ class FuncNonNegativeDerivative
 } // namespace
 static auto s_nonNegativeDerivative =
     FuncNonNegativeDerivative::Factory("nonNegativeDerivative", "Transform")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("maxValue", FuncArg::kNum);
 
 //===========================================================================

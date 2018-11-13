@@ -62,7 +62,7 @@ class FuncAbsolute : public IXfrmValueBase<FuncAbsolute> {
 };
 } // namespace
 static auto s_absolute = FuncAbsolute::Factory("absolute", "Transform")
-    .arg("query", FuncArg::kQuery, true);
+    .arg("query", FuncArg::kPathOrFunc, true);
 
 //===========================================================================
 double FuncAbsolute::onConvert(double value) {
@@ -83,7 +83,7 @@ class FuncDrawAsInfinite : public IXfrmValueBase<FuncDrawAsInfinite> {
 } // namespace
 static auto s_drawAsInfinite =
     FuncDrawAsInfinite::Factory("drawAsInfinite", "Transform")
-    .arg("query", FuncArg::kQuery, true);
+    .arg("query", FuncArg::kPathOrFunc, true);
 
 //===========================================================================
 double FuncDrawAsInfinite::onConvert(double value) {
@@ -112,7 +112,7 @@ class FuncRemoveAboveValue : public IXfrmValueBase<FuncRemoveAboveValue> {
 } // namespace
 static auto s_removeAboveValue =
     FuncRemoveAboveValue::Factory("removeAboveValue", "Filter Data")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
@@ -142,7 +142,7 @@ class FuncRemoveBelowValue : public IXfrmValueBase<FuncRemoveBelowValue> {
 } // namespace
 static auto s_removeBelowValue =
     FuncRemoveBelowValue::Factory("removeBelowValue", "Filter Data")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
@@ -171,7 +171,7 @@ class FuncScale : public IXfrmValueBase<FuncScale> {
 };
 } // namespace
 static auto s_scale = FuncScale::Factory("scale", "Transform")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("factor", FuncArg::kNum, true);
 
 //===========================================================================
@@ -204,7 +204,7 @@ class FuncScaleToSeconds : public IXfrmValueBase<FuncScaleToSeconds> {
 } // namespace
 static auto s_scaleToSeconds =
     FuncScaleToSeconds::Factory("scaleToSeconds", "Transform")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("seconds", FuncArg::kNum, true);
 
 //===========================================================================

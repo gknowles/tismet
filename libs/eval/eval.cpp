@@ -207,16 +207,25 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
     for (auto && arg : qf.args) {
         switch (Query::getType(*arg)) {
         case Query::kPath:
+            fargs.push_back({
+                FuncArg::kPath,
+                toSharedString(toString(*arg))
+            });
+            break;
         case Query::kFunc:
-            if (!addSource(fnode.get(), toString(*arg)))
-                return {};
+            fargs.push_back({
+                FuncArg::kFunc,
+                toSharedString(toString(*arg))
+            });
             break;
         case Query::kNum:
-            fargs.emplace_back().number = Query::getNumber(*arg);
+            fargs.push_back({FuncArg::kNum, {}, Query::getNumber(*arg)});
             break;
         case Query::kString:
-            fargs.emplace_back().string =
-                toSharedString(Query::getString(*arg));
+            fargs.push_back({
+                FuncArg::kString,
+                toSharedString(Query::getString(*arg))
+            });
             break;
         default:
             return {};
@@ -507,7 +516,7 @@ void FuncNode::init(
 
 //===========================================================================
 bool FuncNode::bind(vector<FuncArg> && args) {
-    auto ptr = m_instance->onFuncBind(move(args));
+    auto ptr = m_instance->onFuncBind(this, move(args));
     if (ptr != m_instance.get())
         m_instance.reset(ptr);
     return (bool) m_instance;
@@ -556,6 +565,11 @@ void FuncNode::onTask() {
             return;
         }
     }
+}
+
+//===========================================================================
+bool FuncNode::onFuncSource(string_view src) {
+    return (bool) addSource(this, src);
 }
 
 //===========================================================================

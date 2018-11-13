@@ -5,144 +5,144 @@
 ; Functions
 ;----------------------------------------------------------------------------
 func =/ fn-absolute { End }
-fn-absolute = %s"absolute(" arg-query ")" { Start }
+fn-absolute = %s"absolute(" arg-path-or-func ")" { Start }
 
 func =/ fn-aggregate { End }
-fn-aggregate = %s"aggregate(" arg-query "," arg-aggFunc ")" { Start }
+fn-aggregate = %s"aggregate(" arg-path-or-func "," arg-aggFunc ")" { Start }
 
 func =/ fn-alias { End }
-fn-alias = %s"alias(" arg-query "," arg-string ")" { Start }
+fn-alias = %s"alias(" arg-path-or-func "," arg-string ")" { Start }
 
 func =/ fn-aliasSub { End }
-fn-aliasSub = %s"aliasSub(" arg-query "," arg-string "," arg-string ")" { Start }
+fn-aliasSub = %s"aliasSub(" arg-path-or-func "," arg-string "," arg-string ")" { Start }
 
 func =/ fn-averageAbove { End }
-fn-averageAbove = %s"averageAbove(" arg-query "," arg-num ")" { Start }
+fn-averageAbove = %s"averageAbove(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-averageBelow { End }
-fn-averageBelow = %s"averageBelow(" arg-query "," arg-num ")" { Start }
+fn-averageBelow = %s"averageBelow(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-averageSeries / fn-avg { End }
-fn-averageSeries = %s"averageSeries(" arg-query *( "," arg-query ) ")" { Start }
-fn-avg = %s"avg(" arg-query *( "," arg-query ) ")" { Start, As fn-averageSeries }
+fn-averageSeries = %s"averageSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
+fn-avg = %s"avg(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start, As fn-averageSeries }
 
 func =/ fn-color { End }
-fn-color = %s"color(" arg-query "," arg-string ")" { Start }
+fn-color = %s"color(" arg-path-or-func "," arg-string ")" { Start }
 
 func =/ fn-consolidateBy { End }
-fn-consolidateBy = %s"consolidateBy(" arg-query "," arg-aggFunc ")" { Start }
+fn-consolidateBy = %s"consolidateBy(" arg-path-or-func "," arg-aggFunc ")" { Start }
 
 func =/ fn-countSeries { End }
-fn-countSeries = %s"countSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-countSeries = %s"countSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-currentAbove { End }
-fn-currentAbove = %s"currentAbove(" arg-query "," arg-num ")" { Start }
+fn-currentAbove = %s"currentAbove(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-currentBelow { End }
-fn-currentBelow = %s"currentBelow(" arg-query "," arg-num ")" { Start }
+fn-currentBelow = %s"currentBelow(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-derivative { End }
-fn-derivative = %s"derivative(" arg-query ")" { Start }
+fn-derivative = %s"derivative(" arg-path-or-func ")" { Start }
 
 func =/ fn-diffSeries { End }
-fn-diffSeries = %s"diffSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-diffSeries = %s"diffSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-drawAsInfinite { End }
-fn-drawAsInfinite = %s"drawAsInfinite(" arg-query ")" { Start }
+fn-drawAsInfinite = %s"drawAsInfinite(" arg-path-or-func ")" { Start }
 
 func =/ fn-filterSeries { End }
-fn-filterSeries = %s"filterSeries(" arg-query "," arg-aggFunc "," arg-operator "," arg-num ")" { Start }
+fn-filterSeries = %s"filterSeries(" arg-path-or-func "," arg-aggFunc "," arg-operator "," arg-num ")" { Start }
 
 func =/ fn-firstSeries { End }
-fn-firstSeries = %s"firstSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-firstSeries = %s"firstSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-highest { End }
-fn-highest = %s"highest(" arg-query [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
+fn-highest = %s"highest(" arg-path-or-func [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
 
 func =/ fn-highestAverage { End }
-fn-highestAverage = %s"highestAverage(" arg-query "," arg-num ")" { Start }
+fn-highestAverage = %s"highestAverage(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-highestCurrent { End }
-fn-highestCurrent = %s"highestCurrent(" arg-query "," arg-num ")" { Start }
+fn-highestCurrent = %s"highestCurrent(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-highestMax { End }
-fn-highestMax = %s"highestMax(" arg-query "," arg-num ")" { Start }
+fn-highestMax = %s"highestMax(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-keepLastValue { End }
-fn-keepLastValue = %s"keepLastValue(" arg-query [ "," arg-num ] ")" { Start }
+fn-keepLastValue = %s"keepLastValue(" arg-path-or-func [ "," arg-num ] ")" { Start }
 
 func =/ fn-lastSeries { End }
-fn-lastSeries = %s"lastSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-lastSeries = %s"lastSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-legendValue { End }
-fn-legendValue = %s"legendValue(" arg-query *( "," arg-string ) ")" { Start }
+fn-legendValue = %s"legendValue(" arg-path-or-func *( "," arg-string ) ")" { Start }
 
 func =/ fn-lineWidth { End }
-fn-lineWidth = %s"lineWidth(" arg-query "," arg-num ")" { Start }
+fn-lineWidth = %s"lineWidth(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-lowest { End }
-fn-lowest = %s"lowest(" arg-query [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
+fn-lowest = %s"lowest(" arg-path-or-func [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
 
 func =/ fn-lowestAverage { End }
-fn-lowestAverage = %s"lowestAverage(" arg-query "," arg-num ")" { Start }
+fn-lowestAverage = %s"lowestAverage(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-lowestCurrent { End }
-fn-lowestCurrent = %s"lowestCurrent(" arg-query "," arg-num ")" { Start }
+fn-lowestCurrent = %s"lowestCurrent(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-maximumAbove { End }
-fn-maximumAbove = %s"maximumAbove(" arg-query "," arg-num ")" { Start }
+fn-maximumAbove = %s"maximumAbove(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-maximumBelow { End }
-fn-maximumBelow = %s"maximumBelow(" arg-query "," arg-num ")" { Start }
+fn-maximumBelow = %s"maximumBelow(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-maxSeries { End }
-fn-maxSeries = %s"maxSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-maxSeries = %s"maxSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-medianSeries { End }
-fn-medianSeries = %s"medianSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-medianSeries = %s"medianSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-minimumAbove { End }
-fn-minimumAbove = %s"minimumAbove(" arg-query "," arg-num ")" { Start }
+fn-minimumAbove = %s"minimumAbove(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-minimumBelow { End }
-fn-minimumBelow = %s"minimumBelow(" arg-query "," arg-num ")" { Start }
+fn-minimumBelow = %s"minimumBelow(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-minSeries { End }
-fn-minSeries = %s"minSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-minSeries = %s"minSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-movingAverage { End }
-fn-movingAverage = %s"movingAverage(" arg-query "," (arg-num / arg-string) [ "," arg-num ] ")" { Start }
+fn-movingAverage = %s"movingAverage(" arg-path-or-func "," (arg-num / arg-string) [ "," arg-num ] ")" { Start }
 
 func =/ fn-multiplySeries { End }
-fn-multiplySeries = %s"multiplySeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-multiplySeries = %s"multiplySeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-nonNegativeDerivative { End }
-fn-nonNegativeDerivative = %s"nonNegativeDerivative(" arg-query [ "," arg-num ] ")" { Start }
+fn-nonNegativeDerivative = %s"nonNegativeDerivative(" arg-path-or-func [ "," arg-num ] ")" { Start }
 
 func =/ fn-rangeSeries { End }
-fn-rangeSeries = %s"rangeSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-rangeSeries = %s"rangeSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-removeAboveValue { End }
-fn-removeAboveValue = %s"removeAboveValue(" arg-query "," arg-num ")" { Start }
+fn-removeAboveValue = %s"removeAboveValue(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-removeBelowValue { End }
-fn-removeBelowValue = %s"removeBelowValue(" arg-query "," arg-num ")" { Start }
+fn-removeBelowValue = %s"removeBelowValue(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-scale { End }
-fn-scale = %s"scale(" arg-query "," arg-num ")" { Start }
+fn-scale = %s"scale(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-scaleToSeconds { End }
-fn-scaleToSeconds = %s"scaleToSeconds(" arg-query "," arg-num ")" { Start }
+fn-scaleToSeconds = %s"scaleToSeconds(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-stddevSeries { End }
-fn-stddevSeries = %s"stddevSeries(" arg-query *( "," arg-query ) ")" { Start }
+fn-stddevSeries = %s"stddevSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
 func =/ fn-sumSeries / fn-sum { End }
-fn-sumSeries = %s"sumSeries(" arg-query *( "," arg-query ) ")" { Start }
-fn-sum = %s"sum(" arg-query *( "," arg-query ) ")" { Start, As fn-sumSeries }
+fn-sumSeries = %s"sumSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
+fn-sum = %s"sum(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start, As fn-sumSeries }
 
 func =/ fn-timeShift { End }
-fn-timeShift = %s"timeShift(" arg-query "," arg-string ")" { Start }
+fn-timeShift = %s"timeShift(" arg-path-or-func "," arg-string ")" { Start }
 
 ;----------------------------------------------------------------------------
 ; Enumeration arguments

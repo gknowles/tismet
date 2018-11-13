@@ -43,11 +43,6 @@ inline bool QueryParser::onArgNumEnd () {
 }
 
 //===========================================================================
-inline bool QueryParser::onArgQueryStart () {
-    return true;
-}
-
-//===========================================================================
 inline bool QueryParser::onExpMinusEnd () {
     m_expMinus = true;
     return true;

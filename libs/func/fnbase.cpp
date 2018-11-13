@@ -87,11 +87,12 @@ FuncArg::Enum::Enum(std::string name, const Dim::TokenTable * tbl)
 
 //===========================================================================
 IFuncInstance * Eval::bind(
+    IFuncNotify * notify,
     Function::Type type,
     std::vector<FuncArg> && args
 ) {
     auto func = funcCreate(type);
-    auto bound = func->onFuncBind(move(args));
+    auto bound = func->onFuncBind(notify, move(args));
     if (bound == func.get())
         func.release();
     return bound;
@@ -152,17 +153,17 @@ bool PassthruBase::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 }
 
 static auto s_aliasSub = PassthruBase::Factory("aliasSub", "Alias")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("search", FuncArg::kString, true)
     .arg("replace", FuncArg::kString, true);
 static auto s_color = PassthruBase::Factory("color", "Graph")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("color", FuncArg::kString, true);
 static auto s_legendValue = PassthruBase::Factory("legendValue", "Alias")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("valuesTypes", FuncArg::kString, false, true);
 static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("width", FuncArg::kNum, true);
 
 
@@ -181,7 +182,7 @@ class FuncAlias : public IFuncBase<FuncAlias> {
 };
 } // namespace
 static auto s_alias = FuncAlias::Factory("alias", "Alias")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("name", FuncArg::kString, true);
 
 //===========================================================================
@@ -213,7 +214,7 @@ class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
 } // namespace
 static auto s_consolidateBy =
     FuncConsolidateBy::Factory("consolidateBy", "Special")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("method", "aggFunc", true);
 
 //===========================================================================
@@ -246,7 +247,7 @@ class FuncTimeShift : public IFuncBase<FuncTimeShift> {
 };
 } // namespace
 static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
-    .arg("query", FuncArg::kQuery, true)
+    .arg("query", FuncArg::kPathOrFunc, true)
     .arg("timeShift", FuncArg::kString, true);
 
 //===========================================================================
@@ -293,7 +294,7 @@ const TokenTable::Token s_argTypes[] = {
     { FuncArg::kEnum, "enum" },
     { FuncArg::kNum, "num" },
     { FuncArg::kNumOrString, "numOrString" },
-    { FuncArg::kQuery, "query" },
+    { FuncArg::kPathOrFunc, "query" },
     { FuncArg::kString, "string" },
 };
 const TokenTable s_argTypeTbl(s_argTypes);

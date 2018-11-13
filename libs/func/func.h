@@ -73,20 +73,24 @@ struct FuncArg {
     };
     enum Type {
         kEnum,
+        kFunc,
         kNum,
         kNumOrString,
-        kQuery,
+        kPath,
+        kPathOrFunc,
         kString,
     };
     enum EnumType : int;
 
-    double number;
+    Type type;
     std::shared_ptr<char[]> string;
+    double number;
 };
 
 class IFuncNotify {
 public:
     virtual ~IFuncNotify() = default;
+    virtual bool onFuncSource(std::string_view src) = 0;
     virtual void onFuncOutput(ResultInfo & info) = 0;
 };
 
@@ -115,12 +119,15 @@ public:
     // use. Usually returns this or nullptr for errors, but may return an
     // entirely new function. For exaample aggregate(A, 'max') might bind into
     // maxSeries(A).
-    virtual IFuncInstance * onFuncBind(std::vector<FuncArg> && args) = 0;
+    virtual IFuncInstance * onFuncBind(
+        IFuncNotify * notify,
+        std::vector<FuncArg> && args
+    ) = 0;
 
     virtual void onFuncAdjustContext(FuncContext * rr) = 0;
 
-    // Perform the function, outputResult() must be called for each result
-    // that should be published.
+    // Perform the function, notify->onFuncOutput() must be called for each
+    // result that should be published.
     //
     // Returns false to stop receiving results for the current outputs, only
     // required if the function is to be aborted midstream.
@@ -128,6 +135,7 @@ public:
 };
 
 IFuncInstance * bind(
+    IFuncNotify * notify,
     Function::Type type,
     std::vector<FuncArg> && args
 );

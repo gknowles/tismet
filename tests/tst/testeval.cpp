@@ -238,8 +238,11 @@ void UnitTest::onTest(DbHandle h) {
         m_found.begin(), m_found.end(),
         [](auto & a, auto & b) { return a == b; }
     );
-    if (!matched)
+    if (!matched) {
+        if (m_errmsg.size())
+            logMsgInfo() << m_errmsg;
         logMsgError() << "Query failed, " << m_query;
+    }
 }
 
 //===========================================================================

@@ -118,7 +118,7 @@ template<int Agg, int Op>
 FilterSeries<Agg, Op>::Factory::Factory(string_view name)
     : FuncFactory<FilterSeries>(name, "Filter Series")
 {
-    this->arg("query", FuncArg::kQuery, true);
+    this->arg("query", FuncArg::kPathOrFunc, true);
     if constexpr (Agg != 0) {
         this->arg("n", FuncArg::kNum, true);
     } else {
@@ -242,7 +242,7 @@ template<int Agg, int Op>
 FilterBest<Agg, Op>::Factory::Factory(string_view name)
     : FuncFactory<FilterBest>(name, "Filter Series")
 {
-    this->arg("query", FuncArg::kQuery, true);
+    this->arg("query", FuncArg::kPathOrFunc, true);
     if constexpr (Agg != 0) {
         this->arg("n", FuncArg::kNum, true);
     } else {
