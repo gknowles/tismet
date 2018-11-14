@@ -331,9 +331,16 @@ shared_ptr<char[]> Eval::addFuncName(
     return out;
 }
 
+namespace {
+struct TokenConv : Query::ITokenConvNotify {
+    const TokenTable & funcTypeTbl() const override { return s_funcTbl; }
+};
+} // namespace
+static TokenConv s_conv;
+
 //===========================================================================
-const TokenTable & funcIds() {
-    return s_funcTbl;
+const Query::ITokenConvNotify & funcTokenConv() {
+    return s_conv;
 }
 
 //===========================================================================

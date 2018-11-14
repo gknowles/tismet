@@ -1,10 +1,10 @@
 // Copyright Glen Knowles 2017 - 2018.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// queryparseimplint.h - tismet query
+// qryparseimplint.h - tismet query
 #pragma once
 
-#include "queryparseint.h"
+#include "qryparseint.h"
 
 #include <string_view>
 
@@ -207,4 +207,4 @@ inline bool QueryParser::onStringEnd (const char * eptr) {
 *
 ***/
 
-#include "queryparsefuncint.h"
+#include "qryparseimplfnint.h"

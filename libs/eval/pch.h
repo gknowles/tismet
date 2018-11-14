@@ -13,6 +13,7 @@
 #include "file/file.h"
 #include "func/func.h"
 #include "query/query.h"
+#include "querydefs/querydefs.h"
 
 // Standard headers
 #include <cassert>

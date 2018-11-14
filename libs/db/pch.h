@@ -17,7 +17,8 @@
 #include "system/system.h"
 
 #include "carbon/carbon.h"
-#include "query/query.h"
+#include "eval/eval.h"
+#include "querydefs/querydefs.h"
 
 // Standard headers
 #include <cassert>

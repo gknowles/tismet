@@ -37,7 +37,7 @@ static void parseTest(
     string_view normal
 ) {
     Query::QueryInfo qry;
-    bool result = Query::parse(qry, src);
+    bool result = parse(qry, src);
     EXPECT(result);
     if (result) {
         EXPECT(qry.text == normal);

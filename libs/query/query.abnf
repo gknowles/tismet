@@ -6,8 +6,9 @@
 ; rules to parse graphite queries
 %root = query
 %api.prefix = Query
-%api.parser.file.h = queryparseint.h
-%api.base.file.h = queryparsebaseint.h
+%api.parser.file.h = qryparseint.h
+%api.parser.file.cpp = qryparse.cpp
+%api.base.file.h = qryparsebaseint.h
 
 ;----------------------------------------------------------------------------
 ; Root

@@ -5,12 +5,13 @@
 #pragma once
 
 #include "core/core.h"
+#include "querydefs/querydefs.h"
 
 #include <memory>
 #include <string_view>
 #include <vector>
 
-// funcenum.h is a generated file that defines values for the Function::Type
+// fnenum.h is a generated file that defines values for the Function::Type
 // and Aggregate::Type enums. It is optional here so it can be generated
 // without having to exist first.
 #if __has_include("fnenum.h")
@@ -213,7 +214,7 @@ public:
 
 } // namespace
 
-const Dim::TokenTable & funcIds();
+const Query::ITokenConvNotify & funcTokenConv();
 Dim::List<Eval::IFuncFactory> & funcFactories();
 Dim::List<Eval::FuncArg::Enum> & funcEnums();
 

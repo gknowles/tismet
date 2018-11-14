@@ -17,6 +17,7 @@
 #include "db/db.h"
 #include "db/dbindex.h"
 #include "eval/eval.h"
+#include "func/func.h"
 #include "query/query.h"
 
 // Standard headers

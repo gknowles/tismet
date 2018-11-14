@@ -48,7 +48,7 @@ namespace Function {
         kInvalid = 0,
 )";
     UnsignedSet ids;
-    for (auto && f : funcIds()) {
+    for (auto && f : funcTokenConv().funcTypeTbl()) {
         if (ids.insert(f.id)) {
             os << "        k" << (char) toupper(*f.name) << f.name + 1
                 << " = " << f.id << ",\n";
@@ -99,7 +99,7 @@ static string genQueryFunc(string_view fname) {
 ***/
 )";
     UnsignedSet ids;
-    for (auto && f : funcIds()) {
+    for (auto && f : funcTokenConv().funcTypeTbl()) {
         if (!ids.insert(f.id))
             continue;
         auto name = string(f.name);
@@ -270,7 +270,7 @@ static void app(int argc, char * argv[]) {
 
     auto funcenum_h = *root / "libs/func/fnenum.h";
     updateFile(funcenum_h, genFuncEnum(funcenum_h));
-    auto query_h = *root / "libs/query/queryparsefuncint.h";
+    auto query_h = *root / "libs/query/qryparseimplfnint.h";
     updateFile(query_h, genQueryFunc(query_h));
     auto query_abnf = *root / "libs/query/queryfunc.abnf";
     updateFile(query_abnf, genQueryAbnf(query_abnf));

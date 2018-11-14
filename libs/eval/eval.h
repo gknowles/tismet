@@ -29,3 +29,19 @@ void evaluate(
     Dim::TimePoint until,
     size_t maxPoints = 0    // 0 for no maximum
 );
+
+
+/****************************************************************************
+*
+*   Parse queries
+*
+***/
+
+namespace Query {
+    struct Node;
+    struct QueryInfo;
+};
+
+std::string toString(const Query::Node & node);
+
+bool parse(Query::QueryInfo & qry, std::string_view src);

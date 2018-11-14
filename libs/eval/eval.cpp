@@ -178,7 +178,7 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
 
     auto src = toSharedString(srcv);
     Query::QueryInfo qi;
-    if (!Query::parse(qi, src.get()))
+    if (!parse(qi, src.get()))
         return {};
 
     auto type = Query::getType(*qi.node);
@@ -724,4 +724,14 @@ void evaluate(
     context.last = last;
     context.minInterval = ex->m_minInterval;
     sn->addOutput(context);
+}
+
+//===========================================================================
+string toString(const Query::Node & node) {
+    return toString(node, &funcTokenConv());
+}
+
+//===========================================================================
+bool parse(Query::QueryInfo & qry, std::string_view src) {
+    return parse(qry, src, &funcTokenConv());
 }
