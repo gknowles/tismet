@@ -43,9 +43,9 @@ public:
 
     IFuncInstance * onFuncBind(
         IFuncNotify * notify,
-        std::vector<FuncArg> && args
+        std::vector<const Query::Node *> & args
     ) override;
-    virtual IFuncInstance * onFuncBind(std::vector<FuncArg> && args);
+    virtual IFuncInstance * onFuncBind(std::vector<const Query::Node *> & args);
     void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
@@ -141,28 +141,28 @@ Eval::Function::Type Eval::IFuncBase<T>::type() const {
 template<typename T>
 Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
     Eval::IFuncNotify * notify,
-    std::vector<FuncArg> && args
+    std::vector<const Query::Node *> & args
 ) {
     auto oi = args.begin();
     for (auto && arg : args) {
-        switch (arg.type) {
-        case FuncArg::kFunc:
-        case FuncArg::kPath:
-            if (!notify->onFuncSource(arg.string.get()))
+        switch (arg->type) {
+        case Query::kFunc:
+        case Query::kPath:
+            if (!notify->onFuncSource(*arg))
                 return nullptr;
             break;
         default:
-            *oi++ = std::move(arg);
+            *oi++ = arg;
         }
     }
     args.resize(oi - args.begin());
-    return onFuncBind(std::move(args));
+    return onFuncBind(args);
 }
 
 //===========================================================================
 template<typename T>
 Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
-    std::vector<FuncArg> && args
+    std::vector<const Query::Node *> & args
 ) {
     return this;
 }

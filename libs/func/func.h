@@ -65,7 +65,7 @@ struct ResultInfo {
     int argPos{-1};
 };
 
-struct FuncArg {
+namespace FuncArg {
     struct Enum : Dim::ListBaseLink<> {
         const std::string name;
         const Dim::TokenTable * const table{};
@@ -82,16 +82,12 @@ struct FuncArg {
         kString,
     };
     enum EnumType : int;
-
-    Type type;
-    std::shared_ptr<char[]> string;
-    double number;
 };
 
 class IFuncNotify {
 public:
     virtual ~IFuncNotify() = default;
-    virtual bool onFuncSource(std::string_view src) = 0;
+    virtual bool onFuncSource(const Query::Node & node) = 0;
     virtual void onFuncOutput(ResultInfo & info) = 0;
 };
 
@@ -122,7 +118,7 @@ public:
     // maxSeries(A).
     virtual IFuncInstance * onFuncBind(
         IFuncNotify * notify,
-        std::vector<FuncArg> && args
+        std::vector<const Query::Node *> & args
     ) = 0;
 
     virtual void onFuncAdjustContext(FuncContext * rr) = 0;
@@ -138,7 +134,7 @@ public:
 IFuncInstance * bind(
     IFuncNotify * notify,
     Function::Type type,
-    std::vector<FuncArg> && args
+    std::vector<const Query::Node *> & args
 );
 std::shared_ptr<SampleList> reduce(
     std::shared_ptr<SampleList> samples,

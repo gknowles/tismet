@@ -107,10 +107,11 @@ MatchResult matchSegment(const Node & node, std::string_view val);
 NodeType getType(const Node & node);
 
 // Returns a NAN if not a number node
-double getNumber(const Node & node);
+double asNumber(const Node & node);
 
 // empty string for non-string nodes
-std::string_view getString(const Node & node);
+std::string_view asString(const Node & node);
+std::shared_ptr<char[]> asSharedString(const Node & node);
 
 // Returns false if not a function node
 bool getFunc(Function * out, const Node & node);

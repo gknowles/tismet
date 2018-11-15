@@ -105,7 +105,7 @@ double FuncDrawAsInfinite::onConvert(double value) {
 
 namespace {
 class FuncRemoveAboveValue : public IXfrmValueBase<FuncRemoveAboveValue> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     double onConvert(double value) override;
     double m_limit{};
 };
@@ -116,8 +116,8 @@ static auto s_removeAboveValue =
     .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
-IFuncInstance * FuncRemoveAboveValue::onFuncBind(vector<FuncArg> && args) {
-    m_limit = args[0].number;
+IFuncInstance * FuncRemoveAboveValue::onFuncBind(vector<const Query::Node *> & args) {
+    m_limit = asNumber(*args[0]);
     return this;
 }
 
@@ -135,7 +135,7 @@ double FuncRemoveAboveValue::onConvert(double value) {
 
 namespace {
 class FuncRemoveBelowValue : public IXfrmValueBase<FuncRemoveBelowValue> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     double onConvert(double value) override;
     double m_limit{};
 };
@@ -146,8 +146,8 @@ static auto s_removeBelowValue =
     .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
-IFuncInstance * FuncRemoveBelowValue::onFuncBind(vector<FuncArg> && args) {
-    m_limit = args[0].number;
+IFuncInstance * FuncRemoveBelowValue::onFuncBind(vector<const Query::Node *> & args) {
+    m_limit = asNumber(*args[0]);
     return this;
 }
 
@@ -165,7 +165,7 @@ double FuncRemoveBelowValue::onConvert(double value) {
 
 namespace {
 class FuncScale : public IXfrmValueBase<FuncScale> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     double onConvert(double value) override;
     double m_factor;
 };
@@ -175,8 +175,8 @@ static auto s_scale = FuncScale::Factory("scale", "Transform")
     .arg("factor", FuncArg::kNum, true);
 
 //===========================================================================
-IFuncInstance * FuncScale::onFuncBind(vector<FuncArg> && args) {
-    m_factor = args[0].number;
+IFuncInstance * FuncScale::onFuncBind(vector<const Query::Node *> & args) {
+    m_factor = asNumber(*args[0]);
     return this;
 }
 
@@ -194,7 +194,7 @@ double FuncScale::onConvert(double value) {
 
 namespace {
 class FuncScaleToSeconds : public IXfrmValueBase<FuncScaleToSeconds> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     double onConvert(double value) override;
     void onConvertStart(Duration interval) override;
 
@@ -208,8 +208,8 @@ static auto s_scaleToSeconds =
     .arg("seconds", FuncArg::kNum, true);
 
 //===========================================================================
-IFuncInstance * FuncScaleToSeconds::onFuncBind(vector<FuncArg> && args) {
-    m_seconds = args[0].number;
+IFuncInstance * FuncScaleToSeconds::onFuncBind(vector<const Query::Node *> & args) {
+    m_seconds = asNumber(*args[0]);
     return this;
 }
 

@@ -81,12 +81,12 @@ public:
         std::shared_ptr<char[]> sourceName,
         std::unique_ptr<IFuncInstance> instance
     );
-    bool bind(std::vector<FuncArg> && args);
+    bool bind(std::vector<const Query::Node *> & args);
 
 protected:
     void onSourceStart() override;
     void onTask() override;
-    bool onFuncSource(std::string_view src) override;
+    bool onFuncSource(const Query::Node & node) override;
     void onFuncOutput(ResultInfo & info) override;
 
     std::unique_ptr<IFuncInstance> m_instance;

@@ -136,6 +136,14 @@ static bool operator< (const Node & a, const Node & b) {
     return false;
 }
 
+//===========================================================================
+static shared_ptr<char[]> toSharedString(string_view src) {
+    auto sp = shared_ptr<char[]>(new char[src.size() + 1]);
+    memcpy(sp.get(), src.data(), src.size());
+    sp[src.size()] = 0;
+    return sp;
+}
+
 
 /****************************************************************************
 *
@@ -633,7 +641,7 @@ NodeType Query::getType(const Node & node) {
 }
 
 //===========================================================================
-double Query::getNumber(const Node & node) {
+double Query::asNumber(const Node & node) {
     if (node.type == kNum) {
         return static_cast<const NumNode &>(node).val;
     } else {
@@ -642,12 +650,17 @@ double Query::getNumber(const Node & node) {
 }
 
 //===========================================================================
-string_view Query::getString(const Node & node) {
+string_view Query::asString(const Node & node) {
     if (node.type == kString) {
         return static_cast<const StringNode &>(node).val;
     } else {
         return {};
     }
+}
+
+//===========================================================================
+shared_ptr<char[]> Query::asSharedString(const Node & node) {
+    return toSharedString(asString(node));
 }
 
 //===========================================================================

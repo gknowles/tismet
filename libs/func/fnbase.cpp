@@ -89,10 +89,10 @@ FuncArg::Enum::Enum(std::string name, const Dim::TokenTable * tbl)
 IFuncInstance * Eval::bind(
     IFuncNotify * notify,
     Function::Type type,
-    std::vector<FuncArg> && args
+    vector<const Query::Node *> & args
 ) {
     auto func = funcCreate(type);
-    auto bound = func->onFuncBind(notify, move(args));
+    auto bound = func->onFuncBind(notify, args);
     if (bound == func.get())
         func.release();
     return bound;
@@ -175,7 +175,7 @@ static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
 
 namespace {
 class FuncAlias : public IFuncBase<FuncAlias> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
     shared_ptr<char[]> m_name;
@@ -186,8 +186,8 @@ static auto s_alias = FuncAlias::Factory("alias", "Alias")
     .arg("name", FuncArg::kString, true);
 
 //===========================================================================
-IFuncInstance * FuncAlias::onFuncBind(vector<FuncArg> && args) {
-    m_name = args[0].string;
+IFuncInstance * FuncAlias::onFuncBind(vector<const Query::Node *> & args) {
+    m_name = asSharedString(*args[0]);
     return this;
 }
 
@@ -207,7 +207,7 @@ bool FuncAlias::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
     AggFunc::Type m_method;
 };
@@ -218,8 +218,10 @@ static auto s_consolidateBy =
     .arg("method", "aggFunc", true);
 
 //===========================================================================
-IFuncInstance * FuncConsolidateBy::onFuncBind(vector<FuncArg> && args) {
-    m_method = fromString(args[0].string.get(), AggFunc::Type{});
+IFuncInstance * FuncConsolidateBy::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    m_method = fromString(Query::asString(*args[0]), AggFunc::Type{});
     return this;
 }
 
@@ -239,7 +241,7 @@ bool FuncConsolidateBy::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncTimeShift : public IFuncBase<FuncTimeShift> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
@@ -251,8 +253,8 @@ static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
     .arg("timeShift", FuncArg::kString, true);
 
 //===========================================================================
-IFuncInstance * FuncTimeShift::onFuncBind(vector<FuncArg> && args) {
-    auto tmp = string(args[0].string.get());
+IFuncInstance * FuncTimeShift::onFuncBind(vector<const Query::Node *> & args) {
+    auto tmp = string(Query::asString(*args[0]));
     if (tmp[0] != '+' && tmp[0] != '-')
         tmp = "-" + tmp;
     if (!parse(&m_shift, tmp.c_str()))

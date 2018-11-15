@@ -203,35 +203,7 @@ static shared_ptr<SourceNode> addSource(ResultNode * rn, string_view srcv) {
         assert(!"Unsupported function");
         return {};
     }
-    vector<FuncArg> fargs;
-    for (auto && arg : qf.args) {
-        switch (Query::getType(*arg)) {
-        case Query::kPath:
-            fargs.push_back({
-                FuncArg::kPath,
-                toSharedString(toString(*arg))
-            });
-            break;
-        case Query::kFunc:
-            fargs.push_back({
-                FuncArg::kFunc,
-                toSharedString(toString(*arg))
-            });
-            break;
-        case Query::kNum:
-            fargs.push_back({FuncArg::kNum, {}, Query::getNumber(*arg)});
-            break;
-        case Query::kString:
-            fargs.push_back({
-                FuncArg::kString,
-                toSharedString(Query::getString(*arg))
-            });
-            break;
-        default:
-            return {};
-        }
-    }
-    if (!fnode->bind(move(fargs)))
+    if (!fnode->bind(qf.args))
         return {};
     return addSource(rn, fnode);
 }
@@ -515,8 +487,8 @@ void FuncNode::init(
 }
 
 //===========================================================================
-bool FuncNode::bind(vector<FuncArg> && args) {
-    auto ptr = m_instance->onFuncBind(this, move(args));
+bool FuncNode::bind(vector<const Query::Node *> & args) {
+    auto ptr = m_instance->onFuncBind(this, args);
     if (ptr != m_instance.get())
         m_instance.reset(ptr);
     return (bool) m_instance;
@@ -568,8 +540,9 @@ void FuncNode::onTask() {
 }
 
 //===========================================================================
-bool FuncNode::onFuncSource(string_view src) {
-    return (bool) addSource(this, src);
+bool FuncNode::onFuncSource(const Query::Node & node) {
+    assert(getType(node) == Query::kFunc || getType(node) == Query::kPath);
+    return (bool) addSource(this, toString(node));
 }
 
 //===========================================================================

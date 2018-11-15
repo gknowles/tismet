@@ -65,7 +65,7 @@ template<int Agg, int Op>
 class FilterSeries : public IFuncBase<FilterSeries<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     double m_limit{};
@@ -84,16 +84,16 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterSeries<Agg, Op>::onFuncBind(
-    vector<FuncArg> && args
+    vector<const Query::Node *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);
         m_operFn = s_opers[Op].fn;
-        m_limit = args[0].number;
+        m_limit = asNumber(*args[0]);
     } else {
-        m_aggFn = aggFunc((AggFunc::Type)(int) args[0].number);
-        m_operFn = s_opers[(int) args[1].number].fn;
-        m_limit = args[2].number;
+        m_aggFn = aggFunc((AggFunc::Type)(int) asNumber(*args[0]));
+        m_operFn = s_opers[(int) asNumber(*args[1])].fn;
+        m_limit = asNumber(*args[2]);
     }
     return this;
 }
@@ -160,7 +160,7 @@ template<int Agg, int Op>
 class FilterBest : public IFuncBase<FilterBest<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     multimap<double, ResultInfo> m_best;
@@ -179,19 +179,19 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterBest<Agg, Op>::onFuncBind(
-    vector<FuncArg> && args
+    vector<const Query::Node *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);
-        m_allowed = (unsigned) args[0].number;
+        m_allowed = (unsigned) asNumber(*args[0]);
     } else {
         if (args.size() == 2) {
-            m_allowed = (unsigned) args[0].number;
-            auto afn = fromString(args[1].string.get(), AggFunc::kInvalid);
+            m_allowed = (unsigned) asNumber(*args[0]);
+            auto afn = fromString(asString(*args[1]), AggFunc::kInvalid);
             m_aggFn = aggFunc(afn);
         } else if (args.size() == 1) {
-            m_allowed = (unsigned) args[0].number;
-            m_aggFn = aggFunc((AggFunc::Type)(int) args[1].number);
+            m_allowed = (unsigned) asNumber(*args[0]);
+            m_aggFn = aggFunc((AggFunc::Type)(int) asNumber(*args[1]));
         } else {
             m_allowed = 1;
             m_aggFn = aggFunc(AggFunc::kAverage);

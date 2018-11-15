@@ -59,7 +59,7 @@ bool IXfrmListBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncDerivative : public IXfrmListBase<FuncDerivative> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
         const double * ptr,
@@ -72,7 +72,9 @@ static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
     .arg("query", FuncArg::kPathOrFunc, true);
 
 //===========================================================================
-IFuncInstance * FuncDerivative::onFuncBind(vector<FuncArg> && args) {
+IFuncInstance * FuncDerivative::onFuncBind(
+    vector<const Query::Node *> & args
+) {
     m_presamples = 1;
     return this;
 }
@@ -99,7 +101,7 @@ void FuncDerivative::onTransform(
 
 namespace {
 class FuncKeepLastValue : public IXfrmListBase<FuncKeepLastValue> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
         const double * ptr,
@@ -116,8 +118,10 @@ static auto s_keepLastValue =
     .arg("limit", FuncArg::kNum);
 
 //===========================================================================
-IFuncInstance * FuncKeepLastValue::onFuncBind(vector<FuncArg> && args) {
-    m_limit = args.empty() ? 0 : (int) args[0].number;
+IFuncInstance * FuncKeepLastValue::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    m_limit = args.empty() ? 0 : (int) asNumber(*args[0]);
     m_presamples = 1;
     return this;
 }
@@ -170,7 +174,7 @@ void FuncKeepLastValue::onTransform(
 
 namespace {
 class FuncMovingAverage : public IXfrmListBase<FuncMovingAverage> {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
         const double * ptr,
@@ -188,13 +192,15 @@ static auto s_movingAverage =
     .arg("xFilesFactor", FuncArg::kNum, false);
 
 //===========================================================================
-IFuncInstance * FuncMovingAverage::onFuncBind(vector<FuncArg> && args) {
-    if (auto arg0 = args[0].string.get()) {
+IFuncInstance * FuncMovingAverage::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    if (auto arg0 = asString(*args[0]); !arg0.empty()) {
         if (parse(&m_pretime, arg0))
             return this;
         m_presamples = strToUint(arg0);
     } else {
-        m_presamples = (unsigned) args[0].number;
+        m_presamples = (unsigned) asNumber(*args[0]);
     }
     if (m_presamples)
         m_presamples -= 1;
@@ -257,7 +263,7 @@ namespace {
 class FuncNonNegativeDerivative
     : public IXfrmListBase<FuncNonNegativeDerivative>
 {
-    IFuncInstance * onFuncBind(vector<FuncArg> && args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
         const double * ptr,
@@ -274,8 +280,10 @@ static auto s_nonNegativeDerivative =
     .arg("maxValue", FuncArg::kNum);
 
 //===========================================================================
-IFuncInstance * FuncNonNegativeDerivative::onFuncBind(vector<FuncArg> && args) {
-    m_limit = args.empty() ? HUGE_VAL : args[0].number;
+IFuncInstance * FuncNonNegativeDerivative::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    m_limit = args.empty() ? HUGE_VAL : asNumber(*args[0]);
     m_presamples = 1;
     return this;
 }
