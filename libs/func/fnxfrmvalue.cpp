@@ -99,6 +99,140 @@ double FuncDrawAsInfinite::onConvert(double value) {
 
 /****************************************************************************
 *
+*   invert
+*
+***/
+
+namespace {
+class FuncInvert : public IXfrmValueBase<FuncInvert> {
+    double onConvert(double value) override;
+};
+} // namespace
+static auto s_invert = FuncInvert::Factory("invert", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true);
+
+//===========================================================================
+double FuncInvert::onConvert(double value) {
+    return 1 / value;
+}
+
+
+/****************************************************************************
+*
+*   isNonNull
+*
+***/
+
+namespace {
+class FuncIsNonNull : public IXfrmValueBase<FuncIsNonNull> {
+    double onConvert(double value) override;
+};
+} // namespace
+static auto s_isNonNull = FuncIsNonNull::Factory("isNonNull", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true);
+
+//===========================================================================
+double FuncIsNonNull::onConvert(double value) {
+    return isnan(value) ? 0 : 1;
+}
+
+
+/****************************************************************************
+*
+*   logarithm
+*
+***/
+
+namespace {
+class FuncLogarithm : public IXfrmValueBase<FuncLogarithm> {
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
+    double onConvert(double value) override;
+    double m_base{log(10)};
+};
+} // namespace
+static auto s_logarithm = FuncLogarithm::Factory("logarithm", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true)
+    .arg("base", FuncArg::kNum, false);
+
+//===========================================================================
+IFuncInstance * FuncLogarithm::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    if (!args.empty())
+        m_base = log(asNumber(*args[0]));
+    return this;
+}
+
+//===========================================================================
+double FuncLogarithm::onConvert(double value) {
+    return log(value) / m_base;
+}
+
+
+/****************************************************************************
+*
+*   offset
+*
+***/
+
+namespace {
+class FuncOffset : public IXfrmValueBase<FuncOffset> {
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
+    double onConvert(double value) override;
+    double m_factor{};
+};
+} // namespace
+static auto s_offset = FuncOffset::Factory("offset", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true)
+    .arg("factor", FuncArg::kNum, true);
+
+//===========================================================================
+IFuncInstance * FuncOffset::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    m_factor = asNumber(*args[0]);
+    return this;
+}
+
+//===========================================================================
+double FuncOffset::onConvert(double value) {
+    return value + m_factor;
+}
+
+
+/****************************************************************************
+*
+*   pow
+*
+***/
+
+namespace {
+class FuncPow : public IXfrmValueBase<FuncPow> {
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
+    double onConvert(double value) override;
+    double m_factor{};
+};
+} // namespace
+static auto s_pow = FuncPow::Factory("pow", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true)
+    .arg("factor", FuncArg::kNum, true);
+
+//===========================================================================
+IFuncInstance * FuncPow::onFuncBind(
+    vector<const Query::Node *> & args
+) {
+    m_factor = asNumber(*args[0]);
+    return this;
+}
+
+//===========================================================================
+double FuncPow::onConvert(double value) {
+    return pow(value, m_factor);
+}
+
+
+/****************************************************************************
+*
 *   removeAboveValue
 *
 ***/
@@ -116,7 +250,9 @@ static auto s_removeAboveValue =
     .arg("n", FuncArg::kNum, true);
 
 //===========================================================================
-IFuncInstance * FuncRemoveAboveValue::onFuncBind(vector<const Query::Node *> & args) {
+IFuncInstance * FuncRemoveAboveValue::onFuncBind(
+    vector<const Query::Node *> & args
+) {
     m_limit = asNumber(*args[0]);
     return this;
 }
@@ -221,6 +357,26 @@ void FuncScaleToSeconds::onConvertStart(Duration interval) {
 //===========================================================================
 double FuncScaleToSeconds::onConvert(double value) {
     return value * m_factor;
+}
+
+
+/****************************************************************************
+*
+*   squareRoot
+*
+***/
+
+namespace {
+class FuncSquareRoot : public IXfrmValueBase<FuncSquareRoot> {
+    double onConvert(double value) override;
+};
+} // namespace
+static auto s_squareRoot = FuncSquareRoot::Factory("squareRoot", "Transform")
+    .arg("query", FuncArg::kPathOrFunc, true);
+
+//===========================================================================
+double FuncSquareRoot::onConvert(double value) {
+    return sqrt(value);
 }
 
 

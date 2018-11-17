@@ -56,6 +56,9 @@ fn-filterSeries = %s"filterSeries(" arg-path-or-func "," arg-aggFunc "," arg-ope
 func =/ fn-firstSeries { End }
 fn-firstSeries = %s"firstSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
+func =/ fn-group { End }
+fn-group = %s"group(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
+
 func =/ fn-highest { End }
 fn-highest = %s"highest(" arg-path-or-func [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
 
@@ -68,6 +71,12 @@ fn-highestCurrent = %s"highestCurrent(" arg-path-or-func "," arg-num ")" { Start
 func =/ fn-highestMax { End }
 fn-highestMax = %s"highestMax(" arg-path-or-func "," arg-num ")" { Start }
 
+func =/ fn-invert { End }
+fn-invert = %s"invert(" arg-path-or-func ")" { Start }
+
+func =/ fn-isNonNull { End }
+fn-isNonNull = %s"isNonNull(" arg-path-or-func ")" { Start }
+
 func =/ fn-keepLastValue { End }
 fn-keepLastValue = %s"keepLastValue(" arg-path-or-func [ "," arg-num ] ")" { Start }
 
@@ -79,6 +88,9 @@ fn-legendValue = %s"legendValue(" arg-path-or-func *( "," arg-string ) ")" { Sta
 
 func =/ fn-lineWidth { End }
 fn-lineWidth = %s"lineWidth(" arg-path-or-func "," arg-num ")" { Start }
+
+func =/ fn-logarithm { End }
+fn-logarithm = %s"logarithm(" arg-path-or-func [ "," arg-num ] ")" { Start }
 
 func =/ fn-lowest { End }
 fn-lowest = %s"lowest(" arg-path-or-func [ "," arg-num ] [ "," arg-aggFunc ] ")" { Start }
@@ -119,6 +131,12 @@ fn-multiplySeries = %s"multiplySeries(" arg-path-or-func *( "," arg-path-or-func
 func =/ fn-nonNegativeDerivative { End }
 fn-nonNegativeDerivative = %s"nonNegativeDerivative(" arg-path-or-func [ "," arg-num ] ")" { Start }
 
+func =/ fn-offset { End }
+fn-offset = %s"offset(" arg-path-or-func "," arg-num ")" { Start }
+
+func =/ fn-pow { End }
+fn-pow = %s"pow(" arg-path-or-func "," arg-num ")" { Start }
+
 func =/ fn-rangeSeries { End }
 fn-rangeSeries = %s"rangeSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }
 
@@ -133,6 +151,9 @@ fn-scale = %s"scale(" arg-path-or-func "," arg-num ")" { Start }
 
 func =/ fn-scaleToSeconds { End }
 fn-scaleToSeconds = %s"scaleToSeconds(" arg-path-or-func "," arg-num ")" { Start }
+
+func =/ fn-squareRoot { End }
+fn-squareRoot = %s"squareRoot(" arg-path-or-func ")" { Start }
 
 func =/ fn-stddevSeries { End }
 fn-stddevSeries = %s"stddevSeries(" arg-path-or-func *( "," arg-path-or-func ) ")" { Start }

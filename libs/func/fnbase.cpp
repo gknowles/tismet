@@ -152,16 +152,18 @@ bool PassthruBase::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
     return true;
 }
 
+static auto s_group = PassthruBase::Factory("group", "Combine")
+    .arg("query", FuncArg::kPathOrFunc, true, true);
 static auto s_aliasSub = PassthruBase::Factory("aliasSub", "Alias")
     .arg("query", FuncArg::kPathOrFunc, true)
     .arg("search", FuncArg::kString, true)
     .arg("replace", FuncArg::kString, true);
-static auto s_color = PassthruBase::Factory("color", "Graph")
-    .arg("query", FuncArg::kPathOrFunc, true)
-    .arg("color", FuncArg::kString, true);
 static auto s_legendValue = PassthruBase::Factory("legendValue", "Alias")
     .arg("query", FuncArg::kPathOrFunc, true)
     .arg("valuesTypes", FuncArg::kString, false, true);
+static auto s_color = PassthruBase::Factory("color", "Graph")
+    .arg("query", FuncArg::kPathOrFunc, true)
+    .arg("color", FuncArg::kString, true);
 static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
     .arg("query", FuncArg::kPathOrFunc, true)
     .arg("width", FuncArg::kNum, true);

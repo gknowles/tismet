@@ -96,6 +96,11 @@ inline bool QueryParser::onFnFirstSeriesStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnGroupStart () {
+    return startFunc(Eval::Function::kGroup);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnHighestStart () {
     return startFunc(Eval::Function::kHighest);
 }
@@ -116,6 +121,16 @@ inline bool QueryParser::onFnHighestMaxStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnInvertStart () {
+    return startFunc(Eval::Function::kInvert);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnIsNonNullStart () {
+    return startFunc(Eval::Function::kIsNonNull);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnKeepLastValueStart () {
     return startFunc(Eval::Function::kKeepLastValue);
 }
@@ -133,6 +148,11 @@ inline bool QueryParser::onFnLegendValueStart () {
 //===========================================================================
 inline bool QueryParser::onFnLineWidthStart () {
     return startFunc(Eval::Function::kLineWidth);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnLogarithmStart () {
+    return startFunc(Eval::Function::kLogarithm);
 }
 
 //===========================================================================
@@ -201,6 +221,16 @@ inline bool QueryParser::onFnNonNegativeDerivativeStart () {
 }
 
 //===========================================================================
+inline bool QueryParser::onFnOffsetStart () {
+    return startFunc(Eval::Function::kOffset);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnPowStart () {
+    return startFunc(Eval::Function::kPow);
+}
+
+//===========================================================================
 inline bool QueryParser::onFnRangeSeriesStart () {
     return startFunc(Eval::Function::kRangeSeries);
 }
@@ -223,6 +253,11 @@ inline bool QueryParser::onFnScaleStart () {
 //===========================================================================
 inline bool QueryParser::onFnScaleToSecondsStart () {
     return startFunc(Eval::Function::kScaleToSeconds);
+}
+
+//===========================================================================
+inline bool QueryParser::onFnSquareRootStart () {
+    return startFunc(Eval::Function::kSquareRoot);
 }
 
 //===========================================================================
