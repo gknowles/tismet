@@ -42,7 +42,7 @@ static CmdOpts s_opts;
 ***/
 
 //===========================================================================
-static bool execElevated(string_view prog, const vector<string> & rawArgs) {
+static bool execElevated(string_view prog, vector<string> const & rawArgs) {
     auto args = rawArgs;
     args[0] = "--console=";
     args[0] += StrFrom<unsigned>(envProcessId());

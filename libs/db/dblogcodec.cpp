@@ -275,7 +275,7 @@ struct SampleUpdateInt8TxnRec {
 
 //===========================================================================
 // static
-uint16_t DbLog::size(const Record & log) {
+uint16_t DbLog::size(Record const & log) {
     switch (log.type) {
     case kRecTypeCommitCheckpoint:
         return sizeof(CheckpointCommitRec);
@@ -291,7 +291,7 @@ uint16_t DbLog::size(const Record & log) {
     case kRecTypeRadixInit:
         return sizeof(RadixInitRec);
     case kRecTypeRadixInitList: {
-        auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
+        auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
         return offsetof(RadixInitListRec, pages)
             + rec.numPages * sizeof(*rec.pages);
     }
@@ -302,7 +302,7 @@ uint16_t DbLog::size(const Record & log) {
     case kRecTypeRadixUpdate:
         return sizeof(RadixUpdateRec);
     case kRecTypeMetricInit: {
-        auto & rec = reinterpret_cast<const MetricInitRec &>(log);
+        auto & rec = reinterpret_cast<MetricInitRec const &>(log);
         return offsetof(MetricInitRec, name)
             + (uint16_t) strlen(rec.name) + 1;
     }
@@ -360,7 +360,7 @@ uint16_t DbLog::size(const Record & log) {
 
 //===========================================================================
 // static
-pgno_t DbLog::getPgno(const Record & log) {
+pgno_t DbLog::getPgno(Record const & log) {
     assert(log.type > kRecTypeTxnCommit);
     switch (log.type) {
     case kRecTypeSampleUpdateFloat32Txn:
@@ -373,7 +373,7 @@ pgno_t DbLog::getPgno(const Record & log) {
     case kRecTypeSampleUpdateInt8LastTxn:
     case kRecTypeSampleUpdateInt16LastTxn:
     case kRecTypeSampleUpdateInt32LastTxn:
-        return reinterpret_cast<const SampleUpdateInt8TxnRec &>(log).pgno;
+        return reinterpret_cast<SampleUpdateInt8TxnRec const &>(log).pgno;
     default:
         return log.pgno;
     }
@@ -381,12 +381,12 @@ pgno_t DbLog::getPgno(const Record & log) {
 
 //===========================================================================
 // static
-uint16_t DbLog::getLocalTxn(const Record & log) {
+uint16_t DbLog::getLocalTxn(Record const & log) {
     assert(log.type >= kRecTypeTxnBegin);
     switch (log.type) {
     case kRecTypeTxnBegin:
     case kRecTypeTxnCommit:
-        return reinterpret_cast<const TransactionRec &>(log).localTxn;
+        return reinterpret_cast<TransactionRec const &>(log).localTxn;
     case kRecTypeMetricUpdateSampleTxn:
     case kRecTypeSampleUpdateFloat32Txn:
     case kRecTypeSampleUpdateFloat64Txn:
@@ -470,7 +470,7 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
 }
 
 //===========================================================================
-void DbLog::apply(uint64_t lsn, const Record & log) {
+void DbLog::apply(uint64_t lsn, Record const & log) {
     switch (log.type) {
     case kRecTypeCommitCheckpoint:
     case kRecTypeTxnBegin:
@@ -487,7 +487,7 @@ void DbLog::apply(uint64_t lsn, const Record & log) {
 }
 
 //===========================================================================
-void DbLog::applyUpdate(void * page, const Record & log) {
+void DbLog::applyUpdate(void * page, Record const & log) {
     switch (log.type) {
     default:
         logMsgFatal() << "unknown log record type, " << log.type;
@@ -497,15 +497,15 @@ void DbLog::applyUpdate(void * page, const Record & log) {
     case kRecTypePageFree:
         return m_data->onLogApplyPageFree(page);
     case kRecTypeSegmentAlloc: {
-        auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
+        auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
         return m_data->onLogApplySegmentUpdate(page, rec.refPage, false);
     }
     case kRecTypeSegmentFree: {
-        auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
+        auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
         return m_data->onLogApplySegmentUpdate(page, rec.refPage, true);
     }
     case kRecTypeRadixInit: {
-        auto & rec = reinterpret_cast<const RadixInitRec &>(log);
+        auto & rec = reinterpret_cast<RadixInitRec const &>(log);
         return m_data->onLogApplyRadixInit(
             page,
             rec.id,
@@ -515,7 +515,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeRadixInitList: {
-        auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
+        auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
         return m_data->onLogApplyRadixInit(
             page,
             rec.id,
@@ -525,20 +525,20 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeRadixErase: {
-        auto & rec = reinterpret_cast<const RadixEraseRec &>(log);
+        auto & rec = reinterpret_cast<RadixEraseRec const &>(log);
         return m_data->onLogApplyRadixErase(page, rec.firstPos, rec.lastPos);
     }
     case kRecTypeRadixPromote: {
-        auto & rec = reinterpret_cast<const RadixPromoteRec &>(log);
+        auto & rec = reinterpret_cast<RadixPromoteRec const &>(log);
         return m_data->onLogApplyRadixPromote(page, rec.refPage);
     }
     case kRecTypeRadixUpdate: {
-        auto & rec = reinterpret_cast<const RadixUpdateRec &>(log);
+        auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
         return m_data->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
     }
 
     case kRecTypeMetricInit: {
-        auto & rec = reinterpret_cast<const MetricInitRec &>(log);
+        auto & rec = reinterpret_cast<MetricInitRec const &>(log);
         return m_data->onLogApplyMetricInit(
             page,
             rec.id,
@@ -550,7 +550,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdate: {
-        auto & rec = reinterpret_cast<const MetricUpdateRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
         return m_data->onLogApplyMetricUpdate(
             page,
             rec.creation,
@@ -562,7 +562,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
     case kRecTypeMetricClearSamples:
         return m_data->onLogApplyMetricClearSamples(page);
     case kRecTypeMetricUpdatePos: {
-        auto & rec = reinterpret_cast<const MetricUpdatePosRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdatePosRec const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
@@ -572,7 +572,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdatePosAndIndex: {
-        auto & rec = reinterpret_cast<const MetricUpdatePosAndIndexRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdatePosAndIndexRec const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
@@ -582,7 +582,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdateSampleTxn: {
-        auto & rec = reinterpret_cast<const MetricUpdateSampleTxnRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateSampleTxnRec const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             (size_t) -1,
@@ -592,7 +592,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdateSample: {
-        auto & rec = reinterpret_cast<const MetricUpdateSampleRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             (size_t) -1,
@@ -602,7 +602,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdateSampleAndIndex: {
-        auto & rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateSampleAndIndexRec const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
@@ -614,7 +614,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
 
     // Deprecated 2018-08-14
     case kRecTypeMetricUpdateLast: {
-        auto & rec = reinterpret_cast<const MetricUpdateSampleRec_Old &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateSampleRec_Old const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
@@ -624,7 +624,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeMetricUpdateLastAndIndex: {
-        auto & rec = reinterpret_cast<const MetricUpdateSampleRec_Old &>(log);
+        auto & rec = reinterpret_cast<MetricUpdateSampleRec_Old const &>(log);
         return m_data->onLogApplyMetricUpdateSamples(
             page,
             rec.refPos,
@@ -635,7 +635,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
     }
 
     case kRecTypeSampleInit: {
-        auto & rec = reinterpret_cast<const SampleInitRec &>(log);
+        auto & rec = reinterpret_cast<SampleInitRec const &>(log);
         return m_data->onLogApplySampleInit(
             page,
             rec.id,
@@ -646,7 +646,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleInitFill: {
-        auto & rec = reinterpret_cast<const SampleInitFillRec &>(log);
+        auto & rec = reinterpret_cast<SampleInitFillRec const &>(log);
         return m_data->onLogApplySampleInit(
             page,
             rec.id,
@@ -657,7 +657,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdate: {
-        auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.firstSample,
@@ -667,7 +667,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateLast: {
-        auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.firstSample,
@@ -677,12 +677,12 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateTime: {
-        auto & rec = reinterpret_cast<const SampleUpdateTimeRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateTimeRec const &>(log);
         return m_data->onLogApplySampleUpdateTime(page, rec.pageTime);
     }
 
     case kRecTypeSampleUpdateFloat32Txn: {
-        auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -692,7 +692,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateFloat64Txn: {
-        auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -702,7 +702,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt8Txn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -712,7 +712,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt16Txn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -722,7 +722,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt32Txn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -732,7 +732,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateFloat32LastTxn: {
-        auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -742,7 +742,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateFloat64LastTxn: {
-        auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -752,7 +752,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt8LastTxn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -762,7 +762,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt16LastTxn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -772,7 +772,7 @@ void DbLog::applyUpdate(void * page, const Record & log) {
         );
     }
     case kRecTypeSampleUpdateInt32LastTxn: {
-        auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
+        auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
         return m_data->onLogApplySampleUpdate(
             page,
             rec.pos,
@@ -793,20 +793,20 @@ void DbLog::applyUpdate(void * page, const Record & log) {
 ***/
 
 //===========================================================================
-void DbLog::apply(AnalyzeData * data, uint64_t lsn, const Record & log) {
+void DbLog::apply(AnalyzeData * data, uint64_t lsn, Record const & log) {
     switch (log.type) {
     case kRecTypeCommitCheckpoint: {
-            auto & rec = reinterpret_cast<const CheckpointCommitRec &>(log);
+            auto & rec = reinterpret_cast<CheckpointCommitRec const &>(log);
             applyCommitCheckpoint(data, lsn, rec.startLsn);
         }
         break;
     case kRecTypeTxnBegin: {
-            auto & rec = reinterpret_cast<const TransactionRec &>(log);
+            auto & rec = reinterpret_cast<TransactionRec const &>(log);
             applyBeginTxn(data, lsn, rec.localTxn);
         }
         break;
     case kRecTypeTxnCommit: {
-            auto & rec = reinterpret_cast<const TransactionRec &>(log);
+            auto & rec = reinterpret_cast<TransactionRec const &>(log);
             applyCommitTxn(data, lsn, rec.localTxn);
         }
         break;
@@ -879,8 +879,8 @@ void DbTxn::logRadixInit(
     pgno_t pgno,
     uint32_t id,
     uint16_t height,
-    const pgno_t * firstPage,
-    const pgno_t * lastPage
+    pgno_t const * firstPage,
+    pgno_t const * lastPage
 ) {
     if (firstPage == lastPage) {
         auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);

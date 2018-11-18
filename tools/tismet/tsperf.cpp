@@ -40,8 +40,8 @@ class SampleTimer : public ITimerNotify, ITaskNotify {
 static SampleTimer s_sampleTimer;
 static atomic_bool s_taskQueued{false};
 
-const char s_prefix[] = "tismet.";
-const char s_allowedChars[] =
+char const s_prefix[] = "tismet.";
+char const s_allowedChars[] =
     "abcdefghijklmnopqrstuvwxyz"
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "0123456789"

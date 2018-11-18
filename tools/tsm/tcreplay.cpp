@@ -86,11 +86,11 @@ public:
 
 public:
     // Inherited via IAppSocketNotify
-    void onSocketConnect(const AppSocketInfo & info) override;
+    void onSocketConnect(AppSocketInfo const & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
-    void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
+    void onSocketBufferChanged(AppSocketBufferInfo const & info) override;
 
 private:
     void write();
@@ -118,7 +118,7 @@ void AddrConn::write() {
 }
 
 //===========================================================================
-void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+void AddrConn::onSocketConnect(AppSocketInfo const & info) {
     write();
 }
 
@@ -144,7 +144,7 @@ bool AddrConn::onSocketRead(AppSocketData & data) {
 }
 
 //===========================================================================
-void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
+void AddrConn::onSocketBufferChanged(AppSocketBufferInfo const & info) {
     if (info.waiting) {
         m_full = true;
     } else if (m_full && !info.waiting) {
@@ -174,7 +174,7 @@ public:
 
 private:
     // Inherited via IEndpointNotify
-    void onEndpointFound(const Endpoint * ptr, int count) override;
+    void onEndpointFound(Endpoint const * ptr, int count) override;
 
     int m_cancelId;
 };
@@ -190,7 +190,7 @@ bool AddrJob::start(Cli & cli) {
 }
 
 //===========================================================================
-void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
+void AddrJob::onEndpointFound(Endpoint const * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {

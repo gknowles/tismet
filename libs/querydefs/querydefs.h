@@ -72,13 +72,13 @@ struct PathSegment {
         unsigned count;
     };
     PathType type{kExact};
-    const Node * node{};
+    Node const * node{};
 
     PathSegment() { prefix = {}; }
 };
 struct Function {
     Eval::Function::Type type{};
-    std::vector<const Node *> args;
+    std::vector<Node const *> args;
 };
 
 struct QueryInfo {
@@ -99,30 +99,30 @@ struct QueryInfo {
 // not a path.
 void getPathSegments(
     std::vector<PathSegment> * out,
-    const QueryInfo & qry
+    QueryInfo const & qry
 );
 // Use the node values returned by getPathSegments()
-MatchResult matchSegment(const Node & node, std::string_view val);
+MatchResult matchSegment(Node const & node, std::string_view val);
 
-NodeType getType(const Node & node);
+NodeType getType(Node const & node);
 
 // Returns a NAN if not a number node
-double asNumber(const Node & node);
+double asNumber(Node const & node);
 
 // empty string for non-string nodes
-std::string_view asString(const Node & node);
-std::shared_ptr<char[]> asSharedString(const Node & node);
+std::string_view asString(Node const & node);
+std::shared_ptr<char[]> asSharedString(Node const & node);
 
 // Returns false if not a function node
-bool getFunc(Function * out, const Node & node);
+bool getFunc(Function * out, Node const & node);
 
 struct ITokenConvNotify {
     virtual ~ITokenConvNotify() = default;
-    virtual const Dim::TokenTable & funcTypeTbl() const = 0;
+    virtual Dim::TokenTable const & funcTypeTbl() const = 0;
 };
 std::string toString(
-    const Node & node,
-    const ITokenConvNotify * notify
+    Node const & node,
+    ITokenConvNotify const * notify
 );
 
 

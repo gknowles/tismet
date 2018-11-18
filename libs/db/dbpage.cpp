@@ -16,8 +16,8 @@ using namespace Dim;
 ***/
 
 // Must be a multiple of fileViewAlignment()
-const size_t kViewSize = 0x100'0000; // 16MiB
-const size_t kDefaultFirstViewSize = 2 * kViewSize;
+size_t const kViewSize = 0x100'0000; // 16MiB
+size_t const kDefaultFirstViewSize = 2 * kViewSize;
 
 
 /****************************************************************************
@@ -28,14 +28,14 @@ const size_t kDefaultFirstViewSize = 2 * kViewSize;
 
 namespace {
 
-const unsigned kWorkFileSig[] = {
+unsigned const kWorkFileSig[] = {
     0xa6e6fd51,
     0x4a443864,
     0x8b4302ae,
     0x84b2074b,
 };
 
-const uint32_t kPageTypeZero = 'wZ';
+uint32_t const kPageTypeZero = 'wZ';
 
 struct ZeroPage {
     DbPageHeader hdr;
@@ -132,7 +132,7 @@ bool DbPage::openData(string_view datafile) {
     auto lastPage = (pgno_t) (len / m_pageSize);
     while (lastPage) {
         lastPage = pgno_t(lastPage - 1);
-        auto p = static_cast<const DbPageHeader *>(m_vdata.rptr(lastPage));
+        auto p = static_cast<DbPageHeader const *>(m_vdata.rptr(lastPage));
         if (p->type)
             break;
     }
@@ -189,7 +189,7 @@ bool DbPage::openWork(string_view workfile) {
 }
 
 //===========================================================================
-DbConfig DbPage::configure(const DbConfig & conf) {
+DbConfig DbPage::configure(DbConfig const & conf) {
     // checkpoint configuration is assumed to have already been validated
     // by DbLog.
     assert(conf.checkpointMaxInterval.count());
@@ -511,7 +511,7 @@ void DbPage::growToFit(pgno_t pgno) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(uint64_t lsn, pgno_t pgno) const {
+void const * DbPage::rptr(uint64_t lsn, pgno_t pgno) const {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
@@ -552,7 +552,7 @@ void * DbPage::onLogGetRedoPtr(
     auto pi = m_pages[pgno];
     if (!pi || !pi->hdr) {
         // create new dirty page from clean page
-        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        auto src = reinterpret_cast<DbPageHeader const *>(m_vdata.rptr(pgno));
         if (lsn <= src->lsn)
             return nullptr;
     } else if (lsn <= pi->hdr->lsn) {
@@ -574,7 +574,7 @@ void * DbPage::onLogGetUpdatePtr(
 }
 
 //===========================================================================
-DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
+DbPageHeader * DbPage::dupPage_LK(DbPageHeader const * hdr) {
     pgno_t wpno = {};
     if (m_freeWorkPages) {
         wpno = (pgno_t) m_freeWorkPages.pop_front();
@@ -594,7 +594,7 @@ void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     auto pi = m_pages[pgno];
     if (!pi || !pi->hdr) {
         // create new dirty page from clean page
-        auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
+        auto src = reinterpret_cast<DbPageHeader const *>(m_vdata.rptr(pgno));
         if (!pi) {
             pi = allocWorkInfo_LK();
             m_pages[pgno] = pi;

@@ -24,7 +24,7 @@ namespace {
 using OperFn = bool(double a, double b);
 struct OperatorInfo {
     OperFn * fn;
-    vector<const char *> names;
+    vector<char const *> names;
 };
 } // namespace
 static OperatorInfo s_opers[] = {
@@ -37,7 +37,7 @@ static OperatorInfo s_opers[] = {
     { [](auto a, auto b) { return a <= b; }, { "le", "<=" }, },
 };
 static vector<TokenTable::Token> s_operTokens;
-const TokenTable s_operTbl = [](){
+TokenTable const s_operTbl = [](){
     for (unsigned i = 0; i < size(s_opers); ++i) {
         auto & v = s_opers[i];
         if (v.fn) {
@@ -50,7 +50,7 @@ const TokenTable s_operTbl = [](){
     }
     return TokenTable{s_operTokens};
 }();
-const FuncArg::Enum s_operEnum{"operator", &s_operTbl};
+FuncArg::Enum const s_operEnum{"operator", &s_operTbl};
 
 
 /****************************************************************************
@@ -65,7 +65,7 @@ template<int Agg, int Op>
 class FilterSeries : public IFuncBase<FilterSeries<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
+    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     double m_limit{};
@@ -84,7 +84,7 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterSeries<Agg, Op>::onFuncBind(
-    vector<const Query::Node *> & args
+    vector<Query::Node const *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);
@@ -160,7 +160,7 @@ template<int Agg, int Op>
 class FilterBest : public IFuncBase<FilterBest<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
+    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     multimap<double, ResultInfo> m_best;
@@ -179,7 +179,7 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterBest<Agg, Op>::onFuncBind(
-    vector<const Query::Node *> & args
+    vector<Query::Node const *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);

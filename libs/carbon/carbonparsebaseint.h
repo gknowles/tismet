@@ -16,8 +16,8 @@
 struct CarbonParserBase {
     CarbonUpdate * m_upd;
 
-    const char * m_nameStart{};
-    const char * m_nameEnd{};
+    char const * m_nameStart{};
+    char const * m_nameEnd{};
     bool m_minus{};
     int64_t m_int{};
     int m_frac{};

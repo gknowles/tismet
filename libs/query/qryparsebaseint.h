@@ -20,8 +20,8 @@ struct QueryParserBase {
     Query::QueryInfo * m_query;
     std::vector<Query::Node *> m_nodes;
 
-    const char * m_start{};
-    const char * m_end{};
+    char const * m_start{};
+    char const * m_end{};
 
     bool m_pathSeg{}; // true if pathSeg just ended
 

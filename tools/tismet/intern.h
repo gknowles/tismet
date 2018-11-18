@@ -14,7 +14,7 @@ void tsPerfInitialize();
 void tsDataInitialize();
 void tsDataBackup(IDbProgressNotify * notify);
 DbHandle tsDataHandle();
-const Dim::Path & tsDataPath();
+Dim::Path const & tsDataPath();
 DbContextHandle tsDataOpenContext();
 
 // Returns false if the metric is not being stored

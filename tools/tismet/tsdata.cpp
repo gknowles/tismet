@@ -56,7 +56,7 @@ public:
 
 private:
     Duration onTimer(TimePoint now) override;
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
 
     Duration timeUntilCheck();
 
@@ -103,7 +103,7 @@ Duration ExpireTimer::onTimer(TimePoint now) {
 }
 
 //===========================================================================
-bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
+bool ExpireTimer::onDbSeriesStart(DbSeriesInfo const & info) {
     if (!info.type)
         return true;
 
@@ -128,7 +128,7 @@ bool ExpireTimer::onDbSeriesStart(const DbSeriesInfo & info) {
 namespace {
 
 class AppXmlNotify : public IConfigNotify {
-    void onConfigChange(const XDocument & doc) override;
+    void onConfigChange(XDocument const & doc) override;
 };
 
 } // namespace
@@ -136,7 +136,7 @@ class AppXmlNotify : public IConfigNotify {
 static AppXmlNotify s_appXml;
 
 //===========================================================================
-void AppXmlNotify::onConfigChange(const XDocument & doc) {
+void AppXmlNotify::onConfigChange(XDocument const & doc) {
     if (s_db) {
         DbConfig conf;
         conf.checkpointMaxData =
@@ -219,7 +219,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 static Path s_dbPath;
 
 //===========================================================================
-const Path & tsDataPath() {
+Path const & tsDataPath() {
     return s_dbPath;
 }
 

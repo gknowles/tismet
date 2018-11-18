@@ -47,7 +47,7 @@ public:
     uint32_t nextId() const;
     size_t size() const;
 
-    const char * name(uint32_t id) const;
+    char const * name(uint32_t id) const;
 
     bool find(uint32_t * out, std::string_view name) const;
     void find(Dim::UnsignedSet * out, std::string_view name) const;
@@ -58,7 +58,7 @@ private:
         Query::PathSegment * segs,
         size_t numSegs,
         size_t pos,
-        const UnsignedSetWithCount * subset
+        UnsignedSetWithCount const * subset
     ) const;
 
     uint32_t m_nextBranchId{0};
@@ -83,7 +83,7 @@ private:
     // *.red.* could be matched by finding all the metrics whose name has
     // "red" as the second segment (m_segIds[1]["red"]) and is three segments
     // long (m_lenIds[3]).
-    std::vector<std::unordered_map<std::string_view, const char*>> m_segNames;
+    std::vector<std::unordered_map<std::string_view, char const *>> m_segNames;
     std::vector<std::map<std::string_view, UnsignedSetWithCount>> m_segIds;
 
     std::vector<std::string_view> m_tmpSegs;

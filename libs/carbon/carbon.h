@@ -63,7 +63,7 @@ public:
 
 private:
     // Inherited via IAppSocketNotify
-    bool onSocketAccept(const Dim::AppSocketInfo & info) override;
+    bool onSocketAccept(Dim::AppSocketInfo const & info) override;
     void onSocketDisconnect() override;
     bool onSocketRead(Dim::AppSocketData & data) override;
 

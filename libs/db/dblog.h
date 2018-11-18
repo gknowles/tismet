@@ -43,9 +43,9 @@ public:
     class IApplyNotify;
 
     struct Record;
-    static uint16_t size(const Record & log);
-    static pgno_t getPgno(const Record & log);
-    static uint16_t getLocalTxn(const Record & log);
+    static uint16_t size(Record const & log);
+    static pgno_t getPgno(Record const & log);
+    static uint16_t getLocalTxn(Record const & log);
     static void setLocalTxn(Record * log, uint16_t localTxn);
 
     static uint64_t getLsn(uint64_t logPos);
@@ -86,7 +86,7 @@ public:
     bool recover(RecoverFlags flags = {});
 
     void close();
-    DbConfig configure(const DbConfig & conf);
+    DbConfig configure(DbConfig const & conf);
 
     // Returns transaction id (localTxn + LSN)
     uint64_t beginTxn();
@@ -130,20 +130,20 @@ private:
     // returns LSN
     enum class TxnMode { kBegin, kContinue, kCommit };
     uint64_t log(
-        const Record & log,
+        Record const & log,
         size_t bytes,
         TxnMode txnMode,
         uint64_t txn = 0
     );
 
     void prepareBuffer_LK(
-        const Record & log,
+        Record const & log,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
     void countBeginTxn_LK();
     void countCommitTxn_LK(uint64_t txn);
-    void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
+    void updatePages_LK(PageInfo const & pi, bool fullPageWrite);
     void checkpointPages();
     void checkpointStableCommit();
     void checkpointTruncateCommit();
@@ -152,7 +152,7 @@ private:
 
     struct AnalyzeData;
     void applyAll(AnalyzeData * data, Dim::FileHandle flog);
-    void apply(AnalyzeData * data, uint64_t lsn, const Record & log);
+    void apply(AnalyzeData * data, uint64_t lsn, Record const & log);
     void applyCommitCheckpoint(
         AnalyzeData * data,
         uint64_t lsn,
@@ -160,10 +160,10 @@ private:
     );
     void applyBeginTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
     void applyCommitTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
-    void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log);
+    void applyUpdate(AnalyzeData * data, uint64_t lsn, Record const & log);
 
-    void apply(uint64_t lsn, const Record & log);
-    void applyUpdate(void * page, const Record & log);
+    void apply(uint64_t lsn, Record const & log);
+    void applyUpdate(void * page, Record const & log);
 
     IApplyNotify * m_data;
     IPageNotify * m_page;
@@ -205,8 +205,8 @@ private:
         uint64_t waitLsn;
         Dim::TaskQueueHandle hq;
 
-        bool operator<(const LsnTaskInfo & right) const;
-        bool operator>(const LsnTaskInfo & right) const;
+        bool operator<(LsnTaskInfo const & right) const;
+        bool operator>(LsnTaskInfo const & right) const;
     };
     std::priority_queue<
         LsnTaskInfo,
@@ -230,7 +230,7 @@ private:
 };
 
 //===========================================================================
-inline bool operator<(const DbLog::PageInfo & a, const DbLog::PageInfo & b) {
+inline bool operator<(DbLog::PageInfo const & a, DbLog::PageInfo const & b) {
     return a.firstLsn < b.firstLsn;
 }
 
@@ -311,8 +311,8 @@ public:
         void * ptr,
         uint32_t id,
         uint16_t height,
-        const pgno_t * firstPgno,
-        const pgno_t * lastPgno
+        pgno_t const * firstPgno,
+        pgno_t const * lastPgno
     ) = 0;
     virtual void onLogApplyRadixErase(
         void * ptr,

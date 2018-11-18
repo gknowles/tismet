@@ -16,12 +16,12 @@ class QueryParser : public QueryParserBase {
 public:
     using QueryParserBase::QueryParserBase;
 
-    bool parse (const char src[]);
+    bool parse (char const src[]);
     size_t errpos () const { return m_errpos; }
 
 private:
-    bool stateQuery (const char *& src);
-    bool stateSslSegs (const char *& src);
+    bool stateQuery (char const *& src);
+    bool stateSslSegs (char const *& src);
 
     // Events
     bool onArgNumEnd ();
@@ -92,13 +92,13 @@ private:
     bool onSclSingleChar (char ch);
     bool onSegBlotEnd ();
     bool onSegCharListEnd ();
-    bool onSegLiteralStart (const char * ptr);
-    bool onSegLiteralEnd (const char * eptr);
+    bool onSegLiteralStart (char const * ptr);
+    bool onSegLiteralEnd (char const * eptr);
     bool onSslCommaEnd ();
     bool onSslSegsStart ();
     bool onSslSegsEnd ();
-    bool onStringStart (const char * ptr);
-    bool onStringEnd (const char * eptr);
+    bool onStringStart (char const * ptr);
+    bool onStringEnd (char const * eptr);
 
     // Data members
     size_t m_errpos{0};

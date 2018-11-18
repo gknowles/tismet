@@ -46,11 +46,11 @@
 # libs/func/pch.h
 # libs/query/pch.cpp
 # libs/query/pch.h
-# libs/query/qryabnf.cpp
-# libs/query/qryabnfbaseint.h
-# libs/query/qryabnffuncint.h
-# libs/query/qryabnfimplint.h
-# libs/query/qryabnfint.h
+# libs/query/qryparse.cpp
+# libs/query/qryparsebaseint.h
+# libs/query/qryparseimplfnint.h
+# libs/query/qryparseimplint.h
+# libs/query/qryparseint.h
 # libs/query/query.abnf
 # libs/query/query.cpp
 # libs/query/query.h

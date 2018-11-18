@@ -80,13 +80,13 @@ inline bool CarbonParser::onIntMinusEnd () {
 }
 
 //===========================================================================
-inline bool CarbonParser::onPathStart (const char * ptr) {
+inline bool CarbonParser::onPathStart (char const * ptr) {
     m_nameStart = ptr;
     return true;
 }
 
 //===========================================================================
-inline bool CarbonParser::onPathEnd (const char * eptr) {
+inline bool CarbonParser::onPathEnd (char const * eptr) {
     m_nameEnd = eptr;
     return true;
 }

@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const unsigned kCarbonMaxRecordSize = 1024;
+unsigned const kCarbonMaxRecordSize = 1024;
 
 
 /****************************************************************************
@@ -90,7 +90,7 @@ unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
 ***/
 
 //===========================================================================
-bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
+bool ICarbonSocketNotify::onSocketAccept(AppSocketInfo const & info) {
     s_perfClients += 1;
     s_perfCurrent += 1;
     socketWrite(this, "SERVER = tismet/1.0\n");
@@ -219,7 +219,7 @@ bool carbonParse(CarbonUpdate & upd, string_view & src, TimePoint now) {
     upd.name = {};
     if (src.empty())
         return true;
-    const char * ptr = src.data();
+    char const * ptr = src.data();
     CarbonParser parser(&upd);
     parser.parse(ptr);
     auto pos = parser.errpos();

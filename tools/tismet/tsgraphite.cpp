@@ -290,11 +290,11 @@ public:
         unsigned reqId,
         TimePoint from,
         TimePoint until,
-        const vector<string_view> & targets
+        vector<string_view> const & targets
     );
 
 private:
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
 
     unsigned m_reqId{0};
@@ -337,7 +337,7 @@ public:
     RenderJson(RenderMultitarget * out, unsigned reqId);
 
 private:
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
     void onEvalEnd() override;
@@ -569,7 +569,7 @@ RenderJson::RenderJson(RenderMultitarget * out, unsigned targetId)
 }
 
 //===========================================================================
-bool RenderJson::onDbSeriesStart(const DbSeriesInfo & info) {
+bool RenderJson::onDbSeriesStart(DbSeriesInfo const & info) {
     if (info.first == info.last)
         return false;
 
@@ -631,7 +631,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     unsigned reqId,
     TimePoint from,
     TimePoint until,
-    const vector<string_view> & targets
+    vector<string_view> const & targets
 )
     : m_reqId{reqId}
 {
@@ -671,7 +671,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
 }
 
 //===========================================================================
-bool RenderAlternativeStorage::onDbSeriesStart(const DbSeriesInfo & info) {
+bool RenderAlternativeStorage::onDbSeriesStart(DbSeriesInfo const & info) {
     m_bld.map(6);
     m_bld.element("name", info.name);
     m_bld.element("pathExpression", m_pathExpr);
@@ -723,7 +723,7 @@ void FunctionIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     bool started = false;
     HttpResponse res;
 
-    unordered_map<string_view, const TokenTable *> evalues;
+    unordered_map<string_view, TokenTable const *> evalues;
     for (auto && e : funcEnums())
         evalues[e.name] = e.table;
 

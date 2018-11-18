@@ -35,7 +35,7 @@ struct TestEvalSeries {
 class UnitTest : public ListBaseLink<>, IEvalNotify {
 public:
     UnitTest(string_view name, int line = __LINE__);
-    UnitTest(const UnitTest & from);
+    UnitTest(UnitTest const & from);
 
     UnitTest & query(
         string_view query,
@@ -57,10 +57,10 @@ public:
     );
     void onTest(DbHandle h);
 
-    const string & name() const { return m_name; }
+    string const & name() const { return m_name; }
 
 private:
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onEvalError(string_view errmsg) override;
     void onEvalEnd() override;
@@ -100,7 +100,7 @@ static condition_variable s_cv;
 ***/
 
 //===========================================================================
-static bool operator==(const TestEvalSeries & a, const TestEvalSeries & b) {
+static bool operator==(TestEvalSeries const & a, TestEvalSeries const & b) {
     if (a.samples.size() != b.samples.size())
         return false;
     for (int i = 0; i < a.samples.size(); ++i) {
@@ -116,7 +116,7 @@ static bool operator==(const TestEvalSeries & a, const TestEvalSeries & b) {
 }
 
 //===========================================================================
-static bool operator<(const TestEvalSeries & a, const TestEvalSeries & b) {
+static bool operator<(TestEvalSeries const & a, TestEvalSeries const & b) {
     if (int rc = a.name.compare(b.name))
         return rc < 0;
     if (int64_t rc = (a.first - b.first).count())
@@ -142,7 +142,7 @@ UnitTest::UnitTest(string_view name, int line)
 }
 
 //===========================================================================
-UnitTest::UnitTest(const UnitTest & from)
+UnitTest::UnitTest(UnitTest const & from)
     : m_name{from.m_name}
     , m_line{from.m_line}
     , m_query(from.m_query)
@@ -246,7 +246,7 @@ void UnitTest::onTest(DbHandle h) {
 }
 
 //===========================================================================
-bool UnitTest::onDbSeriesStart(const DbSeriesInfo & info) {
+bool UnitTest::onDbSeriesStart(DbSeriesInfo const & info) {
     auto & s = m_found.emplace_back();
     s.name = info.name;
     s.first = m_first - m_first.time_since_epoch() % info.interval;
@@ -586,7 +586,7 @@ void Test::onTestRun() {
     auto start = timeFromUnix(900'000'000);
     auto name = "this.is.metric.1"s;
 
-    const char dat[] = "test";
+    char const dat[] = "test";
     auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);
     EXPECT(h && "Failure to create database");
     if (!h)

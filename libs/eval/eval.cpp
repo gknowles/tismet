@@ -26,7 +26,7 @@ private:
     void onSourceStart() override;
     void onTask() override;
 
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double value) override;
     void onDbSeriesEnd(uint32_t id) override;
 
@@ -227,7 +227,7 @@ void SourceNode::init(shared_ptr<char[]> name) {
 }
 
 //===========================================================================
-void SourceNode::addOutput(const SourceContext & context) {
+void SourceNode::addOutput(SourceContext const & context) {
     unique_lock lk{m_outMut};
     m_pendingOutputs.push_back(context);
     if (m_pendingOutputs.size() != 1 || !m_outputs.empty())
@@ -272,7 +272,7 @@ bool SourceNode::outputContext(SourceContext * out) {
 }
 
 //===========================================================================
-void SourceNode::outputResult(const ResultInfo & info) {
+void SourceNode::outputResult(ResultInfo const & info) {
     unique_lock lk{m_outMut};
     outputResultImpl_LK(info);
     if (!info.samples) {
@@ -285,7 +285,7 @@ void SourceNode::outputResult(const ResultInfo & info) {
 }
 
 //===========================================================================
-void SourceNode::outputResultImpl_LK(const ResultInfo & info) {
+void SourceNode::outputResultImpl_LK(ResultInfo const & info) {
     if (m_outputs.empty())
         return;
     if (!info.samples) {
@@ -383,7 +383,7 @@ void DbDataNode::readMore() {
 }
 
 //===========================================================================
-bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
+bool DbDataNode::onDbSeriesStart(DbSeriesInfo const & info) {
     if (!info.type)
         return true;
 
@@ -460,7 +460,7 @@ void ResultNode::stopSources() {
 }
 
 //===========================================================================
-void ResultNode::onResult(const ResultInfo & info) {
+void ResultNode::onResult(ResultInfo const & info) {
     scoped_lock lk{m_resMut};
     m_results.push_back(info);
     if (m_results.size() == 1) {
@@ -487,7 +487,7 @@ void FuncNode::init(
 }
 
 //===========================================================================
-bool FuncNode::bind(vector<const Query::Node *> & args) {
+bool FuncNode::bind(vector<Query::Node const *> & args) {
     auto ptr = m_instance->onFuncBind(this, args);
     if (ptr != m_instance.get())
         m_instance.reset(ptr);
@@ -540,7 +540,7 @@ void FuncNode::onTask() {
 }
 
 //===========================================================================
-bool FuncNode::onFuncSource(const Query::Node & node) {
+bool FuncNode::onFuncSource(Query::Node const & node) {
     assert(getType(node) == Query::kFunc || getType(node) == Query::kPath);
     return (bool) addSource(this, toString(node));
 }
@@ -700,7 +700,7 @@ void evaluate(
 }
 
 //===========================================================================
-string toString(const Query::Node & node) {
+string toString(Query::Node const & node) {
     return toString(node, &funcTokenConv());
 }
 

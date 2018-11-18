@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const char kVersion[] = "1.0.0";
+char const kVersion[] = "1.0.0";
 
 
 /****************************************************************************
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 //===========================================================================
 static void dump(
     ostream & os,
-    const DbProgressInfo & info,
+    DbProgressInfo const & info,
     chrono::duration<double> time
 ) {
     if (auto num = info.files)
@@ -92,7 +92,7 @@ static void dump(
 //===========================================================================
 static void dumpTotals(
     ostream & os,
-    const DbProgressInfo & info,
+    DbProgressInfo const & info,
     chrono::duration<double> time
 ) {
     if (auto num = info.totalFiles; num && num != (size_t) -1)
@@ -109,7 +109,7 @@ static void dumpTotals(
 
 //===========================================================================
 void tcLogStart(
-    const DbProgressInfo * limit,
+    DbProgressInfo const * limit,
     chrono::duration<double> timeLimit
 ) {
     s_startTime = timeNow();
@@ -129,7 +129,7 @@ void tcLogStart(
 }
 
 //===========================================================================
-void tcLogShutdown(const DbProgressInfo * total) {
+void tcLogShutdown(DbProgressInfo const * total) {
     TimePoint finish = timeNow();
     chrono::duration<double> elapsed = finish - s_startTime;
     auto os = logMsgInfo();

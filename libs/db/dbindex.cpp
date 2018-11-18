@@ -199,7 +199,7 @@ size_t DbIndex::size() const {
 }
 
 //===========================================================================
-const char * DbIndex::name(uint32_t id) const {
+char const * DbIndex::name(uint32_t id) const {
     return id < m_idNames.size() ? m_idNames[id].get() : nullptr;
 }
 
@@ -220,15 +220,15 @@ void DbIndex::find(
     PathSegment * segs,
     size_t numSegs,
     size_t basePos,
-    const UnsignedSetWithCount * subset
+    UnsignedSetWithCount const * subset
 ) const {
     assert(basePos + numSegs < m_lenIds.size());
     out->clear();
     if (!numSegs || subset && subset->count == 0)
         return;
 
-    vector<const UnsignedSetWithCount*> usets(numSegs);
-    const UnsignedSetWithCount * fewest = subset;
+    vector<UnsignedSetWithCount const *> usets(numSegs);
+    UnsignedSetWithCount const * fewest = subset;
     int ifewest = -1;
     int pos = (int) basePos;
     for (int i = 0; i < numSegs; ++i) {

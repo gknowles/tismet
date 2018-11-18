@@ -213,8 +213,8 @@
 // Parser function covering:
 //  - 4 states
 [[gsl::suppress(bounds)]]
-bool QueryParser::parse (const char src[]) {
-    const char * ptr = src;
+bool QueryParser::parse (char const src[]) {
+    char const * ptr = src;
     unsigned char ch;
     goto state2;
 
@@ -247,8 +247,8 @@ state3:
 // Parser function covering:
 //  - 968 states
 [[gsl::suppress(bounds)]]
-bool QueryParser::stateQuery (const char *& ptr) {
-    const char * last = nullptr;
+bool QueryParser::stateQuery (char const *& ptr) {
+    char const * last = nullptr;
     unsigned char ch;
     goto state2;
 
@@ -26497,8 +26497,8 @@ state2052:
 // Parser function covering:
 //  - 56 states
 [[gsl::suppress(bounds)]]
-bool QueryParser::stateSslSegs (const char *& ptr) {
-    const char * last = nullptr;
+bool QueryParser::stateSslSegs (char const *& ptr) {
+    char const * last = nullptr;
     unsigned char ch;
     if (!onSslSegsStart())
         goto state0;

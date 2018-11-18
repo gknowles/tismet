@@ -15,16 +15,16 @@ using namespace Dim;
 *
 ***/
 
-const DbSampleType kDefaultSampleType = kSampleTypeFloat32;
+DbSampleType const kDefaultSampleType = kSampleTypeFloat32;
 constexpr Duration kDefaultRetention = 7 * 24h;
 constexpr Duration kDefaultInterval = 1min;
 static_assert(kDefaultRetention >= kDefaultInterval);
 
-const unsigned kMaxMetricNameLen = 128;
+unsigned const kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
-const auto kZeroPageNum = (pgno_t) 0;
-const auto kMetricIndexPageNum = (pgno_t) 1;
+auto const kZeroPageNum = (pgno_t) 0;
+auto const kMetricIndexPageNum = (pgno_t) 1;
 
 
 /****************************************************************************
@@ -33,7 +33,7 @@ const auto kMetricIndexPageNum = (pgno_t) 1;
 *
 ***/
 
-const unsigned kDataFileSig[] = {
+unsigned const kDataFileSig[] = {
     0x39515728,
     0x4873456d,
     0xf6bfd8a1,
@@ -79,8 +79,8 @@ struct DbData::RadixData {
     // EXTENDS BEYOND END OF STRUCT
     pgno_t pages[3];
 
-    const pgno_t * begin() const { return pages; }
-    const pgno_t * end() const { return pages + numPages; }
+    pgno_t const * begin() const { return pages; }
+    pgno_t const * end() const { return pages + numPages; }
 };
 
 struct DbData::RadixPage {
@@ -275,10 +275,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
     m_verbose = flags & fDbOpenVerbose;
 
-    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+    auto zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (!zp->hdr.type) {
         txn.logZeroInit(kZeroPageNum);
-        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+        zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
@@ -344,7 +344,7 @@ DbData::MetricPosition DbData::getMetricPos(uint32_t id) const {
 }
 
 //===========================================================================
-void DbData::setMetricPos(uint32_t id, const MetricPosition & mi) {
+void DbData::setMetricPos(uint32_t id, MetricPosition const & mi) {
     shared_lock lk{m_mposMut};
     assert(id < m_metricPos.size());
     m_metricPos[id] = mi;
@@ -394,7 +394,7 @@ bool DbData::loadMetrics (
         return false;
 
     if (p->type == kPageTypeRadix) {
-        auto rp = reinterpret_cast<const RadixPage*>(p);
+        auto rp = reinterpret_cast<RadixPage const *>(p);
         for (int i = 0; i < rp->rd.numPages; ++i) {
             if (!loadMetrics(txn, notify, rp->rd.pages[i]))
                 return false;
@@ -403,7 +403,7 @@ bool DbData::loadMetrics (
     }
 
     if (p->type == kPageTypeMetric) {
-        auto mp = reinterpret_cast<const MetricPage*>(p);
+        auto mp = reinterpret_cast<MetricPage const *>(p);
         if (notify) {
             DbSeriesInfo info;
             info.id = mp->hdr.id;
@@ -540,7 +540,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    const DbMetricInfo & from
+    DbMetricInfo const & from
 ) {
     assert(from.name.empty());
     // TODO: validate interval, retention, and sample type
@@ -584,7 +584,7 @@ void DbData::updateMetric(
 //===========================================================================
 void DbData::getMetricInfo(
     IDbDataNotify * notify,
-    const DbTxn & txn,
+    DbTxn const & txn,
     uint32_t id
 ) {
     auto mi = loadMetricPos(txn, id);
@@ -645,7 +645,7 @@ size_t DbData::samplesPerPage(DbSampleType type) const {
 
 //===========================================================================
 template<typename T>
-static double getSample(const T * out) {
+static double getSample(T const * out) {
     if constexpr (is_same_v<T, pgno_t>) {
         if (*out <= kMaxPageNum)
             return NAN;
@@ -653,8 +653,8 @@ static double getSample(const T * out) {
     } else if constexpr (is_floating_point_v<T>) {
         return *out;
     } else if constexpr (is_integral_v<T>) {
-        const auto maxval = numeric_limits<T>::max();
-        const auto minval = -maxval;
+        auto const maxval = numeric_limits<T>::max();
+        auto const minval = -maxval;
         T ival = *out;
         if (ival == minval - 1)
             return NAN;
@@ -666,7 +666,7 @@ static double getSample(const T * out) {
 }
 
 //===========================================================================
-static double getSample(const DbData::SamplePage * sp, size_t pos) {
+static double getSample(DbData::SamplePage const * sp, size_t pos) {
     switch (sp->sampleType) {
     case kSampleTypeFloat32:
         return getSample(sp->samples.f32 + pos);
@@ -685,7 +685,7 @@ static double getSample(const DbData::SamplePage * sp, size_t pos) {
 }
 
 //===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
+DbData::MetricPosition DbData::loadMetricPos(DbTxn const & txn, uint32_t id) {
     auto mi = getMetricPos(id);
 
     // Update metric info from sample page if it has no page data.
@@ -775,7 +775,7 @@ void DbData::updateSample(
     double value
 ) {
     assert(time);
-    const auto kInvalidPos = (size_t) -1;
+    auto const kInvalidPos = (size_t) -1;
 
     // ensure all info about the last page is loaded, the expectation is that
     // almost all updates are to the last page.
@@ -1060,8 +1060,8 @@ static void setSample(T * out, double value) {
     } else if constexpr (is_floating_point_v<T>) {
         *out = (T) value;
     } else if constexpr (is_integral_v<T>) {
-        const auto maxval = numeric_limits<T>::max();
-        const auto minval = -maxval;
+        auto const maxval = numeric_limits<T>::max();
+        auto const minval = -maxval;
         *out = isnan(value) ? minval - 1
             : value < minval ? minval
             : value > maxval ? maxval
@@ -1335,7 +1335,7 @@ void DbData::getSamples(
             first = fpt + pageInterval;
         } else {
             double value = NAN;
-            const SamplePage * sp = nullptr;
+            SamplePage const * sp = nullptr;
             auto lastSample = spp - 1;
             if (spno > kMaxPageNum) {
                 // Virtual page, get the cached value that is the same for
@@ -1421,7 +1421,7 @@ DbData::RadixData * DbData::radixData(DbPageHeader * hdr) const {
 }
 
 //===========================================================================
-const DbData::RadixData * DbData::radixData(const DbPageHeader * hdr) const {
+DbData::RadixData const * DbData::radixData(DbPageHeader const * hdr) const {
     return radixData(const_cast<DbPageHeader *>(hdr));
 }
 
@@ -1477,7 +1477,7 @@ void DbData::radixDestructPage(DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-void DbData::radixDestruct(DbTxn & txn, const DbPageHeader & hdr) {
+void DbData::radixDestruct(DbTxn & txn, DbPageHeader const & hdr) {
     auto rd = radixData(&hdr);
     for (auto && p : *rd) {
         if (p && p <= kMaxPageNum)
@@ -1488,14 +1488,14 @@ void DbData::radixDestruct(DbTxn & txn, const DbPageHeader & hdr) {
 //===========================================================================
 void DbData::radixErase(
     DbTxn & txn,
-    const DbPageHeader & rhdr,
+    DbPageHeader const & rhdr,
     size_t firstPos,
     size_t lastPos
 ) {
     assert(firstPos <= lastPos);
     while (firstPos < lastPos) {
-        const DbPageHeader * hdr;
-        const RadixData * rd;
+        DbPageHeader const * hdr;
+        RadixData const * rd;
         size_t rpos;
         if (!radixFind(txn, &hdr, &rd, &rpos, rhdr.pgno, firstPos))
             return;
@@ -1583,8 +1583,8 @@ void DbData::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
-    const pgno_t * firstPgno,
-    const pgno_t * lastPgno
+    pgno_t const * firstPgno,
+    pgno_t const * lastPgno
 ) {
     auto rp = static_cast<RadixPage *>(ptr);
     if (rp->hdr.type == kPageTypeFree) {
@@ -1690,8 +1690,8 @@ bool DbData::radixFind(
     pgno_t root,
     size_t pos
 ) {
-    const DbPageHeader * hdr;
-    const RadixData * rd;
+    DbPageHeader const * hdr;
+    RadixData const * rd;
     size_t rpos;
     if (radixFind(txn, &hdr, &rd, &rpos, root, pos)) {
         *out = rd->pages[rpos];

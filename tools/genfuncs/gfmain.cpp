@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-const char kVersion[] = "1.0.0";
+char const kVersion[] = "1.0.0";
 
 
 /****************************************************************************
@@ -116,7 +116,7 @@ inline bool QueryParser::onFn)" << name << R"(Start () {
 }
 
 //===========================================================================
-static string argTypeName(const Eval::FuncArgInfo & arg) {
+static string argTypeName(Eval::FuncArgInfo const & arg) {
     switch (arg.type) {
     case Eval::FuncArg::kFunc: return "arg-func";
     case Eval::FuncArg::kNum: return "arg-num";
@@ -134,7 +134,7 @@ static string argTypeName(const Eval::FuncArgInfo & arg) {
 //===========================================================================
 static void genAbnfArg(
     ostream & os,
-    const Eval::FuncArgInfo & arg,
+    Eval::FuncArgInfo const & arg,
     bool first
 ) {
     auto aname = argTypeName(arg);
@@ -167,7 +167,7 @@ static string genQueryAbnf(string_view fname) {
 ; Functions
 ;----------------------------------------------------------------------------
 )";
-    vector<const Eval::IFuncFactory *> factories;
+    vector<Eval::IFuncFactory const *> factories;
     for (auto && f : funcFactories())
         factories.push_back(&f);
     sort(factories.begin(), factories.end(), [](auto & a, auto & b) {

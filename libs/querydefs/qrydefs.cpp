@@ -16,7 +16,7 @@ using namespace Query;
 *
 ***/
 
-const unsigned kQueryMaxSize = 8192;
+unsigned const kQueryMaxSize = 8192;
 
 
 /****************************************************************************
@@ -70,10 +70,10 @@ struct StringNode : Node {
 *
 ***/
 
-static bool operator< (const Node & a, const Node & b);
+static bool operator< (Node const & a, Node const & b);
 
 //===========================================================================
-static bool operator< (const List<Node> & a, const List<Node> & b) {
+static bool operator< (List<Node> const & a, List<Node> const & b) {
     return lexicographical_compare(
         a.begin(),
         a.end(),
@@ -85,47 +85,47 @@ static bool operator< (const List<Node> & a, const List<Node> & b) {
 
 //===========================================================================
 template<size_t N>
-static bool operator< (const bitset<N> & a, const bitset<N> & b) {
+static bool operator< (bitset<N> const & a, bitset<N> const & b) {
     return memcmp(&a, &b, sizeof(a)) < 0;
 }
 
 //===========================================================================
-static bool operator< (const Node & a, const Node & b) {
+static bool operator< (Node const & a, Node const & b) {
     if (a.type != b.type)
         return a.type < b.type;
 
     switch (a.type) {
     case kPath:
-        return static_cast<const PathNode &>(a).segs
-            < static_cast<const PathNode &>(b).segs;
+        return static_cast<PathNode const &>(a).segs
+            < static_cast<PathNode const &>(b).segs;
     case kPathSeg:
-        return static_cast<const PathSeg &>(a).nodes
-            < static_cast<const PathSeg &>(b).nodes;
+        return static_cast<PathSeg const &>(a).nodes
+            < static_cast<PathSeg const &>(b).nodes;
     case kSegEmpty:
         return false;
     case kSegLiteral:
-        return static_cast<const SegLiteral &>(a).val
-            < static_cast<const SegLiteral &>(b).val;
+        return static_cast<SegLiteral const &>(a).val
+            < static_cast<SegLiteral const &>(b).val;
     case kSegBlot:
         return false;
     case kSegDoubleBlot:
         return false;
     case kSegCharChoice:
-        return static_cast<const SegCharChoice &>(a).vals
-            < static_cast<const SegCharChoice &>(b).vals;
+        return static_cast<SegCharChoice const &>(a).vals
+            < static_cast<SegCharChoice const &>(b).vals;
     case kSegSegChoice:
-        return static_cast<const SegSegChoice &>(a).segs
-            < static_cast<const SegSegChoice &>(b).segs;
+        return static_cast<SegSegChoice const &>(a).segs
+            < static_cast<SegSegChoice const &>(b).segs;
     case kNum:
-        return static_cast<const NumNode &>(a).val
-            < static_cast<const NumNode &>(b).val;
+        return static_cast<NumNode const &>(a).val
+            < static_cast<NumNode const &>(b).val;
     case kString:
-        return static_cast<const StringNode &>(a).val
-            < static_cast<const StringNode &>(b).val;
+        return static_cast<StringNode const &>(a).val
+            < static_cast<StringNode const &>(b).val;
     case kFunc:
         {
-            auto & af = static_cast<const FuncNode &>(a);
-            auto & bf = static_cast<const FuncNode &>(b);
+            auto & af = static_cast<FuncNode const &>(a);
+            auto & bf = static_cast<FuncNode const &>(b);
             if (af.func != bf.func)
                 return af.func < bf.func;
             return af.args < bf.args;
@@ -369,19 +369,19 @@ Node * Query::addStringArg(
 
 static void appendNode(
     string * out,
-    const Node & node,
-    const ITokenConvNotify * notify
+    Node const & node,
+    ITokenConvNotify const * notify
 );
 
 //===========================================================================
 static void appendNode(
     string * out,
-    const SegSegChoice & node,
-    const ITokenConvNotify * notify
+    SegSegChoice const & node,
+    ITokenConvNotify const * notify
 ) {
-    vector<const PathSeg *> segs;
+    vector<PathSeg const *> segs;
     for (auto && sn : node.segs) {
-        segs.push_back(static_cast<const PathSeg *>(&sn));
+        segs.push_back(static_cast<PathSeg const *>(&sn));
     }
     auto cmp = [](auto & a, auto & b) { return *a < *b; };
     sort(segs.begin(), segs.end(), cmp);
@@ -408,13 +408,13 @@ static void appendNode(
 //===========================================================================
 static void appendNode(
     string * out,
-    const Node & node,
-    const ITokenConvNotify * notify
+    Node const & node,
+    ITokenConvNotify const * notify
 ) {
     size_t first = true;
     switch (node.type) {
     case kPath:
-        for (auto && seg : static_cast<const PathNode &>(node).segs) {
+        for (auto && seg : static_cast<PathNode const &>(node).segs) {
             if (first) {
                 first = false;
             } else {
@@ -424,13 +424,13 @@ static void appendNode(
         }
         break;
     case kPathSeg:
-        for (auto && sn : static_cast<const PathSeg &>(node).nodes)
+        for (auto && sn : static_cast<PathSeg const &>(node).nodes)
             appendNode(out, sn, notify);
         break;
     case kSegEmpty:
         break;
     case kSegLiteral:
-        out->append(static_cast<const SegLiteral &>(node).val);
+        out->append(static_cast<SegLiteral const &>(node).val);
         break;
     case kSegBlot:
         out->push_back('*');
@@ -440,7 +440,7 @@ static void appendNode(
         break;
     case kSegCharChoice:
         {
-            auto & vals = static_cast<const SegCharChoice &>(node).vals;
+            auto & vals = static_cast<SegCharChoice const &>(node).vals;
             out->push_back('[');
             for (auto i = 0; i < vals.size(); ++i) {
                 if (vals.test(i))
@@ -450,18 +450,18 @@ static void appendNode(
         }
         break;
     case kSegSegChoice:
-        appendNode(out, static_cast<const SegSegChoice &>(node), notify);
+        appendNode(out, static_cast<SegSegChoice const &>(node), notify);
         break;
     case kNum:
-        out->append(StrFrom<double>(static_cast<const NumNode &>(node).val));
+        out->append(StrFrom<double>(static_cast<NumNode const &>(node).val));
         break;
     case kString:
         out->push_back('"');
-        out->append(static_cast<const StringNode &>(node).val);
+        out->append(static_cast<StringNode const &>(node).val);
         out->push_back('"');
         break;
     case kFunc:
-        auto & fnode = static_cast<const FuncNode &>(node);
+        auto & fnode = static_cast<FuncNode const &>(node);
         if (notify) {
             auto name = tokenTableGetName(
                 notify->funcTypeTbl(),
@@ -488,8 +488,8 @@ static void appendNode(
 
 //===========================================================================
 string Query::toString(
-    const Node & node,
-    const ITokenConvNotify * notify
+    Node const & node,
+    ITokenConvNotify const * notify
 ) {
     string out;
     appendNode(&out, node, notify);
@@ -504,22 +504,22 @@ string Query::toString(
 ***/
 
 static MatchResult matchSegment(
-    const List<Node> & nodes,
-    const Node * node,
+    List<Node> const & nodes,
+    Node const * node,
     string_view val
 );
 
 //===========================================================================
 static MatchResult matchSegment(
-    const List<Node> & nodes,
-    const SegSegChoice * node,
+    List<Node> const & nodes,
+    SegSegChoice const * node,
     string_view val
 ) {
     auto & segs = node->segs;
     // TODO: stop at minimum required length of the following string
     for (int i = 0; i <= val.size(); ++i) {
         for (auto && sn : segs) {
-            auto & seg = static_cast<const PathSeg &>(sn);
+            auto & seg = static_cast<PathSeg const &>(sn);
             if (!matchSegment(seg.nodes, seg.nodes.front(), val.substr(0, i)))
                 continue;
             if (matchSegment(nodes, nodes.next(node), val.substr(i)))
@@ -531,8 +531,8 @@ static MatchResult matchSegment(
 
 //===========================================================================
 static MatchResult matchSegment(
-    const List<Node> & nodes,
-    const Node * node,
+    List<Node> const & nodes,
+    Node const * node,
     string_view val
 ) {
     auto type = node ? node->type : kSegEmpty;
@@ -554,7 +554,7 @@ static MatchResult matchSegment(
 
     case kSegCharChoice:
         if (val.empty()
-            || !static_cast<const SegCharChoice *>(node)->vals.test(val[0])
+            || !static_cast<SegCharChoice const *>(node)->vals.test(val[0])
         ) {
             return kNoMatch;
         }
@@ -562,7 +562,7 @@ static MatchResult matchSegment(
 
     case kSegLiteral:
     {
-        auto & lit = static_cast<const SegLiteral *>(node)->val;
+        auto & lit = static_cast<SegLiteral const *>(node)->val;
         auto len = lit.size();
         if (lit != val.substr(0, len))
             return kNoMatch;
@@ -572,7 +572,7 @@ static MatchResult matchSegment(
     case kSegSegChoice:
         return matchSegment(
             nodes,
-            static_cast<const SegSegChoice *>(node),
+            static_cast<SegSegChoice const *>(node),
             val
         );
 
@@ -584,11 +584,11 @@ static MatchResult matchSegment(
 
 //===========================================================================
 MatchResult Query::matchSegment(
-    const Node & node,
+    Node const & node,
     string_view val
 ) {
     assert(node.type == kPathSeg);
-    auto & nodes = static_cast<const PathSeg &>(node).nodes;
+    auto & nodes = static_cast<PathSeg const &>(node).nodes;
     return ::matchSegment(nodes, nodes.front(), val);
 }
 
@@ -602,15 +602,15 @@ MatchResult Query::matchSegment(
 //===========================================================================
 void Query::getPathSegments(
     vector<PathSegment> * out,
-    const QueryInfo & qry
+    QueryInfo const & qry
 ) {
     out->clear();
     if (qry.node->type != kPath)
         return;
-    auto path = static_cast<const PathNode *>(qry.node);
+    auto path = static_cast<PathNode const *>(qry.node);
     for (auto && seg : path->segs) {
         PathSegment si;
-        auto & sn = static_cast<const PathSeg &>(seg);
+        auto & sn = static_cast<PathSeg const &>(seg);
         if (sn.nodes.size() > 1) {
             si.type = kCondition;
         } else {
@@ -628,7 +628,7 @@ void Query::getPathSegments(
             }
         }
         si.node = &seg;
-        auto lit = static_cast<const SegLiteral *>(sn.nodes.front());
+        auto lit = static_cast<SegLiteral const *>(sn.nodes.front());
         if (lit->type == kSegLiteral)
             si.prefix = lit->val;
         out->push_back(si);
@@ -636,42 +636,42 @@ void Query::getPathSegments(
 }
 
 //===========================================================================
-NodeType Query::getType(const Node & node) {
+NodeType Query::getType(Node const & node) {
     return node.type;
 }
 
 //===========================================================================
-double Query::asNumber(const Node & node) {
+double Query::asNumber(Node const & node) {
     if (node.type == kNum) {
-        return static_cast<const NumNode &>(node).val;
+        return static_cast<NumNode const &>(node).val;
     } else {
         return NAN;
     }
 }
 
 //===========================================================================
-string_view Query::asString(const Node & node) {
+string_view Query::asString(Node const & node) {
     if (node.type == kString) {
-        return static_cast<const StringNode &>(node).val;
+        return static_cast<StringNode const &>(node).val;
     } else {
         return {};
     }
 }
 
 //===========================================================================
-shared_ptr<char[]> Query::asSharedString(const Node & node) {
+shared_ptr<char[]> Query::asSharedString(Node const & node) {
     return toSharedString(asString(node));
 }
 
 //===========================================================================
 bool Query::getFunc(
     Function * out,
-    const Node & node
+    Node const & node
 ) {
     if (node.type != kFunc)
         return false;
 
-    auto & fn = static_cast<const FuncNode &>(node);
+    auto & fn = static_cast<FuncNode const &>(node);
     out->type = fn.func;
     out->args.clear();
     for (auto && arg : fn.args)

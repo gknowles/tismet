@@ -22,14 +22,14 @@ class BackupProgress : public IDbProgressNotify {
 public:
     static void buildResponse(
         HttpResponse * out,
-        const BackupProgress & progress
+        BackupProgress const & progress
     );
 
 public:
     void replyStatus(unsigned reqId, bool immediate);
 
 private:
-    bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
+    bool onDbProgress(RunMode mode, DbProgressInfo const & info) override;
     void copy_LK(BackupProgress * from) const;
 
     RunMode m_mode{kRunStopped};
@@ -61,7 +61,7 @@ static void addInfoElem(
 // static
 void BackupProgress::buildResponse(
     HttpResponse * out,
-    const BackupProgress & progress
+    BackupProgress const & progress
 ) {
     auto & info = progress.m_info;
     out->addHeader(kHttpContentType, "application/xml");
@@ -105,7 +105,7 @@ void BackupProgress::copy_LK(BackupProgress * out) const {
 }
 
 //===========================================================================
-bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
+bool BackupProgress::onDbProgress(RunMode mode, DbProgressInfo const & info) {
     BackupProgress progress;
     {
         scoped_lock lk{m_mut};

@@ -28,7 +28,7 @@ namespace Query {
 bool parse(
     QueryInfo & qry,
     std::string_view src,
-    const ITokenConvNotify * notify
+    ITokenConvNotify const * notify
 );
 
 } // namespace

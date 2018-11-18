@@ -39,7 +39,7 @@ struct TestDbSeries : IDbDataNotify {
     unsigned m_count;
     vector<double> m_samples;
 
-    bool onDbSeriesStart(const DbSeriesInfo & info) override;
+    bool onDbSeriesStart(DbSeriesInfo const & info) override;
     bool onDbSample(
         uint32_t id,
         Dim::TimePoint time,
@@ -50,7 +50,7 @@ struct TestDbSeries : IDbDataNotify {
 } // namespace
 
 //===========================================================================
-bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & info) {
+bool TestDbSeries::onDbSeriesStart(DbSeriesInfo const & info) {
     m_name = info.name;
     m_id = info.id;
     m_first = info.first;
@@ -115,7 +115,7 @@ void Test::onTestRun() {
     auto start = timeFromUnix(900'000'000);
     auto name = "this.is.metric.1"s;
 
-    const char dat[] = "test";
+    char const dat[] = "test";
     auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);
     EXPECT(h && "Failure to create database");
     if (!h)

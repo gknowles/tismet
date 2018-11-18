@@ -50,7 +50,7 @@ static int s_statusLines;
 ***/
 
 //===========================================================================
-static void logStart(string_view target, const Endpoint * addr) {
+static void logStart(string_view target, Endpoint const * addr) {
     tcLogStart();
     auto os = logMsgInfo();
     os << "Backing up server at " << target;
@@ -124,7 +124,7 @@ public:
 
 public:
     // Inherited via IAppSocketNotify
-    void onSocketConnect(const AppSocketInfo & info) override;
+    void onSocketConnect(AppSocketInfo const & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
@@ -145,7 +145,7 @@ private:
 } // namespace
 
 //===========================================================================
-void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+void AddrConn::onSocketConnect(AppSocketInfo const & info) {
     CharBuf out;
     m_conn = httpConnect(&out);
     if (!s_opts.start) {
@@ -240,7 +240,7 @@ public:
 
 private:
     // Inherited via IEndpointNotify
-    void onEndpointFound(const Endpoint * ptr, int count) override;
+    void onEndpointFound(Endpoint const * ptr, int count) override;
 
     int m_cancelId;
 };
@@ -257,7 +257,7 @@ void AddrJob::start(Cli & cli) {
 }
 
 //===========================================================================
-void AddrJob::onEndpointFound(const Endpoint * ptr, int count) {
+void AddrJob::onEndpointFound(Endpoint const * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {

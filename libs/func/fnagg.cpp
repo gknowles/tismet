@@ -36,7 +36,7 @@ using ReduceFn = void (
 } // namespace
 
 //===========================================================================
-double Eval::aggAverage(const double vals[], size_t count) {
+double Eval::aggAverage(double const vals[], size_t count) {
     double out = 0;
     int cnt = 0;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
@@ -49,14 +49,14 @@ double Eval::aggAverage(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggCount(const double vals[], size_t count) {
+double Eval::aggCount(double const vals[], size_t count) {
     return (double) count_if(vals, vals + count, [](auto & a) {
         return !isnan(a);
     });
 }
 
 //===========================================================================
-double Eval::aggDiff(const double vals[], size_t count) {
+double Eval::aggDiff(double const vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -72,7 +72,7 @@ double Eval::aggDiff(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggFirst(const double vals[], size_t count) {
+double Eval::aggFirst(double const vals[], size_t count) {
     auto evals = vals + count;
     for (; vals < evals; ++vals) {
         if (!isnan(*vals))
@@ -82,7 +82,7 @@ double Eval::aggFirst(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggLast(const double vals[], size_t count) {
+double Eval::aggLast(double const vals[], size_t count) {
     while (count--) {
         if (!isnan(vals[count]))
             return vals[count];
@@ -91,7 +91,7 @@ double Eval::aggLast(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggMax(const double vals[], size_t count) {
+double Eval::aggMax(double const vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -107,7 +107,7 @@ double Eval::aggMax(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggMedian(const double vals[], size_t count) {
+double Eval::aggMedian(double const vals[], size_t count) {
     unique_ptr<double[]> tmp;
     double * nvals;
     if (count > 1000) {
@@ -130,7 +130,7 @@ double Eval::aggMedian(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggMin(const double vals[], size_t count) {
+double Eval::aggMin(double const vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -146,7 +146,7 @@ double Eval::aggMin(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggMultiply(const double vals[], size_t count) {
+double Eval::aggMultiply(double const vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -162,7 +162,7 @@ double Eval::aggMultiply(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggRange(const double vals[], size_t count) {
+double Eval::aggRange(double const vals[], size_t count) {
     double low = NAN;
     double high = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
@@ -181,7 +181,7 @@ double Eval::aggRange(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggStddev(const double vals[], size_t count) {
+double Eval::aggStddev(double const vals[], size_t count) {
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
             continue;
@@ -203,7 +203,7 @@ double Eval::aggStddev(const double vals[], size_t count) {
 }
 
 //===========================================================================
-double Eval::aggSum(const double vals[], size_t count) {
+double Eval::aggSum(double const vals[], size_t count) {
     double out = NAN;
     for (auto ptr = vals; ptr < vals + count; ++ptr) {
         if (isnan(*ptr))
@@ -219,7 +219,7 @@ double Eval::aggSum(const double vals[], size_t count) {
 }
 
 //===========================================================================
-template<double Fn(const double vals[], size_t)>
+template<double Fn(double const vals[], size_t)>
 static void reduce(
     double out[],
     size_t outLen,
@@ -254,7 +254,7 @@ namespace {
 struct MethodInfo {
     AggFn * aggFn;
     ReduceFn * fn;
-    vector<const char *> names;
+    vector<char const *> names;
 };
 } // namespace
 static MethodInfo s_methods[] = {
@@ -273,7 +273,7 @@ static MethodInfo s_methods[] = {
     { aggSum,      reduce<aggSum>,      { "sum", "total" } },
 };
 static vector<TokenTable::Token> s_methodTokens;
-const TokenTable s_methodTbl = [](){
+TokenTable const s_methodTbl = [](){
     sort(begin(s_methods), end(s_methods), [](auto & a, auto & b) {
         return strcmp(a.names.front(), b.names.front()) < 0;
     });
@@ -292,7 +292,7 @@ const TokenTable s_methodTbl = [](){
 
 static FuncArg::Enum s_methodEnum{"aggFunc", &s_methodTbl};
 
-const AggFunc::Type s_defMethod = fromString("average", AggFunc::Type{});
+AggFunc::Type const s_defMethod = fromString("average", AggFunc::Type{});
 
 
 /****************************************************************************
@@ -307,7 +307,7 @@ AggFunc::Type AggFunc::defaultType() {
 }
 
 //===========================================================================
-const char * toString(AggFunc::Type ftype, const char def[]) {
+char const * toString(AggFunc::Type ftype, char const def[]) {
     return tokenTableGetName(s_methodTbl, ftype, def);
 }
 
