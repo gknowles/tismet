@@ -33,10 +33,10 @@ namespace {
 
 struct TestDbSeries : IDbDataNotify {
     string m_name;
-    uint32_t m_id;
+    uint32_t m_id{};
     TimePoint m_first;
     Duration m_interval;
-    unsigned m_count;
+    unsigned m_count{};
     vector<double> m_samples;
 
     bool onDbSeriesStart(DbSeriesInfo const & info) override;

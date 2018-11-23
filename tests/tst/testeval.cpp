@@ -66,17 +66,17 @@ private:
     void onEvalEnd() override;
 
     string m_name;
-    int m_line;
+    int m_line{};
     string m_query;
     TimePoint m_first;
     TimePoint m_last;
-    unsigned m_maxPoints;
+    unsigned m_maxPoints{};
     vector<TestEvalSeries> m_in;
     vector<TestEvalSeries> m_out;
 
     vector<TestEvalSeries> m_found;
     string m_errmsg;
-    bool m_done;
+    bool m_done{};
 };
 
 } // namespace

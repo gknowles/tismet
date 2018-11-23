@@ -93,7 +93,7 @@ void carbonAckValue (unsigned reqId, unsigned completed);
 //===========================================================================
 struct CarbonUpdate {
     std::string_view name;
-    double value;
+    double value{};
     Dim::TimePoint time;
 };
 
