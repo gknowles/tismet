@@ -229,7 +229,15 @@ void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 
 enum pgno_t : uint32_t {};
 
-enum DbPageType : int32_t;
+enum class DbPageType : int32_t {
+    kInvalid = 0,
+    kFree = 'F',
+    kZero = 'dZ',
+    kSegment = 'S',
+    kMetric = 'm',
+    kRadix = 'r',
+    kSample = 's',
+};
 
 enum DbPageFlags : uint32_t {
     fDbPageDirty = 1,

@@ -35,7 +35,7 @@ unsigned const kWorkFileSig[] = {
     0x84b2074b,
 };
 
-uint32_t const kPageTypeZero = 'wZ';
+uint32_t const kWorkPageTypeZero = 'wZ';
 
 struct ZeroPage {
     DbPageHeader hdr;
@@ -133,7 +133,7 @@ bool DbPage::openData(string_view datafile) {
     while (lastPage) {
         lastPage = pgno_t(lastPage - 1);
         auto p = static_cast<DbPageHeader const *>(m_vdata.rptr(lastPage));
-        if (p->type)
+        if (p->type != DbPageType::kInvalid)
             break;
     }
     m_pages.resize(lastPage + 1);
@@ -156,7 +156,7 @@ bool DbPage::openWork(string_view workfile) {
     auto len = fileSize(m_fwork);
     ZeroPage zp{};
     if (!len) {
-        zp.hdr.type = (DbPageType) kPageTypeZero;
+        zp.hdr.type = (DbPageType) kWorkPageTypeZero;
         memcpy(zp.signature, kWorkFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
         fileWriteWait(m_fwork, 0, &zp, sizeof(zp));

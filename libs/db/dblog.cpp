@@ -62,18 +62,24 @@ unsigned const kLogFileSig[] = {
     0xaf750c2f,
 };
 
-enum PageType {
-    kPageTypeInvalid = 0,
-    kPageTypeZero = 'lZ',
-    kPageTypeLog = '2l',
-    kPageTypeFree = 'F',
+enum class LogPageType {
+    kInvalid = 0,
+    kZero = 'lZ',
+    kLog = '2l',
+    kFree = 'F',
 
     // deprecated 2018-03-23
-    kPageTypeLogV1 = 'l',
+    kLogV1 = 'l',
 };
+ostream & operator<<(ostream & os, LogPageType type) {
+    if ((unsigned) type > 0xff)
+        os << (char) ((unsigned) type >> 8);
+    os << (char) ((unsigned) type & 0xff);
+    return os;
+}
 
 struct LogPage {
-    PageType type;
+    LogPageType type;
     pgno_t pgno;
     uint32_t checksum;
     uint64_t firstLsn; // LSN of first record started on page
@@ -92,12 +98,12 @@ struct ZeroPage {
 };
 
 struct MinimumPage {
-    PageType type;
+    LogPageType type;
     pgno_t pgno;
 };
 
 struct PageHeaderRawV2 {
-    PageType type;
+    LogPageType type;
     pgno_t pgno;
     uint32_t checksum;
     uint64_t firstLsn;
@@ -108,7 +114,7 @@ struct PageHeaderRawV2 {
 
 // deprecated 2018-03-23
 struct PageHeaderRawV1 {
-    PageType type;
+    LogPageType type;
     pgno_t pgno;
     uint64_t firstLsn;
     uint16_t numLogs;
@@ -161,9 +167,9 @@ static void pack(void * ptr, LogPage const & lp) {
     auto v1 = (PageHeaderRawV1 *) ptr;
     auto v2 = (PageHeaderRawV2 *) ptr;
     switch (lp.type) {
-    case kPageTypeFree:
+    case LogPageType::kFree:
         break;
-    case kPageTypeLog:
+    case LogPageType::kLog:
         assert(v2->type == lp.type);
         v2->checksum = lp.checksum;
         v2->firstLsn = lp.firstLsn;
@@ -171,7 +177,7 @@ static void pack(void * ptr, LogPage const & lp) {
         v2->firstPos = lp.firstPos;
         v2->lastPos = lp.lastPos;
         break;
-    case kPageTypeLogV1:
+    case LogPageType::kLogV1:
         assert(v1->type == lp.type);
         v1->firstLsn = lp.firstLsn;
         v1->numLogs = lp.numLogs;
@@ -193,14 +199,14 @@ static void unpack(LogPage * out, void const * ptr) {
     auto v1 = (PageHeaderRawV1 const *) ptr;
     auto v2 = (PageHeaderRawV2 const *) ptr;
     switch (mp->type) {
-    case kPageTypeFree:
+    case LogPageType::kFree:
         out->checksum = 0;
         out->firstLsn = 0;
         out->numLogs = 0;
         out->firstPos = 0;
         out->lastPos = 0;
         break;
-    case kPageTypeLog:
+    case LogPageType::kLog:
         assert(mp->type == v2->type);
         out->checksum = v2->checksum;
         out->firstLsn = v2->firstLsn;
@@ -208,7 +214,7 @@ static void unpack(LogPage * out, void const * ptr) {
         out->firstPos = v2->firstPos;
         out->lastPos = v2->lastPos;
         break;
-    case kPageTypeLogV1:
+    case LogPageType::kLogV1:
         assert(mp->type == v1->type);
         out->checksum = 0;
         out->firstLsn = v1->firstLsn;
@@ -224,11 +230,11 @@ static void unpack(LogPage * out, void const * ptr) {
 }
 
 //===========================================================================
-static size_t logHdrLen(PageType type) {
+static size_t logHdrLen(LogPageType type) {
     switch (type) {
-    case kPageTypeLog:
+    case LogPageType::kLog:
         return sizeof(PageHeaderRawV2);
-    case kPageTypeLogV1:
+    case LogPageType::kLogV1:
         return sizeof(PageHeaderRawV1);
     default:
         logMsgFatal() << "logHdrLen, unknown page type: " << type;
@@ -366,7 +372,7 @@ bool DbLog::open(string_view logfile, size_t dataPageSize, DbOpenFlags flags) {
     m_curBuf = 0;
     for (unsigned i = 0; i < m_numBufs; ++i) {
         auto mp = (MinimumPage *) bufPtr(i);
-        mp->type = kPageTypeFree;
+        mp->type = LogPageType::kFree;
     }
     m_bufPos = m_pageSize;
 
@@ -374,7 +380,7 @@ bool DbLog::open(string_view logfile, size_t dataPageSize, DbOpenFlags flags) {
         m_phase = Checkpoint::Complete;
         m_newFiles = true;
 
-        zp.hdr.type = (DbPageType) kPageTypeZero;
+        zp.hdr.type = (DbPageType) LogPageType::kZero;
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
         zp.hdr.checksum = 0;
@@ -589,17 +595,17 @@ bool DbLog::loadPages(FileHandle flog) {
         fileReadWait(rawbuf, m_pageSize, flog, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
-        case kPageTypeInvalid:
+        case LogPageType::kInvalid:
             i = (pgno_t) m_numPages;
             break;
-        case kPageTypeLogV1:
+        case LogPageType::kLogV1:
             unpack(&lp, rawbuf);
             pi = &m_pages.emplace_back();
             pi->pgno = lp.pgno;
             pi->firstLsn = lp.firstLsn;
             pi->numLogs = lp.numLogs;
             break;
-        case kPageTypeLog:
+        case LogPageType::kLog:
             unpack(&lp, rawbuf);
             checksum = lp.checksum;
             lp.checksum = 0;
@@ -619,10 +625,10 @@ bool DbLog::loadPages(FileHandle flog) {
             logMsgError() << "Invalid page type(" << mp->type << ") on page #"
                 << i << " of " << filePath(flog);
         MAKE_FREE:
-            mp->type = kPageTypeFree;
+            mp->type = LogPageType::kFree;
             mp->pgno = i;
             [[fallthrough]];
-        case kPageTypeFree:
+        case LogPageType::kFree:
             m_freePages.insert(mp->pgno);
             s_perfFreePages += 1;
             break;
@@ -671,7 +677,7 @@ void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
                 bytesAfter
             );
             log = (Record *) (buf + m_pageSize - bytesBefore);
-            assert(size(*log) == bytesBefore + bytesAfter);
+            assert(getSize(*log) == bytesBefore + bytesAfter);
             apply(data, lp.firstLsn - 1, *log);
         }
         swap(buf, buf2);
@@ -681,7 +687,7 @@ void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
         while (logPos < lp.lastPos) {
             log = (Record *) (buf + logPos);
             apply(data, lsn, *log);
-            logPos += size(*log);
+            logPos += getSize(*log);
             lsn += 1;
         }
         assert(logPos == lp.lastPos);
@@ -872,7 +878,7 @@ void DbLog::checkpointStableCommit() {
         checkpointTruncateCommit();
     } else {
         auto vptr = aligned_alloc(m_pageSize, m_pageSize);
-        auto mp = new(vptr) MinimumPage{ kPageTypeFree };
+        auto mp = new(vptr) MinimumPage{ LogPageType::kFree };
         mp->pgno = lastPgno;
         fileWrite(
             this,
@@ -962,7 +968,7 @@ uint64_t DbLog::log(
     uint64_t txn
 ) {
     assert(bytes < m_pageSize - kMaxHdrLen);
-    assert(bytes == size(log));
+    assert(bytes == getSize(log));
 
     unique_lock lk{m_bufMut};
     while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
@@ -1074,8 +1080,8 @@ void DbLog::flushWriteBuffer() {
     memcpy(nraw, rawbuf, m_pageSize);
 
     lk.unlock();
-    if (lp.type != kPageTypeFree) {
-        assert(lp.type == kPageTypeLog || lp.type == kPageTypeLogV1);
+    if (lp.type != LogPageType::kFree) {
+        assert(lp.type == LogPageType::kLog || lp.type == LogPageType::kLogV1);
         lp.checksum = hash_crc32c(nraw, m_pageSize);
         pack(nraw, lp);
     }
@@ -1162,7 +1168,7 @@ void DbLog::onFileWrite(
     unpack(&lp, rawbuf);
     PageInfo pi = { lp.pgno, lp.firstLsn, lp.numLogs };
     unique_lock lk{m_bufMut};
-    if (lp.type == kPageTypeFree) {
+    if (lp.type == LogPageType::kFree) {
         m_freePages.insert(lp.pgno);
         s_perfFreePages += 1;
         lk.unlock();
@@ -1179,7 +1185,7 @@ void DbLog::onFileWrite(
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers) / m_pageSize;
         m_bufStates[ibuf] = Buffer::Empty;
-        lp.type = kPageTypeFree;
+        lp.type = LogPageType::kFree;
         pack(rawbuf, lp);
         m_checkpointData += m_pageSize;
         bool needCheckpoint = m_checkpointData >= m_maxCheckpointData;
@@ -1233,7 +1239,7 @@ void DbLog::prepareBuffer_LK(
 
     LogPage lp;
     auto rawbuf = bufPtr(m_curBuf);
-    lp.type = kPageTypeLog;
+    lp.type = LogPageType::kLog;
     lp.checksum = 0;
     auto hdrLen = logHdrLen(lp.type);
     if (m_freePages) {
@@ -1315,4 +1321,11 @@ DbTxn::DbTxn(DbLog & log, DbPage & work)
 DbTxn::~DbTxn() {
     if (m_txn)
         m_log.commit(m_txn);
+}
+
+//===========================================================================
+void DbTxn::log(DbLog::Record * rec, size_t bytes) {
+    if (!m_txn)
+        m_txn = m_log.beginTxn();
+    m_log.logAndApply(m_txn, rec, bytes);
 }

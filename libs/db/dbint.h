@@ -336,7 +336,23 @@ public:
     struct MetricPage;
     struct SamplePage;
 
-    struct RadixData;
+    struct RadixData {
+        uint16_t height;
+        uint16_t numPages;
+
+        // EXTENDS BEYOND END OF STRUCT
+        pgno_t pages[3];
+
+        pgno_t const * begin() const { return pages; }
+        pgno_t const * end() const { return pages + numPages; }
+    };
+    struct RadixPage {
+        static const auto kPageType = DbPageType::kRadix;
+        DbPageHeader hdr;
+
+        // EXTENDS BEYOND END OF STRUCT
+        RadixData rd;
+    };
 
     struct MetricPosition {
         Dim::Duration interval;
@@ -475,6 +491,8 @@ private:
         pgno_t pgno
     );
     void metricDestructPage(DbTxn & txn, pgno_t pgno);
+    size_t metricNameSize() const;
+    void metricClearCounters();
 
     bool loadFreePages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);

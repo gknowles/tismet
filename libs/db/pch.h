@@ -37,3 +37,4 @@
 // External library internal headers
 // Internal headers
 #include "dbint.h"
+#include "dblogint.h"

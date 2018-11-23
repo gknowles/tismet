@@ -43,7 +43,7 @@ public:
     class IApplyNotify;
 
     struct Record;
-    static uint16_t size(Record const & log);
+    static uint16_t getSize(Record const & log);
     static pgno_t getPgno(Record const & log);
     static uint16_t getLocalTxn(Record const & log);
     static void setLocalTxn(Record * log, uint16_t localTxn);
@@ -307,6 +307,7 @@ public:
         pgno_t refPage,
         bool free
     ) = 0;
+
     virtual void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
@@ -325,6 +326,7 @@ public:
         size_t pos,
         pgno_t refPage
     ) = 0;
+
     virtual void onLogApplyMetricInit(
         void * ptr,
         uint32_t id,
