@@ -10,10 +10,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
+
+## tismet 1.1.0 (2018-12-05)
+Work directly from Grafana
 - Added - Basic Web UI
 - Added - Subset of graphite query API (usable directly from Grafana)
 - Added - Continuous checkpointing
-- Added - Autogen function parsing
+- Added - Auto-generate function parsing
 
 ## tismet 1.0.0 (2018-01-27)
 First public release
