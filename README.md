@@ -20,7 +20,7 @@ Time series metric collection
   - Subset of Graphite Render API (Works as a standalone backend for Grafana).
 
 #### Limitations
-- Requires HTTP/2
+- Requires HTTP/2, does not work with HTTP/1.x
 - When used as alternative storage provider
   - Graphite must be version 1.1 or later
 
@@ -126,6 +126,11 @@ CLUSTER_SERVERS = ["proxy-to-tismet.example.com"]
 
 
 ## Configuring Grafana
+
+Create a data source.
+  - Set Type to 'Graphite'
+  - Set URL under "HTTP settings" to the reverse proxy's address
+  - Set Version under "Graphite details" to '1.1.x'
 
 
 ## Making backups

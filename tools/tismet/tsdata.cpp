@@ -61,7 +61,7 @@ private:
     Duration timeUntilCheck();
 
     UnsignedSet m_ids;
-    Duration m_expireInterval;
+    Duration m_expireInterval{};
 };
 
 } // namespace
@@ -159,7 +159,7 @@ void AppXmlNotify::onConfigChange(XDocument const & doc) {
     s_rules.clear();
     auto xdefs = configElement(doc, "MetricDefaults");
     for (auto && xrule : elems(xdefs, "Rule")) {
-        MetricRule rule;
+        MetricRule rule{};
         auto val = attrValue(&xrule, "pattern", "");
         try {
             rule.pattern.assign(val, regex::nosubs|regex::optimize);
