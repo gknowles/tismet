@@ -95,6 +95,7 @@
 # tools/tsm/intern.h
 # tools/tsm/pch.cpp
 # tools/tsm/pch.h
+# tools/tsm/tcanalyze.cpp
 # tools/tsm/tcbackup.cpp
 # tools/tsm/tcdump.cpp
 # tools/tsm/tcgen.cpp
