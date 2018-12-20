@@ -32,16 +32,17 @@ namespace TismetSocket {
 
 class ICarbonNotify {
 public:
-    virtual ~ICarbonNotify() = default;
+    static void ackValue(unsigned reqId, unsigned completed);
 
-    // Returns number of onCarbonValue() calls that requested delayed reads,
-    // or EOF on malformed data. When EOF is returned, there may have been any
-    // number of onCarbonValue calls before the error was detected.
-    unsigned append(unsigned reqId, std::string_view data);
+public:
+    virtual ~ICarbonNotify();
 
-    // Returns false for each value that has its processing delayed. All delayed
-    // values must be accounted for after they have completed by calls to
-    // carbonAckValue.
+    //-----------------------------------------------------------------------
+    // For consumers
+
+    // Returns false for each value that has its processing delayed. All
+    // delayed values must be accounted for after they have completed by calls
+    // to carbonAckValue.
     virtual bool onCarbonValue(
         unsigned reqId,
         std::string_view name,
@@ -50,24 +51,53 @@ public:
         uint32_t idHint = 0
     ) = 0;
 
+    //-----------------------------------------------------------------------
+    // For producers (ICarbonSocketNotify and ICarbonFileNotify)
+
+    // Clears state of all incomplete requests
+    void clear();
+
+    // Returns number of onCarbonValue() calls that requested delayed reads,
+    // or EOF on malformed data. When EOF is returned, there may have been any
+    // number of onCarbonValue calls before the error was detected.
+    unsigned append(std::string_view data);
+
+    // Called when an append request is completed, either synchronously or
+    // asynchronously via carbonAckValue.
+    virtual void onCarbonRequestComplete() {}
+
 private:
     std::string m_buf;
+    Dim::UnsignedSet m_requestIds;
 };
 
 class ICarbonSocketNotify
     : public Dim::IAppSocketNotify
     , public ICarbonNotify
 {
-public:
-    static void ackValue(unsigned reqId, unsigned completed);
-
 private:
     // Inherited via IAppSocketNotify
     bool onSocketAccept(Dim::AppSocketInfo const & info) override;
     void onSocketDisconnect() override;
     bool onSocketRead(Dim::AppSocketData & data) override;
 
-    Dim::UnsignedSet m_requestIds;
+    // Inherited via ICarbonNotify
+    void onCarbonRequestComplete() override;
+};
+
+class ICarbonFileNotify
+    : public Dim::IFileReadNotify
+    , public ICarbonNotify
+{
+protected:
+    // Inherited via IFileReadNotify
+    bool onFileRead(
+        size_t * bytesUsed,
+        std::string_view data,
+        bool more,
+        int64_t offset,
+        Dim::FileHandle f
+    ) override;
 };
 
 

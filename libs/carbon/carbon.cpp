@@ -27,7 +27,7 @@ unsigned const kCarbonMaxRecordSize = 1024;
 namespace {
 
 struct IncompleteRequest {
-    ICarbonSocketNotify * socket;
+    ICarbonNotify * notify;
     unsigned incomplete;
 };
 
@@ -51,12 +51,40 @@ static unsigned s_nextRequestId;
 
 /****************************************************************************
 *
+*   Helpers
+*
+***/
+
+//===========================================================================
+static unsigned nextRequestId() {
+    for (;;) {
+        auto id = ++s_nextRequestId;
+        if (id && !s_incompletes.count(id))
+            return id;
+    }
+}
+
+
+/****************************************************************************
+*
 *   ICarbonNotify
 *
 ***/
 
 //===========================================================================
-unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
+ICarbonNotify::~ICarbonNotify() {
+    clear();
+}
+
+//===========================================================================
+void ICarbonNotify::clear() {
+    for (auto && id : m_requestIds)
+        s_incompletes.erase(id);
+}
+
+//===========================================================================
+unsigned ICarbonNotify::append(string_view src) {
+    auto id = nextRequestId();
     auto now = timeNow();
     CarbonUpdate upd;
     if (!m_buf.empty()) {
@@ -71,15 +99,37 @@ unsigned ICarbonNotify::append(unsigned reqId, string_view src) {
             } else {
                 m_buf.erase(0, m_buf.size() - src.size());
             }
+            if (incomplete) {
+                m_requestIds.insert(id);
+                s_incompletes[id] = {this, incomplete};
+            }
             return incomplete;
         }
         s_perfUpdates += 1;
-        if (!onCarbonValue(reqId, upd.name, upd.time, upd.value))
+        if (!onCarbonValue(id, upd.name, upd.time, upd.value))
             incomplete += 1;
     }
 
     s_perfErrors += 1;
     return (unsigned) EOF;
+}
+
+//===========================================================================
+// static
+void ICarbonNotify::ackValue(unsigned reqId, unsigned completed) {
+    assert(reqId && completed);
+    auto i = s_incompletes.find(reqId);
+    if (i == s_incompletes.end())
+        return;
+    auto & incomplete = i->second;
+    if (incomplete.incomplete < completed)
+        logMsgFatal() << "too many carbon value acknowledgments";
+    if (incomplete.incomplete -= completed)
+        return;
+    auto notify = incomplete.notify;
+    notify->m_requestIds.erase(reqId);
+    notify->onCarbonRequestComplete();
+    s_incompletes.erase(i);
 }
 
 
@@ -100,49 +150,23 @@ bool ICarbonSocketNotify::onSocketAccept(AppSocketInfo const & info) {
 //===========================================================================
 void ICarbonSocketNotify::onSocketDisconnect() {
     s_perfCurrent -= 1;
-    for (auto && id : m_requestIds)
-        s_incompletes.erase(id);
-}
-
-//===========================================================================
-static unsigned nextRequestId() {
-    for (;;) {
-        auto id = ++s_nextRequestId;
-        if (id && !s_incompletes.count(id))
-            return id;
-    }
+    clear();
 }
 
 //===========================================================================
 bool ICarbonSocketNotify::onSocketRead(AppSocketData & data) {
-    auto id = nextRequestId();
-    auto incomplete = append(id, string_view(data.data, data.bytes));
+    auto incomplete = append(string_view(data.data, data.bytes));
     if (incomplete == EOF) {
         socketDisconnect(this);
     } else if (incomplete) {
-        m_requestIds.insert(id);
-        s_incompletes[id] = {this, incomplete};
         return false;
     }
     return true;
 }
 
 //===========================================================================
-// static
-void ICarbonSocketNotify::ackValue(unsigned reqId, unsigned completed) {
-    assert(reqId && completed);
-    auto i = s_incompletes.find(reqId);
-    if (i == s_incompletes.end())
-        return;
-    auto & incomplete = i->second;
-    if (incomplete.incomplete < completed)
-        logMsgFatal() << "too many carbon value acknowledgments";
-    if (incomplete.incomplete -= completed)
-        return;
-    auto sock = incomplete.socket;
-    sock->m_requestIds.erase(reqId);
-    socketRead(sock);
-    s_incompletes.erase(i);
+void ICarbonSocketNotify::onCarbonRequestComplete() {
+    socketRead(this);
 }
 
 
@@ -187,6 +211,29 @@ AppSocket::MatchType CarbonMatch::onMatch(
 
 /****************************************************************************
 *
+*   ICarbonFileNotify
+*
+***/
+
+//===========================================================================
+bool ICarbonFileNotify::onFileRead(
+    size_t * bytesUsed,
+    string_view data,
+    bool more,
+    int64_t offset,
+    FileHandle f
+) {
+    *bytesUsed = data.size();
+    auto incomplete = append(data);
+    if (incomplete == EOF)
+        return false;
+    assert(!incomplete);
+    return true;
+}
+
+
+/****************************************************************************
+*
 *   Public API
 *
 ***/
@@ -198,7 +245,7 @@ void carbonInitialize() {
 
 //===========================================================================
 void carbonAckValue(unsigned reqId, unsigned completed) {
-    ICarbonSocketNotify::ackValue(reqId, completed);
+    ICarbonNotify::ackValue(reqId, completed);
 }
 
 //===========================================================================
