@@ -74,23 +74,22 @@ CmdOpts::CmdOpts() {
 
 /****************************************************************************
 *
-*   Text command
+*   Install command
 *
 ***/
 
 //===========================================================================
-static bool installCmd(Cli & cli) {
-    logMonitor(consoleBasicLogger());
-
-    auto success = false;
+static bool installService() {
+    auto cmd = Cli::toCmdline({envExecPath(), "serve"});
     WinServiceConfig sconf;
     sconf.serviceName = "Tismet";
     sconf.displayName = "Tismet Server",
     sconf.desc = "Provides efficient storage, processing, and access to time "
         "series metrics for graphing and monitoring applications.";
+    sconf.progWithArgs = cmd.c_str();
+    sconf.account = WinServiceConfig::kLocalService;
     sconf.deps = { "Tcpip", "Afd" };
-    sconf.account = "NT Service\\Tismet";
-    sconf.sidType = WinServiceConfig::SidType::kUnrestricted;
+    sconf.sidType = WinServiceConfig::SidType::kRestricted;
     sconf.privs = {
         "SeChangeNotifyPrivilege",
         // "SeManageVolumePrivilege",   // SetFileValidData
@@ -104,9 +103,46 @@ static bool installCmd(Cli & cli) {
         { WinServiceConfig::Action::kRestart, 10min },
     };
 
+    return winSvcCreate(sconf);
+}
+
+//===========================================================================
+static bool setFileAccess() {
+    auto path = Path{envExecPath()}.removeFilename();
+    struct {
+        const char * path;
+        FileAccess::Right allow;
+        FileAccess::Inherit inherit = FileAccess::kInheritNone;
+    } rights[] = {
+        { ".", FileAccess::kReadOnly, FileAccess::kInheritAll },
+        { "crash", FileAccess::kModify },
+        { "data", FileAccess::kModify, FileAccess::kInheritAll },
+        { "log", FileAccess::kModify },
+    };
+    unsigned failed = 0;
+    for (auto&& right : rights) {
+        auto rpath = path / right.path;
+        if (!fileAddAccess(
+            rpath,
+            "NT SERVICE\\Tismet",
+            right.allow,
+            right.inherit
+        )) {
+            logMsgError() << "Unable to set access to '" << rpath << "'";
+            failed += 1;
+        }
+    }
+    return !failed;
+}
+
+//===========================================================================
+static bool installCmd(Cli & cli) {
+    auto success = false;
+    logMonitor(consoleBasicLogger());
+
     switch (envProcessRights()) {
     case kEnvUserAdmin:
-        success = winSvcCreate(sconf);
+        success = setFileAccess() && installService();
         break;
     case kEnvUserRestrictedAdmin:
         success = execElevated(envExecPath(), s_opts.args);
