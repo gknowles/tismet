@@ -18,6 +18,7 @@
 # libs/db/db.cpp
 # libs/db/db.h
 # libs/db/dbdata.cpp
+# libs/db/dbdataindex.cpp
 # libs/db/dbdatametric.cpp
 # libs/db/dbdataradix.cpp
 # libs/db/dbindex.cpp
@@ -26,9 +27,12 @@
 # libs/db/dblog.cpp
 # libs/db/dblog.h
 # libs/db/dblogdata.cpp
+# libs/db/dblogindex.cpp
 # libs/db/dblogint.h
 # libs/db/dblogmetric.cpp
 # libs/db/dblogradix.cpp
+# libs/db/dbpack.cpp
+# libs/db/dbpack.h
 # libs/db/dbpage.cpp
 # libs/db/dbview.cpp
 # libs/db/pch.cpp
@@ -72,6 +76,7 @@
 # tests/tst/testeval.cpp
 # tests/tst/testindex.cpp
 # tests/tst/testmain.cpp
+# tests/tst/testpack.cpp
 # tests/tst/testquery.cpp
 # tools/genfuncs/gfmain.cpp
 # tools/genfuncs/pch.cpp
@@ -134,6 +139,7 @@
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
 # vendor/dimapp/libs/core/math.h
+# vendor/dimapp/libs/core/pageheap.h
 # vendor/dimapp/libs/core/pch.cpp
 # vendor/dimapp/libs/core/pch.h
 # vendor/dimapp/libs/core/perf.cpp
@@ -144,6 +150,8 @@
 # vendor/dimapp/libs/core/shutdown.h
 # vendor/dimapp/libs/core/str.cpp
 # vendor/dimapp/libs/core/str.h
+# vendor/dimapp/libs/core/strtrie.cpp
+# vendor/dimapp/libs/core/strtrie.h
 # vendor/dimapp/libs/core/task.cpp
 # vendor/dimapp/libs/core/task.h
 # vendor/dimapp/libs/core/tempheap.cpp

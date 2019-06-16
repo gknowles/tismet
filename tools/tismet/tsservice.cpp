@@ -96,7 +96,7 @@ static bool installCmd(Cli & cli) {
         // "SeManageVolumePrivilege",   // SetFileValidData
         // "SeLockMemoryPrivilege",     // VirtualAlloc with MEM_LARGE_PAGES
     };
-    sconf.failureFlag = true;
+    sconf.failureFlag = WinServiceConfig::FailureFlag::kCrashOrNonZeroExitCode;
     sconf.failureReset = 24h;
     sconf.failureActions = {
         { WinServiceConfig::Action::kRestart, 10s },
@@ -106,7 +106,7 @@ static bool installCmd(Cli & cli) {
 
     switch (envProcessRights()) {
     case kEnvUserAdmin:
-        success = winSvcInstall(sconf);
+        success = winSvcCreate(sconf);
         break;
     case kEnvUserRestrictedAdmin:
         success = execElevated(envExecPath(), s_opts.args);
