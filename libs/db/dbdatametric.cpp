@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbdatametric.cpp - tismet db
@@ -484,7 +484,7 @@ static double getSample(T const * out) {
     if constexpr (is_same_v<T, pgno_t>) {
         if (*out <= kMaxPageNum)
             return NAN;
-        return (double) *out - kMaxPageNum - kMaxPageNum / 2;
+        return (double) *out - (double) kMaxPageNum - (double) kMaxPageNum / 2;
     } else if constexpr (is_floating_point_v<T>) {
         return *out;
     } else if constexpr (is_integral_v<T>) {

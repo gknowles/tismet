@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // carbon.cpp - tismet carbon
@@ -193,7 +193,7 @@ AppSocket::MatchType CarbonMatch::onMatch(
     AppSocket::Family fam,
     string_view view
 ) {
-    assert(fam == TismetSocket::kCarbon);
+    assert(fam == (AppSocket::Family) TismetSocket::kCarbon);
     CarbonUpdate upd;
     if (!carbonParse(upd, view, {}))
         return AppSocket::kUnsupported;

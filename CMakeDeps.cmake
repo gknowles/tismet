@@ -18,7 +18,6 @@
 # libs/db/db.cpp
 # libs/db/db.h
 # libs/db/dbdata.cpp
-# libs/db/dbdataindex.cpp
 # libs/db/dbdatametric.cpp
 # libs/db/dbdataradix.cpp
 # libs/db/dbindex.cpp
@@ -27,12 +26,9 @@
 # libs/db/dblog.cpp
 # libs/db/dblog.h
 # libs/db/dblogdata.cpp
-# libs/db/dblogindex.cpp
 # libs/db/dblogint.h
 # libs/db/dblogmetric.cpp
 # libs/db/dblogradix.cpp
-# libs/db/dbpack.cpp
-# libs/db/dbpack.h
 # libs/db/dbpage.cpp
 # libs/db/dbview.cpp
 # libs/db/pch.cpp
@@ -76,7 +72,6 @@
 # tests/tst/testeval.cpp
 # tests/tst/testindex.cpp
 # tests/tst/testmain.cpp
-# tests/tst/testpack.cpp
 # tests/tst/testquery.cpp
 # tools/genfuncs/gfmain.cpp
 # tools/genfuncs/pch.cpp

@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2018.
+// Copyright Glen Knowles 2018 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // testmain.cpp - tismet test
@@ -70,7 +70,7 @@ static void app(int argc, char * argv[]) {
     }
     if (!cli.exec(argc, argv))
         return appSignalUsageError();
-    if (cli.runCommand() == "help")
+    if (cli.commandMatched() == "help")
         return appSignalShutdown(EX_OK);
 
     if (int errors = logGetMsgCount(kLogTypeError)) {
