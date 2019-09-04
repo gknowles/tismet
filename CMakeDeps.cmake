@@ -129,6 +129,7 @@
 # vendor/dimapp/libs/core/charbuf.h
 # vendor/dimapp/libs/core/core.h
 # vendor/dimapp/libs/core/core.natvis
+# vendor/dimapp/libs/core/cron.cpp
 # vendor/dimapp/libs/core/cron.h
 # vendor/dimapp/libs/core/handle.cpp
 # vendor/dimapp/libs/core/handle.h
@@ -150,8 +151,6 @@
 # vendor/dimapp/libs/core/shutdown.h
 # vendor/dimapp/libs/core/str.cpp
 # vendor/dimapp/libs/core/str.h
-# vendor/dimapp/libs/core/strtrie.cpp
-# vendor/dimapp/libs/core/strtrie.h
 # vendor/dimapp/libs/core/task.cpp
 # vendor/dimapp/libs/core/task.h
 # vendor/dimapp/libs/core/tempheap.cpp
