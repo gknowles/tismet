@@ -145,3 +145,14 @@ tsm backup <server address>
 It's not safe to just copy the data/metrics.* files while the server is running,
 the tsd must be copied before the tsl and even if you do that you can still end
 up with a corrupt copy if an internal checkpoint was in progress.
+
+
+## Other time series database projects
+- [VictoriaMetrics](https://victoriametrics.com)
+- [prometheus](https://prometheus.io)
+- [Hawkular](https://www.hawkular.org)
+- [graphite](https://grahite.readthedocs.io)
+- [InfluxDb](https://influxdata.com)
+- [akumuli](https://akumuli.org)
+- [Amazon Timestream](https://aws.amazon.com/timestream)
+- [Timescale](https://www.timescale.com)
