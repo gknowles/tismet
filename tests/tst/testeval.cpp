@@ -209,7 +209,6 @@ void UnitTest::onTest(DbHandle h) {
         uint32_t id;
         dbInsertMetric(&id, h, s.name);
         DbMetricInfo info{};
-        info.interval = s.interval;
         dbUpdateMetric(h, id, info);
         auto time = s.first;
         for (auto && sample : s.samples) {

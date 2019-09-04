@@ -37,7 +37,6 @@ enum DbReqType {
 struct DbReq {
     DbReqType type;
     string name;
-    DbSampleType sampleType;
     Duration retention;
     Duration interval;
     IDbDataNotify * notify;
@@ -87,8 +86,7 @@ public:
         IDbDataNotify * notify,
         uint32_t id,
         TimePoint first,
-        TimePoint last,
-        unsigned presamples
+        TimePoint last
     );
 
 private:
@@ -404,8 +402,7 @@ void DbBase::apply(uint32_t id, DbReq && req) {
             req.notify,
             id,
             req.first,
-            req.last,
-            req.presamples
+            req.last
         );
         break;
     case kEraseMetric:
@@ -423,9 +420,7 @@ void DbBase::apply(uint32_t id, DbReq && req) {
     case kUpdateMetric:
         {
             DbMetricInfo info;
-            info.type = req.sampleType;
             info.retention = req.retention;
-            info.interval = req.interval;
             info.creation = req.first;
             m_data.updateMetric(txn, id, info);
         }
@@ -520,9 +515,7 @@ void DbBase::eraseMetric(uint32_t id) {
 void DbBase::updateMetric(uint32_t id, DbMetricInfo const & info) {
     DbReq req;
     req.type = kUpdateMetric;
-    req.sampleType = info.type;
     req.retention = info.retention;
-    req.interval = info.interval;
     req.first = info.creation;
     transact(id, move(req));
 }
@@ -589,15 +582,13 @@ bool DbBase::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
-    TimePoint last,
-    unsigned presamples
+    TimePoint last
 ) {
     DbReq req;
     req.type = kGetSamples;
     req.notify = notify;
     req.first = first;
     req.last = last;
-    req.presamples = presamples;
     return transact(id, move(req));
 }
 
@@ -630,26 +621,6 @@ void dbClose(DbHandle h) {
         db->close();
         delete db;
     }
-}
-
-static TokenTable::Token s_sampleTypes[] = {
-    { kSampleTypeFloat32,   "float32" },
-    { kSampleTypeFloat64,   "float64" },
-    { kSampleTypeInt8,      "int8" },
-    { kSampleTypeInt16,     "int16" },
-    { kSampleTypeInt32,     "int32" },
-};
-static_assert(size(s_sampleTypes) == kSampleTypes - 1);
-static TokenTable s_sampleTypeTbl{s_sampleTypes};
-
-//===========================================================================
-char const * toString(DbSampleType type, char const def[]) {
-    return tokenTableGetName(s_sampleTypeTbl, type, def);
-}
-
-//===========================================================================
-DbSampleType fromString(std::string_view src, DbSampleType def) {
-    return tokenTableGetEnum(s_sampleTypeTbl, src, def);
 }
 
 //===========================================================================
@@ -754,8 +725,7 @@ bool dbGetSamples(
     DbHandle h,
     uint32_t id,
     TimePoint first,
-    TimePoint last,
-    unsigned presamples
+    TimePoint last
 ) {
-    return db(h)->getSamples(notify, id, first, last, presamples);
+    return db(h)->getSamples(notify, id, first, last);
 }

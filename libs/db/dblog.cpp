@@ -809,8 +809,8 @@ void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, Record const & log) {
 
 //===========================================================================
 // Checkpointing places a marker in the log to indicate the start of entries
-// that are needed to fully recover the database. Any entries before that point
-// will subsequently be skipped and/or discarded.
+// that are needed to fully recover the database. Any entries belonging to
+// transactions starting before that point will be skipped and/or discarded.
 void DbLog::checkpoint() {
     if (m_phase != Checkpoint::Complete
         || !m_checkpointBlocks.empty()

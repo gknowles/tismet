@@ -365,9 +365,10 @@ void DbDataNode::readMore() {
             this,
             s_db,
             id,
-            m_context.first - m_context.pretime,
-            m_context.last,
-            m_context.presamples
+            m_context.first
+                - m_context.pretime
+                - m_context.presamples * m_context.minInterval,
+            m_context.last
         )) {
             // Request was queued. We don't reset the read tid so when the
             // callback runs it knows it was call from outside of readMore()
@@ -384,7 +385,7 @@ void DbDataNode::readMore() {
 
 //===========================================================================
 bool DbDataNode::onDbSeriesStart(DbSeriesInfo const & info) {
-    if (!info.type)
+    if (!info.last)
         return true;
 
     auto first = m_context.first
@@ -600,7 +601,6 @@ bool Evaluate::onEvalApply(ResultInfo & info) {
         dsi.target = info.target.get();
         dsi.id = info.samples->metricId;
         dsi.name = info.name.get();
-        dsi.type = kSampleTypeFloat64;
         dsi.interval = info.samples->interval;
         dsi.first = m_first - m_first.time_since_epoch() % dsi.interval;
         dsi.last = m_last

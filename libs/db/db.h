@@ -48,24 +48,11 @@ struct DbConfig {
 };
 void dbConfigure(DbHandle h, DbConfig const & conf);
 
-enum DbSampleType : int8_t {
-    kSampleTypeInvalid = 0,
-    kSampleTypeFloat32 = 1,
-    kSampleTypeFloat64 = 2,
-    kSampleTypeInt8    = 3,
-    kSampleTypeInt16   = 4,
-    kSampleTypeInt32   = 5,
-    kSampleTypes,
-};
-char const * toString(DbSampleType type, char const def[] = nullptr);
-DbSampleType fromString(std::string_view src, DbSampleType def);
-
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;
     unsigned segmentSize;
     unsigned metricNameSize; // includes terminating null
-    unsigned samplesPerPage[kSampleTypes];
 
     // Changes as data is modified
     unsigned numPages;
@@ -111,13 +98,9 @@ bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
 void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct DbMetricInfo {
-    std::string_view name;
-    DbSampleType type{kSampleTypeInvalid};
     Dim::Duration retention{};
-    Dim::Duration interval{};
     Dim::TimePoint creation;
 };
-// Removes all existing data when type, retention, or interval are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
@@ -148,8 +131,7 @@ void dbUpdateSample(
 
 struct DbSeriesInfo {
     bool infoEx{false};
-    DbSampleType type{kSampleTypeInvalid};
-    uint32_t id{0}; // for metrics, the metric id, otherwise 0
+    uint32_t id{}; // for metrics, the metric id, otherwise 0
     std::string_view target; // query series is from, empty for metrics
     std::string_view name; // such as metric name or alias
     Dim::TimePoint first;
@@ -186,8 +168,7 @@ bool dbGetSamples(
     DbHandle h,
     uint32_t id,
     Dim::TimePoint first = {},
-    Dim::TimePoint last = Dim::TimePoint::max(),
-    unsigned presamples = 0
+    Dim::TimePoint last = Dim::TimePoint::max()
 );
 
 
@@ -234,8 +215,10 @@ enum class DbPageType : int32_t {
     kFree = 'F',
     kZero = 'dZ',
     kSegment = 'S',
-    kMetric = 'm',
     kRadix = 'r',
+    kIndexBranch = 'bi',
+    kIndexLeaf = 'li',
+    kMetric = 'm',
     kSample = 's',
 };
 

@@ -32,8 +32,6 @@ namespace {
 struct MetricRule {
     regex pattern;
     Duration retention;
-    Duration interval;
-    DbSampleType type;
 };
 
 } // namespace
@@ -104,7 +102,7 @@ Duration ExpireTimer::onTimer(TimePoint now) {
 
 //===========================================================================
 bool ExpireTimer::onDbSeriesStart(DbSeriesInfo const & info) {
-    if (!info.type)
+    if (!info.last)
         return true;
 
     auto now = timeNow();
@@ -167,22 +165,7 @@ void AppXmlNotify::onConfigChange(XDocument const & doc) {
             logMsgError() << "Invalid metric rule pattern, " << val;
             continue;
         }
-        val = attrValue(&xrule, "type");
-        if (!val) {
-            rule.type = kSampleTypeInvalid;
-        } else {
-            rule.type = fromString(val, kSampleTypeInvalid);
-            if (rule.type == kSampleTypeInvalid) {
-                logMsgError() << "Unknown metric rule type, " << val;
-                continue;
-            }
-        }
         (void) parse(&rule.retention, attrValue(&xrule, "retention", ""));
-        if (!rule.retention.count()) {
-            rule.interval = {};
-        } else {
-            (void) parse(&rule.interval, attrValue(&xrule, "interval", ""));
-        }
         s_rules.push_back(rule);
     }
 }
@@ -266,9 +249,7 @@ bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
     for (auto && rule : s_rules) {
         if (regex_search(name.begin(), name.end(), rule.pattern)) {
             found = true;
-            info.type = rule.type;
             info.retention = rule.retention;
-            info.interval = rule.interval;
             break;
         }
     }

@@ -36,6 +36,12 @@ private:
     void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
     void onLogApplyZeroInit(void * ptr) override;
+    void onLogApplyZeroUpdateRoots(
+        void * ptr,
+        pgno_t infoRoot,
+        pgno_t nameRoot,
+        pgno_t idRoot
+    ) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplySegmentUpdate(
         void * ptr,
@@ -60,46 +66,43 @@ private:
         size_t pos,
         pgno_t refPage
     ) override;
+    void onLogApplyIndexLeafInit(void * ptr, uint32_t id) override;
     void onLogApplyMetricInit(
         void * ptr,
         uint32_t id,
-        string_view name,
         TimePoint creation,
-        DbSampleType sampleType,
-        Duration retention,
-        Duration interval
+        Duration retention
     ) override;
     void onLogApplyMetricUpdate(
         void * ptr,
         TimePoint creation,
-        DbSampleType sampleType,
-        Duration retention,
-        Duration interval
+        Duration retention
     ) override;
-    void onLogApplyMetricClearSamples(void * ptr) override;
-    void onLogApplyMetricUpdateSamples(
+    void onLogApplyMetricEraseSamples(
+        void * ptr,
+        size_t count,
+        TimePoint lastIndexTime
+    ) override;
+    void onLogApplyMetricUpdateSample(
         void * ptr,
         size_t pos,
-        TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
+        double value,
+        double dv
     ) override;
-    void onLogApplySampleInit(
+    void onLogApplyMetricInsertSample(
         void * ptr,
-        uint32_t id,
-        DbSampleType sampleType,
-        TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        size_t pos,
+        Duration dt,
+        double value,
+        double dv
     ) override;
+    void onLogApplySampleInit(void * ptr, uint32_t id) override;
     void onLogApplySampleUpdate(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
+        size_t offset,
+        string_view data,
+        size_t unusedBits
     ) override;
-    void onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
 
     // Inherited via IPageNotify
     void * onLogGetUpdatePtr(
@@ -176,6 +179,17 @@ void TextWriter::onLogApplyZeroInit(void * ptr) {
 }
 
 //===========================================================================
+void TextWriter::onLogApplyZeroUpdateRoots(
+    void * ptr,
+    pgno_t infoRoot,
+    pgno_t nameRoot,
+    pgno_t idRoot
+) {
+    out(ptr) << "zero.roots = " 
+        << infoRoot << ", " << nameRoot << ", " << idRoot;
+}
+
+//===========================================================================
 void TextWriter::onLogApplyPageFree(void * ptr) {
     out(ptr) << "page.free\n";
 }
@@ -229,110 +243,93 @@ void TextWriter::onLogApplyRadixUpdate(
 }
 
 //===========================================================================
+void TextWriter::onLogApplyIndexLeafInit(void * ptr, uint32_t id) {
+    out(ptr) << "index/" << id << ".init";
+}
+
+//===========================================================================
 void TextWriter::onLogApplyMetricInit(
     void * ptr,
     uint32_t id,
-    string_view name,
     TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
+    Duration retention
 ) {
-    out(ptr) << name << "/" << id << ".init = "
+    out(ptr) << "metric/" << id << ".init = "
         << creation << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << toString(retention, DurationFormat::kTwoPart) << ", "
-        << toString(interval, DurationFormat::kTwoPart) << '\n';
+        << toString(retention, DurationFormat::kTwoPart) << '\n';
 }
 
 //===========================================================================
 void TextWriter::onLogApplyMetricUpdate(
     void * ptr,
     TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
+    Duration retention
 ) {
     out(ptr) << "metric = "
         << creation << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << toString(retention, DurationFormat::kTwoPart) << ", "
-        << toString(interval, DurationFormat::kTwoPart) << '\n';
+        << toString(retention, DurationFormat::kTwoPart) << '\n';
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricClearSamples(void * ptr) {
-    out(ptr) << "metric.samples.clear\n";
+void TextWriter::onLogApplyMetricEraseSamples(
+    void * ptr,
+    size_t count,
+    TimePoint lastIndexTime
+) {
+    out(ptr) << "metric.samples.erase(0, " << count << "); "
+        << "metric.lastIndexTime = " << lastIndexTime << '\n';
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricUpdateSamples(
+void TextWriter::onLogApplyMetricUpdateSample(
     void * ptr,
     size_t pos,
-    TimePoint refTime,
-    size_t refSample,
-    pgno_t refPage
+    double value,
+    double dv
 ) {
     auto & os = out(ptr);
-    if (refPage)
-        os << "metric.samples[" << pos << "] = @" << refPage << "; ";
-    os << "metric.samples.last = ";
-    if (refTime)
-        os << pos << " / ";
-    if (refPage)
-        os << "@" << refPage;
-    if (refSample != (size_t) -1)
-        os << '.' << refSample;
-    if (refTime)
-        os << " / " << refTime;
-    os << '\n';
+    os << "metric.samples[" << pos << "].value ";
+    if (isnan(value)) {
+        os << "= " << value << '\n';
+    } else {
+        os << "+= " << dv << '\n';
+    }
 }
 
 //===========================================================================
-void TextWriter::onLogApplySampleInit(
+void TextWriter::onLogApplyMetricInsertSample(
     void * ptr,
-    uint32_t id,
-    DbSampleType sampleType,
-    TimePoint pageTime,
-    size_t lastSample,
-    double fill
+    size_t pos,
+    Duration dt,
+    double value,
+    double dv
 ) {
-    out(ptr) << "samples/" << id << ".init = " << fill << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << pageTime << ", "
-        << lastSample << "\n";
+    auto & os = out(ptr);
+    os << "metric.samples[" << pos << "] ";
+    if (isnan(value)) {
+        os << "= " << toString(dt, DurationFormat::kTwoPart) << ", "
+            << value << '\n';
+    } else {
+        os << "+= " << toString(dt, DurationFormat::kTwoPart)
+            << dv << '\n';
+    }
+}
+
+//===========================================================================
+void TextWriter::onLogApplySampleInit(void * ptr, uint32_t id) {
+    out(ptr) << "samples/" << id << ".init\n";
 }
 
 //===========================================================================
 void TextWriter::onLogApplySampleUpdate(
     void * ptr,
-    size_t firstPos,
-    size_t lastPos,
-    double value,
-    bool updateLast
+    size_t offset,
+    string_view data,
+    size_t unusedBits
 ) {
     auto & os = out(ptr);
-    os << "samples[" << firstPos;
-    if (isnan(value)) {
-        if (firstPos < lastPos - 1)
-            os << " thru " << lastPos - 1;
-        os << "] = NAN";
-    } else {
-        if (firstPos < lastPos) {
-            os << " thru " << lastPos - 1 << ", " << lastPos << "] = NAN, ";
-        } else {
-            os << "] = ";
-        }
-        os << value;
-    }
-    if (updateLast)
-        os << "; samples.last = " << lastPos;
-    os << '\n';
-}
-
-//===========================================================================
-void TextWriter::onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
-    out(ptr) << "samples.time = " << pageTime << '\n';
+    os << "samples[" << offset << " thru " << offset + data.size() << "] = "
+        << "<" << data.size() << " bytes>\n";
 }
 
 //===========================================================================

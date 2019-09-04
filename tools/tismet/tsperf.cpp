@@ -80,14 +80,6 @@ void SampleTimer::onTask() {
         if (!tsDataInsertMetric(&id, f, m_tmp))
             continue;
         DbMetricInfo info = {};
-        switch (val.type) {
-        case PerfType::kFloat: info.type = kSampleTypeFloat32; break;
-        case PerfType::kInt: info.type = kSampleTypeInt32; break;
-        case PerfType::kUnsigned: info.type = kSampleTypeFloat64; break;
-        default:
-            assert(!"unknown perf type");
-            break;
-        }
         dbUpdateMetric(f, id, info);
         dbUpdateSample(f, id, now, val.raw);
     }

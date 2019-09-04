@@ -126,7 +126,7 @@ void Test::onTestRun() {
     EXPECT(stats.pageSize == 128);
     EXPECT(stats.numPages == 2);
     EXPECT(stats.freePages == 0);
-    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto spp = 500u;
     auto pgt = spp * 1min;
 
     auto ctx = dbOpenContext(h);
@@ -135,9 +135,7 @@ void Test::onTestRun() {
     count += dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 1);
     DbMetricInfo info;
-    info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(6.5 * pgt);
-    info.interval = 1min;
     dbUpdateMetric(h, id, info);
     dbUpdateSample(h, id, start, 1.0);
     dbCloseContext(ctx);
@@ -249,9 +247,7 @@ void Test::onTestRun() {
     dbInsertMetric(&id, h, "this.is.metric.1");
     EXPECT(id == 1);
     dbUpdateSample(h, id, start, 1.0);
-    info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(3 * pgt);
-    info.interval = 1min;
     dbUpdateMetric(h, id, info);
     auto pageStart = start;
     auto oldFree = dbQueryStats(h).freePages - 1;

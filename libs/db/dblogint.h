@@ -17,55 +17,30 @@ enum DbLogRecType : int8_t {
     kRecTypeTxnCommit           = 3,  // [N/A]
 
     kRecTypeZeroInit            = 4,  // [master]
-    kRecTypePageFree            = 5,  // [any]
-    kRecTypeSegmentAlloc        = 6,  // [master/segment] refPage
-    kRecTypeSegmentFree         = 7,  // [master/segment] refPage
-    kRecTypeRadixInit           = 8,  // [radix] id, height
-    kRecTypeRadixInitList       = 9,  // [radix] id, height, page list
-    kRecTypeRadixErase          = 10, // [metric/radix] firstPos, lastPos
-    kRecTypeRadixPromote        = 11, // [radix] refPage
-    kRecTypeRadixUpdate         = 12, // [radix] refPos, refPage
-    kRecTypeMetricInit          = 13, // [metric] name, id, retention, interval
-    kRecTypeMetricUpdate        = 14, // [metric] retention, interval
-    kRecTypeMetricClearSamples  = 15, // [metric] (clears index & last)
-    kRecTypeMetricUpdatePos     = 32, // [metric] refPos, refTime
-    kRecTypeMetricUpdatePosAndIndex = 33, // [metric] refPos, refTime, refPage
-    kRecTypeMetricUpdateSample  = 34, // [metric] refSample
-    kRecTypeMetricUpdateSampleAndIndex = 35, // [metric] refPos, refTime,
+    kRecTypeZeroUpdateRoots     = 5,  // [master] infoRoot, nameRoot, idRoot
+    kRecTypePageFree            = 6,  // [any]
+    kRecTypeSegmentAlloc        = 7,  // [master/segment] refPage
+    kRecTypeSegmentFree         = 8,  // [master/segment] refPage
+    kRecTypeRadixInit           = 9,  // [radix] id, height
+    kRecTypeRadixInitList       = 10, // [radix] id, height, page list
+    kRecTypeRadixErase          = 11, // [metric/radix] firstPos, lastPos
+    kRecTypeRadixPromote        = 12, // [radix] refPage
+    kRecTypeRadixUpdate         = 13, // [radix] refPos, refPage
+    kRecTypeMetricInit          = 14, // [metric] name, id, retention, interval
+    kRecTypeMetricUpdate        = 15, // [metric] retention, interval
+    kRecTypeMetricEraseSamples  = 16, // [metric] (clears index & last)
+    kRecTypeMetricUpdateSample  = 17, // [metric] refSample
+    kRecTypeMetricInsertSample  = 18, // [metric] refPos, refTime,
                                       // refSample, refPage
     // [metric] page, refSample (non-standard layout)
-    kRecTypeMetricUpdateSampleTxn = 36,
+    kRecTypeMetricInsertSampleTxn = 19,
 
-    kRecTypeSampleInit          = 18, // [sample] id, stype, pageTime, lastPos
-    kRecTypeSampleInitFill      = 37, // [sample] id, stype, pageTime, lastPos,
-                                      //    value
-    kRecTypeSampleUpdate        = 19, // [sample] first, last, value
+    kRecTypeSampleInit          = 20, // [sample] id, stype, pageTime, lastPos
+    kRecTypeSampleBulkUpdate    = 21, // [sample] first, last, value
                                       //    [first, last) = NANs, last = value
-    kRecTypeSampleUpdateLast    = 20, // [sample] first, last, value
-                                      //    [first, last) = NANs, last = value
-                                      //    lastPos = last
-    kRecTypeSampleUpdateTime    = 21, // [sample] pageTime
-                                      //    pos = 0, samples[0] = NAN
+    kRecTypeIndexLeafInit       = 22, // [index] id
 
-    // [sample] page, pos, value (non-standard layout)
-    kRecTypeSampleUpdateFloat32Txn      = 22,
-    kRecTypeSampleUpdateFloat64Txn      = 24,
-    kRecTypeSampleUpdateInt8Txn         = 26,
-    kRecTypeSampleUpdateInt16Txn        = 28,
-    kRecTypeSampleUpdateInt32Txn        = 30,
-
-    // [sample] page, pos, value (non-standard layout)
-    //    lastPos = pos
-    kRecTypeSampleUpdateFloat32LastTxn  = 23,
-    kRecTypeSampleUpdateFloat64LastTxn  = 25,
-    kRecTypeSampleUpdateInt8LastTxn     = 27,
-    kRecTypeSampleUpdateInt16LastTxn    = 29,
-    kRecTypeSampleUpdateInt32LastTxn    = 31,
-
-    kRecTypeUnused_16       = 16,   // Available
-    kRecTypeUnused_17       = 17,   // Available
-
-    kRecType_LastAvailable  = 38,
+    kRecType_LastAvailable  = 23,
 };
 
 #pragma pack(push)

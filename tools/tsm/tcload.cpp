@@ -61,6 +61,7 @@ private:
     bool nextMetric();
 
     MsgPack::StreamParser m_parser;
+    DumpFormat m_format{};
 
     enum class State {
         kStartFileArray,
@@ -113,6 +114,29 @@ static CmdOpts s_opts;
 static DbProgressInfo s_progress;
 static DbHandle s_db;
 static DbWriter s_writer;
+
+
+/****************************************************************************
+*
+*   Dump formats
+*
+***/
+
+TokenTable::Token const s_dumpFormats[] = {
+    { kDumpFormat2018_1, "2018.1" },
+    { kDumpFormat2018_2, "2018.2" },
+};
+TokenTable const s_dumpFormatTbl{s_dumpFormats};
+
+//===========================================================================
+char const * toString(DumpFormat type, char const def[]) {
+    return tokenTableGetName(s_dumpFormatTbl, type, def);
+}
+
+//===========================================================================
+DumpFormat fromString(std::string_view src, DumpFormat def) {
+    return tokenTableGetEnum(s_dumpFormatTbl, src, def);
+}
 
 
 /****************************************************************************
@@ -206,19 +230,24 @@ bool DumpReader::value(std::string_view val) {
         m_state = State::kVersionValue;
         return true;
     case State::kVersionValue:
-        if (val != "2018.1")
+        m_format = fromString(val, kDumpFormatInvalid);
+        if (!m_format)
             return false;
         m_state = State::kStartMetricsArray;
         return true;
     case State::kMetricName:
         m_name = val;
         m_ex.name = m_name;
-        m_state = State::kMetricType;
+        if (m_format == kDumpFormat2018_1) {
+            m_state = State::kMetricType;
+        } else {
+            assert(m_format == kDumpFormat2018_2);
+            m_state = State::kMetricCreation;
+        }
         return true;
     case State::kMetricType:
-        m_ex.type = fromString(val, kSampleTypeInvalid);
         m_state = State::kMetricCreation;
-        return m_ex.type != kSampleTypeInvalid;
+        return true;
     default:
         return false;
     }
@@ -263,7 +292,12 @@ bool DumpReader::value(uint64_t val) {
         return true;
     case State::kMetricRetention:
         m_ex.retention = Duration{val};
-        m_state = State::kMetricInterval;
+        if (m_format == kDumpFormat2018_1) {
+            m_state = State::kMetricInterval;
+        } else {
+            assert(m_format == kDumpFormat2018_2);
+            m_state = State::kMetricFirstTime;
+        }
         return true;
     case State::kMetricInterval:
         m_ex.interval = Duration{val};
@@ -311,9 +345,7 @@ bool DbWriter::onDumpSeries(DbSeriesInfoEx const & ex) {
     dbInsertMetric(&m_id, s_db, ex.name);
     DbMetricInfo info;
     info.creation = ex.creation;
-    info.type = ex.type;
     info.retention = ex.retention;
-    info.interval = ex.interval;
     dbUpdateMetric(s_db, m_id, info);
     m_time = ex.first;
     m_interval = ex.interval;

@@ -7,6 +7,7 @@
 #include "db/db.h"
 #include "db/dbindex.h"
 #include "db/dblog.h"
+#include "db/dbpack.h"
 
 // External library public headers
 #include "dimcli/cli.h"

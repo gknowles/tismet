@@ -35,6 +35,14 @@ struct TransactionRec {
 };
 
 //---------------------------------------------------------------------------
+struct ZeroUpdateRootsRec {
+    DbLog::Record hdr;
+    pgno_t infoRoot;
+    pgno_t nameRoot;
+    pgno_t idRoot;
+};
+
+//---------------------------------------------------------------------------
 // Segment
 struct SegmentUpdateRec {
     DbLog::Record hdr;
@@ -259,20 +267,35 @@ static DbLogRecInfo::Table s_dataRecInfo{
         DbLogRecInfo::sizeFn<TransactionRec>,
         nullptr,
         [](auto & log) {
-            return reinterpret_cast<TransactionRec const &>(log).localTxn; },
+            return reinterpret_cast<TransactionRec const &>(log).localTxn; 
+        },
         nullptr,
     },
     { kRecTypeTxnCommit,
         DbLogRecInfo::sizeFn<TransactionRec>,
         nullptr,
         [](auto & log) {
-            return reinterpret_cast<TransactionRec const &>(log).localTxn; },
+            return reinterpret_cast<TransactionRec const &>(log).localTxn; 
+        },
         nullptr,
     },
     { kRecTypeZeroInit,
         DbLogRecInfo::sizeFn<DbLog::Record>,
         [](auto notify, void * page, auto & log) {
-            notify->onLogApplyZeroInit(page); },
+            notify->onLogApplyZeroInit(page); 
+        },
+    },
+    { kRecTypeZeroUpdateRoots,
+        DbLogRecInfo::sizeFn<ZeroUpdateRootsRec>,
+        [](auto notify, void * page, auto & log) {
+            auto & rec = reinterpret_cast<ZeroUpdateRootsRec const &>(log);
+            notify->onLogApplyZeroUpdateRoots(
+                page, 
+                rec.infoRoot,
+                rec.nameRoot,
+                rec.idRoot
+            ); 
+        },
     },
     { kRecTypePageFree,
         DbLogRecInfo::sizeFn<DbLog::Record>,
@@ -306,6 +329,16 @@ static DbLogRecInfo::Table s_dataRecInfo{
 void DbTxn::logZeroInit(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
     log(rec, bytes);
+}
+
+//===========================================================================
+void DbTxn::logZeroUpdateRoots(
+    pgno_t pgno,
+    pgno_t infoRootPage,
+    pgno_t nameRootPage,
+    pgno_t idRootPage
+) {
+    
 }
 
 //===========================================================================

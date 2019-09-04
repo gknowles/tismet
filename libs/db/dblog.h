@@ -301,6 +301,13 @@ public:
     virtual void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
 
     virtual void onLogApplyZeroInit(void * ptr) = 0;
+    virtual void onLogApplyZeroUpdateRoots(
+        void * ptr,
+        pgno_t infoRoot,
+        pgno_t nameRoot,
+        pgno_t idRoot
+    ) = 0;
+
     virtual void onLogApplyPageFree(void * ptr) = 0;
     virtual void onLogApplySegmentUpdate(
         void * ptr,
@@ -327,47 +334,42 @@ public:
         pgno_t refPage
     ) = 0;
 
+    virtual void onLogApplyIndexLeafInit(void * ptr, uint32_t id) = 0;
+
     virtual void onLogApplyMetricInit(
         void * ptr,
         uint32_t id,
-        std::string_view name,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     ) = 0;
     virtual void onLogApplyMetricUpdate(
         void * ptr,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     ) = 0;
-    virtual void onLogApplyMetricClearSamples(void * ptr) = 0;
-    virtual void onLogApplyMetricUpdateSamples(
+    virtual void onLogApplyMetricEraseSamples(
+        void * ptr,
+        size_t count,
+        Dim::TimePoint lastIndexTime
+    ) = 0;
+    virtual void onLogApplyMetricUpdateSample(
         void * ptr,
         size_t pos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
+        double value,
+        double dv
     ) = 0;
-    virtual void onLogApplySampleInit(
+    virtual void onLogApplyMetricInsertSample(
         void * ptr,
-        uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        size_t pos,
+        Dim::Duration dt,
+        double value,
+        double dv
     ) = 0;
+    virtual void onLogApplySampleInit(void * ptr, uint32_t id) = 0;
     virtual void onLogApplySampleUpdate(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
-    ) = 0;
-    virtual void onLogApplySampleUpdateTime(
-        void * ptr,
-        Dim::TimePoint pageTime
+        size_t offset,
+        std::string_view data,
+        size_t unusedBits
     ) = 0;
 };

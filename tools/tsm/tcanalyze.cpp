@@ -32,6 +32,8 @@ struct MetricInfo {
     TimePoint time;
     double value;
     int64_t dt;
+    int dvPrefix;
+    int dvLen;
 };
 
 } // namespace
@@ -49,6 +51,7 @@ static FileAppendStream s_file;
 
 // deltas found as measured in bits
 static map<int, unsigned> s_timeDeltas;
+static map<pair<int, int>, unsigned> s_valueDeltas;
 static unordered_map<string, MetricInfo> s_metrics;
 
 
@@ -63,7 +66,14 @@ static void writeResults() {
     ostringstream os;
     os << "Distribution of storage requirements for time deltas (bits)\n";
     for (auto && kv : s_timeDeltas)
-        os << kv.first << " " << kv.second << '\n';
+        os << '(' << kv.first << ',' << kv.second << "),\n";
+    os << '\n';
+    os << "Distribution of storage requirements for value deltas (bits)\n";
+    for (auto && kv : s_valueDeltas) {
+        os << '(' << kv.first.first << ','
+            << kv.first.second << ','
+            << kv.second << "),\n";
+    }
     if (s_file) {
         s_file.append(os.str());
     } else {
@@ -119,6 +129,8 @@ bool RecordFile::onCarbonValue(
 
     m_buf = name;
     auto & samp = s_metrics[m_buf];
+
+    // calculate dt
     auto dt = (time - samp.time) / 1s;
     auto ddt = dt - samp.dt;
     int dbit;
@@ -130,7 +142,18 @@ bool RecordFile::onCarbonValue(
         dbit = 63 - leadingZeroBits(ddt);
     }
     s_timeDeltas[dbit] += 1;
-    samp = {time, value, samp.time ? dt : 0};
+
+    // calculate dv
+    auto xv = *(uint64_t *) &value ^ *(uint64_t *) &samp.value;
+    auto dvPrefix = 0;
+    auto dvLen = 0;
+    if (xv) {
+        dvPrefix = leadingZeroBits(xv);
+        dvLen = 64 - dvPrefix - trailingZeroBits(xv);
+    }
+    s_valueDeltas[{dvPrefix, dvLen}] += 1;
+
+    samp = {time, value, samp.time ? dt : 0, dvPrefix, dvLen};
 
     if (s_opts.progress.totalSamples
             && s_opts.progress.samples == s_opts.progress.totalSamples
@@ -195,7 +218,7 @@ CmdOpts::CmdOpts() {
         .action(analyzeCmd);
     cli.opt(&reportfile, "<report file>")
         .desc("File to analyze, extension defaults to '.txt'");
-    cli.opt(&ofile, "[output file]")
+    cli.opt(&ofile, "[output file]", Path{"-"})
         .desc("'-' for stdout, otherwise extension defaults to '.txt'")
         .check([](auto & cli, auto & opt, auto & val) {
             if (*opt) {

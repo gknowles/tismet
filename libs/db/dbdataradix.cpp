@@ -11,55 +11,14 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Tuning parameters
-*
-***/
-
-
-/****************************************************************************
-*
-*   Private
-*
-***/
-
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
-
-
-/****************************************************************************
-*
-*   DbData
-*
-***/
-
-
-/****************************************************************************
-*
 *   Radix index
 *
 ***/
 
 //===========================================================================
-DbData::RadixData * DbData::radixData(MetricPage * mp) const {
-    auto ents = entriesPerMetricPage();
-    auto off = offsetof(RadixData, pages) + ents * sizeof(*RadixData::pages);
-    auto ptr = (char *) mp + m_pageSize - off;
-    return reinterpret_cast<DbData::RadixData *>(ptr);
-}
-
-//===========================================================================
 DbData::RadixData * DbData::radixData(DbPageHeader * hdr) const {
-    if (hdr->type == DbPageType::kMetric) {
-        auto mp = reinterpret_cast<DbData::MetricPage *>(hdr);
-        return radixData(mp);
-    } else {
-        assert(hdr->type == DbPageType::kRadix);
-        return &reinterpret_cast<DbData::RadixPage *>(hdr)->rd;
-    }
+    assert(hdr->type == DbPageType::kRadix);
+    return &reinterpret_cast<DbData::RadixPage *>(hdr)->rd;
 }
 
 //===========================================================================
@@ -80,16 +39,12 @@ size_t DbData::radixPageEntries(
     DbPageType rootType,
     uint16_t height,
     size_t pos
-) {
+) const {
     int * base = out;
     size_t pents = entriesPerRadixPage();
-    size_t rents;
-    if (rootType == DbPageType::kMetric) {
-        rents = entriesPerMetricPage();
-    } else {
-        assert(rootType == DbPageType::kRadix);
-        rents = pents;
-    }
+
+    assert(rootType == DbPageType::kRadix);
+    size_t rents = pents;
 
     for (;;) {
         *out++ = (int) (pos % pents);
@@ -272,13 +227,13 @@ void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
 
 //===========================================================================
 bool DbData::radixFind(
-    DbTxn & txn,
+    DbTxn const & txn,
     DbPageHeader const ** hdr,
     RadixData const ** rd,
     size_t * rpos,
     pgno_t root,
     size_t pos
-) {
+) const {
     *hdr = txn.viewPage<DbPageHeader>(root);
     *rd = radixData(*hdr);
 
@@ -320,11 +275,11 @@ bool DbData::radixFind(
 
 //===========================================================================
 bool DbData::radixFind(
-    DbTxn & txn,
+    DbTxn const & txn,
     pgno_t * out,
     pgno_t root,
     size_t pos
-) {
+) const {
     DbPageHeader const * hdr;
     RadixData const * rd;
     size_t rpos;

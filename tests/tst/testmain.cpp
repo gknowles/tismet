@@ -70,7 +70,7 @@ static void app(int argc, char * argv[]) {
     }
     if (!cli.exec(argc, argv))
         return appSignalUsageError();
-    if (cli.runCommand() == "help")
+    if (cli.commandMatched() == "help")
         return appSignalShutdown(EX_OK);
 
     if (int errors = logGetMsgCount(kLogTypeError)) {

@@ -16,7 +16,6 @@ using namespace Dim;
 ***/
 
 auto const kZeroPageNum = (pgno_t) 0;
-auto const kMetricIndexPageNum = (pgno_t) 1;
 
 
 /****************************************************************************
@@ -26,6 +25,14 @@ auto const kMetricIndexPageNum = (pgno_t) 1;
 ***/
 
 unsigned const kDataFileSig[] = {
+    0x1a849844,
+    0xfd0c154d,
+    0x912aafa4,
+    0x3c67f237,
+};
+
+// deprecated 2018-12-05
+unsigned const kDataFileSigV1[] = {
     0x39515728,
     0x4873456d,
     0xf6bfd8a1,
@@ -46,6 +53,9 @@ struct DbData::ZeroPage {
     char signature[sizeof(kDataFileSig)];
     unsigned pageSize;
     unsigned segmentSize;
+    pgno_t infoIndexRootPage;
+    pgno_t nameIndexRootPage;
+    pgno_t idIndexRootPage;
 };
 static_assert(is_standard_layout_v<DbData::ZeroPage>);
 static_assert(2 * sizeof(DbData::ZeroPage) <= kMinPageSize);
@@ -162,14 +172,28 @@ bool DbData::openForUpdate(
         logMsgInfo() << "Load free page list";
     if (!loadFreePages(txn))
         return false;
-    if (m_numPages == 1) {
+    if (!zp->infoIndexRootPage) {
         auto pgno = allocPgno(txn);
-        assert(pgno == kMetricIndexPageNum);
         txn.logRadixInit(pgno, 0, 0, nullptr, nullptr);
+        txn.logZeroUpdateRoots(kZeroPageNum, pgno, {}, {});
     }
+    if (!zp->nameIndexRootPage) {
+        auto pgno = allocPgno(txn);
+        txn.logIndexLeafInit(pgno, 0);
+        txn.logZeroUpdateRoots(kZeroPageNum, {}, pgno, {});
+    }
+    if (!zp->idIndexRootPage) {
+        auto pgno = allocPgno(txn);
+        txn.logIndexLeafInit(pgno, 0);
+        txn.logZeroUpdateRoots(kZeroPageNum, {}, {}, pgno);
+    }
+    m_infoIndexRoot = zp->infoIndexRootPage;
+    m_idIndexRoot = zp->idIndexRootPage;
+    m_nameIndexRoot = zp->nameIndexRootPage;
+
     if (m_verbose)
         logMsgInfo() << "Build metric index";
-    if (!loadMetrics(txn, notify, kMetricIndexPageNum))
+    if (!loadMetrics(txn, notify, zp->infoIndexRootPage))
         return false;
 
     return true;
@@ -181,12 +205,9 @@ DbStats DbData::queryStats() {
     s.pageSize = (unsigned) m_pageSize;
     s.segmentSize = (unsigned) m_segmentSize;
     s.metricNameSize = (unsigned) metricNameSize();
-    s.samplesPerPage[kSampleTypeInvalid] = 0;
-    for (int8_t i = 1; i < kSampleTypes; ++i)
-        s.samplesPerPage[i] = (unsigned) samplesPerPage(DbSampleType{i});
 
     {
-        shared_lock lk{m_mposMut};
+        shared_lock lk{m_mndxMut};
         s.metrics = m_numMetrics;
     }
 
@@ -381,6 +402,23 @@ void DbData::onLogApplyZeroInit(void * ptr) {
     auto bits = segmentBitView(zp, m_pageSize);
     bits.set();
     bits.reset(0);
+}
+
+//===========================================================================
+void DbData::onLogApplyZeroUpdateRoots(
+    void * ptr,
+    pgno_t infoRoot,
+    pgno_t nameRoot,
+    pgno_t idRoot
+) {
+    auto zp = static_cast<ZeroPage *>(ptr);
+    assert(zp->hdr.type == zp->kPageType);
+    if (infoRoot)
+        zp->infoIndexRootPage = infoRoot;
+    if (nameRoot)
+        zp->nameIndexRootPage = nameRoot;
+    if (idRoot)
+        zp->idIndexRootPage = idRoot;
 }
 
 //===========================================================================

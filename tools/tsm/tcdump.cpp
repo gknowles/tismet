@@ -93,10 +93,8 @@ bool DumpWriter::onDbSeriesStart(DbSeriesInfo const & info) {
         appendIfFull(ex.name.size() + 64);
         s_bld.array(7);
         s_bld.value(ex.name);
-        s_bld.value(toString(ex.type));
         s_bld.value(ex.creation.time_since_epoch().count());
         s_bld.value(ex.retention.count());
-        s_bld.value(ex.interval.count());
         return true;
     }
     s_bld.value(info.first.time_since_epoch().count());
@@ -190,7 +188,7 @@ static bool dumpCmd(Cli & cli) {
     s_bld.array(2);
     s_bld.map(1);
     s_bld.element("Tismet Dump Version");
-    s_bld.value("2018.1");
+    s_bld.value(toString(kDumpFormat2018_2));
     s_bld.array(ids.size());
     DbMetricInfo info;
     for (auto && id : ids) {

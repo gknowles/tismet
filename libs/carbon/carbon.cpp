@@ -193,7 +193,7 @@ AppSocket::MatchType CarbonMatch::onMatch(
     AppSocket::Family fam,
     string_view view
 ) {
-    assert(fam == TismetSocket::kCarbon);
+    assert(fam == (AppSocket::Family) TismetSocket::kCarbon);
     CarbonUpdate upd;
     if (!carbonParse(upd, view, {}))
         return AppSocket::kUnsupported;

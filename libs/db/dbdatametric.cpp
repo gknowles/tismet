@@ -15,15 +15,9 @@ using namespace Dim;
 *
 ***/
 
-DbSampleType const kDefaultSampleType = kSampleTypeFloat32;
 constexpr Duration kDefaultRetention = 7 * 24h;
-constexpr Duration kDefaultInterval = 1min;
-static_assert(kDefaultRetention >= kDefaultInterval);
 
-unsigned const kMaxMetricNameLen = 128;
-static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
-
-auto const kMetricIndexPageNum = (pgno_t) 1;
+unsigned const kMaxMetricNameLen = 1024;
 
 
 /****************************************************************************
@@ -32,46 +26,24 @@ auto const kMetricIndexPageNum = (pgno_t) 1;
 *
 ***/
 
-struct DbData::MetricPage {
+struct DbData::MetricPage : DbData::IndexPage {
     static const auto kPageType = DbPageType::kMetric;
-    DbPageHeader hdr;
     TimePoint creation;
-    Duration interval;
     Duration retention;
-    TimePoint lastPageFirstTime;
-    uint16_t lastPageSample;
-    uint16_t reserved;
-    unsigned lastPagePos;
-    DbSampleType sampleType;
+    TimePoint lastIndexTime;
+    uint16_t numSamples;
 
     // EXTENDS BEYOND END OF STRUCT
-    char name[1];
-
-    // RadixData object immediately follows name
+    DbSample samples[1]; // size(samples) == numSamples
 };
 static_assert(sizeof(DbData::MetricPage) <= kMinPageSize);
 
-struct DbData::SamplePage {
+struct DbData::SamplePage : DbData::IndexPage {
     static const auto kPageType = DbPageType::kSample;
-    DbPageHeader hdr;
-
-    // time of first sample on page
-    TimePoint pageFirstTime;
-
-    // Position of last sample, samples that come after this position on the
-    // page are either in the not yet populated future or (because it's a
-    // giant discontinuous ring buffer) in the distant past.
-    uint16_t pageLastSample;
-    DbSampleType sampleType;
+    uint8_t bitsUnused;
 
     // EXTENDS BEYOND END OF STRUCT
-    union {
-        float f32[1];
-        double f64[1];
-        int8_t i8[1];
-        int16_t i16[1];
-        int32_t i32[1];
-    } samples;
+    unsigned char data[1]; // size(data) == IndexPage::bytesUsed
 };
 
 
@@ -85,6 +57,7 @@ static auto & s_perfCount = uperf("db.metrics (total)");
 
 static auto & s_perfAncient = uperf("db.samples ignored (old)");
 static auto & s_perfDup = uperf("db.samples ignored (same)");
+static auto & s_perfNan = uperf("db.samples ignored (no value)");
 static auto & s_perfChange = uperf("db.samples changed");
 static auto & s_perfAdd = uperf("db.samples added");
 
@@ -96,89 +69,36 @@ static auto & s_perfAdd = uperf("db.samples added");
 ***/
 
 //===========================================================================
-constexpr uint32_t pagesPerSegment(size_t pageSize) {
-    static_assert(CHAR_BIT == 8);
-    return uint32_t(CHAR_BIT * pageSize / 2);
-}
-
-//===========================================================================
-constexpr size_t segmentSize(size_t pageSize) {
-    static_assert(CHAR_BIT == 8);
-    return pageSize * pagesPerSegment(pageSize);
-}
-
-//===========================================================================
-constexpr pair<pgno_t, size_t> segmentPage(pgno_t pgno, size_t pageSize) {
-    auto pps = pagesPerSegment(pageSize);
-    auto segPage = pgno / pps * pps;
-    auto segPos = pgno % pps;
-    return {(pgno_t) segPage, segPos};
-}
-
-//===========================================================================
-constexpr size_t sampleTypeSize(DbSampleType type) {
-    switch (type) {
-    case kSampleTypeInvalid:
-    case kSampleTypes:
-        break;
-    case kSampleTypeFloat32: return sizeof(float);
-    case kSampleTypeFloat64: return sizeof(double);
-    case kSampleTypeInt8: return sizeof(int8_t);
-    case kSampleTypeInt16: return sizeof(int16_t);
-    case kSampleTypeInt32: return sizeof(int32_t);
-    }
-    assert(!"invalid DbSampleType enum value");
-    return 0;
-}
-
-//===========================================================================
-constexpr size_t samplesPerPage(DbSampleType type, size_t pageSize) {
-    return (pageSize - offsetof(DbData::SamplePage, samples))
-        / sampleTypeSize(type);
-}
-
-//===========================================================================
 static void noSamples(
     IDbDataNotify * notify,
     uint32_t id,
     string_view name,
-    DbSampleType stype,
-    TimePoint first,
-    Duration interval
+    TimePoint first
 ) {
     if (notify) {
         DbSeriesInfo info{};
         info.id = id;
         info.name = name;
-        info.type = stype;
         info.first = first;
         info.last = first;
-        info.interval = interval;
         if (notify->onDbSeriesStart(info))
             notify->onDbSeriesEnd(id);
     }
 }
 
-
-/****************************************************************************
-*
-*   DbData
-*
-***/
-
 //===========================================================================
-DbData::MetricPosition DbData::getMetricPos(uint32_t id) const {
-    shared_lock lk{m_mposMut};
-    if (id >= m_metricPos.size())
-        return {};
-    return m_metricPos[id];
-}
-
-//===========================================================================
-void DbData::setMetricPos(uint32_t id, MetricPosition const & mi) {
-    shared_lock lk{m_mposMut};
-    assert(id < m_metricPos.size());
-    m_metricPos[id] = mi;
+static bool reportSample(
+    IDbDataNotify * notify,
+    unsigned * count,
+    DbSeriesInfo * dsi,
+    const DbSample & sample
+) {
+    if (!*count++) {
+        dsi->first = sample.time;
+        if (!notify->onDbSeriesStart(*dsi))
+            return false;
+    }
+    return notify->onDbSample(dsi->id, sample.time, sample.value);
 }
 
 
@@ -187,6 +107,39 @@ void DbData::setMetricPos(uint32_t id, MetricPosition const & mi) {
 *   Metric index
 *
 ***/
+
+//===========================================================================
+bool DbData::findMetricInfoPage(
+    DbTxn const & txn,
+    pgno_t * out,
+    uint32_t id
+) const {
+    string data;
+    shared_lock lk{m_mndxMut};
+    return radixFind(txn, out, m_infoIndexRoot, id);
+}
+
+//===========================================================================
+bool DbData::findMetricName(
+    DbTxn const & txn,
+    string * out,
+    uint32_t id
+) const {
+    shared_lock lk{m_mndxMut};
+    return indexFind(txn, out, m_nameIndexRoot, toKey(id));
+}
+
+//===========================================================================
+bool DbData::findMetricId(
+    DbTxn const & txn,
+    uint32_t * out,
+    string_view name
+) const {
+    string data;
+    shared_lock lk{m_mndxMut};
+    return indexFind(txn, &data, m_infoIndexRoot, name)
+        && fromKey(out, data);
+}
 
 //===========================================================================
 void DbData::metricClearCounters() {
@@ -205,12 +158,8 @@ size_t DbData::metricNameSize() const {
 
 //===========================================================================
 void DbData::metricDestructPage (DbTxn & txn, pgno_t pgno) {
-    auto mp = txn.viewPage<MetricPage>(pgno);
-    radixDestruct(txn, mp->hdr);
+    indexDestructPage(txn, pgno);
 
-    unique_lock lk{m_mposMut};
-    m_metricPos[mp->hdr.id] = {};
-    m_numMetrics -= 1;
     s_perfCount -= 1;
 }
 
@@ -236,43 +185,36 @@ bool DbData::loadMetrics (
         return true;
     }
 
-    if (p->type == DbPageType::kMetric) {
-        auto mp = reinterpret_cast<MetricPage const *>(p);
-        if (notify) {
-            DbSeriesInfo info;
-            info.id = mp->hdr.id;
-            info.name = mp->name;
-            info.type = mp->sampleType;
-            info.last = info.first + mp->retention;
-            info.interval = mp->interval;
-            if (!notify->onDbSeriesStart(info))
-                return false;
-        }
-        pgno_t lastPage;
-        if (!radixFind(txn, &lastPage, pgno, mp->lastPagePos)
-            && mp->lastPageFirstTime
-        ) {
-            return false;
-        }
-        if (appStopping())
-            return false;
-
-        if (m_metricPos.size() <= mp->hdr.id)
-            m_metricPos.resize(mp->hdr.id + 1);
-        auto & mi = m_metricPos[mp->hdr.id];
-        mi.infoPage = mp->hdr.pgno;
-        mi.interval = mp->interval;
-        mi.lastPage = lastPage;
-        mi.sampleType = mp->sampleType;
-
-        s_perfCount += 1;
-        m_numMetrics += 1;
-        return true;
+    if (p->type != DbPageType::kMetric) {
+        logMsgError() << "Bad metric page #" << pgno << ", type "
+            << (unsigned)p->type;
+        return false;
     }
 
-    logMsgError() << "Bad metric page #" << pgno << ", type "
-        << (unsigned) p->type;
-    return false;
+    // metric page
+    auto mp = reinterpret_cast<MetricPage const *>(p);
+    string name;
+    if (!indexFind(txn, &name, m_nameIndexRoot, toKey(mp->hdr.id))) {
+        logMsgError() << "Name not found for metric #" << mp->hdr.id
+            << ", at page #" << pgno;
+        return false;
+    }
+    if (notify) {
+        DbSeriesInfoEx info;
+        info.id = mp->hdr.id;
+        info.name = name;
+        info.last = info.first + mp->retention;
+        info.retention = mp->retention;
+        info.creation = mp->creation;
+        if (!notify->onDbSeriesStart(info))
+            return false;
+    }
+    if (appStopping())
+        return false;
+
+    s_perfCount += 1;
+    m_numMetrics += 1;
+    return true;
 }
 
 //===========================================================================
@@ -287,57 +229,35 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     txn.logMetricInit(
         pgno,
         id,
-        name,
         timeNow(),
-        kDefaultSampleType,
-        kDefaultRetention,
-        kDefaultInterval
+        kDefaultRetention
     );
 
-    // update index
-    {
-        scoped_lock lk{m_mndxMut};
-        bool inserted [[maybe_unused]] = radixInsertOrAssign(
-            txn,
-            kMetricIndexPageNum,
-            id,
-            pgno
-        );
-        assert(inserted);
-        s_perfCount += 1;
-    }
-
-    auto mp = txn.viewPage<MetricPage>(pgno);
-    MetricPosition mi = {};
-    mi.infoPage = mp->hdr.pgno;
-    mi.interval = mp->interval;
-    mi.sampleType = mp->sampleType;
-
-    shared_lock lk{m_mposMut};
-    if (id >= m_metricPos.size()) {
-        lk.unlock();
-        {
-            unique_lock lk{m_mposMut};
-            if (id >= m_metricPos.size())
-                m_metricPos.resize(id + 1);
-        }
-        lk.lock();
-    }
-
-    assert(!m_metricPos[id].infoPage);
-    m_metricPos[id] = mi;
+    // update indexes
+    scoped_lock lk{m_mndxMut};
+    bool inserted [[maybe_unused]] = radixInsertOrAssign(
+        txn,
+        m_infoIndexRoot,
+        id,
+        pgno
+    );
+    assert(inserted);
+    auto data = string_view{ (char *)&id, sizeof(id) };
+    inserted = indexUpdate(txn, m_idIndexRoot, name, data);
+    assert(inserted);
+    inserted = indexUpdate(txn, m_nameIndexRoot, data, name);
+    assert(inserted);
     m_numMetrics += 1;
+
+    s_perfCount += 1;
 }
 
 //===========================================================================
 void DbData::onLogApplyMetricInit(
     void * ptr,
     uint32_t id,
-    string_view name,
     TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
+    Duration retention
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     if (mp->hdr.type == DbPageType::kFree) {
@@ -347,28 +267,25 @@ void DbData::onLogApplyMetricInit(
     }
     mp->hdr.type = mp->kPageType;
     mp->hdr.id = id;
+    mp->ndxAvail = (uint16_t) m_pageSize - offsetof(MetricPage, samples);
     mp->creation = creation;
-    mp->sampleType = sampleType;
     mp->retention = retention;
-    mp->interval = interval;
-    auto count = name.copy(mp->name, metricNameSize() - 1);
-    auto rd = radixData(mp);
-    memset(mp->name + count, 0, (char *) rd - mp->name - count);
-    rd->height = 0;
-    rd->numPages = entriesPerMetricPage();
 }
 
 //===========================================================================
 bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
-    auto mi = getMetricPos(id);
-    if (mi.infoPage) {
-        *name = txn.viewPage<MetricPage>(mi.infoPage)->name;
-        auto rp = txn.viewPage<RadixPage>(kMetricIndexPageNum);
-        scoped_lock lk{m_mndxMut};
-        radixErase(txn, rp->hdr, id, id + 1);
-        return true;
-    }
-    return false;
+    auto key = toKey(id);
+
+    scoped_lock lk{m_mndxMut};
+    if (!indexFind(txn, name, m_nameIndexRoot, key))
+        return false;
+
+    m_numMetrics -= 1;
+    indexErase(txn, m_nameIndexRoot, key);
+    indexErase(txn, m_idIndexRoot, *name);
+    auto rp = txn.viewPage<RadixPage>(m_infoIndexRoot);
+    radixErase(txn, rp->hdr, id, id + 1);
+    return true;
 }
 
 //===========================================================================
@@ -377,43 +294,25 @@ void DbData::updateMetric(
     uint32_t id,
     DbMetricInfo const & from
 ) {
-    assert(from.name.empty());
-    // TODO: validate interval, retention, and sample type
+    // TODO: validate retention
 
-    auto mi = getMetricPos(id);
-    if (!mi.infoPage)
+    pgno_t mpno;
+    if (!findMetricInfoPage(txn, &mpno, id))
         return;
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+
+    auto mp = txn.viewPage<MetricPage>(mpno);
     DbMetricInfo info = {};
     info.retention = from.retention.count() ? from.retention : mp->retention;
-    info.interval = from.interval.count() ? from.interval : mp->interval;
-    info.type = from.type ? from.type : mp->sampleType;
     info.creation = from.creation ? from.creation : mp->creation;
-    if (mp->retention == info.retention
-        && mp->interval == info.interval
-        && mp->sampleType == info.type
-        && mp->creation == info.creation
+    if (mp->retention != info.retention
+        || mp->creation != info.creation
     ) {
-        return;
+        txn.logMetricUpdate(
+            mpno,
+            info.creation,
+            info.retention
+        );
     }
-
-    // Remove all existing samples
-    radixDestruct(txn, mp->hdr);
-    txn.logMetricUpdate(
-        mi.infoPage,
-        info.creation,
-        info.type,
-        info.retention,
-        info.interval
-    );
-
-    mi.interval = info.interval;
-    mi.sampleType = info.type;
-    mi.lastPage = {};
-    mi.pageFirstTime = {};
-    mi.pageLastSample = 0;
-    shared_lock lk{m_mposMut};
-    m_metricPos[id] = mi;
 }
 
 //===========================================================================
@@ -422,22 +321,23 @@ void DbData::getMetricInfo(
     DbTxn const & txn,
     uint32_t id
 ) {
-    auto mi = loadMetricPos(txn, id);
-    if (!mi.infoPage)
-        return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
+    pgno_t mpno;
+    if (!findMetricInfoPage(txn, &mpno, id))
+        return noSamples(notify, id, {}, {});
+    string name;
+    bool found [[maybe_unused]] = findMetricName(txn, &name, id);
+    assert(found);
 
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.viewPage<MetricPage>(mpno);
     DbSeriesInfoEx info;
     info.id = id;
-    info.name = mp->name;
-    info.type = mp->sampleType;
-    if (!mi.pageFirstTime) {
-        info.last = info.first + mp->retention;
-    } else {
-        info.last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
+    info.name = name;
+    if (auto num = mp->numSamples) {
+        info.last = mp->samples[num - 1].time;
         info.first = info.last - mp->retention;
+    } else {
+        info.last = info.first + mp->retention;
     }
-    info.interval = mp->interval;
     info.retention = mp->retention;
     info.creation = mp->creation;
     if (notify->onDbSeriesStart(info))
@@ -448,22 +348,12 @@ void DbData::getMetricInfo(
 void DbData::onLogApplyMetricUpdate(
     void * ptr,
     TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
+    Duration retention
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->kPageType);
     mp->creation = creation;
-    mp->sampleType = sampleType;
     mp->retention = retention;
-    mp->interval = interval;
-    mp->lastPagePos = 0;
-    mp->lastPageFirstTime = {};
-    mp->lastPageSample = 0;
-    auto rd = radixData(mp);
-    rd->height = 0;
-    memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
 }
 
 
@@ -474,132 +364,99 @@ void DbData::onLogApplyMetricUpdate(
 ***/
 
 //===========================================================================
-size_t DbData::samplesPerPage(DbSampleType type) const {
-    return ::samplesPerPage(type, m_pageSize);
+size_t DbData::maxSamples(MetricPage const * mp) const {
+    return mp->ndxAvail / sizeof(*mp->samples) + mp->numSamples;
 }
 
 //===========================================================================
-template<typename T>
-static double getSample(T const * out) {
-    if constexpr (is_same_v<T, pgno_t>) {
-        if (*out <= kMaxPageNum)
-            return NAN;
-        return (double) *out - kMaxPageNum - kMaxPageNum / 2;
-    } else if constexpr (is_floating_point_v<T>) {
-        return *out;
-    } else if constexpr (is_integral_v<T>) {
-        auto const maxval = numeric_limits<T>::max();
-        auto const minval = -maxval;
-        T ival = *out;
-        if (ival == minval - 1)
-            return NAN;
-        return ival;
-    } else {
-        assert(!"Sample type must be numeric");
-        return NAN;
-    }
+size_t DbData::maxData(SamplePage const * sp) const {
+    return m_pageSize - offsetof(SamplePage, data);
 }
 
 //===========================================================================
-static double getSample(DbData::SamplePage const * sp, size_t pos) {
-    switch (sp->sampleType) {
-    case kSampleTypeFloat32:
-        return getSample(sp->samples.f32 + pos);
-    case kSampleTypeFloat64:
-        return getSample(sp->samples.f64 + pos);
-    case kSampleTypeInt8:
-        return getSample(sp->samples.i8 + pos);
-    case kSampleTypeInt16:
-        return getSample(sp->samples.i16 + pos);
-    case kSampleTypeInt32:
-        return getSample(sp->samples.i32 + pos);
-    default:
-        assert(!"Unknown sample type");
-        return NAN;
-    }
-}
-
-//===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(DbTxn const & txn, uint32_t id) {
-    auto mi = getMetricPos(id);
-
-    // Update metric info from sample page if it has no page data.
-    if (mi.infoPage && mi.lastPage && !mi.pageFirstTime) {
-        if (mi.lastPage > kMaxPageNum) {
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-            mi.pageFirstTime = mp->lastPageFirstTime;
-            mi.pageLastSample = mp->lastPageSample;
-        } else {
-            auto sp = txn.viewPage<SamplePage>(mi.lastPage);
-            mi.pageFirstTime = sp->pageFirstTime;
-            mi.pageLastSample = sp->pageLastSample;
-        }
-        setMetricPos(id, mi);
-    }
-    return mi;
-}
-
-//===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(
-    DbTxn & txn,
-    uint32_t id,
-    TimePoint time
+void DbData::onLogApplyMetricEraseSamples(
+    void * ptr,
+    size_t count,
+    TimePoint lastIndexTime
 ) {
-    auto mi = loadMetricPos(txn, id);
-    if (!mi.infoPage || mi.lastPage)
-        return mi;
-
-    // metric has no sample pages
-    // create empty page that covers the requested time
-
-    // round time down to metric's sampling interval
-    time -= time.time_since_epoch() % mi.interval;
-
-    auto lastSample = (uint16_t) (id % samplesPerPage(mi.sampleType));
-    auto pageTime = time - lastSample * mi.interval;
-    auto spno = allocPgno(txn);
-    txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
-    txn.logMetricUpdateSamples(mi.infoPage, 0, pageTime, (size_t) -1, spno);
-
-    mi.lastPage = spno;
-    mi.pageFirstTime = pageTime;
-    mi.pageLastSample = lastSample;
-    setMetricPos(id, mi);
-    return mi;
-}
-
-//===========================================================================
-void DbData::onLogApplyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->kPageType);
-    mp->lastPagePos = 0;
-    mp->lastPageFirstTime = {};
-    mp->lastPageSample = 0;
-    auto rd = radixData(mp);
-    rd->height = 0;
-    memset(rd->pages, 0, rd->numPages * sizeof(*rd->pages));
+    if (lastIndexTime)
+        mp->lastIndexTime = lastIndexTime;
+    if (count) {
+        if (count == -1) {
+            memset(mp->samples, 0, mp->numSamples * sizeof(*mp->samples));
+            mp->numSamples = 0;
+        } else {
+            assert(count < mp->numSamples);
+            mp->numSamples -= (uint16_t) count;
+            memmove(
+                mp->samples,
+                mp->samples + count,
+                mp->numSamples * sizeof(*mp->samples)
+            );
+            memset(
+                mp->samples + mp->numSamples,
+                0,
+                count * sizeof(*mp->samples)
+            );
+        }
+    }
 }
 
 //===========================================================================
-void DbData::onLogApplyMetricUpdateSamples(
+void DbData::onLogApplyMetricUpdateSample(
     void * ptr,
     size_t pos,
-    TimePoint refTime,
-    size_t refSample,
-    pgno_t refPage
+    double value,
+    double dv
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->kPageType);
-    if (refTime) {
-        assert(pos != -1);
-        mp->lastPagePos = (unsigned) pos;
-        mp->lastPageFirstTime = refTime;
+    assert(pos < mp->numSamples);
+    if (isfinite(dv)) {
+        mp->samples[pos].value += dv;
+    } else {
+        mp->samples[pos].value = value;
     }
-    mp->lastPageSample = (uint16_t) refSample;
-    if (refPage) {
-        auto rd = radixData(mp);
-        rd->pages[pos] = refPage;
+}
+
+//===========================================================================
+void DbData::onLogApplyMetricInsertSample(
+    void * ptr,
+    size_t pos,
+    Duration dt,
+    double value,
+    double dv
+) {
+    auto mp = static_cast<MetricPage *>(ptr);
+    assert(mp->hdr.type == mp->kPageType);
+    assert(mp->numSamples < maxSamples(mp));
+
+    if (pos >= mp->numSamples) {
+        assert(pos == mp->numSamples);
+    } else {
+        copy_backward(
+            mp->samples + pos,
+            mp->samples + mp->numSamples,
+            mp->samples + pos + 1
+        );
     }
+    auto & s = mp->samples[pos];
+    if (!pos) {
+        s = { TimePoint(dt), dv };
+    } else {
+        s = mp->samples[pos - 1];
+        s.time += dt;
+        if (isfinite(dv)) {
+            s.value += dv;
+        } else {
+            s.value = value;
+        }
+    }
+    assert(pos == mp->numSamples || s.time < mp->samples[pos + 1].time);
+    mp->numSamples += 1;
+    return;
 }
 
 //===========================================================================
@@ -609,454 +466,215 @@ void DbData::updateSample(
     TimePoint time,
     double value
 ) {
-    assert(time);
-    auto const kInvalidPos = (size_t) -1;
-
-    // ensure all info about the last page is loaded, the expectation is that
-    // almost all updates are to the last page.
-    auto mi = loadMetricPos(txn, id, time);
-    if (!mi.infoPage)
+    if (isnan(value)) {
+        s_perfNan += 1;
         return;
+    }
+    pgno_t mpno;
+    if (!findMetricInfoPage(txn, &mpno, id))
+        return;
+    auto mp = txn.viewPage<MetricPage>(mpno);
 
-    // round time down to metric's sampling interval
-    time -= time.time_since_epoch() % mi.interval;
-
-    auto spp = samplesPerPage(mi.sampleType);
-    auto pageInterval = spp * mi.interval;
-    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
-
-    // one interval past last time on page (aka first time on next page)
-    auto endPageTime = mi.pageFirstTime + pageInterval;
-
-    if (time <= lastSampleTime) {
-        // updating historical sample
-        auto spno = mi.lastPage;
-        auto sppos = kInvalidPos;
-        auto pageTime = mi.pageFirstTime;
-        auto ent = kInvalidPos;
-        if (time >= mi.pageFirstTime) {
-            // updating sample on tip page
-            assert(spno);
-        } else {
-            // updating sample on old page
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-            auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
-            if (time < firstSampleTime) {
-                // sample older than retention, ignore it
-                s_perfAncient += 1;
-                return;
-            }
-
-            auto numSamples = mp->retention / mi.interval;
-            auto numPages = (numSamples - 1) / spp + 1;
-            auto poff = (mi.pageFirstTime - time + pageInterval - mi.interval)
-                / pageInterval;
-            pageTime = mi.pageFirstTime - poff * pageInterval;
-            sppos = (mp->lastPagePos + numPages - poff) % numPages;
-            if (sppos == mp->lastPagePos) {
-                // Still on the tip page of the ring buffer, but in the old
-                // samples section.
-                sppos = kInvalidPos;
-                ent = (time - pageTime) / mi.interval;
-            } else {
-                radixFind(txn, &spno, mi.infoPage, sppos);
-                if (!spno) {
-                    spno = sampleMakePhysical(
-                        txn,
-                        id,
-                        mi,
-                        sppos,
-                        pageTime,
-                        spp - 1
-                    );
-                }
-            }
-        }
-        if (spno > kMaxPageNum) {
-            auto fill = getSample(&spno);
-            if (fill == value) {
-                s_perfDup += 1;
-                return;
-            }
-            if (time >= mi.pageFirstTime // new samples section on tip page
-                || ent != kInvalidPos    // old section on tip page
-            ) {
-                // converting last page
-                assert(sppos == kInvalidPos);
-                auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-                spno = sampleMakePhysical(
-                    txn,
-                    id,
-                    mi,
-                    mp->lastPagePos,
-                    mp->lastPageFirstTime,
-                    mp->lastPageSample,
-                    spno
-                );
-                // update references to last page
-                mi.lastPage = spno;
-                setMetricPos(id, mi);
-            } else {
-                // converting old page
-                spno = sampleMakePhysical(
-                    txn,
-                    id,
-                    mi,
-                    sppos,
-                    pageTime,
-                    spp - 1,
-                    spno
-                );
-            }
-        }
-        auto sp = txn.viewPage<SamplePage>(spno);
-        if (ent == kInvalidPos) {
-            assert(time >= sp->pageFirstTime);
-            ent = (time - sp->pageFirstTime) / mi.interval;
-        }
-        assert(ent < (unsigned) spp);
-        auto ref = getSample(sp, ent);
-        if (ref == value) {
+    auto firstSampleTime = mp->numSamples
+        ? mp->samples[mp->numSamples - 1].time - mp->retention
+        : TimePoint{};
+    if (time < firstSampleTime) {
+        // sample older than retention, ignore it
+        s_perfAncient += 1;
+        return;
+    }
+    auto ii = equal_range(
+        mp->samples,
+        mp->samples + mp->numSamples,
+        DbSample{time},
+        [](auto & a, auto & b) { return a.time < b.time; }
+    );
+    auto pos = ii.first - mp->samples;
+    if (ii.first != ii.second) {
+        if (value == ii.first->value) {
             s_perfDup += 1;
         } else {
-            if (isnan(ref)) {
-                if (isnan(value)) {
-                    s_perfDup += 1;
-                    return;
-                }
-                s_perfAdd += 1;
-            } else {
-                s_perfChange += 1;
-            }
-            txn.logSampleUpdateTxn(spno, ent, value, false);
-            if (sampleTryMakeVirtual(txn, mi, spno))
-                setMetricPos(id, mi);
-        }
-        return;
-    }
-
-    //-----------------------------------------------------------------------
-    // after last known sample
-
-    // If past the end of the page, check if it's also past the retention of
-    // all pages.
-    if (time >= endPageTime) {
-        auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-        // further in the future than the retention period? remove all samples
-        // and add as new initial sample.
-        if (time >= lastSampleTime + mp->retention) {
-            radixDestruct(txn, mp->hdr);
-            txn.logMetricClearSamples(mi.infoPage);
-            mi.lastPage = {};
-            mi.pageFirstTime = {};
-            mi.pageLastSample = 0;
-            setMetricPos(id, mi);
-            updateSample(txn, id, time, value);
-            return;
-        }
-    }
-
-    // update last page
-    if (time < endPageTime) {
-        auto ent = (uint16_t) ((time - mi.pageFirstTime) / mi.interval);
-        s_perfAdd += 1;
-        if (mi.lastPage > kMaxPageNum) {
-            auto fill = getSample(&mi.lastPage);
-            if (fill == value && ent == mi.pageLastSample + 1) {
-                txn.logMetricUpdateSamplesTxn(mi.infoPage, ent);
-                mi.pageLastSample = ent;
-                setMetricPos(id, mi);
-                return;
-            }
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-            mi.lastPage = sampleMakePhysical(
-                txn,
-                id,
-                mi,
-                mp->lastPagePos,
-                mi.pageFirstTime,
-                mi.pageLastSample,
-                mi.lastPage
-            );
-        }
-        if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-            auto sp = txn.viewPage<SamplePage>(mi.lastPage);
-            assert(mi.pageFirstTime == sp->pageFirstTime);
-            assert(mi.pageLastSample == sp->pageLastSample);
-        }
-        if (ent == mi.pageLastSample + 1) {
-            txn.logSampleUpdateTxn(mi.lastPage, ent, value, true);
-            mi.pageLastSample = ent;
-            if (ent == spp - 1)
-                sampleTryMakeVirtual(txn, mi, mi.lastPage);
-        } else {
-            txn.logSampleUpdate(
-                mi.lastPage,
-                mi.pageLastSample + 1,
-                ent,
+            s_perfChange += 1;
+            txn.logMetricUpdateSample(
+                mpno,
+                pos,
                 value,
-                true
+                ii.first->value
             );
-            mi.pageLastSample = ent;
         }
-        setMetricPos(id, mi);
         return;
     }
-
-    if (mi.lastPage <= kMaxPageNum) {
-        txn.logSampleUpdate(mi.lastPage, mi.pageLastSample + 1, spp, NAN, true);
-    } else {
-        if (mi.pageLastSample + 1 < spp) {
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-            mi.lastPage = sampleMakePhysical(
-                txn,
-                id,
-                mi,
-                mp->lastPagePos,
-                mi.pageFirstTime,
-                mi.pageLastSample,
-                mi.lastPage
+    if (mp->numSamples == maxSamples(mp)) {
+        if (mp->samples[0].time < firstSampleTime) {
+            assert(!mp->lastIndexTime);
+            auto i = lower_bound(
+                mp->samples,
+                mp->samples + mp->numSamples,
+                DbSample{firstSampleTime},
+                [](auto & a, auto & b) { return a.time < b.time; }
             );
-            txn.logSampleUpdate(
-                mi.lastPage,
-                mi.pageLastSample + 1,
-                spp,
-                NAN,
-                true
-            );
-        }
-    }
-    mi.pageLastSample = (uint16_t) spp;
-
-    //-----------------------------------------------------------------------
-    // sample is after last page
-
-    // delete pages between last page and the one the sample is on
-    auto num = (time - endPageTime) / pageInterval;
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    auto numSamples = mp->retention / mp->interval;
-    auto numPages = (numSamples - 1) / spp + 1;
-    auto first = (mp->lastPagePos + 1) % numPages;
-    auto last = first + num;
-    if (num) {
-        endPageTime += num * pageInterval;
-        if (last <= numPages) {
-            radixErase(txn, mp->hdr, first, last);
+            auto count = i - mp->samples;
+            txn.logMetricEraseSamples(mpno, count);
+            assert(count <= pos);
+            pos -= count;
         } else {
-            last %= numPages;
-            radixErase(txn, mp->hdr, first, numPages);
-            radixErase(txn, mp->hdr, 0, last);
+            sampleIndexErase(txn, mpno, {}, firstSampleTime);
+            sampleIndexMerge(txn, mpno, mp->samples, mp->numSamples);
+            txn.logMetricEraseSamples(
+                mpno,
+                (size_t) -1,
+                mp->samples[pos - 1].time
+            );
+            pos = 0;
         }
     }
 
-    // update reference to last sample page
-    pgno_t lastPage;
-    if (radixFind(txn, &lastPage, mi.infoPage, last)
-        && lastPage <= kMaxPageNum
-    ) {
-        txn.logSampleUpdateTime(lastPage, endPageTime);
-    } else {
-        lastPage = sampleMakePhysical(
-            txn,
-            id,
-            mi,
-            last,
-            endPageTime,
-            0,
-            lastPage
+    s_perfAdd += 1;
+    auto prev = pos ? mp->samples[pos - 1] : DbSample{};
+    auto dt = time - prev.time;
+    txn.logMetricInsertSample(mpno, pos, dt, value, prev.value);
+    return;
+}
+
+//===========================================================================
+void DbData::sampleIndexSplit(
+    DbTxn & txn,
+    pgno_t mpno,
+    DbData::SamplePage const * sp
+) {
+    // Add additional sample page to the index and move half of the data on
+    // sp to it.
+    assert(!"Not implemented");
+}
+
+//===========================================================================
+void DbData::sampleIndexErase(
+    DbTxn & txn,
+    pgno_t mpno,
+    TimePoint first,
+    TimePoint last
+) {
+    assert(!"Not implemented");
+}
+
+//===========================================================================
+void DbData::sampleIndexMerge(
+    DbTxn & txn,
+    pgno_t mpno,
+    const DbSample samples[],
+    size_t count
+) {
+    assert(count);
+    pgno_t spno;
+    auto mp = txn.viewPage<SamplePage>(mpno);
+    for (size_t base = 0; count; count = base) {
+        if (!indexFindLeafPgno(txn, &spno, mpno, toKey(samples[count].time))) {
+            // Data completely before all existing samples in index.
+            //  - add new page to contain new samples
+            //  - merge samples onto new page
+            spno = allocPgno(txn);
+            txn.logSampleInit(spno, mp->hdr.id);
+            auto inserted [[maybe_unused]] =
+                indexInsertLeafPgno(txn, mpno, toKey(samples[base].time), spno);
+            assert(inserted);
+        }
+
+        auto sp = txn.viewPage<SamplePage>(spno);
+        auto unpack = DbUnpackIter(sp->data, sp->ndxUsed, sp->bitsUnused);
+        base = 0;
+        if (unpack) {
+            auto si = lower_bound(
+                samples,
+                samples + count,
+                DbSample{unpack->time},
+                [](auto & a, auto & b) { return a.time < b.time; }
+            );
+            base = si - samples;
+        }
+
+        auto prev = DbUnpackIter{}; // points to last sample before update
+        auto time = samples[base].time;
+        for (; unpack; ++unpack) {
+            if (unpack->time >= time) {
+                if (unpack->time == time)
+                    ++unpack;
+                break;
+            }
+            prev = unpack;
+        }
+
+        auto before = (size_t) 0;
+        if (prev) {
+            before = maxData(sp)
+                - sp->ndxUsed + prev.size()
+                - (prev.unusedBits() > 0);
+        }
+        string buf(maxData(sp) - before, '\0');
+        if (prev.unusedBits())
+            buf[0] = sp->data[before];
+        DbPack pack(prev);
+        pack.retarget(buf.data(), buf.size(), prev.unusedBits());
+
+        auto mergeStep = [&](DbSample const & samp) {
+            if (pack.put(samp.time, samp.value))
+                return;
+            if (pack.size()) {
+                txn.logSampleUpdate(
+                    sp->hdr.pgno,
+                    before,
+                    pack.view(),
+                    pack.unusedBits()
+                );
+            }
+            spno = allocPgno(txn);
+            txn.logSampleInit(spno, mp->hdr.id);
+            auto inserted [[maybe_unused]] =
+                indexInsertLeafPgno(txn, mpno, toKey(samp.time), spno);
+            assert(inserted);
+            sp = txn.viewPage<SamplePage>(spno);
+            buf.assign(maxData(sp), '\0');
+            before = 0;
+            pack = DbPack(buf.data(), buf.size(), 0);
+        };
+
+        auto pos = base;
+        for (; unpack; ++unpack) {
+            auto && samp = *unpack;
+            while (samples[pos].time <= samp.time) {
+                mergeStep(samples[pos]);
+                pos += 1;
+                if (samples[pos].time == samp.time) {
+                    if (!++unpack)
+                        goto REST_OF_SAMPLES;
+                }
+                if (pos == count)
+                    goto REST_OF_UNPACK;
+            }
+            mergeStep(samp);
+        }
+
+    REST_OF_SAMPLES:
+        for (; pos < count; ++pos)
+            mergeStep(samples[pos]);
+        goto NEXT_BASE;
+
+    REST_OF_UNPACK:
+        for (auto && samp : unpack)
+            mergeStep(samp);
+
+    NEXT_BASE:
+        // log update
+        txn.logSampleUpdate(
+            sp->hdr.pgno,
+            before,
+            pack.view(),
+            pack.unusedBits()
         );
     }
-    txn.logMetricUpdateSamples(
-        mi.infoPage,
-        last,
-        endPageTime,
-        0,
-        {}
-    );
-
-    mi.lastPage = lastPage;
-    mi.pageFirstTime = endPageTime;
-    mi.pageLastSample = 0;
-    setMetricPos(id, mi);
-
-    // write sample to new last page
-    updateSample(txn, id, time, value);
 }
 
 //===========================================================================
-template<typename T>
-static void setSample(T * out, double value) {
-    if constexpr (is_same_v<T, pgno_t>) {
-        auto oval = isnan(value) ? 0
-            : value < kMinVirtualSample ? kMinVirtualSample
-            : value > kMaxVirtualSample ? kMaxVirtualSample
-            : (int) value + kMaxPageNum + kMaxPageNum / 2;
-        *out = (T) oval;
-    } else if constexpr (is_floating_point_v<T>) {
-        *out = (T) value;
-    } else if constexpr (is_integral_v<T>) {
-        auto const maxval = numeric_limits<T>::max();
-        auto const minval = -maxval;
-        *out = isnan(value) ? minval - 1
-            : value < minval ? minval
-            : value > maxval ? maxval
-            : (T) value;
-    } else {
-        assert(!"Sample type must be numeric");
-        *out = NAN;
-    }
-}
-
-//===========================================================================
-static void setSample(
-    DbData::SamplePage * sp,
-    size_t pos,
-    double value
-) {
-    switch (sp->sampleType) {
-    case kSampleTypeFloat32:
-        return setSample(sp->samples.f32 + pos, value);
-    case kSampleTypeFloat64:
-        return setSample(sp->samples.f64 + pos, value);
-    case kSampleTypeInt8:
-        return setSample(sp->samples.i8 + pos, value);
-    case kSampleTypeInt16:
-        return setSample(sp->samples.i16 + pos, value);
-    case kSampleTypeInt32:
-        return setSample(sp->samples.i32 + pos, value);
-    default:
-        assert(!"unknown sample type");
-    }
-}
-
-//===========================================================================
-template<typename T>
-static void setSamples(
-    T * out,
-    size_t count,
-    double value
-) {
-    if (count) {
-        setSample(out, value);
-        for (auto i = 1; i < count; ++i)
-            out[i] = *out;
-    }
-}
-
-//===========================================================================
-static void setSamples(
-    DbData::SamplePage * sp,
-    size_t firstPos,
-    size_t lastPos,
-    double value
-) {
-    switch (sp->sampleType) {
-    case kSampleTypeFloat32:
-        setSamples(sp->samples.f32 + firstPos, lastPos - firstPos, value);
-        break;
-    case kSampleTypeFloat64:
-        setSamples(sp->samples.f64 + firstPos, lastPos - firstPos, value);
-        break;
-    case kSampleTypeInt8:
-        setSamples(sp->samples.i8 + firstPos, lastPos - firstPos, value);
-        break;
-    case kSampleTypeInt16:
-        setSamples(sp->samples.i16 + firstPos, lastPos - firstPos, value);
-        break;
-    case kSampleTypeInt32:
-        setSamples(sp->samples.i32 + firstPos, lastPos - firstPos, value);
-        break;
-    default:
-        assert(!"unknown sample type");
-        break;
-    }
-}
-
-//===========================================================================
-pgno_t DbData::sampleMakePhysical(
-    DbTxn & txn,
-    uint32_t id,
-    DbData::MetricPosition & mi,
-    size_t sppos,
-    TimePoint pageTime,
-    size_t lastSample,
-    pgno_t vpage
-) {
-    auto fill = (double) NAN;
-    if (vpage) {
-        fill = getSample(&vpage);
-        assert(!isnan(fill));
-    }
-    auto spno = allocPgno(txn);
-    txn.logSampleInit(
-        spno,
-        id,
-        mi.sampleType,
-        pageTime,
-        lastSample,
-        fill
-    );
-    bool inserted [[maybe_unused]] = radixInsertOrAssign(
-        txn,
-        mi.infoPage,
-        sppos,
-        spno
-    );
-    assert(inserted == !vpage);
-    return spno;
-}
-
-//===========================================================================
-bool DbData::sampleTryMakeVirtual(
-    DbTxn & txn,
-    DbData::MetricPosition & mi,
-    pgno_t spno
-) {
-    auto sp = txn.viewPage<SamplePage>(spno);
-    auto value = getSample(sp, 0);
-    if (isnan(value))
-        return false;
-    pgno_t vpage;
-    setSample(&vpage, value);
-    if (value != getSample(&vpage))
-        return false;
-
-    auto spp = samplesPerPage(mi.sampleType);
-    for (auto i = 1; i < spp; ++i) {
-        if (value != getSample(sp, i))
-            return false;
-    }
-
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    if (spno == mi.lastPage) {
-        auto sppos = mp->lastPagePos;
-        radixErase(txn, mp->hdr, sppos, sppos + 1);
-        radixInsertOrAssign(txn, mi.infoPage, sppos, vpage);
-        txn.logMetricUpdateSamplesTxn(mi.infoPage, mi.pageLastSample);
-        mi.lastPage = vpage;
-    } else {
-        auto pageInterval = spp * mi.interval;
-        auto numSamples = mp->retention / mp->interval;
-        auto numPages = (numSamples - 1) / spp + 1;
-        auto sptime = sp->pageFirstTime;
-        auto poff = (mi.pageFirstTime - sptime + pageInterval - mi.interval)
-            / pageInterval;
-        auto sppos = (mp->lastPagePos + numPages - poff) % numPages;
-        radixErase(txn, mp->hdr, sppos, sppos + 1);
-        radixInsertOrAssign(txn, mi.infoPage, sppos, vpage);
-    }
-    return true;
-}
-
-//===========================================================================
-void DbData::onLogApplySampleInit(
-    void * ptr,
-    uint32_t id,
-    DbSampleType sampleType,
-    TimePoint pageTime,
-    size_t lastSample,
-    double fill
-) {
+void DbData::onLogApplySampleInit(void * ptr, uint32_t id) {
     auto sp = static_cast<SamplePage *>(ptr);
     if (sp->hdr.type == DbPageType::kFree) {
         memset((char *) sp + sizeof(sp->hdr), 0, m_pageSize - sizeof(sp->hdr));
@@ -1065,37 +683,25 @@ void DbData::onLogApplySampleInit(
     }
     sp->hdr.type = sp->kPageType;
     sp->hdr.id = id;
-    sp->sampleType = sampleType;
-    sp->pageLastSample = (uint16_t) lastSample;
-    sp->pageFirstTime = pageTime;
-    auto spp = samplesPerPage(sampleType);
-    setSamples(sp, 0, spp, fill);
+    sp->ndxAvail = (uint16_t) maxData(sp);
 }
 
 //===========================================================================
 void DbData::onLogApplySampleUpdate(
     void * ptr,
-    size_t firstPos,
-    size_t lastPos,
-    double value,
-    bool updateLast
+    size_t offset,
+    string_view data,
+    size_t unusedBits
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
-    setSamples(sp, firstPos, lastPos, NAN);
-    if (!isnan(value))
-        setSample(sp, lastPos, value);
-    if (updateLast)
-        sp->pageLastSample = (uint16_t) lastPos;
-}
-
-//===========================================================================
-void DbData::onLogApplySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
-    auto sp = static_cast<SamplePage *>(ptr);
-    assert(sp->hdr.type == sp->kPageType);
-    sp->pageFirstTime = pageTime;
-    sp->pageLastSample = 0;
-    setSample(sp, 0, NAN);
+    auto count = data.size();
+    assert(count && offset + count <= maxData(sp));
+    memcpy(sp->data + offset, data.data(), count);
+    sp->ndxUsed = (uint16_t) (offset + count);
+    sp->ndxAvail = (uint16_t) maxData(sp) - sp->ndxUsed;
+    assert(unusedBits < 8);
+    sp->bitsUnused = (uint8_t) unusedBits;
 }
 
 //===========================================================================
@@ -1104,141 +710,97 @@ void DbData::getSamples(
     IDbDataNotify * notify,
     uint32_t id,
     TimePoint first,
-    TimePoint last,
-    unsigned presamples
+    TimePoint last
 ) {
-    auto mi = loadMetricPos(txn, id);
-    if (!mi.infoPage)
-        return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
-    auto name = string_view(mp->name);
-    auto stype = mp->sampleType;
+    pgno_t mpno;
+    if (!findMetricInfoPage(txn, &mpno, id))
+        return noSamples(notify, id, {}, {});
+    auto mp = txn.viewPage<MetricPage>(mpno);
+    string name;
+    bool found [[maybe_unused]] = findMetricName(txn, &name, id);
+    assert(found);
 
-    // round time to metric's sampling interval
-    first -= first.time_since_epoch() % mi.interval;
-    last -= last.time_since_epoch() % mi.interval;
-    // expand range to include presamples
-    first -= presamples * mi.interval;
+    if (!mp->numSamples)
+        return noSamples(notify, id, name, last);
 
-    if (!mi.lastPage)
-        return noSamples(notify, id, name, stype, last, mi.interval);
-
-    auto lastSampleTime = mi.pageFirstTime + mi.pageLastSample * mi.interval;
-    auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
+    auto lastSampleTime = mp->samples[mp->numSamples - 1].time;
+    auto firstSampleTime = lastSampleTime - mp->retention;
     if (first < firstSampleTime)
         first = firstSampleTime;
     if (last > lastSampleTime)
         last = lastSampleTime;
     if (first > last)
-        return noSamples(notify, id, name, stype, last, mi.interval);
+        return noSamples(notify, id, name, last);
 
-    auto spp = samplesPerPage(stype);
-    auto pageInterval = spp * mi.interval;
-    auto numSamples = mp->retention / mp->interval;
-    auto numPages = (numSamples - 1) / spp + 1;
-
-    // Offset, in pages, from page being processed to the very last sample
-    // page. Must be in [0, numPages - 1]
-    auto poff = (mi.pageFirstTime - first + pageInterval - mi.interval)
-        / pageInterval;
-
-    pgno_t spno;
-    unsigned sppos;
-    if (first >= mi.pageFirstTime) {
-        sppos = mp->lastPagePos;
-        spno = mi.lastPage;
-    } else {
-        sppos = (uint32_t) (mp->lastPagePos + numPages - poff) % numPages;
-        if (!radixFind(txn, &spno, mi.infoPage, sppos))
-            spno = {};
-    }
-
+    auto lower = lower_bound(
+        mp->samples,
+        mp->samples + mp->numSamples,
+        DbSample{first},
+        [](auto & a, auto & b) { return a.time < b.time; }
+    );
+    auto upper = upper_bound(
+        mp->samples,
+        mp->samples + mp->numSamples,
+        DbSample{last},
+        [](auto & a, auto & b) { return a.time < b.time; }
+    );
     DbSeriesInfo dsi;
     dsi.id = id;
     dsi.name = name;
-    dsi.type = stype;
-    dsi.interval = mi.interval;
+    dsi.last = last;
     unsigned count = 0;
+    pgno_t spno;
+    if (!indexFindLeafPgno(txn, &spno, mpno, toKey(first))
+        && !indexFindLeafPgno(txn, &spno, mpno, toKey(first), true)
+    ) {
+        goto REST_OF_UNMERGED;
+    }
     for (;;) {
-        assert(poff == (mi.pageFirstTime - first + pageInterval - mi.interval)
-            / pageInterval);
-        auto fpt = mi.pageFirstTime - poff * pageInterval;
-        if (!spno) {
-            // Missing page, interpreted as all NANs, which means there's
-            // nothing to report and we just advance to first time on next
-            // page.
-            first = fpt + pageInterval;
-        } else {
-            double value = NAN;
-            SamplePage const * sp = nullptr;
-            auto lastSample = spp - 1;
-            if (spno > kMaxPageNum) {
-                // Virtual page, get the cached value that is the same for
-                // every sample on the page.
-                if (sppos == mp->lastPagePos)
-                    lastSample = mp->lastPageSample;
-                value = getSample(&spno);
-            } else {
-                // Physical page, get values from the page
-                sp = txn.viewPage<SamplePage>(spno);
-                if (sppos == mp->lastPagePos) {
-                    assert(sp->pageLastSample != spp);
-                    lastSample = sp->pageLastSample;
-                } else {
-                    assert(fpt == sp->pageFirstTime);
-                }
-            }
-            auto lastPageTime = fpt + lastSample * mi.interval;
-            auto ent = (first - fpt) / mi.interval;
-            if (poff == numPages) {
-                // In the old samples section of the tip page in the ring
-                // buffer.
-                assert(ent);
-                lastPageTime = fpt + pageInterval;
-            }
-            if (last < lastPageTime)
-                lastPageTime = last;
-            for (; first <= lastPageTime; first += mi.interval, ++ent) {
-                if (sp) {
-                    value = getSample(sp, ent);
-                    if (isnan(value))
-                        continue;
-                }
-                if (!count++) {
-                    dsi.first = first;
-                    dsi.last = last + mi.interval;
-                    if (!notify->onDbSeriesStart(dsi))
-                        return;
-                }
-                if (!notify->onDbSample(id, first, value))
-                    return;
-            }
+        auto sp = txn.viewPage<SamplePage>(spno);
+        auto unpack = DbUnpackIter(sp->data, sp->ndxUsed, sp->bitsUnused);
+        for (; unpack; ++unpack) {
+            if (unpack->time >= first)
+                break;
         }
-        if (first > last)
-            break;
+        for (; unpack; ++unpack) {
+            if (unpack->time > last)
+                goto REST_OF_UNMERGED;
+            if (lower < upper) {
+                while (lower->time < unpack->time) {
+                    if (!reportSample(notify, &count, &dsi, *lower))
+                        return;
+                    if (++lower == upper)
+                        goto REPORT_SAMPLE;
+                }
+                if (lower->time == unpack->time) {
+                    if (!reportSample(notify, &count, &dsi, *lower++))
+                        return;
+                    continue;
+                }
+            }
+        REPORT_SAMPLE:
+            if (!reportSample(notify, &count, &dsi, *unpack))
+                return;
+        }
 
         // advance to next page
-        sppos = (sppos + 1) % numPages;
-        radixFind(txn, &spno, mi.infoPage, sppos);
-        poff -= 1;
+        if (!indexFindLeafPgno(txn, &spno, mpno, toKey(unpack->time), true))
+            break;
+    }
+
+REST_OF_UNMERGED:
+    for (; lower < upper; ++lower) {
+        if (!count++) {
+            dsi.first = lower->time;
+            if (!notify->onDbSeriesStart(dsi))
+                return;
+        }
+        if (!notify->onDbSample(id, lower->time, lower->value))
+            return;
     }
     if (!count) {
-        return noSamples(notify, id, name, stype, last, mi.interval);
+        return noSamples(notify, id, name, last);
     } else {
         notify->onDbSeriesEnd(id);
     }
-}
-
-
-/****************************************************************************
-*
-*   Radix index
-*
-***/
-
-//===========================================================================
-uint16_t DbData::entriesPerMetricPage() const {
-    auto off = offsetof(MetricPage, name) + metricNameSize()
-        + offsetof(RadixData, pages);
-    return (uint16_t) (m_pageSize - off) / sizeof(*RadixData::pages);
 }

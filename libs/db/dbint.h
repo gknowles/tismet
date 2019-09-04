@@ -224,6 +224,12 @@ public:
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
 
     void logZeroInit(pgno_t pgno);
+    void logZeroUpdateRoots(
+        pgno_t pgno,
+        pgno_t infoRootPage,
+        pgno_t nameRootPage,
+        pgno_t idRootPage
+    );
     void logPageFree(pgno_t pgno);
     void logSegmentUpdate(pgno_t pgno, pgno_t refPage, bool free);
     void logRadixInit(
@@ -236,60 +242,52 @@ public:
     void logRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
     void logRadixPromote(pgno_t pgno, pgno_t refPage);
     void logRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
+
+    void logIndexLeafInit(pgno_t pgno, uint32_t id);
+
     void logMetricInit(
         pgno_t pgno,
         uint32_t id,
-        std::string_view name,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     );
     void logMetricUpdate(
         pgno_t pgno,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     );
-    void logMetricClearSamples(pgno_t pgno);
-    void logMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample);
-    void logMetricUpdateSamples(
+    void logMetricEraseSamples(
         pgno_t pgno,
-        size_t refPos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
+        size_t count,
+        Dim::TimePoint lastIndexTime = {}
     );
-    void logSampleInit(
-        pgno_t pgno,
-        uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample
-    );
-    void logSampleInit(
-        pgno_t pgno,
-        uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
-    );
-    void logSampleUpdateTxn(
+    void logMetricUpdateSample(
         pgno_t pgno,
         size_t pos,
         double value,
-        bool updateLast
+        double oldValue
     );
+    void logMetricInsertSample(
+        pgno_t pgno,
+        size_t pos,
+        Dim::Duration dt,
+        double value,
+        double oldValue
+    );
+    void logMetricInsertSampleTxn(
+        pgno_t pgno,
+        size_t pos,
+        Dim::Duration dt,
+        double value,
+        double oldValue
+    );
+    void logSampleInit(pgno_t pgno, uint32_t id);
     void logSampleUpdate(
         pgno_t pgno,
-        size_t firstSample,
-        size_t lastSample,
-        double value,
-        bool updateLast
+        size_t offset,
+        std::string_view data,
+        size_t unusedBits = -1
     );
-    void logSampleUpdateTime(pgno_t pgno, Dim::TimePoint pageTime);
 
 private:
     template<typename T>
@@ -333,6 +331,7 @@ public:
     struct ZeroPage;
     struct FreePage;
     struct RadixPage;
+    struct IndexPage;
     struct MetricPage;
     struct SamplePage;
 
@@ -353,14 +352,11 @@ public:
         // EXTENDS BEYOND END OF STRUCT
         RadixData rd;
     };
-
-    struct MetricPosition {
-        Dim::Duration interval;
-        Dim::TimePoint pageFirstTime; // time of first sample on last page
-        pgno_t infoPage;
-        pgno_t lastPage; // page with most recent samples
-        uint16_t pageLastSample; // position of last sample on last page
-        DbSampleType sampleType;
+    struct IndexPage {
+        DbPageHeader hdr;
+        uint16_t ndxHeight;
+        uint16_t ndxUsed;
+        uint16_t ndxAvail;
     };
 
 public:
@@ -402,8 +398,7 @@ public:
         IDbDataNotify * notify,
         uint32_t id,
         Dim::TimePoint first,
-        Dim::TimePoint last,
-        unsigned presamples
+        Dim::TimePoint last
     );
 
     // Inherited via IApplyNotify
@@ -412,6 +407,12 @@ public:
     void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
     void onLogApplyZeroInit(void * ptr) override;
+    void onLogApplyZeroUpdateRoots(
+        void * ptr,
+        pgno_t infoRoot,
+        pgno_t nameRoot,
+        pgno_t idRoot
+    ) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplySegmentUpdate(
         void * ptr,
@@ -436,48 +437,42 @@ public:
         size_t pos,
         pgno_t refPage
     ) override;
+    void onLogApplyIndexLeafInit(void * ptr, uint32_t id) override;
     void onLogApplyMetricInit(
         void * ptr,
         uint32_t id,
-        std::string_view name,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     ) override;
     void onLogApplyMetricUpdate(
         void * ptr,
         Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
+        Dim::Duration retention
     ) override;
-    void onLogApplyMetricClearSamples(void * ptr);
-    void onLogApplyMetricUpdateSamples(
+    void onLogApplyMetricEraseSamples(
+        void * ptr,
+        size_t count,
+        Dim::TimePoint lastIndexTime
+    ) override;
+    void onLogApplyMetricUpdateSample(
         void * ptr,
         size_t pos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
+        double value,
+        double dv
     ) override;
-    void onLogApplySampleInit(
+    void onLogApplyMetricInsertSample(
         void * ptr,
-        uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        size_t pos,
+        Dim::Duration dt,
+        double value,
+        double dv
     ) override;
+    void onLogApplySampleInit(void * ptr, uint32_t id) override;
     void onLogApplySampleUpdate(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
-    ) override;
-    void onLogApplySampleUpdateTime(
-        void * ptr,
-        Dim::TimePoint pageTime
+        size_t offset,
+        std::string_view data,
+        size_t unusedBits
     ) override;
 
 private:
@@ -485,20 +480,98 @@ private:
     RadixData * radixData(MetricPage * mp) const;
     RadixData const * radixData(DbPageHeader const * hdr) const;
 
+    bool findMetricInfoPage(DbTxn const & txn, pgno_t * out, uint32_t id) const;
+    bool findMetricName(
+        DbTxn const & txn,
+        std::string * out,
+        uint32_t id
+    ) const;
+    bool findMetricId(
+        DbTxn const & txn,
+        uint32_t * id,
+        std::string_view name
+    ) const;
     bool loadMetrics(
         DbTxn & txn,
         IDbDataNotify * notify,
-        pgno_t pgno
+        pgno_t infoRootPage
     );
     void metricDestructPage(DbTxn & txn, pgno_t pgno);
     size_t metricNameSize() const;
     void metricClearCounters();
+    size_t maxSamples(MetricPage const * mp) const;
+    size_t maxData(SamplePage const * sp) const;
+
+    void sampleIndexErase(
+        DbTxn & txn,
+        pgno_t mpno,
+        Dim::TimePoint first,
+        Dim::TimePoint last
+    );
+    void sampleIndexMerge(
+        DbTxn & txn,
+        pgno_t mpno,
+        const DbSample samples[],
+        size_t count
+    );
+    void sampleIndexSplit(
+        DbTxn & txn,
+        pgno_t mpno,
+        SamplePage const * sp
+    );
 
     bool loadFreePages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, pgno_t pgno);
 
-    uint16_t entriesPerMetricPage() const;
+    static std::string toKey(uint32_t id);
+    static std::string toKey(Dim::TimePoint time);
+    static bool fromKey(uint32_t * out, std::string_view src);
+    static bool fromKey(pgno_t * out, std::string_view src);
+
+    void indexDestructPage(DbTxn & txn, pgno_t pgno);
+    void indexDestruct(DbTxn & txn, DbPageHeader const & hdr);
+    void indexErase(DbTxn & txn, pgno_t root, std::string_view key);
+    bool indexUpdate(
+        DbTxn & txn,
+        pgno_t root,
+        std::string_view key,
+        std::string_view data
+    );
+
+    bool indexFindLeafPgno(
+        DbTxn const & txn,
+        pgno_t * out,
+        pgno_t root,
+        std::string_view key,
+        bool after = false
+    );
+    bool indexInsertLeafPgno(
+        DbTxn & txn,
+        pgno_t root,
+        std::string_view key,
+        pgno_t pgno
+    );
+    bool indexEraseLeafPgno(
+        DbTxn & txn,
+        pgno_t root,
+        std::string_view key,
+        pgno_t pgno
+    );
+
+    bool indexFind(
+        DbTxn const & txn,
+        uint32_t * out,
+        pgno_t root,
+        std::string_view key
+    ) const;
+    bool indexFind(
+        DbTxn const & txn,
+        std::string * out,
+        pgno_t root,
+        std::string_view key
+    ) const;
+
     uint16_t entriesPerRadixPage() const;
     size_t radixPageEntries(
         int * ents,
@@ -506,7 +579,7 @@ private:
         DbPageType rootType,
         uint16_t height,
         size_t pos
-    );
+    ) const;
     void radixDestruct(DbTxn & txn, DbPageHeader const & hdr);
     void radixErase(
         DbTxn & txn,
@@ -524,51 +597,35 @@ private:
 
     // Returns false if pos is past the end of the index.
     bool radixFind(
-        DbTxn & txn,
+        DbTxn const & txn,
         DbPageHeader const ** hdr,
         RadixData const ** rd,
         size_t * rpos,
         pgno_t root,
         size_t pos
-    );
+    ) const;
     // Returns false if no value was found at the position, including if it's
     // past the end of the index.
-    bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
-
-    pgno_t sampleMakePhysical(
-        DbTxn & txn,
-        uint32_t id,
-        DbData::MetricPosition & mi,
-        size_t sppos,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        pgno_t vpage = {}
-    );
-    bool sampleTryMakeVirtual(DbTxn & txn, MetricPosition & mi, pgno_t spno);
-    size_t samplesPerPage(DbSampleType type) const;
-
-    MetricPosition getMetricPos(uint32_t id) const;
-    void setMetricPos(uint32_t id, MetricPosition const & mi);
-    MetricPosition loadMetricPos(DbTxn const & txn, uint32_t id);
-    MetricPosition loadMetricPos(
-        DbTxn & txn,
-        uint32_t id,
-        Dim::TimePoint time
-    );
+    bool radixFind(
+        DbTxn const & txn,
+        pgno_t * out,
+        pgno_t root,
+        size_t pos
+    ) const;
 
     bool m_verbose{false};
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
-
-    mutable std::shared_mutex m_mposMut;
-    std::vector<MetricPosition> m_metricPos;
-    unsigned m_numMetrics = 0;
 
     std::recursive_mutex m_pageMut;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
     size_t m_numFreed = 0;
 
-    // used to manage the index at kMetricIndexPageNum
-    std::mutex m_mndxMut;
+    // used to manage the page, id, and name indexes
+    mutable std::shared_mutex m_mndxMut;
+    pgno_t m_infoIndexRoot{};
+    pgno_t m_idIndexRoot{};
+    pgno_t m_nameIndexRoot{};
+    unsigned m_numMetrics = 0;
 };
