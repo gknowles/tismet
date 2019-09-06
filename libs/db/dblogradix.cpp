@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogradix.cpp - tismet db
@@ -62,12 +62,22 @@ struct RadixUpdateRec {
 *
 ***/
 
+//===========================================================================
+static void applyRadixUpdate(
+    DbLog::IApplyNotify * notify,
+    void * page,
+    DbLog::Record const & log
+) {
+    auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
+    notify->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
+}
+
 static DbLogRecInfo::Table s_radixRecInfo{
     { kRecTypeRadixInit,
         DbLogRecInfo::sizeFn<RadixInitRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<RadixInitRec const &>(log);
-            return notify->onLogApplyRadixInit(
+            notify->onLogApplyRadixInit(
                 page,
                 rec.id,
                 rec.height,
@@ -77,14 +87,14 @@ static DbLogRecInfo::Table s_radixRecInfo{
         },
     },
     { kRecTypeRadixInitList,
-        [](auto & log) -> uint16_t {
+        [](DbLog::Record const & log) -> uint16_t {
             auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
             return offsetof(RadixInitListRec, pages)
                 + rec.numPages * sizeof(*rec.pages);
         },
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
-            return notify->onLogApplyRadixInit(
+            notify->onLogApplyRadixInit(
                 page,
                 rec.id,
                 rec.height,
@@ -97,7 +107,7 @@ static DbLogRecInfo::Table s_radixRecInfo{
         DbLogRecInfo::sizeFn<RadixEraseRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<RadixEraseRec const &>(log);
-            return notify->onLogApplyRadixErase(
+            notify->onLogApplyRadixErase(
                 page,
                 rec.firstPos,
                 rec.lastPos
@@ -108,15 +118,12 @@ static DbLogRecInfo::Table s_radixRecInfo{
         DbLogRecInfo::sizeFn<RadixPromoteRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<RadixPromoteRec const &>(log);
-            return notify->onLogApplyRadixPromote(page, rec.refPage);
+            notify->onLogApplyRadixPromote(page, rec.refPage);
         },
     },
     { kRecTypeRadixUpdate,
         DbLogRecInfo::sizeFn<RadixUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
-            return notify->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
-        },
+        applyRadixUpdate,
     },
 };
 

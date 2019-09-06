@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogmetric.cpp - tismet db
@@ -138,307 +138,387 @@ struct SampleUpdateInt8TxnRec {
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbLogRecInfo - Metric
 *
 ***/
 
-static DbLogRecInfo::Table s_metricRecInfo{
+//===========================================================================
+static uint16_t sizeMetricInit(DbLog::Record const & log) {
+    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+    return offsetof(MetricInitRec, name)
+        + (uint16_t) strlen(rec.name) + 1;
+}
+
+//===========================================================================
+APPLY(MetricInit) {
+    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+    notify->onLogApplyMetricInit(
+        page,
+        rec.id,
+        rec.name,
+        rec.creation,
+        rec.sampleType,
+        rec.retention,
+        rec.interval
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdate) {
+    auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
+    notify->onLogApplyMetricUpdate(
+        page,
+        rec.creation,
+        rec.sampleType,
+        rec.retention,
+        rec.interval
+    );
+}
+
+//===========================================================================
+APPLY(MetricClearSamples) {
+    notify->onLogApplyMetricClearSamples(page);
+}
+
+//===========================================================================
+APPLY(MetricUpdatePos) {
+    auto & rec = reinterpret_cast<MetricUpdatePosRec const &>(log);
+    notify->onLogApplyMetricUpdateSamples(
+        page,
+        rec.refPos,
+        rec.refTime,
+        (size_t) -1,
+        {}
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdatePosAndIndex) {
+    auto & rec = reinterpret_cast<MetricUpdatePosAndIndexRec const &>(log);
+    notify->onLogApplyMetricUpdateSamples(
+        page,
+        rec.refPos,
+        rec.refTime,
+        (size_t) -1,
+        rec.refPage
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdateSampleTxn) {
+    auto & rec = reinterpret_cast<MetricUpdateSampleTxnRec const &>(log);
+    notify->onLogApplyMetricUpdateSamples(
+        page,
+        (size_t) -1,
+        {},
+        rec.refSample,
+        {}
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdateSample) {
+    auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
+    notify->onLogApplyMetricUpdateSamples(
+        page,
+        (size_t) -1,
+        {},
+        rec.refSample,
+        {}
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdateSampleAndIndex) {
+    auto & rec = reinterpret_cast<MetricUpdateSampleAndIndexRec const &>(log);
+    notify->onLogApplyMetricUpdateSamples(
+        page,
+        rec.refPos,
+        rec.refTime,
+        rec.refSample,
+        rec.refPage
+    );
+}
+
+static DbLogRecInfo::Table s_metricRecInfo {
     { kRecTypeMetricInit,
-        [](auto & log) -> uint16_t {
-            auto & rec = reinterpret_cast<MetricInitRec const &>(log);
-            return offsetof(MetricInitRec, name)
-                + (uint16_t) strlen(rec.name) + 1;
-        },
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricInitRec const &>(log);
-            return notify->onLogApplyMetricInit(
-                page,
-                rec.id,
-                rec.name,
-                rec.creation,
-                rec.sampleType,
-                rec.retention,
-                rec.interval
-            );
-        },
+        sizeMetricInit,
+        applyMetricInit,
     },
     { kRecTypeMetricUpdate,
         DbLogRecInfo::sizeFn<MetricUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
-            return notify->onLogApplyMetricUpdate(
-                page,
-                rec.creation,
-                rec.sampleType,
-                rec.retention,
-                rec.interval
-            );
-        },
+        applyMetricUpdate,
     },
     { kRecTypeMetricClearSamples,
         DbLogRecInfo::sizeFn<DbLog::Record>,
-        [](auto notify, void * page, auto & log) {
-            return notify->onLogApplyMetricClearSamples(page);
-        },
+        applyMetricClearSamples,
     },
     { kRecTypeMetricUpdatePos,
         DbLogRecInfo::sizeFn<MetricUpdatePosRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdatePosRec const &>(log);
-            return notify->onLogApplyMetricUpdateSamples(
-                page,
-                rec.refPos,
-                rec.refTime,
-                (size_t) -1,
-                {}
-            );
-        },
+        applyMetricUpdatePos,
     },
     { kRecTypeMetricUpdatePosAndIndex,
         DbLogRecInfo::sizeFn<MetricUpdatePosAndIndexRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdatePosAndIndexRec const &>(log);
-            return notify->onLogApplyMetricUpdateSamples(
-                page,
-                rec.refPos,
-                rec.refTime,
-                (size_t) -1,
-                rec.refPage
-            );
-        },
+        applyMetricUpdatePosAndIndex,
     },
     { kRecTypeMetricUpdateSampleTxn,
         DbLogRecInfo::sizeFn<MetricUpdateSampleTxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateSampleTxnRec const &>(log);
-            return notify->onLogApplyMetricUpdateSamples(
-                page,
-                (size_t) -1,
-                {},
-                rec.refSample,
-                {}
-            );
-        },
+        applyMetricUpdateSampleTxn,
     },
     { kRecTypeMetricUpdateSample,
         DbLogRecInfo::sizeFn<MetricUpdateSampleRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
-            return notify->onLogApplyMetricUpdateSamples(
-                page,
-                (size_t) -1,
-                {},
-                rec.refSample,
-                {}
-            );
-        },
+        applyMetricUpdateSample,
     },
     { kRecTypeMetricUpdateSampleAndIndex,
         DbLogRecInfo::sizeFn<MetricUpdateSampleAndIndexRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateSampleAndIndexRec const &>(log);
-            return notify->onLogApplyMetricUpdateSamples(
-                page,
-                rec.refPos,
-                rec.refTime,
-                rec.refSample,
-                rec.refPage
-            );
-        },
+        applyMetricUpdateSampleAndIndex,
     },
 };
+
+
+/****************************************************************************
+*
+*   DbLogRecInfo - Sample
+*
+***/
+
+//===========================================================================
+APPLY(SampleInit) {
+    auto & rec = reinterpret_cast<SampleInitRec const &>(log);
+    notify->onLogApplySampleInit(
+        page,
+        rec.id,
+        rec.sampleType,
+        rec.pageTime,
+        rec.lastSample,
+        NAN
+    );
+}
+
+//===========================================================================
+APPLY(SampleInitFill) {
+    auto & rec = reinterpret_cast<SampleInitFillRec const &>(log);
+    notify->onLogApplySampleInit(
+        page,
+        rec.id,
+        rec.sampleType,
+        rec.pageTime,
+        rec.lastSample,
+        rec.value
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdate) {
+    auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.firstSample,
+        rec.lastSample,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateLast) {
+    auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.firstSample,
+        rec.lastSample,
+        rec.value,
+        true
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateTime) {
+    auto & rec = reinterpret_cast<SampleUpdateTimeRec const &>(log);
+    notify->onLogApplySampleUpdateTime(page, rec.pageTime);
+}
+
+//===========================================================================
+APPLY(SampleUpdateFloat32Txn) {
+    auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateFloat64Txn) {
+    auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt8Txn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt16Txn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt32Txn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        false
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateFloat32LastTxn) {
+    auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        true
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateFloat64LastTxn) {
+    auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        true
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt8LastTxn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        true
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt16LastTxn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        true
+    );
+}
+
+//===========================================================================
+APPLY(SampleUpdateInt32LastTxn) {
+    auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
+    notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        rec.pos,
+        rec.value,
+        true
+    );
+}
+
 
 static DbLogRecInfo::Table s_sampleRecInfo{
     { kRecTypeSampleInit,
         DbLogRecInfo::sizeFn<SampleInitRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleInitRec const &>(log);
-            return notify->onLogApplySampleInit(
-                page,
-                rec.id,
-                rec.sampleType,
-                rec.pageTime,
-                rec.lastSample,
-                NAN
-            );
-        },
+        applySampleInit,
     },
     { kRecTypeSampleInitFill,
         DbLogRecInfo::sizeFn<SampleInitFillRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleInitFillRec const &>(log);
-            return notify->onLogApplySampleInit(
-                page,
-                rec.id,
-                rec.sampleType,
-                rec.pageTime,
-                rec.lastSample,
-                rec.value
-            );
-        },
+        applySampleInitFill,
     },
     { kRecTypeSampleUpdate,
         DbLogRecInfo::sizeFn<SampleUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.firstSample,
-                rec.lastSample,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdate,
     },
     { kRecTypeSampleUpdateLast,
         DbLogRecInfo::sizeFn<SampleUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.firstSample,
-                rec.lastSample,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateLast,
     },
     { kRecTypeSampleUpdateTime,
         DbLogRecInfo::sizeFn<SampleUpdateTimeRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateTimeRec const &>(log);
-            return notify->onLogApplySampleUpdateTime(page, rec.pageTime);
-        },
+        applySampleUpdateTime,
     },
     { kRecTypeSampleUpdateFloat32Txn,
         DbLogRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdateFloat32Txn,
     },
     { kRecTypeSampleUpdateFloat64Txn,
         DbLogRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdateFloat64Txn,
     },
     { kRecTypeSampleUpdateInt8Txn,
         DbLogRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdateInt8Txn,
     },
     { kRecTypeSampleUpdateInt16Txn,
         DbLogRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdateInt16Txn,
     },
     { kRecTypeSampleUpdateInt32Txn,
         DbLogRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                false
-            );
-        },
+        applySampleUpdateInt32Txn,
     },
     { kRecTypeSampleUpdateFloat32LastTxn,
         DbLogRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateFloat32LastTxn,
     },
     { kRecTypeSampleUpdateFloat64LastTxn,
         DbLogRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateFloat64LastTxn,
     },
     { kRecTypeSampleUpdateInt8LastTxn,
         DbLogRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateInt8LastTxn,
     },
     { kRecTypeSampleUpdateInt16LastTxn,
         DbLogRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateInt16LastTxn,
     },
     { kRecTypeSampleUpdateInt32LastTxn,
         DbLogRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                rec.pos,
-                rec.value,
-                true
-            );
-        },
+        applySampleUpdateInt32LastTxn,
     },
 };
 

@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogdata.cpp - tismet db
@@ -248,6 +248,33 @@ void DbLog::apply(AnalyzeData * data, uint64_t lsn, Record const & log) {
 *
 ***/
 
+//===========================================================================
+static uint16_t localTxnTransaction(DbLog::Record const & log) {
+    return reinterpret_cast<TransactionRec const &>(log).localTxn;
+}
+
+//===========================================================================
+APPLY(ZeroInit) {
+    notify->onLogApplyZeroInit(page);
+}
+
+//===========================================================================
+APPLY(PageFree) {
+    notify->onLogApplyPageFree(page);
+}
+
+//===========================================================================
+APPLY(SegmentAlloc) {
+    auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
+    notify->onLogApplySegmentUpdate(page, rec.refPage, false);
+}
+
+//===========================================================================
+APPLY(SegmentFree) {
+    auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
+    notify->onLogApplySegmentUpdate(page, rec.refPage, true);
+}
+
 static DbLogRecInfo::Table s_dataRecInfo{
     { kRecTypeCommitCheckpoint,
         DbLogRecInfo::sizeFn<CheckpointCommitRec>,
@@ -258,40 +285,30 @@ static DbLogRecInfo::Table s_dataRecInfo{
     { kRecTypeTxnBegin,
         DbLogRecInfo::sizeFn<TransactionRec>,
         nullptr,
-        [](auto & log) {
-            return reinterpret_cast<TransactionRec const &>(log).localTxn; },
+        localTxnTransaction,
         nullptr,
     },
     { kRecTypeTxnCommit,
         DbLogRecInfo::sizeFn<TransactionRec>,
         nullptr,
-        [](auto & log) {
-            return reinterpret_cast<TransactionRec const &>(log).localTxn; },
+        localTxnTransaction,
         nullptr,
     },
     { kRecTypeZeroInit,
         DbLogRecInfo::sizeFn<DbLog::Record>,
-        [](auto notify, void * page, auto & log) {
-            notify->onLogApplyZeroInit(page); },
+        applyZeroInit,
     },
     { kRecTypePageFree,
         DbLogRecInfo::sizeFn<DbLog::Record>,
-        [](auto notify, void * page, auto & log) {
-            notify->onLogApplyPageFree(page); },
+        applyPageFree,
     },
     { kRecTypeSegmentAlloc,
         DbLogRecInfo::sizeFn<SegmentUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
-            return notify->onLogApplySegmentUpdate(page, rec.refPage, false);
-        },
+        applySegmentAlloc,
     },
     { kRecTypeSegmentFree,
         DbLogRecInfo::sizeFn<SegmentUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
-            return notify->onLogApplySegmentUpdate(page, rec.refPage, true);
-        },
+        applySegmentFree,
     },
 };
 
