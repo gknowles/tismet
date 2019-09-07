@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogradix.cpp - tismet db
@@ -62,61 +62,79 @@ struct RadixUpdateRec {
 *
 ***/
 
+//===========================================================================
+APPLY(RadixInit) {
+    auto & rec = reinterpret_cast<RadixInitRec const &>(log);
+    notify->onLogApplyRadixInit(
+        page,
+        rec.id,
+        rec.height,
+        nullptr,
+        nullptr
+    );
+}
+
+//===========================================================================
+static uint16_t sizeRadixInitList(DbLog::Record const & log) {
+    auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
+    return offsetof(RadixInitListRec, pages)
+        + rec.numPages * sizeof(*rec.pages);
+}
+
+//===========================================================================
+APPLY(RadixInitList) {
+    auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
+    notify->onLogApplyRadixInit(
+        page,
+        rec.id,
+        rec.height,
+        rec.pages,
+        rec.pages + rec.numPages
+    );
+}
+
+//===========================================================================
+APPLY(RadixErase) {
+    auto & rec = reinterpret_cast<RadixEraseRec const &>(log);
+    notify->onLogApplyRadixErase(
+        page,
+        rec.firstPos,
+        rec.lastPos
+    );
+}
+
+//===========================================================================
+APPLY(RadixPromote) {
+    auto & rec = reinterpret_cast<RadixPromoteRec const &>(log);
+    notify->onLogApplyRadixPromote(page, rec.refPage);
+}
+
+//===========================================================================
+APPLY(RadixUpdate) {
+    auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
+    notify->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
+}
+
 static DbLogRecInfo::Table s_radixRecInfo{
     { kRecTypeRadixInit,
         DbLogRecInfo::sizeFn<RadixInitRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixInitRec const &>(log);
-            return notify->onLogApplyRadixInit(
-                page,
-                rec.id,
-                rec.height,
-                nullptr,
-                nullptr
-            );
-        },
+        applyRadixInit,
     },
     { kRecTypeRadixInitList,
-        [](auto & log) -> uint16_t {
-            auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
-            return offsetof(RadixInitListRec, pages)
-                + rec.numPages * sizeof(*rec.pages);
-        },
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
-            return notify->onLogApplyRadixInit(
-                page,
-                rec.id,
-                rec.height,
-                rec.pages,
-                rec.pages + rec.numPages
-            );
-        },
+        sizeRadixInitList,
+        applyRadixInitList,
     },
     { kRecTypeRadixErase,
         DbLogRecInfo::sizeFn<RadixEraseRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixEraseRec const &>(log);
-            return notify->onLogApplyRadixErase(
-                page,
-                rec.firstPos,
-                rec.lastPos
-            );
-        },
+        applyRadixErase,
     },
     { kRecTypeRadixPromote,
         DbLogRecInfo::sizeFn<RadixPromoteRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixPromoteRec const &>(log);
-            return notify->onLogApplyRadixPromote(page, rec.refPage);
-        },
+        applyRadixPromote,
     },
     { kRecTypeRadixUpdate,
         DbLogRecInfo::sizeFn<RadixUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
-            return notify->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
-        },
+        applyRadixUpdate,
     },
 };
 

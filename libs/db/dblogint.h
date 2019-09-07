@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogint.h - tismet db
@@ -54,23 +54,37 @@ struct DbLog::Record {
 
 #pragma pack(pop)
 
+#define APPLY(name) static void apply ## name ( \
+    DbLog::IApplyNotify * notify, \
+    void * page, \
+    DbLog::Record const & log)
+
 struct DbLogRecInfo {
     class Table;
 
     template<typename T>
     static uint16_t sizeFn(DbLog::Record const & log);
 
+    static uint16_t defLocalTxnFn(DbLog::Record const & log) {
+        return log.localTxn;
+    }
+    static pgno_t defPgnoFn(DbLog::Record const & log) {
+        return log.pgno;
+    }
+
     DbLogRecType m_type;
+
     uint16_t (*m_size)(DbLog::Record const & log);
+
     void (*m_apply)(
         DbLog::IApplyNotify * notify,
         void * page,
         DbLog::Record const & log
     );
-    uint16_t (*m_localTxn)(DbLog::Record const & log) =
-        [](auto & log) { return log.localTxn; };
-    pgno_t (*m_pgno)(DbLog::Record const & log) =
-        [](auto & log) { return log.pgno; };
+
+    uint16_t (*m_localTxn)(DbLog::Record const & log) = defLocalTxnFn;
+
+    pgno_t (*m_pgno)(DbLog::Record const & log) = defPgnoFn;
 };
 
 class DbLogRecInfo::Table {

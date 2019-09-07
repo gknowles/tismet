@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2018.
+// Copyright Glen Knowles 2017 - 2019.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dblogmetric.cpp - tismet db
@@ -82,107 +82,141 @@ struct SampleBulkUpdateRec {
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbLogRecInfo - Metric
 *
 ***/
+
+//===========================================================================
+APPLY(MetricInit) {
+    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+    return notify->onLogApplyMetricInit(
+        page,
+        rec.id,
+        rec.creation,
+        rec.retention
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdate) {
+    auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
+    return notify->onLogApplyMetricUpdate(
+        page,
+        rec.creation,
+        rec.retention
+    );
+}
+
+//===========================================================================
+APPLY(MetricEraseSamples) {
+    auto & rec = reinterpret_cast<MetricEraseSamplesRec const &>(log);
+    return notify->onLogApplyMetricEraseSamples(
+        page,
+        rec.count,
+        rec.lastIndexTime
+    );
+}
+
+//===========================================================================
+APPLY(MetricUpdateSample) {
+    auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
+    return notify->onLogApplyMetricUpdateSample(
+        page,
+        rec.pos,
+        rec.value,
+        NAN
+    );
+}
+
+//===========================================================================
+APPLY(MetricInsertSample) {
+    auto & rec = reinterpret_cast<MetricInsertSampleRec const &>(log);
+    return notify->onLogApplyMetricInsertSample(
+        page,
+        rec.pos,
+        rec.dt,
+        rec.value,
+        NAN
+    );
+}
+
+//===========================================================================
+APPLY(MetricInsertSampleTxn) {
+    auto & rec = reinterpret_cast<MetricInsertSampleTxnRec const &>(log);
+    return notify->onLogApplyMetricInsertSample(
+        page,
+        rec.pos,
+        rec.dt,
+        rec.value,
+        NAN
+    );
+}
 
 static DbLogRecInfo::Table s_metricRecInfo{
     { kRecTypeMetricInit,
         DbLogRecInfo::sizeFn<MetricInitRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricInitRec const &>(log);
-            return notify->onLogApplyMetricInit(
-                page,
-                rec.id,
-                rec.creation,
-                rec.retention
-            );
-        },
+        applyMetricInit,
     },
     { kRecTypeMetricUpdate,
         DbLogRecInfo::sizeFn<MetricUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
-            return notify->onLogApplyMetricUpdate(
-                page,
-                rec.creation,
-                rec.retention
-            );
-        },
+        applyMetricUpdate,
     },
     { kRecTypeMetricEraseSamples,
         DbLogRecInfo::sizeFn<MetricEraseSamplesRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricEraseSamplesRec const &>(log);
-            return notify->onLogApplyMetricEraseSamples(
-                page,
-                rec.count,
-                rec.lastIndexTime
-            );
-        },
+        applyMetricEraseSamples,
     },
     { kRecTypeMetricUpdateSample,
         DbLogRecInfo::sizeFn<MetricUpdateSampleRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
-            return notify->onLogApplyMetricUpdateSample(
-                page,
-                rec.pos,
-                rec.value,
-                NAN
-            );
-        },
+        applyMetricUpdateSample,
     },
     { kRecTypeMetricInsertSample,
         DbLogRecInfo::sizeFn<MetricInsertSampleRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricInsertSampleRec const &>(log);
-            return notify->onLogApplyMetricInsertSample(
-                page,
-                rec.pos,
-                rec.dt,
-                rec.value,
-                NAN
-            );
-        },
+        applyMetricInsertSample,
     },
     { kRecTypeMetricInsertSampleTxn,
         DbLogRecInfo::sizeFn<MetricInsertSampleTxnRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<MetricInsertSampleTxnRec const &>(log);
-            return notify->onLogApplyMetricInsertSample(
-                page,
-                rec.pos,
-                rec.dt,
-                rec.value,
-                NAN
-            );
-        },
+        applyMetricInsertSampleTxn,
     },
 };
+
+
+/****************************************************************************
+*
+*   DbLogRecInfo - Sample
+*
+***/
+
+//===========================================================================
+APPLY(SampleInit) {
+    auto & rec = reinterpret_cast<SampleInitRec const &>(log);
+    return notify->onLogApplySampleInit(page, rec.id);
+}
+
+//===========================================================================
+static uint16_t sizeSampleBulkUpdate(DbLog::Record const & log) {
+    auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
+    return offsetof(SampleBulkUpdateRec, data) + rec.count;
+}
+
+//===========================================================================
+APPLY(SampleBulkUpdate) {
+    auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
+    return notify->onLogApplySampleUpdate(
+        page,
+        rec.pos,
+        {rec.data, rec.count},
+        rec.unusedBits
+    );
+}
 
 static DbLogRecInfo::Table s_sampleRecInfo{
     { kRecTypeSampleInit,
         DbLogRecInfo::sizeFn<SampleInitRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleInitRec const &>(log);
-            return notify->onLogApplySampleInit(page, rec.id);
-        },
+        applySampleInit,
     },
     { kRecTypeSampleBulkUpdate,
-        [](auto & log) -> uint16_t {
-            auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
-            return offsetof(SampleBulkUpdateRec, data) + rec.count;
-        },
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
-            return notify->onLogApplySampleUpdate(
-                page,
-                rec.pos,
-                {rec.data, rec.count},
-                rec.unusedBits
-            );
-        },
+        sizeSampleBulkUpdate,
+        applySampleBulkUpdate,
     },
 };
 
