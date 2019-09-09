@@ -134,7 +134,7 @@ void AddrConn::onSocketDisconnect() {
         logMsgInfo() << "Disconnect";
         m_done = true;
     }
-    sockMgrSetEndpoints(s_mgr, nullptr, 0);
+    sockMgrSetAddresses(s_mgr, nullptr, 0);
     appSignalShutdown();
 }
 
@@ -168,13 +168,13 @@ void AddrConn::onSocketBufferChanged(AppSocketBufferInfo const & info) {
 
 namespace {
 
-class AddrJob : IEndpointNotify {
+class AddrJob : ISockAddrNotify {
 public:
     bool start(Cli & cli);
 
 private:
-    // Inherited via IEndpointNotify
-    void onEndpointFound(Endpoint const * ptr, int count) override;
+    // Inherited via ISockAddrNotify
+    void onSockAddrFound(SockAddr const * ptr, int count) override;
 
     int m_cancelId;
 };
@@ -184,19 +184,19 @@ private:
 //===========================================================================
 bool AddrJob::start(Cli & cli) {
     s_mgr = sockMgrConnect<AddrConn>("Metric Out");
-    endpointQuery(&m_cancelId, this, s_opts.oaddr, 2003);
+    addressQuery(&m_cancelId, this, s_opts.oaddr, 2003);
     cli.fail(EX_PENDING, "");
     return true;
 }
 
 //===========================================================================
-void AddrJob::onEndpointFound(Endpoint const * ptr, int count) {
+void AddrJob::onSockAddrFound(SockAddr const * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {
         logMsgInfo() << "Writing to " << s_opts.oaddr << " (" << *ptr << ")";
         tcLogStart(&s_opts.progress, (seconds) s_opts.totalSecs);
-        sockMgrSetEndpoints(s_mgr, ptr, count);
+        sockMgrSetAddresses(s_mgr, ptr, count);
     }
     delete this;
 }
@@ -217,12 +217,12 @@ constexpr TimePoint kDefaultStartTime{12'622'824'000s};
 CmdOpts::CmdOpts() {
     Cli cli;
     cli.command("replay")
-        .desc("Replay recorded metrics to carbon endpoint.")
+        .desc("Replay recorded metrics to carbon socket.")
         .action(replayCmd)
         .group("Target").sortKey("1")
         .title("Output Target");
     cli.opt(&oaddr, "A addr")
-        .desc("Socket endpoint to receive metrics, port defaults to 2003")
+        .desc("Socket address to receive metrics, port defaults to 2003")
         .valueDesc("ADDRESS");
 
     cli.group("~").title("Other");

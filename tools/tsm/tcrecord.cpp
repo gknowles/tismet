@@ -25,7 +25,7 @@ struct CmdOpts {
     unsigned totalSecs;
 
     string addrStr;
-    Endpoint addr;
+    SockAddr addr;
 
     CmdOpts();
 };
@@ -234,7 +234,7 @@ static bool recordCmd(Cli & cli) {
         "CarbonCli",
         (AppSocket::Family) TismetSocket::kCarbon
     );
-    sockMgrSetEndpoints(s_mgr, &s_opts.addr, 1);
+    sockMgrSetAddresses(s_mgr, &s_opts.addr, 1);
 
     return cli.fail(EX_PENDING, "");
 }
