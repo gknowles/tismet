@@ -1,6 +1,6 @@
 # CMakeLists.txt - general project generator
 #
-# Copyright Glen Knowles 2016 - 2018.
+# Copyright Glen Knowles 2016 - 2019.
 # Distributed under the Boost Software License, Version 1.0.
 #
 # Use this one file *unmodified* for all projects that follow the convections.
@@ -423,6 +423,11 @@ if(MSVC)
 
     set_property(SOURCE "pch.cpp" APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
 elseif(CMAKE_COMPILER_IS_GNUCXX)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "8")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a")
+    endif()
     if(BUILD_COVERAGE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
@@ -501,8 +506,7 @@ endif()
 file(GLOB sources
     LICENSE
     .clang-format
-    .travis.yml
-    appveyor.yml
+    *.yml
     *.md
     *.props
     configure.bat)
