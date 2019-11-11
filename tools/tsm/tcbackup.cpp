@@ -50,7 +50,7 @@ static int s_statusLines;
 ***/
 
 //===========================================================================
-static void logStart(string_view target, Endpoint const * addr) {
+static void logStart(string_view target, SockAddr const * addr) {
     tcLogStart();
     auto os = logMsgInfo();
     os << "Backing up server at " << target;
@@ -176,7 +176,7 @@ void AddrConn::onSocketDisconnect() {
         logMsgError() << "Disconnect";
         m_done = true;
     }
-    sockMgrSetEndpoints(s_mgr, nullptr, 0);
+    sockMgrSetAddresses(s_mgr, nullptr, 0);
     logShutdown();
     appSignalShutdown();
 }
@@ -234,13 +234,13 @@ Duration AddrConn::onTimer(TimePoint now) {
 
 namespace {
 
-class AddrJob : IEndpointNotify {
+class AddrJob : ISockAddrNotify {
 public:
     void start(Cli & cli);
 
 private:
-    // Inherited via IEndpointNotify
-    void onEndpointFound(Endpoint const * ptr, int count) override;
+    // Inherited via ISockAddrNotify
+    void onSockAddrFound(SockAddr const * ptr, int count) override;
 
     int m_cancelId;
 };
@@ -252,17 +252,17 @@ static AddrJob s_job;
 //===========================================================================
 void AddrJob::start(Cli & cli) {
     s_mgr = sockMgrConnect<AddrConn>("Metric Out");
-    endpointQuery(&m_cancelId, this, s_opts.oaddr, 2003);
+    addressQuery(&m_cancelId, this, s_opts.oaddr, 2003);
     cli.fail(EX_PENDING, "");
 }
 
 //===========================================================================
-void AddrJob::onEndpointFound(Endpoint const * ptr, int count) {
+void AddrJob::onSockAddrFound(SockAddr const * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {
         logStart(s_opts.oaddr, ptr);
-        sockMgrSetEndpoints(s_mgr, ptr, count);
+        sockMgrSetAddresses(s_mgr, ptr, count);
     }
 }
 
