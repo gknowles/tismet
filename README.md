@@ -1,5 +1,5 @@
 <!--
-Copyright Glen Knowles 2016 - 2018.
+Copyright Glen Knowles 2016 - 2019.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
@@ -28,7 +28,7 @@ Time series metric collection
 ## Building
 #### Prerequisites
   - CMake >= 3.6
-  - Visual Studio 2017 (should include "Git for Windows")
+  - Visual Studio 2019 (should include "Git for Windows")
 
 #### Steps
 ~~~ batch
