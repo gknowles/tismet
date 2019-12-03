@@ -49,8 +49,8 @@ struct SampleList {
         Dim::Duration interval,
         size_t count
     );
-    static std::shared_ptr<SampleList> alloc(SampleList const & samples);
-    static std::shared_ptr<SampleList> dup(SampleList const & samples);
+    static std::shared_ptr<SampleList> alloc(const SampleList & samples);
+    static std::shared_ptr<SampleList> dup(const SampleList & samples);
 };
 inline double * begin(SampleList & samples) { return samples.samples; }
 inline double * end(SampleList & samples) {
@@ -67,10 +67,10 @@ struct ResultInfo {
 
 namespace FuncArg {
     struct Enum : Dim::ListBaseLink<> {
-        std::string const name;
-        Dim::TokenTable const * const table{};
+        const std::string name;
+        const Dim::TokenTable * const table{};
 
-        Enum(std::string name, Dim::TokenTable const * tbl);
+        Enum(std::string name, const Dim::TokenTable * tbl);
     };
     enum Type {
         kEnum,
@@ -87,7 +87,7 @@ namespace FuncArg {
 class IFuncNotify {
 public:
     virtual ~IFuncNotify() = default;
-    virtual bool onFuncSource(Query::Node const & node) = 0;
+    virtual bool onFuncSource(const Query::Node & node) = 0;
     virtual void onFuncOutput(ResultInfo & info) = 0;
 };
 
@@ -118,7 +118,7 @@ public:
     // maxSeries(A).
     virtual IFuncInstance * onFuncBind(
         IFuncNotify * notify,
-        std::vector<Query::Node const *> & args
+        std::vector<const Query::Node *> & args
     ) = 0;
 
     virtual void onFuncAdjustContext(FuncContext * rr) = 0;
@@ -134,7 +134,7 @@ public:
 IFuncInstance * bind(
     IFuncNotify * notify,
     Function::Type type,
-    std::vector<Query::Node const *> & args
+    std::vector<const Query::Node *> & args
 );
 std::shared_ptr<SampleList> reduce(
     std::shared_ptr<SampleList> samples,
@@ -142,22 +142,22 @@ std::shared_ptr<SampleList> reduce(
     AggFunc::Type method = {} // use defaultType()
 );
 
-using AggFn = double(double const vals[], size_t count);
+using AggFn = double(const double vals[], size_t count);
 AggFn * aggFunc(
     AggFunc::Type method = {} // use defaultType()
 );
-double aggAverage(double const vals[], size_t count);
-double aggCount(double const vals[], size_t count);
-double aggDiff(double const vals[], size_t count);
-double aggFirst(double const vals[], size_t count);
-double aggLast(double const vals[], size_t count);
-double aggMax(double const vals[], size_t count);
-double aggMedian(double const vals[], size_t count);
-double aggMin(double const vals[], size_t count);
-double aggMultiply(double const vals[], size_t count);
-double aggRange(double const vals[], size_t count);
-double aggStddev(double const vals[], size_t count);
-double aggSum(double const vals[], size_t count);
+double aggAverage(const double vals[], size_t count);
+double aggCount(const double vals[], size_t count);
+double aggDiff(const double vals[], size_t count);
+double aggFirst(const double vals[], size_t count);
+double aggLast(const double vals[], size_t count);
+double aggMax(const double vals[], size_t count);
+double aggMedian(const double vals[], size_t count);
+double aggMin(const double vals[], size_t count);
+double aggMultiply(const double vals[], size_t count);
+double aggRange(const double vals[], size_t count);
+double aggStddev(const double vals[], size_t count);
+double aggSum(const double vals[], size_t count);
 
 } // namespace
 
@@ -165,10 +165,10 @@ void funcInitialize();
 
 std::unique_ptr<Eval::IFuncInstance> funcCreate(Eval::Function::Type type);
 
-char const * toString(Eval::Function::Type ftype, char const def[] = "");
+const char * toString(Eval::Function::Type ftype, const char def[] = "");
 Eval::Function::Type fromString(std::string_view src, Eval::Function::Type def);
 
-char const * toString(Eval::AggFunc::Type ftype, char const def[] = "");
+const char * toString(Eval::AggFunc::Type ftype, const char def[] = "");
 Eval::AggFunc::Type fromString(
     std::string_view src,
     Eval::AggFunc::Type def
@@ -186,7 +186,7 @@ namespace Eval {
 struct FuncArgInfo {
     std::string name;
     FuncArg::Type type{};
-    char const * enumName{};
+    const char * enumName{};
     bool require{};
     bool multiple{};
 };
@@ -196,7 +196,7 @@ class IFuncFactory
     , public Dim::IFactory<IFuncInstance> {
 public:
     IFuncFactory(std::string_view name, std::string_view group);
-    IFuncFactory(IFuncFactory const & from);
+    IFuncFactory(const IFuncFactory & from);
     IFuncFactory(IFuncFactory && from);
 
     // Inherited via IFactory
@@ -210,8 +210,8 @@ public:
 
 } // namespace
 
-Query::ITokenConvNotify const & funcTokenConv();
+const Query::ITokenConvNotify & funcTokenConv();
 Dim::List<Eval::IFuncFactory> & funcFactories();
 Dim::List<Eval::FuncArg::Enum> & funcEnums();
 
-char const * toString(Eval::FuncArg::Type atype, char const def[] = "");
+const char * toString(Eval::FuncArg::Type atype, const char def[] = "");

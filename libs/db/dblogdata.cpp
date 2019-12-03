@@ -80,7 +80,7 @@ DbLogRecInfo::Table::Table(initializer_list<DbLogRecInfo> list) {
 
 //===========================================================================
 // static
-uint16_t DbLog::getSize(Record const & log) {
+uint16_t DbLog::getSize(const Record & log) {
     if (log.type && log.type < size(s_codecs)) {
         auto fn = s_codecs[log.type].m_size;
         if (fn)
@@ -92,7 +92,7 @@ uint16_t DbLog::getSize(Record const & log) {
 
 //===========================================================================
 // static
-pgno_t DbLog::getPgno(Record const & log) {
+pgno_t DbLog::getPgno(const Record & log) {
     if (log.type && log.type < size(s_codecs)) {
         auto fn = s_codecs[log.type].m_pgno;
         if (fn)
@@ -104,7 +104,7 @@ pgno_t DbLog::getPgno(Record const & log) {
 
 //===========================================================================
 // static
-uint16_t DbLog::getLocalTxn(Record const & log) {
+uint16_t DbLog::getLocalTxn(const Record & log) {
     if (log.type && log.type < size(s_codecs)) {
         auto fn = s_codecs[log.type].m_localTxn;
         if (fn)
@@ -192,7 +192,7 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
 }
 
 //===========================================================================
-void DbLog::apply(uint64_t lsn, Record const & log) {
+void DbLog::apply(uint64_t lsn, const Record & log) {
     switch (log.type) {
     case kRecTypeCommitCheckpoint:
     case kRecTypeTxnBegin:
@@ -209,7 +209,7 @@ void DbLog::apply(uint64_t lsn, Record const & log) {
 }
 
 //===========================================================================
-void DbLog::applyUpdate(void * page, Record const & log) {
+void DbLog::applyUpdate(void * page, const Record & log) {
     if (log.type && log.type < ::size(s_codecs)) {
         auto fn = s_codecs[log.type].m_apply;
         if (fn)
@@ -226,20 +226,20 @@ void DbLog::applyUpdate(void * page, Record const & log) {
 ***/
 
 //===========================================================================
-void DbLog::apply(AnalyzeData * data, uint64_t lsn, Record const & log) {
+void DbLog::apply(AnalyzeData * data, uint64_t lsn, const Record & log) {
     switch (log.type) {
     case kRecTypeCommitCheckpoint: {
-            auto & rec = reinterpret_cast<CheckpointCommitRec const &>(log);
+            auto & rec = reinterpret_cast<const CheckpointCommitRec &>(log);
             applyCommitCheckpoint(data, lsn, rec.startLsn);
         }
         break;
     case kRecTypeTxnBegin: {
-            auto & rec = reinterpret_cast<TransactionRec const &>(log);
+            auto & rec = reinterpret_cast<const TransactionRec &>(log);
             applyBeginTxn(data, lsn, rec.localTxn);
         }
         break;
     case kRecTypeTxnCommit: {
-            auto & rec = reinterpret_cast<TransactionRec const &>(log);
+            auto & rec = reinterpret_cast<const TransactionRec &>(log);
             applyCommitTxn(data, lsn, rec.localTxn);
         }
         break;
@@ -257,8 +257,8 @@ void DbLog::apply(AnalyzeData * data, uint64_t lsn, Record const & log) {
 ***/
 
 //===========================================================================
-static uint16_t localTxnTransaction(DbLog::Record const & log) {
-    return reinterpret_cast<TransactionRec const &>(log).localTxn;
+static uint16_t localTxnTransaction(const DbLog::Record & log) {
+    return reinterpret_cast<const TransactionRec &>(log).localTxn;
 }
 
 //===========================================================================
@@ -268,7 +268,7 @@ APPLY(ZeroInit) {
 
 //===========================================================================
 APPLY(ZeroUpdateRoots) {
-    auto & rec = reinterpret_cast<ZeroUpdateRootsRec const &>(log);
+    auto & rec = reinterpret_cast<const ZeroUpdateRootsRec &>(log);
     notify->onLogApplyZeroUpdateRoots(
         page,
         rec.infoRoot,
@@ -284,13 +284,13 @@ APPLY(PageFree) {
 
 //===========================================================================
 APPLY(SegmentAlloc) {
-    auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
     notify->onLogApplySegmentUpdate(page, rec.refPage, false);
 }
 
 //===========================================================================
 APPLY(SegmentFree) {
-    auto & rec = reinterpret_cast<SegmentUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
     notify->onLogApplySegmentUpdate(page, rec.refPage, true);
 }
 

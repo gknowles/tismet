@@ -11,10 +11,10 @@
 ***/
 
 void tcLogStart(
-    DbProgressInfo const * limit = {},
+    const DbProgressInfo * limit = {},
     std::chrono::duration<double> timeLimit = {}
 );
-void tcLogShutdown(DbProgressInfo const * total = {});
+void tcLogShutdown(const DbProgressInfo * total = {});
 
 
 /****************************************************************************
@@ -29,5 +29,5 @@ enum DumpFormat {
     kDumpFormat2018_2,
     kDumpFormats
 };
-char const * toString(DumpFormat type, char const def[] = nullptr);
+const char * toString(DumpFormat type, const char def[] = nullptr);
 DumpFormat fromString(std::string_view src, DumpFormat def);

@@ -47,13 +47,13 @@ shared_ptr<SampleList> SampleList::alloc(
 
 //===========================================================================
 // static
-shared_ptr<SampleList> SampleList::alloc(SampleList const & samples) {
+shared_ptr<SampleList> SampleList::alloc(const SampleList & samples) {
     return alloc(samples.first, samples.interval, samples.count);
 }
 
 //===========================================================================
 // static
-shared_ptr<SampleList> SampleList::dup(SampleList const & samples) {
+shared_ptr<SampleList> SampleList::dup(const SampleList & samples) {
     auto out = alloc(samples);
     memcpy(
         out->samples,
@@ -71,7 +71,7 @@ shared_ptr<SampleList> SampleList::dup(SampleList const & samples) {
 ***/
 
 //===========================================================================
-FuncArg::Enum::Enum(std::string name, Dim::TokenTable const * tbl)
+FuncArg::Enum::Enum(std::string name, const Dim::TokenTable * tbl)
     : name{name}
     , table{tbl}
 {
@@ -89,7 +89,7 @@ FuncArg::Enum::Enum(std::string name, Dim::TokenTable const * tbl)
 IFuncInstance * Eval::bind(
     IFuncNotify * notify,
     Function::Type type,
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     auto func = funcCreate(type);
     auto bound = func->onFuncBind(notify, args);
@@ -114,7 +114,7 @@ IFuncFactory::IFuncFactory(string_view name, string_view group)
 }
 
 //===========================================================================
-IFuncFactory::IFuncFactory(IFuncFactory const & from)
+IFuncFactory::IFuncFactory(const IFuncFactory & from)
     : m_type(from.m_type)
     , m_names(from.m_names)
     , m_group(from.m_group)
@@ -177,7 +177,7 @@ static auto s_lineWidth = PassthruBase::Factory("lineWidth", "Graph")
 
 namespace {
 class FuncAlias : public IFuncBase<FuncAlias> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
     shared_ptr<char[]> m_name;
@@ -188,7 +188,7 @@ static auto s_alias = FuncAlias::Factory("alias", "Alias")
     .arg("name", FuncArg::kString, true);
 
 //===========================================================================
-IFuncInstance * FuncAlias::onFuncBind(vector<Query::Node const *> & args) {
+IFuncInstance * FuncAlias::onFuncBind(vector<const Query::Node *> & args) {
     m_name = asSharedString(*args[0]);
     return this;
 }
@@ -209,7 +209,7 @@ bool FuncAlias::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncConsolidateBy : public IFuncBase<FuncConsolidateBy> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
     AggFunc::Type m_method;
 };
@@ -221,7 +221,7 @@ static auto s_consolidateBy =
 
 //===========================================================================
 IFuncInstance * FuncConsolidateBy::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     m_method = fromString(Query::asString(*args[0]), AggFunc::Type{});
     return this;
@@ -243,7 +243,7 @@ bool FuncConsolidateBy::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncTimeShift : public IFuncBase<FuncTimeShift> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
@@ -255,7 +255,7 @@ static auto s_timeShift = FuncTimeShift::Factory("timeShift", "Transform")
     .arg("timeShift", FuncArg::kString, true);
 
 //===========================================================================
-IFuncInstance * FuncTimeShift::onFuncBind(vector<Query::Node const *> & args) {
+IFuncInstance * FuncTimeShift::onFuncBind(vector<const Query::Node *> & args) {
     auto tmp = string(Query::asString(*args[0]));
     if (tmp[0] != '+' && tmp[0] != '-')
         tmp = "-" + tmp;
@@ -294,14 +294,14 @@ static vector<IFuncFactory *> s_funcVec;
 static vector<TokenTable::Token> s_funcTokens;
 static TokenTable s_funcTbl;
 
-TokenTable::Token const s_argTypes[] = {
+const TokenTable::Token s_argTypes[] = {
     { FuncArg::kEnum, "enum" },
     { FuncArg::kNum, "num" },
     { FuncArg::kNumOrString, "numOrString" },
     { FuncArg::kPathOrFunc, "query" },
     { FuncArg::kString, "string" },
 };
-TokenTable const s_argTypeTbl(s_argTypes);
+const TokenTable s_argTypeTbl(s_argTypes);
 
 
 /****************************************************************************
@@ -337,13 +337,13 @@ shared_ptr<char[]> Eval::addFuncName(
 
 namespace {
 struct TokenConv : Query::ITokenConvNotify {
-    TokenTable const & funcTypeTbl() const override { return s_funcTbl; }
+    const TokenTable & funcTypeTbl() const override { return s_funcTbl; }
 };
 } // namespace
 static TokenConv s_conv;
 
 //===========================================================================
-Query::ITokenConvNotify const & funcTokenConv() {
+const Query::ITokenConvNotify & funcTokenConv() {
     return s_conv;
 }
 
@@ -401,7 +401,7 @@ unique_ptr<IFuncInstance> funcCreate(Function::Type type) {
 }
 
 //===========================================================================
-char const * toString(Eval::Function::Type ftype, char const def[]) {
+const char * toString(Eval::Function::Type ftype, const char def[]) {
     return tokenTableGetName(s_funcTbl, ftype, def);
 }
 
@@ -411,6 +411,6 @@ Function::Type fromString(string_view src, Function::Type def) {
 }
 
 //===========================================================================
-char const * toString(Eval::FuncArg::Type atype, char const def[]) {
+const char * toString(Eval::FuncArg::Type atype, const char def[]) {
     return tokenTableGetName(s_argTypeTbl, atype, def);
 }

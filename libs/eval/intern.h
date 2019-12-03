@@ -29,7 +29,7 @@ public:
 public:
     virtual ~ResultNode();
 
-    void onResult(ResultInfo const & info);
+    void onResult(const ResultInfo & info);
     void onTask() override = 0;
 
     int m_unfinished{0};
@@ -52,7 +52,7 @@ public:
     virtual ~SourceNode();
     void init(std::shared_ptr<char[]> name);
 
-    void addOutput(SourceContext const & context);
+    void addOutput(const SourceContext & context);
     void removeOutput(ResultNode * rn);
 
     std::shared_ptr<char[]> sourceName() const { return m_source; }
@@ -62,10 +62,10 @@ protected:
     // Returns false if outputs and pendingOutputs are empty
     bool outputContext(SourceContext * context);
 
-    void outputResult(ResultInfo const & info);
+    void outputResult(const ResultInfo & info);
 
 private:
-    void outputResultImpl_LK(ResultInfo const & info);
+    void outputResultImpl_LK(const ResultInfo & info);
     virtual void onSourceStart() = 0;
 
     std::shared_ptr<char[]> m_source;
@@ -81,12 +81,12 @@ public:
         std::shared_ptr<char[]> sourceName,
         std::unique_ptr<IFuncInstance> instance
     );
-    bool bind(std::vector<Query::Node const *> & args);
+    bool bind(std::vector<const Query::Node *> & args);
 
 protected:
     void onSourceStart() override;
     void onTask() override;
-    bool onFuncSource(Query::Node const & node) override;
+    bool onFuncSource(const Query::Node & node) override;
     void onFuncOutput(ResultInfo & info) override;
 
     std::unique_ptr<IFuncInstance> m_instance;

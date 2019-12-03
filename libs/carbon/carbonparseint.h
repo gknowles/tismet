@@ -16,7 +16,7 @@ class CarbonParser : public CarbonParserBase {
 public:
     using CarbonParserBase::CarbonParserBase;
 
-    bool parse (char const src[]);
+    bool parse (const char src[]);
     size_t errpos () const { return m_errpos; }
 
 private:
@@ -28,8 +28,8 @@ private:
     bool onIntNumChar (char ch);
     bool onMetricEnd ();
     bool onNowEnd ();
-    bool onPathStart (char const * ptr);
-    bool onPathEnd (char const * eptr);
+    bool onPathStart (const char * ptr);
+    bool onPathEnd (const char * eptr);
     bool onTimepointChar (char ch);
 
     // Data members

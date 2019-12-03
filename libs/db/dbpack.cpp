@@ -227,7 +227,7 @@ bool DbPack::bitcheck(size_t nbits) {
 ***/
 
 //===========================================================================
-DbUnpackIter::DbUnpackIter(void const * src, size_t srcLen, size_t unusedBits)
+DbUnpackIter::DbUnpackIter(const void * src, size_t srcLen, size_t unusedBits)
     : m_base{(unsigned char *) src}
     , m_count{srcLen}
     , m_trailingUnused{(uint8_t) unusedBits}
@@ -236,7 +236,7 @@ DbUnpackIter::DbUnpackIter(void const * src, size_t srcLen, size_t unusedBits)
 }
 
 //===========================================================================
-bool DbUnpackIter::operator!=(DbUnpackIter const & right) const {
+bool DbUnpackIter::operator!=(const DbUnpackIter & right) const {
     return m_base == right.m_base
         && m_used == right.m_used
         && m_unusedBits == right.m_unusedBits;

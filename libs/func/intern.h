@@ -26,7 +26,7 @@ public:
     );
     FuncFactory & arg(
         std::string_view name,
-        char const enumName[],
+        const char enumName[],
         bool require = false,
         bool multiple = false
     );
@@ -43,9 +43,9 @@ public:
 
     IFuncInstance * onFuncBind(
         IFuncNotify * notify,
-        std::vector<Query::Node const *> & args
+        std::vector<const Query::Node *> & args
     ) override;
-    virtual IFuncInstance * onFuncBind(std::vector<Query::Node const *> & args);
+    virtual IFuncInstance * onFuncBind(std::vector<const Query::Node *> & args);
     void onFuncAdjustContext(FuncContext * context) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 
@@ -102,7 +102,7 @@ Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
 template<typename T>
 Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
     std::string_view name,
-    char const enumName[],
+    const char enumName[],
     bool require,
     bool multiple
 ) {
@@ -141,7 +141,7 @@ Eval::Function::Type Eval::IFuncBase<T>::type() const {
 template<typename T>
 Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
     Eval::IFuncNotify * notify,
-    std::vector<Query::Node const *> & args
+    std::vector<const Query::Node *> & args
 ) {
     auto oi = args.begin();
     for (auto && arg : args) {
@@ -162,7 +162,7 @@ Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
 //===========================================================================
 template<typename T>
 Eval::IFuncInstance * Eval::IFuncBase<T>::onFuncBind(
-    std::vector<Query::Node const *> & args
+    std::vector<const Query::Node *> & args
 ) {
     return this;
 }

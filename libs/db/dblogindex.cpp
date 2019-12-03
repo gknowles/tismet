@@ -42,7 +42,7 @@ static DbLogRecInfo::Table s_radixRecInfo{
     { kRecTypeIndexLeafInit,
         DbLogRecInfo::sizeFn<IndexLeafInitRec>,
         [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<IndexLeafInitRec const &>(log);
+            auto & rec = reinterpret_cast<const IndexLeafInitRec &>(log);
             return notify->onLogApplyIndexLeafInit(page, rec.id);
         },
     },

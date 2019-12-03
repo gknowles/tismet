@@ -42,6 +42,6 @@ namespace Query {
     struct QueryInfo;
 };
 
-std::string toString(Query::Node const & node);
+std::string toString(const Query::Node & node);
 
 bool parse(Query::QueryInfo & qry, std::string_view src);

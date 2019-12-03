@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-unsigned const kRequestBuckets = 8;
+const unsigned kRequestBuckets = 8;
 
 
 /****************************************************************************
@@ -57,7 +57,7 @@ public:
 
     bool open(string_view name, size_t pageSize, DbOpenFlags flags);
     void close();
-    void configure(DbConfig const & conf);
+    void configure(const DbConfig & conf);
     DbStats queryStats();
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
     bool backup(IDbProgressNotify * notify, string_view dst);
@@ -69,16 +69,16 @@ public:
     void eraseMetric(uint32_t id);
     void updateMetric(
         uint32_t id,
-        DbMetricInfo const & info
+        const DbMetricInfo & info
     );
 
-    char const * getMetricName(uint32_t id) const;
+    const char * getMetricName(uint32_t id) const;
     bool getMetricInfo(IDbDataNotify * notify, uint32_t id) const;
 
     bool findMetric(uint32_t * out, string_view name) const;
     void findMetrics(UnsignedSet * out, string_view pattern) const;
 
-    char const * getBranchName(uint32_t id) const;
+    const char * getBranchName(uint32_t id) const;
     void findBranches(UnsignedSet * out, string_view pattern) const;
 
     void updateSample(uint32_t id, TimePoint time, double value);
@@ -95,10 +95,10 @@ private:
     void apply(uint32_t id, DbReq && req);
 
     // Inherited via IDbDataNotify
-    bool onDbSeriesStart(DbSeriesInfo const & info) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
 
     // Inherited via IDbProgressNotify
-    bool onDbProgress(RunMode mode, DbProgressInfo const & info) override;
+    bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
 
     void backupNextFile();
 
@@ -229,14 +229,14 @@ void DbBase::close() {
 }
 
 //===========================================================================
-bool DbBase::onDbSeriesStart(DbSeriesInfo const & info) {
+bool DbBase::onDbSeriesStart(const DbSeriesInfo & info) {
     m_leaf.insert(info.id, info.name);
     m_branch.insertBranches(info.name);
     return true;
 }
 
 //===========================================================================
-void DbBase::configure(DbConfig const & conf) {
+void DbBase::configure(const DbConfig & conf) {
     m_page.configure(conf);
     m_log.configure(conf);
 }
@@ -282,7 +282,7 @@ bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
 }
 
 //===========================================================================
-bool DbBase::onDbProgress(RunMode mode, DbProgressInfo const & info) {
+bool DbBase::onDbProgress(RunMode mode, const DbProgressInfo & info) {
     if (m_backupMode != kRunStarting)
         return true;
 
@@ -512,7 +512,7 @@ void DbBase::eraseMetric(uint32_t id) {
 }
 
 //===========================================================================
-void DbBase::updateMetric(uint32_t id, DbMetricInfo const & info) {
+void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
     DbReq req;
     req.type = kUpdateMetric;
     req.retention = info.retention;
@@ -521,7 +521,7 @@ void DbBase::updateMetric(uint32_t id, DbMetricInfo const & info) {
 }
 
 //===========================================================================
-char const * DbBase::getMetricName(uint32_t id) const {
+const char * DbBase::getMetricName(uint32_t id) const {
     shared_lock lk{m_indexMut};
     return m_leaf.name(id);
 }
@@ -550,7 +550,7 @@ void DbBase::findMetrics(UnsignedSet * out, string_view pattern) const {
 }
 
 //===========================================================================
-char const * DbBase::getBranchName(uint32_t id) const {
+const char * DbBase::getBranchName(uint32_t id) const {
     shared_lock lk{m_indexMut};
     return m_branch.name(id);
 }
@@ -624,7 +624,7 @@ void dbClose(DbHandle h) {
 }
 
 //===========================================================================
-void dbConfigure(DbHandle h, DbConfig const & conf) {
+void dbConfigure(DbHandle h, const DbConfig & conf) {
     db(h)->configure(conf);
 }
 
@@ -675,12 +675,12 @@ void dbEraseMetric(DbHandle h, uint32_t id) {
 }
 
 //===========================================================================
-void dbUpdateMetric(DbHandle h, uint32_t id, DbMetricInfo const & info) {
+void dbUpdateMetric(DbHandle h, uint32_t id, const DbMetricInfo & info) {
     db(h)->updateMetric(id, info);
 }
 
 //===========================================================================
-char const * dbGetMetricName(DbHandle h, uint32_t id) {
+const char * dbGetMetricName(DbHandle h, uint32_t id) {
     return db(h)->getMetricName(id);
 }
 
@@ -700,7 +700,7 @@ void dbFindMetrics(UnsignedSet * out, DbHandle h, string_view name) {
 }
 
 //===========================================================================
-char const * dbGetBranchName(DbHandle h, uint32_t id) {
+const char * dbGetBranchName(DbHandle h, uint32_t id) {
     return db(h)->getBranchName(id);
 }
 

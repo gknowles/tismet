@@ -64,7 +64,7 @@ struct RadixUpdateRec {
 
 //===========================================================================
 APPLY(RadixInit) {
-    auto & rec = reinterpret_cast<RadixInitRec const &>(log);
+    auto & rec = reinterpret_cast<const RadixInitRec &>(log);
     notify->onLogApplyRadixInit(
         page,
         rec.id,
@@ -75,15 +75,15 @@ APPLY(RadixInit) {
 }
 
 //===========================================================================
-static uint16_t sizeRadixInitList(DbLog::Record const & log) {
-    auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
+static uint16_t sizeRadixInitList(const DbLog::Record & log) {
+    auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
     return offsetof(RadixInitListRec, pages)
         + rec.numPages * sizeof(*rec.pages);
 }
 
 //===========================================================================
 APPLY(RadixInitList) {
-    auto & rec = reinterpret_cast<RadixInitListRec const &>(log);
+    auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
     notify->onLogApplyRadixInit(
         page,
         rec.id,
@@ -95,7 +95,7 @@ APPLY(RadixInitList) {
 
 //===========================================================================
 APPLY(RadixErase) {
-    auto & rec = reinterpret_cast<RadixEraseRec const &>(log);
+    auto & rec = reinterpret_cast<const RadixEraseRec &>(log);
     notify->onLogApplyRadixErase(
         page,
         rec.firstPos,
@@ -105,13 +105,13 @@ APPLY(RadixErase) {
 
 //===========================================================================
 APPLY(RadixPromote) {
-    auto & rec = reinterpret_cast<RadixPromoteRec const &>(log);
+    auto & rec = reinterpret_cast<const RadixPromoteRec &>(log);
     notify->onLogApplyRadixPromote(page, rec.refPage);
 }
 
 //===========================================================================
 APPLY(RadixUpdate) {
-    auto & rec = reinterpret_cast<RadixUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const RadixUpdateRec &>(log);
     notify->onLogApplyRadixUpdate(page, rec.refPos, rec.refPage);
 }
 
@@ -150,8 +150,8 @@ void DbTxn::logRadixInit(
     pgno_t pgno,
     uint32_t id,
     uint16_t height,
-    pgno_t const * firstPage,
-    pgno_t const * lastPage
+    const pgno_t * firstPage,
+    const pgno_t * lastPage
 ) {
     if (firstPage == lastPage) {
         auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);

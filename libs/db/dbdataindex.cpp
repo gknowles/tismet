@@ -94,7 +94,7 @@ void DbData::indexDestructPage(DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-void DbData::indexDestruct(DbTxn & txn, DbPageHeader const & hdr) {
+void DbData::indexDestruct(DbTxn & txn, const DbPageHeader & hdr) {
     assert(!"Not implemented");
 }
 
@@ -122,7 +122,7 @@ bool DbData::indexEraseLeafPgno(
 
 //===========================================================================
 bool DbData::indexFindLeafPgno(
-    DbTxn const & txn,
+    const DbTxn & txn,
     pgno_t * out,
     pgno_t root,
     std::string_view key,
@@ -150,7 +150,7 @@ void DbData::indexErase(DbTxn & txn, pgno_t root, std::string_view key) {
 
 //===========================================================================
 bool DbData::indexFind(
-    DbTxn const & txn,
+    const DbTxn & txn,
     uint32_t * out,
     pgno_t root,
     std::string_view key
@@ -161,7 +161,7 @@ bool DbData::indexFind(
 
 //===========================================================================
 bool DbData::indexFind(
-    DbTxn const & txn,
+    const DbTxn & txn,
     std::string * out,
     pgno_t root,
     std::string_view key

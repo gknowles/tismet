@@ -52,8 +52,8 @@ private:
         void * ptr,
         uint32_t id,
         uint16_t height,
-        pgno_t const * firstPgno,
-        pgno_t const * lastPgno
+        const pgno_t * firstPgno,
+        const pgno_t * lastPgno
     ) override;
     void onLogApplyRadixErase(
         void * ptr,
@@ -185,7 +185,7 @@ void TextWriter::onLogApplyZeroUpdateRoots(
     pgno_t nameRoot,
     pgno_t idRoot
 ) {
-    out(ptr) << "zero.roots = " 
+    out(ptr) << "zero.roots = "
         << infoRoot << ", " << nameRoot << ", " << idRoot;
 }
 
@@ -208,8 +208,8 @@ void TextWriter::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
-    pgno_t const * firstPgno,
-    pgno_t const * lastPgno
+    const pgno_t * firstPgno,
+    const pgno_t * lastPgno
 ) {
     auto & os = out(ptr);
     os << "radix/" << id << ".init = " << height << '\n';

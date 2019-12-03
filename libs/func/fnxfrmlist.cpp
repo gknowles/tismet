@@ -27,8 +27,8 @@ class IXfrmListBase : public IFuncBase<T> {
 
     virtual void onTransform(
         double * optr,
-        double const * ptr,
-        double const * eptr,
+        const double * ptr,
+        const double * eptr,
         Duration interval
     ) = 0;
 };
@@ -59,11 +59,11 @@ bool IXfrmListBase<T>::onFuncApply(IFuncNotify * notify, ResultInfo & info) {
 
 namespace {
 class FuncDerivative : public IXfrmListBase<FuncDerivative> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
-        double const * ptr,
-        double const * eptr,
+        const double * ptr,
+        const double * eptr,
         Duration interval
     ) override;
 };
@@ -73,7 +73,7 @@ static auto s_derivative = FuncDerivative::Factory("derivative", "Transform")
 
 //===========================================================================
 IFuncInstance * FuncDerivative::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     m_presamples = 1;
     return this;
@@ -82,8 +82,8 @@ IFuncInstance * FuncDerivative::onFuncBind(
 //===========================================================================
 void FuncDerivative::onTransform(
     double * optr,
-    double const * ptr,
-    double const * eptr,
+    const double * ptr,
+    const double * eptr,
     Duration interval
 ) {
     *optr++ = NAN;
@@ -101,11 +101,11 @@ void FuncDerivative::onTransform(
 
 namespace {
 class FuncKeepLastValue : public IXfrmListBase<FuncKeepLastValue> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
-        double const * ptr,
-        double const * eptr,
+        const double * ptr,
+        const double * eptr,
         Duration interval
     ) override;
 
@@ -119,7 +119,7 @@ static auto s_keepLastValue =
 
 //===========================================================================
 IFuncInstance * FuncKeepLastValue::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     m_limit = args.empty() ? 0 : (int) asNumber(*args[0]);
     m_presamples = 1;
@@ -129,8 +129,8 @@ IFuncInstance * FuncKeepLastValue::onFuncBind(
 //===========================================================================
 void FuncKeepLastValue::onTransform(
     double * optr,
-    double const * ptr,
-    double const * eptr,
+    const double * ptr,
+    const double * eptr,
     Duration interval
 ) {
     auto base = ptr;
@@ -174,11 +174,11 @@ void FuncKeepLastValue::onTransform(
 
 namespace {
 class FuncMovingAverage : public IXfrmListBase<FuncMovingAverage> {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
-        double const * ptr,
-        double const * eptr,
+        const double * ptr,
+        const double * eptr,
         Duration interval
     ) override;
 
@@ -193,7 +193,7 @@ static auto s_movingAverage =
 
 //===========================================================================
 IFuncInstance * FuncMovingAverage::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     if (auto arg0 = asString(*args[0]); !arg0.empty()) {
         if (parse(&m_pretime, arg0))
@@ -210,8 +210,8 @@ IFuncInstance * FuncMovingAverage::onFuncBind(
 //===========================================================================
 void FuncMovingAverage::onTransform(
     double * optr,
-    double const * ptr,
-    double const * eptr,
+    const double * ptr,
+    const double * eptr,
     Duration interval
 ) {
     unsigned count;
@@ -263,11 +263,11 @@ namespace {
 class FuncNonNegativeDerivative
     : public IXfrmListBase<FuncNonNegativeDerivative>
 {
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     void onTransform(
         double * optr,
-        double const * ptr,
-        double const * eptr,
+        const double * ptr,
+        const double * eptr,
         Duration interval
     ) override;
 
@@ -281,7 +281,7 @@ static auto s_nonNegativeDerivative =
 
 //===========================================================================
 IFuncInstance * FuncNonNegativeDerivative::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     m_limit = args.empty() ? HUGE_VAL : asNumber(*args[0]);
     m_presamples = 1;
@@ -291,8 +291,8 @@ IFuncInstance * FuncNonNegativeDerivative::onFuncBind(
 //===========================================================================
 void FuncNonNegativeDerivative::onTransform(
     double * optr,
-    double const * ptr,
-    double const * eptr,
+    const double * ptr,
+    const double * eptr,
     Duration interval
 ) {
     *optr++ = NAN;

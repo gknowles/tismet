@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-auto const kZeroPageNum = (pgno_t) 0;
+const auto kZeroPageNum = (pgno_t) 0;
 
 
 /****************************************************************************
@@ -24,7 +24,7 @@ auto const kZeroPageNum = (pgno_t) 0;
 *
 ***/
 
-unsigned const kDataFileSig[] = {
+const unsigned kDataFileSig[] = {
     0x1a849844,
     0xfd0c154d,
     0x912aafa4,
@@ -32,7 +32,7 @@ unsigned const kDataFileSig[] = {
 };
 
 // deprecated 2018-12-05
-unsigned const kDataFileSigV1[] = {
+const unsigned kDataFileSigV1[] = {
     0x39515728,
     0x4873456d,
     0xf6bfd8a1,
@@ -146,10 +146,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
     m_verbose = flags & fDbOpenVerbose;
 
-    auto zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {
         txn.logZeroInit(kZeroPageNum);
-        zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {

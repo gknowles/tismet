@@ -33,7 +33,7 @@ public:
     DumpReader();
 
     virtual bool onDumpMetrics(size_t totalMetrics) = 0;
-    virtual bool onDumpSeries(DbSeriesInfoEx const & ex) = 0;
+    virtual bool onDumpSeries(const DbSeriesInfoEx & ex) = 0;
     virtual bool onDumpSample(double value) = 0;
     virtual void onDumpEnd() = 0;
 
@@ -91,7 +91,7 @@ private:
 class DbWriter : public DumpReader {
 public:
     bool onDumpMetrics(size_t totalMetrics) override;
-    bool onDumpSeries(DbSeriesInfoEx const & ex) override;
+    bool onDumpSeries(const DbSeriesInfoEx & ex) override;
     bool onDumpSample(double value) override;
     void onDumpEnd() override;
 
@@ -122,14 +122,14 @@ static DbWriter s_writer;
 *
 ***/
 
-TokenTable::Token const s_dumpFormats[] = {
+const TokenTable::Token s_dumpFormats[] = {
     { kDumpFormat2018_1, "2018.1" },
     { kDumpFormat2018_2, "2018.2" },
 };
-TokenTable const s_dumpFormatTbl{s_dumpFormats};
+const TokenTable s_dumpFormatTbl{s_dumpFormats};
 
 //===========================================================================
-char const * toString(DumpFormat type, char const def[]) {
+const char * toString(DumpFormat type, const char def[]) {
     return tokenTableGetName(s_dumpFormatTbl, type, def);
 }
 
@@ -338,7 +338,7 @@ bool DbWriter::onDumpMetrics(size_t totalMetrics) {
 }
 
 //===========================================================================
-bool DbWriter::onDumpSeries(DbSeriesInfoEx const & ex) {
+bool DbWriter::onDumpSeries(const DbSeriesInfoEx & ex) {
     if (appStopping())
         return false;
 

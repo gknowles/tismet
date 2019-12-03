@@ -17,7 +17,7 @@ using namespace Dim;
 
 constexpr Duration kDefaultRetention = 7 * 24h;
 
-unsigned const kMaxMetricNameLen = 1024;
+const unsigned kMaxMetricNameLen = 1024;
 
 
 /****************************************************************************
@@ -110,7 +110,7 @@ static bool reportSample(
 
 //===========================================================================
 bool DbData::findMetricInfoPage(
-    DbTxn const & txn,
+    const DbTxn & txn,
     pgno_t * out,
     uint32_t id
 ) const {
@@ -121,7 +121,7 @@ bool DbData::findMetricInfoPage(
 
 //===========================================================================
 bool DbData::findMetricName(
-    DbTxn const & txn,
+    const DbTxn & txn,
     string * out,
     uint32_t id
 ) const {
@@ -131,7 +131,7 @@ bool DbData::findMetricName(
 
 //===========================================================================
 bool DbData::findMetricId(
-    DbTxn const & txn,
+    const DbTxn & txn,
     uint32_t * out,
     string_view name
 ) const {
@@ -177,7 +177,7 @@ bool DbData::loadMetrics (
         return false;
 
     if (p->type == DbPageType::kRadix) {
-        auto rp = reinterpret_cast<RadixPage const *>(p);
+        auto rp = reinterpret_cast<const RadixPage *>(p);
         for (auto && mpno : rp->rd) {
             if (!loadMetrics(txn, notify, mpno))
                 return false;
@@ -192,7 +192,7 @@ bool DbData::loadMetrics (
     }
 
     // metric page
-    auto mp = reinterpret_cast<MetricPage const *>(p);
+    auto mp = reinterpret_cast<const MetricPage *>(p);
     string name;
     if (!indexFind(txn, &name, m_nameIndexRoot, toKey(mp->hdr.id))) {
         logMsgError() << "Name not found for metric #" << mp->hdr.id
@@ -292,7 +292,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    DbMetricInfo const & from
+    const DbMetricInfo & from
 ) {
     // TODO: validate retention
 
@@ -318,7 +318,7 @@ void DbData::updateMetric(
 //===========================================================================
 void DbData::getMetricInfo(
     IDbDataNotify * notify,
-    DbTxn const & txn,
+    const DbTxn & txn,
     uint32_t id
 ) {
     pgno_t mpno;
@@ -364,12 +364,12 @@ void DbData::onLogApplyMetricUpdate(
 ***/
 
 //===========================================================================
-size_t DbData::maxSamples(MetricPage const * mp) const {
+size_t DbData::maxSamples(const MetricPage * mp) const {
     return mp->ndxAvail / sizeof(*mp->samples) + mp->numSamples;
 }
 
 //===========================================================================
-size_t DbData::maxData(SamplePage const * sp) const {
+size_t DbData::maxData(const SamplePage * sp) const {
     return m_pageSize - offsetof(SamplePage, data);
 }
 
@@ -540,7 +540,7 @@ void DbData::updateSample(
 void DbData::sampleIndexSplit(
     DbTxn & txn,
     pgno_t mpno,
-    DbData::SamplePage const * sp
+    const DbData::SamplePage * sp
 ) {
     // Add additional sample page to the index and move half of the data on
     // sp to it.
@@ -615,7 +615,7 @@ void DbData::sampleIndexMerge(
         DbPack pack(prev);
         pack.retarget(buf.data(), buf.size(), prev.unusedBits());
 
-        auto mergeStep = [&](DbSample const & samp) {
+        auto mergeStep = [&](const DbSample & samp) {
             if (pack.put(samp.time, samp.value))
                 return;
             if (pack.size()) {

@@ -25063,5 +25063,5 @@ static const uint8_t s_data[] = {
 
 //===========================================================================
 string_view resWebSiteContent() {
-    return {(char const *) s_data, size(s_data)};
+    return {(const char *) s_data, size(s_data)};
 }

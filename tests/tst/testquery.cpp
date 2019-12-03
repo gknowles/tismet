@@ -33,7 +33,7 @@ using namespace Dim;
 //===========================================================================
 static void parseTest(
     int line,
-    string const & src,
+    const string & src,
     string_view normal
 ) {
     Query::QueryInfo qry;

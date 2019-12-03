@@ -54,7 +54,7 @@ namespace {
 class FuncAggregate : public IFuncBase<FuncAggregate> {
     IFuncInstance * onFuncBind(
         IFuncNotify * notify,
-        vector<Query::Node const *> & args
+        vector<const Query::Node *> & args
     ) override;
 };
 } // namespace
@@ -65,7 +65,7 @@ static auto s_aggregate = FuncAggregate::Factory("aggregate", "Combine")
 //===========================================================================
 IFuncInstance * FuncAggregate::onFuncBind(
     IFuncNotify * notify,
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     auto aggtype = fromString(asString(*args[1]), AggFunc::defaultType());
     auto fname = string(toString(aggtype, "")) + "Series";

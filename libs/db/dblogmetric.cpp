@@ -88,7 +88,7 @@ struct SampleBulkUpdateRec {
 
 //===========================================================================
 APPLY(MetricInit) {
-    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricInitRec &>(log);
     return notify->onLogApplyMetricInit(
         page,
         rec.id,
@@ -99,7 +99,7 @@ APPLY(MetricInit) {
 
 //===========================================================================
 APPLY(MetricUpdate) {
-    auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateRec &>(log);
     return notify->onLogApplyMetricUpdate(
         page,
         rec.creation,
@@ -109,7 +109,7 @@ APPLY(MetricUpdate) {
 
 //===========================================================================
 APPLY(MetricEraseSamples) {
-    auto & rec = reinterpret_cast<MetricEraseSamplesRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricEraseSamplesRec &>(log);
     return notify->onLogApplyMetricEraseSamples(
         page,
         rec.count,
@@ -119,7 +119,7 @@ APPLY(MetricEraseSamples) {
 
 //===========================================================================
 APPLY(MetricUpdateSample) {
-    auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateSampleRec &>(log);
     return notify->onLogApplyMetricUpdateSample(
         page,
         rec.pos,
@@ -130,7 +130,7 @@ APPLY(MetricUpdateSample) {
 
 //===========================================================================
 APPLY(MetricInsertSample) {
-    auto & rec = reinterpret_cast<MetricInsertSampleRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricInsertSampleRec &>(log);
     return notify->onLogApplyMetricInsertSample(
         page,
         rec.pos,
@@ -142,7 +142,7 @@ APPLY(MetricInsertSample) {
 
 //===========================================================================
 APPLY(MetricInsertSampleTxn) {
-    auto & rec = reinterpret_cast<MetricInsertSampleTxnRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricInsertSampleTxnRec &>(log);
     return notify->onLogApplyMetricInsertSample(
         page,
         rec.pos,
@@ -188,19 +188,19 @@ static DbLogRecInfo::Table s_metricRecInfo{
 
 //===========================================================================
 APPLY(SampleInit) {
-    auto & rec = reinterpret_cast<SampleInitRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleInitRec &>(log);
     return notify->onLogApplySampleInit(page, rec.id);
 }
 
 //===========================================================================
-static uint16_t sizeSampleBulkUpdate(DbLog::Record const & log) {
-    auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
+static uint16_t sizeSampleBulkUpdate(const DbLog::Record & log) {
+    auto & rec = reinterpret_cast<const SampleBulkUpdateRec &>(log);
     return offsetof(SampleBulkUpdateRec, data) + rec.count;
 }
 
 //===========================================================================
 APPLY(SampleBulkUpdate) {
-    auto & rec = reinterpret_cast<SampleBulkUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleBulkUpdateRec &>(log);
     return notify->onLogApplySampleUpdate(
         page,
         rec.pos,

@@ -48,7 +48,7 @@ public:
     void retarget(void * out, size_t outLen, size_t unusedBits = 0);
     bool put(Dim::TimePoint time, double value);
 
-    unsigned char const * data() const { return m_base; }
+    const unsigned char * data() const { return m_base; }
     size_t size() const { return m_used; }
     std::string_view view() const { return {(char *) m_base, m_used}; }
     uint8_t unusedBits() const { return m_unusedBits; }
@@ -82,19 +82,19 @@ private:
 class DbUnpackIter {
 public:
     DbUnpackIter() {}
-    DbUnpackIter(void const * src, size_t srcLen, size_t unusedBits);
+    DbUnpackIter(const void * src, size_t srcLen, size_t unusedBits);
     explicit operator bool() const { return m_base; }
-    bool operator!=(DbUnpackIter const & right) const;
+    bool operator!=(const DbUnpackIter & right) const;
     DbUnpackIter & operator++();
     DbSample & operator*() { return m_state.sample; }
     DbSample * operator->() { return &m_state.sample; }
 
-    unsigned char const * data() const { return m_base; }
+    const unsigned char * data() const { return m_base; }
     size_t size() const { return m_count; }
     std::string_view view() const { return {(char *) data(), size()}; }
     uint8_t unusedBits() const { return m_unusedBits; }
 
-    DbPackState const & state() const { return m_state; }
+    const DbPackState & state() const { return m_state; }
 
 private:
     bool bitget(int64_t * out, size_t nbits);
@@ -103,7 +103,7 @@ private:
     bool getValue();
 
     // Source
-    unsigned char const * m_base{};
+    const unsigned char * m_base{};
     size_t m_count{};
     uint8_t m_trailingUnused{};
 
@@ -116,4 +116,4 @@ private:
 };
 
 inline DbUnpackIter begin(DbUnpackIter iter) { return iter; }
-inline DbUnpackIter end(DbUnpackIter const & iter) { return {}; }
+inline DbUnpackIter end(const DbUnpackIter & iter) { return {}; }

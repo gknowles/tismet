@@ -142,13 +142,13 @@ inline bool QueryParser::onSegCharListEnd () {
 }
 
 //===========================================================================
-inline bool QueryParser::onSegLiteralStart (char const * ptr) {
+inline bool QueryParser::onSegLiteralStart (const char * ptr) {
     m_start = ptr;
     return true;
 }
 
 //===========================================================================
-inline bool QueryParser::onSegLiteralEnd (char const * eptr) {
+inline bool QueryParser::onSegLiteralEnd (const char * eptr) {
     addSegLiteral(
         m_query,
         m_nodes.back(),
@@ -185,13 +185,13 @@ inline bool QueryParser::onSslCommaEnd () {
 }
 
 //===========================================================================
-inline bool QueryParser::onStringStart (char const * ptr) {
+inline bool QueryParser::onStringStart (const char * ptr) {
     m_start = ptr;
     return true;
 }
 
 //===========================================================================
-inline bool QueryParser::onStringEnd (char const * eptr) {
+inline bool QueryParser::onStringEnd (const char * eptr) {
     addStringArg(
         m_query,
         m_nodes.back(),

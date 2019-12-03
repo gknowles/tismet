@@ -74,7 +74,7 @@ namespace {
 
 class DumpWriter : public IDbDataNotify {
 public:
-    bool onDbSeriesStart(DbSeriesInfo const & info) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(uint32_t id, TimePoint time, double val) override;
 
 private:
@@ -86,10 +86,10 @@ private:
 } // namespace
 
 //===========================================================================
-bool DumpWriter::onDbSeriesStart(DbSeriesInfo const & info) {
+bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
     if (info.infoEx) {
         s_progress.metrics += 1;
-        auto & ex = static_cast<DbSeriesInfoEx const &>(info);
+        auto & ex = static_cast<const DbSeriesInfoEx &>(info);
         appendIfFull(ex.name.size() + 64);
         s_bld.array(7);
         s_bld.value(ex.name);

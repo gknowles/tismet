@@ -22,7 +22,7 @@ DbData::RadixData * DbData::radixData(DbPageHeader * hdr) const {
 }
 
 //===========================================================================
-DbData::RadixData const * DbData::radixData(DbPageHeader const * hdr) const {
+const DbData::RadixData * DbData::radixData(const DbPageHeader * hdr) const {
     return radixData(const_cast<DbPageHeader *>(hdr));
 }
 
@@ -67,7 +67,7 @@ void DbData::radixDestructPage(DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-void DbData::radixDestruct(DbTxn & txn, DbPageHeader const & hdr) {
+void DbData::radixDestruct(DbTxn & txn, const DbPageHeader & hdr) {
     auto rd = radixData(&hdr);
     for (auto && p : *rd) {
         if (p && p <= kMaxPageNum)
@@ -78,14 +78,14 @@ void DbData::radixDestruct(DbTxn & txn, DbPageHeader const & hdr) {
 //===========================================================================
 void DbData::radixErase(
     DbTxn & txn,
-    DbPageHeader const & rhdr,
+    const DbPageHeader & rhdr,
     size_t firstPos,
     size_t lastPos
 ) {
     assert(firstPos <= lastPos);
     while (firstPos < lastPos) {
-        DbPageHeader const * hdr;
-        RadixData const * rd;
+        const DbPageHeader * hdr;
+        const RadixData * rd;
         size_t rpos;
         if (!radixFind(txn, &hdr, &rd, &rpos, rhdr.pgno, firstPos))
             return;
@@ -173,8 +173,8 @@ void DbData::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
-    pgno_t const * firstPgno,
-    pgno_t const * lastPgno
+    const pgno_t * firstPgno,
+    const pgno_t * lastPgno
 ) {
     auto rp = static_cast<RadixPage *>(ptr);
     if (rp->hdr.type == DbPageType::kFree) {
@@ -227,9 +227,9 @@ void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
 
 //===========================================================================
 bool DbData::radixFind(
-    DbTxn const & txn,
-    DbPageHeader const ** hdr,
-    RadixData const ** rd,
+    const DbTxn & txn,
+    const DbPageHeader ** hdr,
+    const RadixData ** rd,
     size_t * rpos,
     pgno_t root,
     size_t pos
@@ -275,13 +275,13 @@ bool DbData::radixFind(
 
 //===========================================================================
 bool DbData::radixFind(
-    DbTxn const & txn,
+    const DbTxn & txn,
     pgno_t * out,
     pgno_t root,
     size_t pos
 ) const {
-    DbPageHeader const * hdr;
-    RadixData const * rd;
+    const DbPageHeader * hdr;
+    const RadixData * rd;
     size_t rpos;
     if (radixFind(txn, &hdr, &rd, &rpos, root, pos)) {
         *out = rd->pages[rpos];

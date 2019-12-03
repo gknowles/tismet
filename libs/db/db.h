@@ -46,7 +46,7 @@ struct DbConfig {
     Dim::Duration checkpointMaxInterval;
     size_t checkpointMaxData;
 };
-void dbConfigure(DbHandle h, DbConfig const & conf);
+void dbConfigure(DbHandle h, const DbConfig & conf);
 
 struct DbStats {
     // Constant for life of database
@@ -83,7 +83,7 @@ void dbFindMetrics(
     DbHandle h,
     std::string_view pattern = {}  // empty name for all
 );
-char const * dbGetMetricName(DbHandle h, uint32_t id);
+const char * dbGetMetricName(DbHandle h, uint32_t id);
 
 // Returns true if it completed synchronously
 bool dbGetMetricInfo(
@@ -104,7 +104,7 @@ struct DbMetricInfo {
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
-    DbMetricInfo const & info
+    const DbMetricInfo & info
 );
 
 // returns all branches containing metrics that match the pattern
@@ -113,7 +113,7 @@ void dbFindBranches(
     DbHandle h,
     std::string_view pattern = {}  // empty name for all
 );
-char const * dbGetBranchName(DbHandle h, uint32_t branchId);
+const char * dbGetBranchName(DbHandle h, uint32_t branchId);
 
 
 /****************************************************************************
@@ -149,7 +149,7 @@ struct IDbDataNotify {
 
     // Called once before any calls to onDbSample, return false to abort the
     // enum, otherwise it continues to the samples.
-    virtual bool onDbSeriesStart(DbSeriesInfo const & info) { return true; }
+    virtual bool onDbSeriesStart(const DbSeriesInfo & info) { return true; }
 
     virtual void onDbSeriesEnd(uint32_t id) {}
 
@@ -192,7 +192,7 @@ struct IDbProgressNotify {
     virtual ~IDbProgressNotify() = default;
     virtual bool onDbProgress(
         Dim::RunMode mode,
-        DbProgressInfo const & info
+        const DbProgressInfo & info
     ) = 0;
 };
 

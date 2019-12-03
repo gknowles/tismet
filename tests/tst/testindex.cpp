@@ -33,7 +33,7 @@ using namespace Dim;
 //===========================================================================
 static void findTest(
     int line,
-    DbIndex const & index,
+    const DbIndex & index,
     string_view query,
     string_view result
 ) {
