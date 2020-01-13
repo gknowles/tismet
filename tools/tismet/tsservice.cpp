@@ -142,7 +142,7 @@ static bool installCmd(Cli & cli) {
 
     switch (envProcessRights()) {
     case kEnvUserAdmin:
-        success = setFileAccess() && installService();
+        success = installService() && setFileAccess();
         break;
     case kEnvUserRestrictedAdmin:
         success = execElevated(envExecPath(), s_opts.args);
