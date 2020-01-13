@@ -59,7 +59,7 @@ enum NodeType {
     kSegSegChoice,
 };
 
-struct Node : Dim::ListBaseLink<> {
+struct Node : Dim::ListLink<> {
     NodeType type;
 };
 

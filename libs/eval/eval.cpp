@@ -45,7 +45,7 @@ private:
     TimePoint m_time;
 };
 
-class Evaluate : public ResultNode, public ListBaseLink<> {
+class Evaluate : public ResultNode, public ListLink<> {
 public:
     Evaluate();
     ~Evaluate();

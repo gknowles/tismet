@@ -234,7 +234,7 @@ static void updateFile(string_view fname, string_view content) {
         fileAppendWait(f, ncontent.data(), ncontent.size());
         fileClose(f);
         cout << fname << ", ";
-        ConsoleScopedAttr attr(kConsoleHighlight);
+        ConsoleScopedAttr attr(kConsoleNote);
         cout << "UPDATED\n";
     }
 }

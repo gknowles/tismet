@@ -39,12 +39,12 @@ static struct {
     char const * desc;
     ConsoleAttr attr;
 } s_logTypeInfo[] = {
-    { "UNKNOWN", kConsoleNormal     }, // invalid
-    { "DEBUG",   kConsoleNormal     }, // debug
-    { "INFO",    kConsoleHighlight  }, // info
-    { "WARN",    kConsoleWarn       }, // warn
-    { "ERROR",   kConsoleError      }, // error
-    { "FATAL",   kConsoleError      }, // fatal
+    { "UNKNOWN", kConsoleNormal }, // invalid
+    { "DEBUG",   kConsoleNormal }, // debug
+    { "INFO",    kConsoleNote   }, // info
+    { "WARN",    kConsoleWarn   }, // warn
+    { "ERROR",   kConsoleError  }, // error
+    { "FATAL",   kConsoleError  }, // fatal
 };
 static_assert(size(s_logTypeInfo) == kLogTypes);
 

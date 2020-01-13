@@ -32,7 +32,7 @@ struct TestEvalSeries {
     vector<double> samples;
 };
 
-class UnitTest : public ListBaseLink<>, IEvalNotify {
+class UnitTest : public ListLink<>, IEvalNotify {
 public:
     UnitTest(string_view name, int line = __LINE__);
     UnitTest(UnitTest const & from);

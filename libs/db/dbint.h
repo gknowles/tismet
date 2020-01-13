@@ -146,7 +146,7 @@ private:
 
     // Info about work pages that have been modified in memory but not yet
     // written to disk.
-    struct WorkPageInfo : Dim::ListBaseLink<> {
+    struct WorkPageInfo : Dim::ListLink<> {
         DbPageHeader * hdr;
         Dim::TimePoint firstTime; // time page became dirty
         uint64_t firstLsn; // LSN at which page became dirty

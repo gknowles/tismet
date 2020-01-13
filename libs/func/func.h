@@ -66,7 +66,7 @@ struct ResultInfo {
 };
 
 namespace FuncArg {
-    struct Enum : Dim::ListBaseLink<> {
+    struct Enum : Dim::ListLink<> {
         std::string const name;
         Dim::TokenTable const * const table{};
 
@@ -192,7 +192,7 @@ struct FuncArgInfo {
 };
 
 class IFuncFactory
-    : public Dim::ListBaseLink<>
+    : public Dim::ListLink<>
     , public Dim::IFactory<IFuncInstance> {
 public:
     IFuncFactory(std::string_view name, std::string_view group);

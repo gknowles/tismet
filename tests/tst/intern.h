@@ -10,7 +10,7 @@
 *
 ***/
 
-class ITest : public Dim::ListBaseLink<> {
+class ITest : public Dim::ListLink<> {
 public:
     ITest (std::string_view name, std::string_view desc);
     virtual ~ITest() = default;
