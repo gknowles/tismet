@@ -1,10 +1,10 @@
 <!--
-Copyright Glen Knowles 2016 - 2019.
+Copyright Glen Knowles 2016 - 2020.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
 [![Build status](https://ci.appveyor.com/api/projects/status/nlcftmonh607sv3a?svg=true)
-    ](https://ci.appveyor.com/project/gknowles/tismet "msvc 2017")
+    ](https://ci.appveyor.com/project/gknowles/tismet "msvc 2019")
 
 # Tismet
 
