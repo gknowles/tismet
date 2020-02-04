@@ -73,4 +73,11 @@ void tsWebInitialize() {
 
     resLoadWebSite("/admin", {}, resWebSiteContent());
     httpRouteAdd(&s_redirectAdmin, "/");
+    httpRouteAddAlias(
+        "/admin",
+        fHttpMethodGet,
+        "/admin",
+        fHttpMethodGet,
+        true
+    );
 }
