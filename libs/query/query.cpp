@@ -118,7 +118,7 @@ bool Query::parse(
     // normalize
     string text = toString(*qry.node, notify);
     qry = {};
-    qry.text = qry.heap.strdup(text.c_str());
+    qry.text = qry.heap.strDup(text.c_str());
     parser = QueryParser{&qry};
     bool success [[maybe_unused]] = parser.parse(qry.text);
     assert(success);

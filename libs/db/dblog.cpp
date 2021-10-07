@@ -160,7 +160,7 @@ static TaskQueueHandle logQueue() {
 }
 
 //===========================================================================
-static void pack(void * ptr, LogPage const & lp) {
+static void pack(void * ptr, LogPage const & lp, uint32_t checksum) {
     auto mp = (MinimumPage *) ptr;
     mp->type = lp.type;
     mp->pgno = lp.pgno;
@@ -171,7 +171,7 @@ static void pack(void * ptr, LogPage const & lp) {
         break;
     case LogPageType::kLog:
         assert(v2->type == lp.type);
-        v2->checksum = lp.checksum;
+        v2->checksum = checksum;
         v2->firstLsn = lp.firstLsn;
         v2->numLogs = lp.numLogs;
         v2->firstPos = lp.firstPos;
@@ -270,8 +270,6 @@ bool DbLog::LsnTaskInfo::operator>(LsnTaskInfo const & right) const {
 DbLog::DbLog(IApplyNotify * data, IPageNotify * page)
     : m_data(data)
     , m_page(page)
-    , m_maxCheckpointData{kDefaultMaxCheckpointData}
-    , m_maxCheckpointInterval{kDefaultMaxCheckpointInterval}
     , m_checkpointTimer([&](auto){ checkpoint(); return kTimerInfinite; })
     , m_checkpointPagesTask([&]{ checkpointPages(); })
     , m_checkpointStableCommitTask([&]{ checkpointStableCommit(); })
@@ -547,7 +545,7 @@ bool DbLog::recover(RecoverFlags flags) {
     if (flags & fRecoverIncompleteTxns) {
         data.incompleteTxnLsns.clear();
     } else {
-        for (auto && kv : data.txns)
+        for (auto&& kv : data.txns)
             data.incompleteTxnLsns.push_back(kv.second);
         sort(
             data.incompleteTxnLsns.begin(),
@@ -607,10 +605,8 @@ bool DbLog::loadPages(FileHandle flog) {
             break;
         case LogPageType::kLog:
             unpack(&lp, rawbuf);
-            checksum = lp.checksum;
-            lp.checksum = 0;
-            pack(rawbuf, lp);
-            lp.checksum = hash_crc32c(rawbuf, m_pageSize);
+            pack(rawbuf, lp, 0);
+            checksum = hash_crc32c(rawbuf, m_pageSize);
             if (checksum != lp.checksum) {
                 logMsgError() << "Invalid checksum on page #"
                     << i << " of " << filePath(flog);
@@ -666,7 +662,7 @@ void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
     auto lsn = uint64_t{0};
     auto log = (Record *) nullptr;
 
-    for (auto & pi : m_pages) {
+    for (auto&& pi : m_pages) {
         fileReadWait(buf2, m_pageSize, flog, pi.pgno * m_pageSize);
         unpack(&lp, buf2);
         if (bytesBefore) {
@@ -902,7 +898,7 @@ void DbLog::checkpointTruncateCommit() {
         checkpointWaitForNext();
     } else {
         DbProgressInfo info = {};
-        for (auto && block : m_checkpointBlocks)
+        for (auto&& block : m_checkpointBlocks)
             block->onDbProgress(kRunStopped, info);
     }
     m_bufAvailCv.notify_one();
@@ -980,6 +976,7 @@ uint64_t DbLog::log(
     // next page), UNLESS it's exactly at the end of the page. In that case the
     // transaction actually starts on the next page, which is where we'll be
     // after logging.
+    //
     // Transaction commits are counted after logging, so it's always on the
     // page where they finished.
     if (m_bufPos == m_pageSize) {
@@ -1012,31 +1009,30 @@ uint64_t DbLog::log(
         }
         if (txnMode == TxnMode::kCommit)
             countCommitTxn_LK(txn);
-    } else {
-        bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
-        m_bufStates[m_curBuf] = Buffer::FullWriting;
-        LogPage lp;
-        auto rawbuf = bufPtr(m_curBuf);
-        unpack(&lp, rawbuf);
-        lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
-        lp.lastPos = (uint16_t) m_bufPos;
-        if (overflow)
-            lp.lastPos -= (uint16_t) bytes;
-        lp.checksum = 0;
-        pack(rawbuf, lp);
+        return lsn;
+    }
 
-        if (overflow)
-            prepareBuffer_LK(log, bytes, overflow);
-        if (txnMode == TxnMode::kCommit)
-            countCommitTxn_LK(txn);
+    bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
+    m_bufStates[m_curBuf] = Buffer::FullWriting;
+    LogPage lp;
+    auto rawbuf = bufPtr(m_curBuf);
+    unpack(&lp, rawbuf);
+    lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
+    lp.lastPos = (uint16_t) m_bufPos;
+    if (overflow)
+        lp.lastPos -= (uint16_t) bytes;
+    pack(rawbuf, lp, 0);
 
-        lk.unlock();
-        if (!writeInProgress) {
-            lp.checksum = hash_crc32c(rawbuf, m_pageSize);
-            pack(rawbuf, lp);
-            auto offset = lp.pgno * m_pageSize;
-            fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
-        }
+    if (overflow)
+        prepareBuffer_LK(log, bytes, overflow);
+    if (txnMode == TxnMode::kCommit)
+        countCommitTxn_LK(txn);
+
+    lk.unlock();
+    if (!writeInProgress) {
+        pack(rawbuf, lp, hash_crc32c(rawbuf, m_pageSize));
+        auto offset = lp.pgno * m_pageSize;
+        fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
     }
     return lsn;
 }
@@ -1070,8 +1066,7 @@ void DbLog::flushWriteBuffer() {
     unpack(&lp, rawbuf);
     lp.numLogs = (uint16_t) (m_lastLsn - lp.firstLsn + 1);
     lp.lastPos = (uint16_t) m_bufPos;
-    lp.checksum = 0;
-    pack(rawbuf, lp);
+    pack(rawbuf, lp, 0);
     auto offset = lp.pgno * m_pageSize;
 
     // Write the entire page, not just the changed part, otherwise the
@@ -1082,8 +1077,7 @@ void DbLog::flushWriteBuffer() {
     lk.unlock();
     if (lp.type != LogPageType::kFree) {
         assert(lp.type == LogPageType::kLog || lp.type == LogPageType::kLogV1);
-        lp.checksum = hash_crc32c(nraw, m_pageSize);
-        pack(nraw, lp);
+        pack(nraw, lp, hash_crc32c(nraw, m_pageSize));
     }
     fileWrite(this, m_flog, offset, nraw, m_pageSize, logQueue());
 }
@@ -1095,7 +1089,7 @@ void DbLog::updatePages_LK(PageInfo const & pi, bool fullPageWrite) {
     i->numLogs = pi.numLogs;
 
     auto base = i + 1;
-    for (auto && [lsn, txns] : i->commitTxns) {
+    for (auto&& [lsn, txns] : i->commitTxns) {
         base -= 1;
         assert(base->firstLsn == lsn);
         if (txns) {
@@ -1159,8 +1153,10 @@ void DbLog::onFileWrite(
     int64_t offset,
     FileHandle f
 ) {
-    if (written != data.size())
-        logMsgFatal() << "Write to .tsl failed, " << errno << ", " << _doserrno;
+    if (written != data.size()) {
+        logMsgFatal() << "Write to .tsl failed, " << errno << ", "
+            << _doserrno;
+    }
 
     auto rawbuf = (char *) data.data();
     s_perfWrites += 1;
@@ -1186,7 +1182,7 @@ void DbLog::onFileWrite(
         auto ibuf = (rawbuf - m_buffers) / m_pageSize;
         m_bufStates[ibuf] = Buffer::Empty;
         lp.type = LogPageType::kFree;
-        pack(rawbuf, lp);
+        pack(rawbuf, lp, lp.checksum);
         m_checkpointData += m_pageSize;
         bool needCheckpoint = m_checkpointData >= m_maxCheckpointData;
         lk.unlock();
@@ -1217,8 +1213,7 @@ void DbLog::onFileWrite(
         }
     } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
         lk.unlock();
-        olp.checksum = hash_crc32c(rawbuf, m_pageSize);
-        pack(rawbuf, olp);
+        pack(rawbuf, olp, hash_crc32c(rawbuf, m_pageSize));
         fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
     }
 }
@@ -1258,7 +1253,7 @@ void DbLog::prepareBuffer_LK(
     }
     lp.numLogs = 0;
     lp.lastPos = 0;
-    pack(rawbuf, lp);
+    pack(rawbuf, lp, 0);
 
     auto & pi = m_pages.emplace_back(PageInfo{});
     pi.pgno = lp.pgno;
@@ -1287,7 +1282,7 @@ void DbLog::countBeginTxn_LK() {
 void DbLog::countCommitTxn_LK(uint64_t txn) {
     auto lsn = getLsn(txn);
     auto & commitTxns = m_pages.back().commitTxns;
-    for (auto & lsn_txns : commitTxns) {
+    for (auto&& lsn_txns : commitTxns) {
         if (lsn >= lsn_txns.first) {
             lsn_txns.second += 1;
             return;

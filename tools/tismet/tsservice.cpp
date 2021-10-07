@@ -42,13 +42,14 @@ static CmdOpts s_opts;
 ***/
 
 //===========================================================================
-static bool execElevated(string_view prog, vector<string> const & rawArgs) {
+static bool execElevated(vector<string> const & rawArgs) {
     auto args = rawArgs;
-    args[0] = "--console=";
-    args[0] += StrFrom<unsigned>(envProcessId());
+    string arg1 = "--console=";
+    arg1 += StrFrom<unsigned>(envProcessId()).view();
+    args.insert(args.begin() + 1, arg1);
     auto argline = Cli::toCmdline(args);
     int ec;
-    return execElevatedWait(&ec, prog, argline);
+    return execElevatedWait(&ec, argline);
 }
 
 
@@ -145,7 +146,7 @@ static bool installCmd(Cli & cli) {
         success = installService() && setFileAccess();
         break;
     case kEnvUserRestrictedAdmin:
-        success = execElevated(envExecPath(), s_opts.args);
+        success = execElevated(s_opts.args);
         break;
     case kEnvUserStandard:
         logMsgError() << "You must be an administrator to create services.";

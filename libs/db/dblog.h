@@ -181,9 +181,9 @@ private:
     size_t m_numPages{0};
     size_t m_pageSize{0};
 
-    size_t m_maxCheckpointData{0};
+    size_t m_maxCheckpointData = kDefaultMaxCheckpointData;
     size_t m_checkpointData{0};
-    Dim::Duration m_maxCheckpointInterval;
+    Dim::Duration m_maxCheckpointInterval = kDefaultMaxCheckpointInterval;
     Dim::TimerProxy m_checkpointTimer;
     Dim::TaskProxy m_checkpointPagesTask;
     Dim::TaskProxy m_checkpointStableCommitTask;

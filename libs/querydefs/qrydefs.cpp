@@ -266,7 +266,7 @@ Node * Query::addSegCharChoices(
     if (auto cnt = vals.count(); cnt < 2) {
         if (!cnt)
             return nullptr;
-        char * lit = qi->heap.alloc(1, 1);
+        auto lit = qi->heap.alloc<char>(1);
         for (int i = 0; i < vals.size(); ++i) {
             if (vals.test(i)) {
                 *lit = (unsigned char) i;
@@ -453,7 +453,9 @@ static void appendNode(
         appendNode(out, static_cast<SegSegChoice const &>(node), notify);
         break;
     case kNum:
-        out->append(StrFrom<double>(static_cast<NumNode const &>(node).val));
+        out->append(
+            StrFrom<double>(static_cast<NumNode const &>(node).val).view()
+        );
         break;
     case kString:
         out->push_back('"');

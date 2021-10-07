@@ -41,8 +41,8 @@ static void app(int argc, char * argv[]) {
     cli.versionOpt(version, "tsm");
     cli.desc("Utility for dealing with metrics and the tismet server.");
     cli.helpCmd().helpNoArgs();
-    (void) cli.exec(argc, argv);
-    return appSignalUsageError();
+    cli.exec(argc, argv);
+    appSignalUsageError();
 }
 
 

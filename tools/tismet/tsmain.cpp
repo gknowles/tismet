@@ -26,7 +26,7 @@ using namespace Dim;
 namespace {
 
 class ConsoleLogger : public ILogNotify {
-    void onLog(LogType type, string_view msg) override;
+    void onLog(const LogMsg & log) override;
 
     mutex m_mut;
 };
@@ -49,16 +49,17 @@ static struct {
 static_assert(size(s_logTypeInfo) == kLogTypes);
 
 //===========================================================================
-void ConsoleLogger::onLog(LogType type, string_view msg) {
-    if (type < appLogLevel())
+void ConsoleLogger::onLog(const LogMsg & log) {
+    if (log.type < appLogLevel())
         return;
 
     auto now = timeNow();
     Time8601Str nowStr{now, 3};
     scoped_lock lk{m_mut};
     cout << nowStr.view() << ' ';
-    if (type >= size(s_logTypeInfo))
-        type = kLogTypeInvalid;
+    auto type = log.type < size(s_logTypeInfo)
+        ? log.type
+        : kLogTypeInvalid;
     auto & lti = s_logTypeInfo[type];
     if (lti.attr) {
         ConsoleScopedAttr attr(lti.attr);
@@ -66,9 +67,7 @@ void ConsoleLogger::onLog(LogType type, string_view msg) {
     } else {
         cout << lti.desc;
     }
-    cout << ' ';
-    cout.write(msg.data(), msg.size());
-    cout << endl;
+    cout << ' ' << log.msg << endl;
 }
 
 

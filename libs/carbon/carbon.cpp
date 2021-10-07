@@ -302,8 +302,8 @@ void carbonWrite(
     StrFrom<time_t> tstr(timeToUnix(time));
     out += name;
     out += ' ';
-    out += vstr;
+    out += vstr.view();
     out += ' ';
-    out += tstr;
+    out += tstr.view();
     out += '\n';
 }
