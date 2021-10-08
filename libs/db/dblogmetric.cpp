@@ -143,15 +143,15 @@ struct SampleUpdateInt8TxnRec {
 ***/
 
 //===========================================================================
-static uint16_t sizeMetricInit(DbLog::Record const & log) {
-    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+static uint16_t sizeMetricInit(const DbLog::Record & log) {
+    auto & rec = reinterpret_cast<const MetricInitRec &>(log);
     return offsetof(MetricInitRec, name)
         + (uint16_t) strlen(rec.name) + 1;
 }
 
 //===========================================================================
 APPLY(MetricInit) {
-    auto & rec = reinterpret_cast<MetricInitRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricInitRec &>(log);
     notify->onLogApplyMetricInit(
         page,
         rec.id,
@@ -165,7 +165,7 @@ APPLY(MetricInit) {
 
 //===========================================================================
 APPLY(MetricUpdate) {
-    auto & rec = reinterpret_cast<MetricUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateRec &>(log);
     notify->onLogApplyMetricUpdate(
         page,
         rec.creation,
@@ -182,7 +182,7 @@ APPLY(MetricClearSamples) {
 
 //===========================================================================
 APPLY(MetricUpdatePos) {
-    auto & rec = reinterpret_cast<MetricUpdatePosRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdatePosRec &>(log);
     notify->onLogApplyMetricUpdateSamples(
         page,
         rec.refPos,
@@ -194,7 +194,7 @@ APPLY(MetricUpdatePos) {
 
 //===========================================================================
 APPLY(MetricUpdatePosAndIndex) {
-    auto & rec = reinterpret_cast<MetricUpdatePosAndIndexRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdatePosAndIndexRec &>(log);
     notify->onLogApplyMetricUpdateSamples(
         page,
         rec.refPos,
@@ -206,7 +206,7 @@ APPLY(MetricUpdatePosAndIndex) {
 
 //===========================================================================
 APPLY(MetricUpdateSampleTxn) {
-    auto & rec = reinterpret_cast<MetricUpdateSampleTxnRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateSampleTxnRec &>(log);
     notify->onLogApplyMetricUpdateSamples(
         page,
         (size_t) -1,
@@ -218,7 +218,7 @@ APPLY(MetricUpdateSampleTxn) {
 
 //===========================================================================
 APPLY(MetricUpdateSample) {
-    auto & rec = reinterpret_cast<MetricUpdateSampleRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateSampleRec &>(log);
     notify->onLogApplyMetricUpdateSamples(
         page,
         (size_t) -1,
@@ -230,7 +230,7 @@ APPLY(MetricUpdateSample) {
 
 //===========================================================================
 APPLY(MetricUpdateSampleAndIndex) {
-    auto & rec = reinterpret_cast<MetricUpdateSampleAndIndexRec const &>(log);
+    auto & rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec &>(log);
     notify->onLogApplyMetricUpdateSamples(
         page,
         rec.refPos,
@@ -284,7 +284,7 @@ static DbLogRecInfo::Table s_metricRecInfo {
 
 //===========================================================================
 APPLY(SampleInit) {
-    auto & rec = reinterpret_cast<SampleInitRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleInitRec &>(log);
     notify->onLogApplySampleInit(
         page,
         rec.id,
@@ -297,7 +297,7 @@ APPLY(SampleInit) {
 
 //===========================================================================
 APPLY(SampleInitFill) {
-    auto & rec = reinterpret_cast<SampleInitFillRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleInitFillRec &>(log);
     notify->onLogApplySampleInit(
         page,
         rec.id,
@@ -310,7 +310,7 @@ APPLY(SampleInitFill) {
 
 //===========================================================================
 APPLY(SampleUpdate) {
-    auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.firstSample,
@@ -322,7 +322,7 @@ APPLY(SampleUpdate) {
 
 //===========================================================================
 APPLY(SampleUpdateLast) {
-    auto & rec = reinterpret_cast<SampleUpdateRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.firstSample,
@@ -334,13 +334,13 @@ APPLY(SampleUpdateLast) {
 
 //===========================================================================
 APPLY(SampleUpdateTime) {
-    auto & rec = reinterpret_cast<SampleUpdateTimeRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateTimeRec &>(log);
     notify->onLogApplySampleUpdateTime(page, rec.pageTime);
 }
 
 //===========================================================================
 APPLY(SampleUpdateFloat32Txn) {
-    auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -352,7 +352,7 @@ APPLY(SampleUpdateFloat32Txn) {
 
 //===========================================================================
 APPLY(SampleUpdateFloat64Txn) {
-    auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -364,7 +364,7 @@ APPLY(SampleUpdateFloat64Txn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt8Txn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -376,7 +376,7 @@ APPLY(SampleUpdateInt8Txn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt16Txn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -388,7 +388,7 @@ APPLY(SampleUpdateInt16Txn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt32Txn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -400,7 +400,7 @@ APPLY(SampleUpdateInt32Txn) {
 
 //===========================================================================
 APPLY(SampleUpdateFloat32LastTxn) {
-    auto & rec = reinterpret_cast<SampleUpdateFloat32TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -412,7 +412,7 @@ APPLY(SampleUpdateFloat32LastTxn) {
 
 //===========================================================================
 APPLY(SampleUpdateFloat64LastTxn) {
-    auto & rec = reinterpret_cast<SampleUpdateFloat64TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -424,7 +424,7 @@ APPLY(SampleUpdateFloat64LastTxn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt8LastTxn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt8TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -436,7 +436,7 @@ APPLY(SampleUpdateInt8LastTxn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt16LastTxn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt16TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,
@@ -448,7 +448,7 @@ APPLY(SampleUpdateInt16LastTxn) {
 
 //===========================================================================
 APPLY(SampleUpdateInt32LastTxn) {
-    auto & rec = reinterpret_cast<SampleUpdateInt32TxnRec const &>(log);
+    auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
     notify->onLogApplySampleUpdate(
         page,
         rec.pos,

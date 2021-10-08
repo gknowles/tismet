@@ -36,7 +36,7 @@ class ConsoleLogger : public ILogNotify {
 static ConsoleLogger s_consoleLogger;
 
 static struct {
-    char const * desc;
+    const char * desc;
     ConsoleAttr attr;
 } s_logTypeInfo[] = {
     { "UNKNOWN", kConsoleNormal }, // invalid

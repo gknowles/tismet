@@ -140,7 +140,7 @@ void ICarbonNotify::ackValue(unsigned reqId, unsigned completed) {
 ***/
 
 //===========================================================================
-bool ICarbonSocketNotify::onSocketAccept(AppSocketInfo const & info) {
+bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
     s_perfClients += 1;
     s_perfCurrent += 1;
     socketWrite(this, "SERVER = tismet/1.0\n");
@@ -266,7 +266,7 @@ bool carbonParse(CarbonUpdate & upd, string_view & src, TimePoint now) {
     upd.name = {};
     if (src.empty())
         return true;
-    char const * ptr = src.data();
+    auto ptr = src.data();
     CarbonParser parser(&upd);
     parser.parse(ptr);
     auto pos = parser.errpos();

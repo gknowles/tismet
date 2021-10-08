@@ -86,11 +86,11 @@ public:
 
 public:
     // Inherited via IAppSocketNotify
-    void onSocketConnect(AppSocketInfo const & info) override;
+    void onSocketConnect(const AppSocketInfo & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
-    void onSocketBufferChanged(AppSocketBufferInfo const & info) override;
+    void onSocketBufferChanged(const AppSocketBufferInfo & info) override;
 
 private:
     void write();
@@ -118,7 +118,7 @@ void AddrConn::write() {
 }
 
 //===========================================================================
-void AddrConn::onSocketConnect(AppSocketInfo const & info) {
+void AddrConn::onSocketConnect(const AppSocketInfo & info) {
     write();
 }
 
@@ -144,7 +144,7 @@ bool AddrConn::onSocketRead(AppSocketData & data) {
 }
 
 //===========================================================================
-void AddrConn::onSocketBufferChanged(AppSocketBufferInfo const & info) {
+void AddrConn::onSocketBufferChanged(const AppSocketBufferInfo & info) {
     if (info.waiting) {
         m_full = true;
     } else if (m_full && !info.waiting) {
@@ -174,7 +174,7 @@ public:
 
 private:
     // Inherited via ISockAddrNotify
-    void onSockAddrFound(SockAddr const * ptr, int count) override;
+    void onSockAddrFound(const SockAddr * ptr, int count) override;
 
     int m_cancelId;
 };
@@ -190,7 +190,7 @@ bool AddrJob::start(Cli & cli) {
 }
 
 //===========================================================================
-void AddrJob::onSockAddrFound(SockAddr const * ptr, int count) {
+void AddrJob::onSockAddrFound(const SockAddr * ptr, int count) {
     if (!count) {
         appSignalShutdown();
     } else {

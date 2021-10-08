@@ -24,7 +24,7 @@ namespace {
 using OperFn = bool(double a, double b);
 struct OperatorInfo {
     OperFn * fn;
-    vector<char const *> names;
+    vector<const char *> names;
 };
 } // namespace
 static OperatorInfo s_opers[] = {
@@ -65,7 +65,7 @@ template<int Agg, int Op>
 class FilterSeries : public IFuncBase<FilterSeries<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     double m_limit{};
@@ -84,7 +84,7 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterSeries<Agg, Op>::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);
@@ -160,7 +160,7 @@ template<int Agg, int Op>
 class FilterBest : public IFuncBase<FilterBest<Agg,Op>> {
 public:
     class Factory;
-    IFuncInstance * onFuncBind(vector<Query::Node const *> & args) override;
+    IFuncInstance * onFuncBind(vector<const Query::Node *> & args) override;
     bool onFuncApply(IFuncNotify * notify, ResultInfo & info) override;
 protected:
     multimap<double, ResultInfo> m_best;
@@ -179,7 +179,7 @@ public:
 //===========================================================================
 template<int Agg, int Op>
 IFuncInstance * FilterBest<Agg, Op>::onFuncBind(
-    vector<Query::Node const *> & args
+    vector<const Query::Node *> & args
 ) {
     if constexpr (Agg != 0) {
         m_aggFn = aggFunc((AggFunc::Type) Agg);

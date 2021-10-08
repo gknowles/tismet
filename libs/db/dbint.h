@@ -40,14 +40,14 @@ public:
     void close();
     void growToFit(pgno_t pgno);
 
-    void const * rptr(pgno_t pgno) const;
+    const void * rptr(pgno_t pgno) const;
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_viewSize; }
 
-    pgno_t pgno(void const * ptr) const;
+    pgno_t pgno(const void * ptr) const;
 
 protected:
-    using Pointer = std::conditional_t<Writable, char *, char const *>;
+    using Pointer = std::conditional_t<Writable, char *, const char *>;
     static constexpr Dim::File::ViewMode kMode = Writable
         ? Dim::File::kViewReadWrite
         : Dim::File::kViewReadOnly;
@@ -90,10 +90,10 @@ public:
         DbOpenFlags flags
     );
     void close();
-    DbConfig configure(DbConfig const & conf);
+    DbConfig configure(const DbConfig & conf);
     void growToFit(pgno_t pgno);
 
-    void const * rptr(uint64_t lsn, pgno_t pgno) const;
+    const void * rptr(uint64_t lsn, pgno_t pgno) const;
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
@@ -108,7 +108,7 @@ private:
     bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
     void freePage_LK(DbPageHeader * hdr);
-    DbPageHeader * dupPage_LK(DbPageHeader const * hdr);
+    DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
     void * dirtyPage_LK(pgno_t pgno, uint64_t lsn);
     WorkPageInfo * allocWorkInfo_LK();
     void freeWorkInfo_LK(WorkPageInfo * pi);
@@ -218,7 +218,7 @@ public:
     DbTxn(DbLog & log, DbPage & page);
     ~DbTxn();
 
-    template<typename T> T const * viewPage(pgno_t pgno) const;
+    template<typename T> const T * viewPage(pgno_t pgno) const;
     size_t pageSize() const { return m_page.pageSize(); }
     size_t numPages() const { return m_page.size(); }
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
@@ -230,8 +230,8 @@ public:
         pgno_t pgno,
         uint32_t id,
         uint16_t height,
-        pgno_t const * firstPage,
-        pgno_t const * lastPage
+        const pgno_t * firstPage,
+        const pgno_t * lastPage
     );
     void logRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
     void logRadixPromote(pgno_t pgno, pgno_t refPage);
@@ -308,9 +308,9 @@ private:
 
 //===========================================================================
 template<typename T>
-T const * DbTxn::viewPage(pgno_t pgno) const {
+const T * DbTxn::viewPage(pgno_t pgno) const {
     auto lsn = DbLog::getLsn(m_txn);
-    auto ptr = static_cast<T const *>(m_page.rptr(lsn, pgno));
+    auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         // Must start with and be layout compatible with DbPageHeader
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
@@ -343,8 +343,8 @@ public:
         // EXTENDS BEYOND END OF STRUCT
         pgno_t pages[3];
 
-        pgno_t const * begin() const { return pages; }
-        pgno_t const * end() const { return pages + numPages; }
+        const pgno_t * begin() const { return pages; }
+        const pgno_t * end() const { return pages + numPages; }
     };
     struct RadixPage {
         static const auto kPageType = DbPageType::kRadix;
@@ -383,11 +383,11 @@ public:
     void updateMetric(
         DbTxn & txn,
         uint32_t id,
-        DbMetricInfo const & info
+        const DbMetricInfo & info
     );
     void getMetricInfo(
         IDbDataNotify * notify,
-        DbTxn const & txn,
+        const DbTxn & txn,
         uint32_t id
     );
 
@@ -422,8 +422,8 @@ public:
         void * ptr,
         uint32_t id,
         uint16_t height,
-        pgno_t const * firstPgno,
-        pgno_t const * lastPgno
+        const pgno_t * firstPgno,
+        const pgno_t * lastPgno
     ) override;
     void onLogApplyRadixErase(
         void * ptr,
@@ -483,7 +483,7 @@ public:
 private:
     RadixData * radixData(DbPageHeader * hdr) const;
     RadixData * radixData(MetricPage * mp) const;
-    RadixData const * radixData(DbPageHeader const * hdr) const;
+    const RadixData * radixData(const DbPageHeader * hdr) const;
 
     bool loadMetrics(
         DbTxn & txn,
@@ -507,10 +507,10 @@ private:
         uint16_t height,
         size_t pos
     );
-    void radixDestruct(DbTxn & txn, DbPageHeader const & hdr);
+    void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
     void radixErase(
         DbTxn & txn,
-        DbPageHeader const & hdr,
+        const DbPageHeader & hdr,
         size_t firstPos,
         size_t lastPos
     );
@@ -525,8 +525,8 @@ private:
     // Returns false if pos is past the end of the index.
     bool radixFind(
         DbTxn & txn,
-        DbPageHeader const ** hdr,
-        RadixData const ** rd,
+        const DbPageHeader ** hdr,
+        const RadixData ** rd,
         size_t * rpos,
         pgno_t root,
         size_t pos
@@ -548,8 +548,8 @@ private:
     size_t samplesPerPage(DbSampleType type) const;
 
     MetricPosition getMetricPos(uint32_t id) const;
-    void setMetricPos(uint32_t id, MetricPosition const & mi);
-    MetricPosition loadMetricPos(DbTxn const & txn, uint32_t id);
+    void setMetricPos(uint32_t id, const MetricPosition & mi);
+    MetricPosition loadMetricPos(const DbTxn & txn, uint32_t id);
     MetricPosition loadMetricPos(
         DbTxn & txn,
         uint32_t id,

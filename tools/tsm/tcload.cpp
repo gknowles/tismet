@@ -33,7 +33,7 @@ public:
     DumpReader();
 
     virtual bool onDumpMetrics(size_t totalMetrics) = 0;
-    virtual bool onDumpSeries(DbSeriesInfoEx const & ex) = 0;
+    virtual bool onDumpSeries(const DbSeriesInfoEx & ex) = 0;
     virtual bool onDumpSample(double value) = 0;
     virtual void onDumpEnd() = 0;
 
@@ -90,7 +90,7 @@ private:
 class DbWriter : public DumpReader {
 public:
     bool onDumpMetrics(size_t totalMetrics) override;
-    bool onDumpSeries(DbSeriesInfoEx const & ex) override;
+    bool onDumpSeries(const DbSeriesInfoEx & ex) override;
     bool onDumpSample(double value) override;
     void onDumpEnd() override;
 
@@ -304,7 +304,7 @@ bool DbWriter::onDumpMetrics(size_t totalMetrics) {
 }
 
 //===========================================================================
-bool DbWriter::onDumpSeries(DbSeriesInfoEx const & ex) {
+bool DbWriter::onDumpSeries(const DbSeriesInfoEx & ex) {
     if (appStopping())
         return false;
 

@@ -82,34 +82,34 @@ struct DbLog::Record {
 #define APPLY(name) static void apply ## name ( \
     DbLog::IApplyNotify * notify, \
     void * page, \
-    DbLog::Record const & log)
+    const DbLog::Record & log)
 
 struct DbLogRecInfo {
     class Table;
 
     template<typename T>
-    static uint16_t sizeFn(DbLog::Record const & log);
+    static uint16_t sizeFn(const DbLog::Record & log);
 
-    static uint16_t defLocalTxnFn(DbLog::Record const & log) {
+    static uint16_t defLocalTxnFn(const DbLog::Record & log) {
         return log.localTxn;
     }
-    static pgno_t defPgnoFn(DbLog::Record const & log) {
+    static pgno_t defPgnoFn(const DbLog::Record & log) {
         return log.pgno;
     }
 
     DbLogRecType m_type;
 
-    uint16_t (*m_size)(DbLog::Record const & log);
+    uint16_t (*m_size)(const DbLog::Record & log);
 
     void (*m_apply)(
         DbLog::IApplyNotify * notify,
         void * page,
-        DbLog::Record const & log
+        const DbLog::Record & log
     );
 
-    uint16_t (*m_localTxn)(DbLog::Record const & log) = defLocalTxnFn;
+    uint16_t (*m_localTxn)(const DbLog::Record & log) = defLocalTxnFn;
 
-    pgno_t (*m_pgno)(DbLog::Record const & log) = defPgnoFn;
+    pgno_t (*m_pgno)(const DbLog::Record & log) = defPgnoFn;
 };
 
 class DbLogRecInfo::Table {
@@ -119,7 +119,7 @@ public:
 
 //===========================================================================
 template<typename T>
-uint16_t DbLogRecInfo::sizeFn(DbLog::Record const & log) {
+uint16_t DbLogRecInfo::sizeFn(const DbLog::Record & log) {
     return sizeof(T);
 }
 

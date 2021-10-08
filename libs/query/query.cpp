@@ -103,7 +103,7 @@ bool QueryParserBase::startFunc (Eval::Function::Type type) {
 bool Query::parse(
     QueryInfo & qry,
     string_view src,
-    ITokenConvNotify const * notify
+    const ITokenConvNotify * notify
 ) {
     assert(*src.end() == 0);
     qry = {};

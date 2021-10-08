@@ -136,10 +136,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
     m_verbose = flags & fDbOpenVerbose;
 
-    auto zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {
         txn.logZeroInit(kZeroPageNum);
-        zp = (ZeroPage const *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {

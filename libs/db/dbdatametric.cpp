@@ -175,7 +175,7 @@ DbData::MetricPosition DbData::getMetricPos(uint32_t id) const {
 }
 
 //===========================================================================
-void DbData::setMetricPos(uint32_t id, MetricPosition const & mi) {
+void DbData::setMetricPos(uint32_t id, const MetricPosition & mi) {
     shared_lock lk{m_mposMut};
     assert(id < m_metricPos.size());
     m_metricPos[id] = mi;
@@ -228,7 +228,7 @@ bool DbData::loadMetrics (
         return false;
 
     if (p->type == DbPageType::kRadix) {
-        auto rp = reinterpret_cast<RadixPage const *>(p);
+        auto rp = reinterpret_cast<const RadixPage *>(p);
         for (auto && mpno : rp->rd) {
             if (!loadMetrics(txn, notify, mpno))
                 return false;
@@ -237,7 +237,7 @@ bool DbData::loadMetrics (
     }
 
     if (p->type == DbPageType::kMetric) {
-        auto mp = reinterpret_cast<MetricPage const *>(p);
+        auto mp = reinterpret_cast<const MetricPage *>(p);
         if (notify) {
             DbSeriesInfo info;
             info.id = mp->hdr.id;
@@ -375,7 +375,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
 void DbData::updateMetric(
     DbTxn & txn,
     uint32_t id,
-    DbMetricInfo const & from
+    const DbMetricInfo & from
 ) {
     assert(from.name.empty());
     // TODO: validate interval, retention, and sample type
@@ -419,7 +419,7 @@ void DbData::updateMetric(
 //===========================================================================
 void DbData::getMetricInfo(
     IDbDataNotify * notify,
-    DbTxn const & txn,
+    const DbTxn & txn,
     uint32_t id
 ) {
     auto mi = loadMetricPos(txn, id);
@@ -480,7 +480,7 @@ size_t DbData::samplesPerPage(DbSampleType type) const {
 
 //===========================================================================
 template<typename T>
-static double getSample(T const * out) {
+static double getSample(const T * out) {
     if constexpr (is_same_v<T, pgno_t>) {
         if (*out <= kMaxPageNum)
             return NAN;
@@ -501,7 +501,7 @@ static double getSample(T const * out) {
 }
 
 //===========================================================================
-static double getSample(DbData::SamplePage const * sp, size_t pos) {
+static double getSample(const DbData::SamplePage * sp, size_t pos) {
     switch (sp->sampleType) {
     case kSampleTypeFloat32:
         return getSample(sp->samples.f32 + pos);
@@ -520,7 +520,7 @@ static double getSample(DbData::SamplePage const * sp, size_t pos) {
 }
 
 //===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(DbTxn const & txn, uint32_t id) {
+DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
 
     // Update metric info from sample page if it has no page data.
@@ -1170,7 +1170,7 @@ void DbData::getSamples(
             first = fpt + pageInterval;
         } else {
             double value = NAN;
-            SamplePage const * sp = nullptr;
+            const SamplePage * sp = nullptr;
             auto lastSample = spp - 1;
             if (spno > kMaxPageNum) {
                 // Virtual page, get the cached value that is the same for

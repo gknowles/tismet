@@ -107,7 +107,7 @@ void DbFileView<Writable>::growToFit(pgno_t pgno) {
 
 //===========================================================================
 template<bool Writable>
-void const * DbFileView<Writable>::rptr(pgno_t pgno) const {
+const void * DbFileView<Writable>::rptr(pgno_t pgno) const {
     return ptr(pgno);
 }
 
@@ -134,8 +134,8 @@ auto DbFileView<Writable>::ptr(pgno_t pgno) const
 
 //===========================================================================
 template<bool Writable>
-pgno_t DbFileView<Writable>::pgno(void const * vptr) const {
-    auto ptr = (char const *) vptr;
+pgno_t DbFileView<Writable>::pgno(const void * vptr) const {
+    auto ptr = (const char *) vptr;
     if (ptr >= m_view && ptr < m_view + m_firstViewSize)
         return pgno_t((ptr - m_view) / m_pageSize);
     auto num = m_firstViewSize / m_pageSize;

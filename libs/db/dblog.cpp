@@ -160,7 +160,7 @@ static TaskQueueHandle logQueue() {
 }
 
 //===========================================================================
-static void pack(void * ptr, LogPage const & lp, uint32_t checksum) {
+static void pack(void * ptr, const LogPage & lp, uint32_t checksum) {
     auto mp = (MinimumPage *) ptr;
     mp->type = lp.type;
     mp->pgno = lp.pgno;
@@ -192,12 +192,12 @@ static void pack(void * ptr, LogPage const & lp, uint32_t checksum) {
 }
 
 //===========================================================================
-static void unpack(LogPage * out, void const * ptr) {
-    auto mp = (MinimumPage const *) ptr;
+static void unpack(LogPage * out, const void * ptr) {
+    auto mp = (const MinimumPage *) ptr;
     out->type = mp->type;
     out->pgno = mp->pgno;
-    auto v1 = (PageHeaderRawV1 const *) ptr;
-    auto v2 = (PageHeaderRawV2 const *) ptr;
+    auto v1 = (const PageHeaderRawV1 *) ptr;
+    auto v2 = (const PageHeaderRawV2 *) ptr;
     switch (mp->type) {
     case LogPageType::kFree:
         out->checksum = 0;
@@ -250,12 +250,12 @@ static size_t logHdrLen(LogPageType type) {
 ***/
 
 //===========================================================================
-bool DbLog::LsnTaskInfo::operator<(LsnTaskInfo const & right) const {
+bool DbLog::LsnTaskInfo::operator<(const LsnTaskInfo & right) const {
     return waitLsn < right.waitLsn;
 }
 
 //===========================================================================
-bool DbLog::LsnTaskInfo::operator>(LsnTaskInfo const & right) const {
+bool DbLog::LsnTaskInfo::operator>(const LsnTaskInfo & right) const {
     return waitLsn > right.waitLsn;
 }
 
@@ -452,7 +452,7 @@ void DbLog::close() {
 }
 
 //===========================================================================
-DbConfig DbLog::configure(DbConfig const & conf) {
+DbConfig DbLog::configure(const DbConfig & conf) {
     auto maxData = conf.checkpointMaxData
         ? conf.checkpointMaxData
         : m_maxCheckpointData;
@@ -779,7 +779,7 @@ void DbLog::applyCommitTxn(
 }
 
 //===========================================================================
-void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, Record const & log) {
+void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
     if (data->analyze)
         return;
 
@@ -958,7 +958,7 @@ void DbLog::commit(uint64_t txn) {
 
 //===========================================================================
 uint64_t DbLog::log(
-    Record const & log,
+    const Record & log,
     size_t bytes,
     TxnMode txnMode,
     uint64_t txn
@@ -1083,7 +1083,7 @@ void DbLog::flushWriteBuffer() {
 }
 
 //===========================================================================
-void DbLog::updatePages_LK(PageInfo const & pi, bool fullPageWrite) {
+void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
     auto i = lower_bound(m_pages.begin(), m_pages.end(), pi);
     assert(i != m_pages.end() && i->firstLsn == pi.firstLsn);
     i->numLogs = pi.numLogs;
@@ -1220,7 +1220,7 @@ void DbLog::onFileWrite(
 
 //===========================================================================
 void DbLog::prepareBuffer_LK(
-    Record const & log,
+    const Record & log,
     size_t bytesOnOldPage,
     size_t bytesOnNewPage
 ) {
@@ -1265,7 +1265,7 @@ void DbLog::prepareBuffer_LK(
     m_emptyBufs -= 1;
     memcpy(
         rawbuf + hdrLen,
-        (char const *) &log + bytesOnOldPage,
+        (const char *) &log + bytesOnOldPage,
         bytesOnNewPage
     );
     m_bufPos = hdrLen + bytesOnNewPage;

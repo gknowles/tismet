@@ -20,8 +20,8 @@ public:
     size_t errpos () const { return m_errpos; }
 
 private:
-    bool stateQuery (char const *& src);
-    bool stateSslSegs (char const *& src);
+    bool stateQuery (const char *& src);
+    bool stateSslSegs (const char *& src);
 
     // Events
     bool onArgNumEnd ();
@@ -92,13 +92,13 @@ private:
     bool onSclSingleChar (char ch);
     bool onSegBlotEnd ();
     bool onSegCharListEnd ();
-    bool onSegLiteralStart (char const * ptr);
-    bool onSegLiteralEnd (char const * eptr);
+    bool onSegLiteralStart (const char * ptr);
+    bool onSegLiteralEnd (const char * eptr);
     bool onSslCommaEnd ();
     bool onSslSegsStart ();
     bool onSslSegsEnd ();
-    bool onStringStart (char const * ptr);
-    bool onStringEnd (char const * eptr);
+    bool onStringStart (const char * ptr);
+    bool onStringEnd (const char * eptr);
 
     // Data members
     size_t m_errpos{0};

@@ -254,7 +254,7 @@ namespace {
 struct MethodInfo {
     AggFn * aggFn;
     ReduceFn * fn;
-    vector<char const *> names;
+    vector<const char *> names;
 };
 } // namespace
 static MethodInfo s_methods[] = {
@@ -307,7 +307,7 @@ AggFunc::Type AggFunc::defaultType() {
 }
 
 //===========================================================================
-char const * toString(AggFunc::Type ftype, char const def[]) {
+const char * toString(AggFunc::Type ftype, char const def[]) {
     return tokenTableGetName(s_methodTbl, ftype, def);
 }
 

@@ -39,7 +39,7 @@ struct TestDbSeries : IDbDataNotify {
     unsigned m_count{};
     vector<double> m_samples;
 
-    bool onDbSeriesStart(DbSeriesInfo const & info) override;
+    bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(
         uint32_t id,
         Dim::TimePoint time,
@@ -50,7 +50,7 @@ struct TestDbSeries : IDbDataNotify {
 } // namespace
 
 //===========================================================================
-bool TestDbSeries::onDbSeriesStart(DbSeriesInfo const & info) {
+bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & info) {
     m_name = info.name;
     m_id = info.id;
     m_first = info.first;
