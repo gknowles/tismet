@@ -272,7 +272,7 @@ bool carbonParse(CarbonUpdate & upd, string_view & src, TimePoint now) {
     auto pos = parser.errpos();
     if (!upd.name.empty()) {
         src.remove_prefix(pos + 1);
-        if (!upd.time)
+        if (empty(upd.time))
             upd.time = now;
         return true;
     }

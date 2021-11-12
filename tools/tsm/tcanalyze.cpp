@@ -130,7 +130,7 @@ bool RecordFile::onCarbonValue(
         dbit = 63 - leadingZeroBits(ddt);
     }
     s_timeDeltas[dbit] += 1;
-    samp = {time, value, samp.time ? dt : 0};
+    samp = {time, value, !empty(samp.time) ? dt : 0};
 
     if (s_opts.progress.totalSamples
             && s_opts.progress.samples == s_opts.progress.totalSamples

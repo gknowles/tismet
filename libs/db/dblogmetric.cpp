@@ -598,7 +598,7 @@ void DbTxn::logMetricUpdateSamples(
     size_t refSample,
     pgno_t refPage
 ) {
-    if (!refTime) {
+    if (empty(refTime)) {
         assert(refPos == -1 && !refPage);
         auto [rec, bytes] =
             alloc<MetricUpdateSampleRec>(kRecTypeMetricUpdateSample, pgno);

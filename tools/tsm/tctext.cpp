@@ -277,13 +277,13 @@ void TextWriter::onLogApplyMetricUpdateSamples(
     if (refPage)
         os << "metric.samples[" << pos << "] = @" << refPage << "; ";
     os << "metric.samples.last = ";
-    if (refTime)
+    if (!empty(refTime))
         os << pos << " / ";
     if (refPage)
         os << "@" << refPage;
     if (refSample != (size_t) -1)
         os << '.' << refSample;
-    if (refTime)
+    if (!empty(refTime))
         os << " / " << refTime;
     os << '\n';
 }

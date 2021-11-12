@@ -329,7 +329,7 @@ void DbPage::saveWork() {
         ? m_currentWal.front().lsn
         : 0;
     size_t minSaves = 1;
-    if (lastTime) {
+    if (!empty(lastTime)) {
         if (auto elapsed = now - lastTime; elapsed > 0ms) {
             if (auto multiple = m_maxDirtyAge / elapsed; multiple > 0) {
                 minSaves = m_pageDebt

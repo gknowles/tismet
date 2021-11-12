@@ -250,7 +250,7 @@ bool DbData::loadMetrics (
         }
         pgno_t lastPage;
         if (!radixFind(txn, &lastPage, pgno, mp->lastPagePos)
-            && mp->lastPageFirstTime
+            && !empty(mp->lastPageFirstTime)
         ) {
             return false;
         }
@@ -388,7 +388,7 @@ void DbData::updateMetric(
     info.retention = from.retention.count() ? from.retention : mp->retention;
     info.interval = from.interval.count() ? from.interval : mp->interval;
     info.type = from.type ? from.type : mp->sampleType;
-    info.creation = from.creation ? from.creation : mp->creation;
+    info.creation = !empty(from.creation) ? from.creation : mp->creation;
     if (mp->retention == info.retention
         && mp->interval == info.interval
         && mp->sampleType == info.type
@@ -431,7 +431,7 @@ void DbData::getMetricInfo(
     info.id = id;
     info.name = mp->name;
     info.type = mp->sampleType;
-    if (!mi.pageFirstTime) {
+    if (empty(mi.pageFirstTime)) {
         info.last = info.first + mp->retention;
     } else {
         info.last = mi.pageFirstTime + mi.interval * mi.pageLastSample;
@@ -524,7 +524,7 @@ DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
 
     // Update metric info from sample page if it has no page data.
-    if (mi.infoPage && mi.lastPage && !mi.pageFirstTime) {
+    if (mi.infoPage && mi.lastPage && empty(mi.pageFirstTime)) {
         if (mi.lastPage > kMaxPageNum) {
             auto mp = txn.viewPage<MetricPage>(mi.infoPage);
             mi.pageFirstTime = mp->lastPageFirstTime;
@@ -590,7 +590,7 @@ void DbData::onLogApplyMetricUpdateSamples(
 ) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->kPageType);
-    if (refTime) {
+    if (!empty(refTime)) {
         assert(pos != -1);
         mp->lastPagePos = (unsigned) pos;
         mp->lastPageFirstTime = refTime;
@@ -609,7 +609,7 @@ void DbData::updateSample(
     TimePoint time,
     double value
 ) {
-    assert(time);
+    assert(!empty(time));
     auto const kInvalidPos = (size_t) -1;
 
     // ensure all info about the last page is loaded, the expectation is that

@@ -403,11 +403,11 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     if (targets.empty())
         return httpRouteReply(reqId, req, 400, "Missing parameter: 'target'");
 
-    if (!now)
+    if (empty(now))
         now = timeNow();
-    if (!from)
+    if (empty(from))
         from = now + relFrom;
-    if (!until)
+    if (empty(until))
         until = now + relUntil;
 
     auto ftype = tokenTableGetEnum(s_formatTbl, format, kFormatInvalid);
