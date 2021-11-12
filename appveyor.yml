@@ -1,11 +1,11 @@
-# Copyright Glen Knowles 2016 - 2019.
+# Copyright Glen Knowles 2016 - 2021.
 # Distributed under the Boost Software License, Version 1.0.
 version: 0.1.{build}
-image: Visual Studio 2019
+image: Visual Studio 2022
 
 environment:
   matrix:
-    - toolset: v142
+    - toolset: v143
 platform:
   - x64
 configuration:
@@ -15,7 +15,7 @@ build_script:
   - git submodule update --init
   - md build
   - cd build
-  - cmake -G "Visual Studio 16 2019" -A %platform% -T %toolset% ..
+  - cmake -G "Visual Studio 17 2022" -A %platform% -T %toolset% ..
   - cmake -DCMAKE_BUILD_TYPE=%configuration% .
         -DCMAKE_INSTALL_PREFIX=publish
         -DINSTALL_TOOLS:BOOL=ON
