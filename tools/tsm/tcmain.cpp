@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2015 - 2018.
+// Copyright Glen Knowles 2015 - 2021.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // tcmain.cpp - tsm
@@ -15,7 +15,11 @@ using namespace Dim;
 *
 ***/
 
-char const kVersion[] = "1.1.0";
+namespace {
+
+const char kVersion[] = "1.1.0";
+
+} // namespace
 
 
 /****************************************************************************
@@ -74,19 +78,40 @@ int main(int argc, char *argv[]) {
 //===========================================================================
 static void dump(
     ostream & os,
+    size_t files,
+    size_t metrics,
+    size_t samples,
+    size_t bytes,
+    chrono::duration<double> time
+) {
+    pair<const char *, size_t> nums[] = {
+        { "files", files },
+        { "metrics", metrics },
+        { "samples", samples },
+        { "bytes", bytes },
+    };
+    bool found = false;
+    for (auto&& num : nums) {
+        if (num.second && num.second != (size_t) -1) {
+            found = true;
+            os << "; " << num.first << ": " << num.second;
+        }
+    }
+    if (auto num = time.count()) {
+        found = true;
+        os << "; seconds: " << num;
+    }
+    if (!found)
+        os << "; none";
+}
+
+//===========================================================================
+static void dump(
+    ostream & os,
     const DbProgressInfo & info,
     chrono::duration<double> time
 ) {
-    if (auto num = info.files)
-        os << "; files: " << num;
-    if (auto num = info.metrics)
-        os << "; metrics: " << num;
-    if (auto num = info.samples)
-        os << "; samples: " << num;
-    if (auto num = info.bytes)
-        os << "; bytes: " << num;
-    if (auto num = time.count())
-        os << "; seconds: " << num;
+    dump(os, info.files, info.metrics, info.samples, info.bytes, time);
 }
 
 //===========================================================================
@@ -95,16 +120,14 @@ static void dumpTotals(
     const DbProgressInfo & info,
     chrono::duration<double> time
 ) {
-    if (auto num = info.totalFiles; num && num != (size_t) -1)
-        os << "; files: " << num;
-    if (auto num = info.totalMetrics; num && num != (size_t) -1)
-        os << "; metrics: " << num;
-    if (auto num = info.totalSamples; num && num != (size_t) -1)
-        os << "; samples: " << num;
-    if (auto num = info.totalBytes; num && num != (size_t) -1)
-        os << "; bytes: " << num;
-    if (auto num = time.count())
-        os << "; seconds: " << num;
+    dump(
+        os,
+        info.totalFiles,
+        info.totalMetrics,
+        info.totalSamples,
+        info.totalBytes,
+        time
+    );
 }
 
 //===========================================================================
