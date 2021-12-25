@@ -3,6 +3,8 @@
 # LICENSE
 # README.md
 # appveyor.yml
+# conf/app.xml.sample
+# conf/cmtupd.xml
 # configure.bat
 # libs/carbon/carbon.abnf
 # libs/carbon/carbon.cpp
