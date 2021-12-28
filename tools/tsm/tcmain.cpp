@@ -17,7 +17,7 @@ using namespace Dim;
 
 namespace {
 
-const char kVersion[] = "1.1.0";
+const VersionInfo kVersion = { 1, 1 };
 
 } // namespace
 
@@ -40,9 +40,6 @@ static TimePoint s_startTime;
 //===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
-    auto version = string(kVersion) + " (" __DATE__ ")";
-    cli.header("tsm v"s + version);
-    cli.versionOpt(version, "tsm");
     cli.desc("Utility for dealing with metrics and the tismet server.");
     cli.helpCmd().helpNoArgs();
     cli.exec(argc, argv);
@@ -64,7 +61,7 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int code = appRun(app, argc, argv);
+    int code = appRun(app, argc, argv, kVersion);
     return code;
 }
 

@@ -132,8 +132,7 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 *
 ***/
 
-static string s_product = "tismet"s;
-static string s_version;
+static string s_product = "tismet";
 static string s_productVersion;
 
 //===========================================================================
@@ -152,16 +151,10 @@ static bool serveCmd(Cli & cli) {
 
 //===========================================================================
 static void app(int argc, char * argv[]) {
-    auto vi = envExecVersion();
-    ostringstream os;
-    os << vi.major << '.' << vi.minor << '.' << vi.patch;
-    s_version = os.str();
-    s_productVersion = s_product + "/" + s_version;
+    s_productVersion = s_product + "/" + toString(appVersion());
 
     Cli cli;
-    cli.header(s_productVersion + " (" __DATE__ ")")
-        .helpCmd();
-    cli.versionOpt(s_version, s_product);
+    cli.helpCmd();
     cli.before([](auto & cli, auto & args) {
         if (args.size() == 1)
             args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
@@ -192,7 +185,14 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int code = appRun(app, argc, argv, fAppServer);
+    int code = appRun(
+        app, 
+        argc, 
+        argv, 
+        envExecVersion(), 
+        s_product, 
+        fAppServer
+    );
     return code;
 }
 

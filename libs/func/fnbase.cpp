@@ -402,15 +402,15 @@ unique_ptr<IFuncInstance> funcCreate(Function::Type type) {
 
 //===========================================================================
 const char * toString(Eval::Function::Type ftype, char const def[]) {
-    return tokenTableGetName(s_funcTbl, ftype, def);
+    return s_funcTbl.findName(ftype, def);
 }
 
 //===========================================================================
 Function::Type fromString(string_view src, Function::Type def) {
-    return tokenTableGetEnum(s_funcTbl, src, def);
+    return s_funcTbl.find(src, def);
 }
 
 //===========================================================================
 const char * toString(Eval::FuncArg::Type atype, char const def[]) {
-    return tokenTableGetName(s_argTypeTbl, atype, def);
+    return s_argTypeTbl.findName(atype, def);
 }

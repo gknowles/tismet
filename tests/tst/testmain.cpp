@@ -57,9 +57,6 @@ static bool allCmd(Cli & cli) {
 //===========================================================================
 static void app(int argc, char * argv[]) {
     Cli cli;
-    auto version = string("(" __DATE__ ")");
-    cli.header("tst "s + version);
-    cli.versionOpt(version, "tst");
     cli.helpCmd().helpNoArgs();
     cli.command("all")
         .desc("Run all tests.")
@@ -100,6 +97,6 @@ int main(int argc, char *argv[]) {
     _set_error_mode(_OUT_TO_MSGBOX);
 
     funcInitialize();
-    int code = appRun(app, argc, argv);
+    int code = appRun(app, argc, argv, { 1, 1 });
     return code;
 }

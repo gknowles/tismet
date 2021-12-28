@@ -308,12 +308,12 @@ AggFunc::Type AggFunc::defaultType() {
 
 //===========================================================================
 const char * toString(AggFunc::Type ftype, char const def[]) {
-    return tokenTableGetName(s_methodTbl, ftype, def);
+    return s_methodTbl.findName(ftype, def);
 }
 
 //===========================================================================
 AggFunc::Type fromString(std::string_view src, AggFunc::Type def) {
-    return tokenTableGetEnum(s_methodTbl, src, def);
+    return s_methodTbl.find(src, def);
 }
 
 //===========================================================================

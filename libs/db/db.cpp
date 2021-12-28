@@ -644,12 +644,12 @@ static TokenTable s_sampleTypeTbl{s_sampleTypes};
 
 //===========================================================================
 const char * toString(DbSampleType type, char const def[]) {
-    return tokenTableGetName(s_sampleTypeTbl, type, def);
+    return s_sampleTypeTbl.findName(type, def);
 }
 
 //===========================================================================
 DbSampleType fromString(std::string_view src, DbSampleType def) {
-    return tokenTableGetEnum(s_sampleTypeTbl, src, def);
+    return s_sampleTypeTbl.find(src, def);
 }
 
 //===========================================================================

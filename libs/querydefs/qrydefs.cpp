@@ -465,11 +465,7 @@ static void appendNode(
     case kFunc:
         auto & fnode = static_cast<const FuncNode &>(node);
         if (notify) {
-            auto name = tokenTableGetName(
-                notify->funcTypeTbl(),
-                fnode.func,
-                "UNKNOWN"
-            );
+            auto name = notify->funcTypeTbl().findName(fnode.func, "UNKNOWN");
             out->append(name);
         } else {
             out->append("UNKNOWN");

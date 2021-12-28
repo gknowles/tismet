@@ -171,7 +171,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     if (target.empty())
         return httpRouteReply(reqId, req, 400, "Missing parameter: 'query'");
-    auto ftype = tokenTableGetEnum(s_formatTbl, format.data(), kFormatInvalid);
+    auto ftype = s_formatTbl.find(format.data(), kFormatInvalid);
     switch (ftype) {
     case kFormatJson:
         return jsonReply(reqId, target);
@@ -410,7 +410,7 @@ void Render::onHttpRequest(unsigned reqId, HttpRequest & req) {
     if (empty(until))
         until = now + relUntil;
 
-    auto ftype = tokenTableGetEnum(s_formatTbl, format, kFormatInvalid);
+    auto ftype = s_formatTbl.find(format, kFormatInvalid);
     switch (ftype) {
     case kFormatJson:
         break;
