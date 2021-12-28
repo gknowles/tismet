@@ -11,15 +11,11 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Declarations
+*   Tuning parameters
 *
 ***/
 
-namespace {
-
 const VersionInfo kVersion = { 1, 1 };
-
-} // namespace
 
 
 /****************************************************************************

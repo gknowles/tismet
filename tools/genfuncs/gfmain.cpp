@@ -11,7 +11,7 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Declarations
+*   Tuning parameters
 *
 ***/
 

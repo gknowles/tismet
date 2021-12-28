@@ -11,6 +11,15 @@ using namespace Dim;
 
 /****************************************************************************
 *
+*   Tuning parameters
+*
+***/
+
+const VersionInfo kVersion = { 1, 1 };
+
+
+/****************************************************************************
+*
 *   ITest
 *
 ***/
@@ -97,6 +106,6 @@ int main(int argc, char *argv[]) {
     _set_error_mode(_OUT_TO_MSGBOX);
 
     funcInitialize();
-    int code = appRun(app, argc, argv, { 1, 1 });
+    int code = appRun(app, argc, argv, kVersion);
     return code;
 }
