@@ -109,16 +109,17 @@ static bool installService() {
 
 //===========================================================================
 static bool setFileAccess() {
+    using namespace Dim::File::Access;
     auto path = Path{envExecPath()}.removeFilename();
     struct {
         const char * path;
-        FileAccess::Right allow;
-        FileAccess::Inherit inherit = FileAccess::kInheritNone;
+        Right allow;
+        Inherit inherit = Inherit::kNone;
     } rights[] = {
-        { ".", FileAccess::kReadOnly, FileAccess::kInheritAll },
-        { "crash", FileAccess::kModify },
-        { "data", FileAccess::kModify, FileAccess::kInheritAll },
-        { "log", FileAccess::kModify },
+        { ".",      Right::kReadOnly,   Inherit::kAll },
+        { "crash",  Right::kModify },
+        { "data",   Right::kModify,     Inherit::kAll },
+        { "log",    Right::kModify },
     };
     unsigned failed = 0;
     for (auto&& right : rights) {

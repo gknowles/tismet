@@ -41,7 +41,7 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     bld.object();
     bld.member("now", now);
     bld.member("version", tsProductVersion());
-    bld.member("service", bool(appFlags() & fAppIsService));
+    bld.member("service", appFlags().any(fAppIsService));
     bld.member("startTime", envProcessStartTime());
     bld.member("rootDir", appRootDir());
     addPath(&bld, "dataDir", tsDataPath().parentPath());

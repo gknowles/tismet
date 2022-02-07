@@ -121,8 +121,8 @@ DbData::~DbData () {
 }
 
 //===========================================================================
-void DbData::openForApply(size_t pageSize, DbOpenFlags flags) {
-    m_verbose = flags & fDbOpenVerbose;
+void DbData::openForApply(size_t pageSize, EnumFlags<DbOpenFlags> flags) {
+    m_verbose = flags.any(fDbOpenVerbose);
     m_pageSize = pageSize;
 }
 
@@ -131,10 +131,10 @@ bool DbData::openForUpdate(
     DbTxn & txn,
     IDbDataNotify * notify,
     string_view name,
-    DbOpenFlags flags
+    EnumFlags<DbOpenFlags> flags
 ) {
     assert(m_pageSize);
-    m_verbose = flags & fDbOpenVerbose;
+    m_verbose = flags.any(fDbOpenVerbose);
 
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {

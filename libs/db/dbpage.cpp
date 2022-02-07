@@ -84,15 +84,15 @@ bool DbPage::open(
     string_view datafile,
     string_view workfile,
     size_t pageSize,
-    DbOpenFlags flags
+    EnumFlags<DbOpenFlags> flags
 ) {
     assert(pageSize);
-    assert(pageSize == pow2Ceil(pageSize));
+    assert(pageSize == bit_ceil(pageSize));
     assert(pageSize >= kMinPageSize);
 
     m_pageSize = pageSize;
     m_flags = flags;
-    if (m_flags & fDbOpenVerbose)
+    if (m_flags.any(fDbOpenVerbose))
         logMsgInfo() << "Open data files";
     if (!openData(datafile))
         return false;
@@ -108,11 +108,11 @@ bool DbPage::open(
 //===========================================================================
 bool DbPage::openData(string_view datafile) {
     auto oflags = File::fReadWrite | File::fDenyWrite | File::fRandom;
-    if (m_flags & fDbOpenCreat)
+    if (m_flags.any(fDbOpenCreat))
         oflags |= File::fCreat;
-    if (m_flags & fDbOpenTrunc)
+    if (m_flags.any(fDbOpenTrunc))
         oflags |= File::fTrunc;
-    if (m_flags & fDbOpenExcl)
+    if (m_flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
     m_fdata = fileOpen(datafile, oflags);
     if (!m_fdata)
@@ -148,7 +148,7 @@ bool DbPage::openWork(string_view workfile) {
     // Opening the data file has already succeeded, so always create the
     // work file (if not exist).
     oflags |= File::fCreat;
-    if (m_flags & fDbOpenExcl)
+    if (m_flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
     m_fwork = fileOpen(workfile, oflags);
     if (!m_fwork)
@@ -361,7 +361,7 @@ void DbPage::saveWork() {
         }
         saved += 1;
         m_cleanPages.link(pi);
-        pi->flags &= ~fDbPageDirty;
+        pi->flags.reset(fDbPageDirty);
         s_perfDirtyPages -= 1;
 
         if (pi->hdr->lsn > m_stableLsn) {
@@ -605,7 +605,7 @@ void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
         pi->pgno = {};
     }
     assert(pi->hdr && !pi->pgno);
-    if (~pi->flags & fDbPageDirty) {
+    if (pi->flags.none(fDbPageDirty)) {
         pi->firstTime = timeNow();
         pi->firstLsn = lsn;
         pi->flags |= fDbPageDirty;

@@ -416,7 +416,7 @@ static bool textCmd(Cli & cli) {
     TextWriter writer(*os);
     DbLog dlog(&writer, &writer);
     dlog.open(s_opts.tslfile, 0, fDbOpenReadOnly);
-    auto flags = DbLog::fRecoverIncompleteTxns;
+    EnumFlags flags = DbLog::fRecoverIncompleteTxns;
     if (s_opts.all)
         flags |= DbLog::fRecoverBeforeCheckpoint;
     dlog.recover(flags);

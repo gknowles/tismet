@@ -70,7 +70,11 @@ public:
 
     // pageSize must match the size saved in the data file or be zero. If it is
     // zero fDbOpenCreat must not be specified.
-    bool open(std::string_view file, size_t pageSize, DbOpenFlags flags);
+    bool open(
+        std::string_view file, 
+        size_t pageSize, 
+        Dim::EnumFlags<DbOpenFlags> flags
+    );
 
     enum RecoverFlags : unsigned {
         // Redo incomplete transactions during recovery, since they are
@@ -83,7 +87,7 @@ public:
         // WAL dump tool.
         fRecoverBeforeCheckpoint = 0x02,
     };
-    bool recover(RecoverFlags flags = {});
+    bool recover(Dim::EnumFlags<RecoverFlags> flags = {});
 
     void close();
     DbConfig configure(const DbConfig & conf);
@@ -170,7 +174,7 @@ private:
     Dim::FileHandle m_flog;
     bool m_closing{false};
     bool m_newFiles{false}; // did the open create new data files?
-    DbOpenFlags m_openFlags{};
+    Dim::EnumFlags<DbOpenFlags> m_openFlags{};
 
     // last assigned
     Dim::UnsignedSet m_localTxns;

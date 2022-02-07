@@ -123,11 +123,11 @@ bool RecordFile::onCarbonValue(
     auto ddt = dt - samp.dt;
     int dbit;
     if (ddt < 0) {
-        dbit = -(63 - leadingZeroBits(-ddt));
+        dbit = -(63 - countl_zero((uint64_t) -ddt));
     } else if (ddt == 0) {
         dbit = 0;
     } else {
-        dbit = 63 - leadingZeroBits(ddt);
+        dbit = 63 - countl_zero((uint64_t) ddt);
     }
     s_timeDeltas[dbit] += 1;
     samp = {time, value, !empty(samp.time) ? dt : 0};

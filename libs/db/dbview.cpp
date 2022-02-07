@@ -29,7 +29,7 @@ bool DbFileView<Writable>::open(
     size_t pageSize
 ) {
     assert(!m_file && "file view already open");
-    assert(pageSize == pow2Ceil(pageSize));
+    assert(pageSize == bit_ceil(pageSize));
     assert(viewSize % fileViewAlignment(file) == 0);
     assert(viewSize % pageSize == 0);
 

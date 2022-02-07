@@ -245,6 +245,7 @@
 # vendor/dimapp/libs/tools/git.cpp
 # vendor/dimapp/libs/tools/pch.cpp
 # vendor/dimapp/libs/tools/pch.h
+# vendor/dimapp/libs/tools/test.cpp
 # vendor/dimapp/libs/tools/tools.h
 # vendor/dimapp/libs/win/appint.h
 # vendor/dimapp/libs/win/pch.cpp

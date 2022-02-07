@@ -36,7 +36,7 @@ enum DbOpenFlags : unsigned {
 DbHandle dbOpen(
     std::string_view path,
     size_t pageSize = 0, // 0 for same size as system memory pages
-    DbOpenFlags flags = {}
+    Dim::EnumFlags<DbOpenFlags> flags = {}
 );
 
 void dbClose(DbHandle h);

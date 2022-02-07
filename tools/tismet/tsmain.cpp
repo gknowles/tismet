@@ -157,7 +157,7 @@ static void app(int argc, char * argv[]) {
     cli.helpCmd();
     cli.before([](auto & cli, auto & args) {
         if (args.size() == 1)
-            args.push_back((appFlags() & fAppIsService) ? "serve" : "help");
+            args.push_back(appFlags().any(fAppIsService) ? "serve" : "help");
         return true;
     });
     cli.opt<unsigned>("console")

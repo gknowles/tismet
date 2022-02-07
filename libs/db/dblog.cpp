@@ -301,22 +301,22 @@ char * DbLog::partialPtr(size_t ibuf) {
 //===========================================================================
 static FileHandle openDbFile(
     string_view logfile,
-    DbOpenFlags flags,
+    EnumFlags<DbOpenFlags> flags,
     bool align
 ) {
-    auto oflags = File::fDenyWrite;
+    EnumFlags oflags = File::fDenyWrite;
     if (align)
         oflags |= File::fAligned;
-    if (flags & fDbOpenReadOnly) {
+    if (flags.any(fDbOpenReadOnly)) {
         oflags |= File::fReadOnly;
     } else {
         oflags |= File::fReadWrite;
     }
-    if (flags & fDbOpenCreat)
+    if (flags.any(fDbOpenCreat))
         oflags |= File::fCreat;
-    if (flags & fDbOpenTrunc)
+    if (flags.any(fDbOpenTrunc))
         oflags |= File::fTrunc;
-    if (flags & fDbOpenExcl)
+    if (flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
     auto f = fileOpen(logfile, oflags);
     if (!f)
@@ -325,9 +325,13 @@ static FileHandle openDbFile(
 }
 
 //===========================================================================
-bool DbLog::open(string_view logfile, size_t dataPageSize, DbOpenFlags flags) {
+bool DbLog::open(
+    string_view logfile, 
+    size_t dataPageSize, 
+    EnumFlags<DbOpenFlags> flags
+) {
     assert(!m_closing && !m_flog);
-    assert(dataPageSize == pow2Ceil(dataPageSize));
+    assert(dataPageSize == bit_ceil(dataPageSize));
     assert(!dataPageSize || dataPageSize >= kMinPageSize);
 
     m_openFlags = flags;
@@ -418,7 +422,7 @@ void DbLog::close() {
 
     m_closing = true;
     if (m_phase == Checkpoint::StartRecovery
-        || (m_openFlags & fDbOpenReadOnly)
+        || m_openFlags.any(fDbOpenReadOnly)
     ) {
         fileClose(m_flog);
         m_flog = {};
@@ -505,7 +509,7 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
 ***/
 
 //===========================================================================
-bool DbLog::recover(RecoverFlags flags) {
+bool DbLog::recover(EnumFlags<RecoverFlags> flags) {
     if (m_phase != Checkpoint::StartRecovery)
         return true;
 
@@ -531,22 +535,23 @@ bool DbLog::recover(RecoverFlags flags) {
     // Go through log entries looking for last committed checkpoint and the
     // set of incomplete transactions (so we can avoid trying to redo them
     // later).
-    if (m_openFlags & fDbOpenVerbose)
+    if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
-    if (~flags & fRecoverBeforeCheckpoint) {
+    if (flags.none(fRecoverBeforeCheckpoint)) {
         applyAll(&data, flog);
         if (!data.checkpoint)
             logMsgFatal() << "Invalid .tsl file, no checkpoint found";
         m_checkpointLsn = data.checkpoint;
     }
 
-    if (flags & fRecoverIncompleteTxns) {
+    if (flags.any(fRecoverIncompleteTxns)) {
         data.incompleteTxnLsns.clear();
     } else {
-        for (auto&& kv : data.txns)
+        for (auto&& kv : data.txns) {
             data.incompleteTxnLsns.push_back(kv.second);
+        }
         sort(
             data.incompleteTxnLsns.begin(),
             data.incompleteTxnLsns.end(),
@@ -562,11 +567,11 @@ bool DbLog::recover(RecoverFlags flags) {
 
     // Go through log entries starting with the last committed checkpoint and
     // redo all complete transactions found.
-    if (m_openFlags & fDbOpenVerbose)
+    if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Recover database";
     data.analyze = false;
     applyAll(&data, flog);
-    if (~flags & fRecoverIncompleteTxns) {
+    if (flags.none(fRecoverIncompleteTxns)) {
         assert(data.incompleteTxnLsns.empty());
         assert(!data.activeTxns);
     }
@@ -581,7 +586,7 @@ bool DbLog::recover(RecoverFlags flags) {
 //===========================================================================
 // Creates array of references to last page and its contiguous predecessors
 bool DbLog::loadPages(FileHandle flog) {
-    if (m_openFlags & fDbOpenVerbose)
+    if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Verify transaction log";
 
     auto rawbuf = partialPtr(0);
@@ -810,12 +815,12 @@ void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
 void DbLog::checkpoint() {
     if (m_phase != Checkpoint::Complete
         || !m_checkpointBlocks.empty()
-        || (m_openFlags & fDbOpenReadOnly)
+        || m_openFlags.any(fDbOpenReadOnly)
     ) {
         return;
     }
 
-    if (m_openFlags & fDbOpenVerbose)
+    if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint started";
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
@@ -890,7 +895,7 @@ void DbLog::checkpointStableCommit() {
 //===========================================================================
 void DbLog::checkpointTruncateCommit() {
     assert(m_phase == Checkpoint::WaitForTruncateCommit);
-    if (m_openFlags & fDbOpenVerbose)
+    if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::Complete;
     s_perfCurCps -= 1;

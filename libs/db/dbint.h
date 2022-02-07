@@ -12,7 +12,7 @@
 ***/
 
 unsigned const kDefaultPageSize = 4096;
-static_assert(kDefaultPageSize == Dim::pow2Ceil(kDefaultPageSize));
+static_assert(kDefaultPageSize == std::bit_ceil(kDefaultPageSize));
 
 unsigned const kMinPageSize = 128;
 static_assert(kDefaultPageSize % kMinPageSize == 0);
@@ -48,9 +48,9 @@ public:
 
 protected:
     using Pointer = std::conditional_t<Writable, char *, const char *>;
-    static constexpr Dim::File::ViewMode kMode = Writable
-        ? Dim::File::kViewReadWrite
-        : Dim::File::kViewReadOnly;
+    static constexpr Dim::File::View kMode = Writable
+        ? Dim::File::View::kReadWrite
+        : Dim::File::View::kReadOnly;
     size_t minFirstSize() const;
     Pointer ptr(pgno_t pgno) const;
 
@@ -87,7 +87,7 @@ public:
         std::string_view datafile,
         std::string_view workfile,
         size_t pageSize,
-        DbOpenFlags flags
+        Dim::EnumFlags<DbOpenFlags> flags
     );
     void close();
     DbConfig configure(const DbConfig & conf);
@@ -132,7 +132,7 @@ private:
 
     // Variables determined at open
     size_t m_pageSize{0};
-    DbOpenFlags m_flags{};
+    Dim::EnumFlags<DbOpenFlags> m_flags{};
     bool m_newFiles{false}; // did the open create new data files?
 
     // Configuration settings
@@ -151,7 +151,7 @@ private:
         Dim::TimePoint firstTime; // time page became dirty
         uint64_t firstLsn; // LSN at which page became dirty
         pgno_t pgno;
-        DbPageFlags flags;
+        Dim::EnumFlags<DbPageFlags> flags;
     };
     // List of all dirty pages in order of when they became dirty as measured
     // by LSN (and therefore also time).
@@ -367,14 +367,14 @@ public:
     ~DbData();
 
     // Allows updates from DbLog to be applied
-    void openForApply(size_t pageSize, DbOpenFlags flags);
+    void openForApply(size_t pageSize, Dim::EnumFlags<DbOpenFlags> flags);
 
     // After open metrics and samples can be updated and queried
     bool openForUpdate(
         DbTxn & txn,
         IDbDataNotify * notify,
         std::string_view name,
-        DbOpenFlags flags
+        Dim::EnumFlags<DbOpenFlags> flags
     );
     DbStats queryStats();
 
