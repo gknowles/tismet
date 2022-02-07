@@ -1,0 +1,52 @@
+# Copyright Glen Knowles 2022.
+# Distributed under the Boost Software License, Version 1.0.
+#
+# github-build.yml
+
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch: {}
+
+jobs:
+  build-win:
+    strategy:
+      matrix:
+        platform: [x64]
+        configuration: [Debug, Release]
+        toolset: [v143]
+        image: [windows-2022]
+    runs-on: ${{matrix.image}}
+    defaults:
+      run:
+        shell: cmd
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Build
+      working-directory: ${{github.workspace}}
+      run: |
+        md build
+        cd build
+        if "${{matrix.toolset}}" == "v143" (
+          set gen=Visual Studio 17 2022
+        ) else (
+          set gen=Visual Studio 16 2019
+        )
+        cmake .. -G "%gen%" -A ${{matrix.platform}} -T ${{matrix.toolset}}
+        cmake . -DCMAKE_BUILD_TYPE=${{matrix.configuration}}^
+          -DCMAKE_INSTALL_PREFIX=publish -DINSTALL_LIBS:BOOL=ON
+        cmake --build . --target install --config ${{matrix.configuration}}
+        cd publish
+
+    - name: Test
+      working-directory: ${{github.workspace}}
+      run: |
+        bin\tst all
