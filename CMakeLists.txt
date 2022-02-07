@@ -1,4 +1,4 @@
-# Copyright Glen Knowles 2016 - 2021.
+# Copyright Glen Knowles 2016 - 2022.
 # Distributed under the Boost Software License, Version 1.0.
 #
 # CMakeLists.txt - general project generator
@@ -76,9 +76,9 @@ option(INSTALL_TOOLS "Install includes tool binaries" OFF)
 option(INSTALL_TESTS "Install includes test binaries" OFF)
 
 # Reference to suppress "not used" warning when manually specified
-set(tmp "${BUILD_COVERAGE}")        # only used by gcc builds
+set(tmp "${BUILD_COVERAGE}")        # only used by clang and gcc builds
 set(tmp "${CMAKE_BUILD_TYPE}")      # not used (vcpkg sets it)
-set(tmp "${LINK_STATIC_RUNTIME}")   # not used by gcc or clang builds
+set(tmp "${LINK_STATIC_RUNTIME}")   # not used by clang or gcc builds
 
 
 #############################################################################
@@ -224,10 +224,12 @@ function(add_exec_project tgt srcdir)
         get_filename_component(libname "${var}" NAME)
         target_link_libraries(${tgt} ${libname})
     endforeach()
-    if(CMAKE_COMPILER_IS_GNUCXX)
+    if(CMAKE_COMPILER_IS_GNUCXX 
+            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "9")
         # required for #include <experimental/filesystem>
         target_link_libraries(${tgt} "stdc++fs")
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang
+            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "9")
         target_link_libraries(${tgt} "stdc++fs")
     endif()
     write_user_file(${tgt} "debug;props")
@@ -353,7 +355,7 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS_DEBUG "/Od")
     if(FALSE AND NOT MSVC_VERSION LESS 1928)
         # "/fsanitize=address" - enables ASAN memory error detector
-        # "/Zi" - debug info format (not present would be no info)
+        # "/Zi" - debug info (not present would be no info)
         set(CMAKE_CXX_FLAGS_DEBUG
             "${CMAKE_CXX_FLAGS_DEBUG} /fsanitize=address /Zi")
     else()
@@ -379,18 +381,13 @@ if(MSVC)
         # "/MD" - multithread release dll runtime
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MD")
     endif()
-
-    set_property(SOURCE "pch.cpp" APPEND PROPERTY COMPILE_FLAGS "/Ycpch.h")
 elseif(CMAKE_COMPILER_IS_GNUCXX)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "8")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
-    else()
+    elseif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a")
-    endif()
-    if(BUILD_COVERAGE)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
-            -fprofile-arcs -ftest-coverage")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2b")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "7")
@@ -398,8 +395,19 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
         # Clang++-6 in c++2a mode, failing with a reference to the unknown
         # std::is_constant_evaluated().
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
-    else()
+    elseif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "12")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2a")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2b")
+    endif()
+endif()
+if(BUILD_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL GNU
+            OR CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
+            -fprofile-arcs -ftest-coverage -fsanitize=address")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
+            -fprofile-arcs")
     endif()
 endif()
 
@@ -426,6 +434,8 @@ endforeach()
 # no group, but - just for regexs (bug?) - that causes cmake to use defaults.
 source_group(" " REGULAR_EXPRESSION ".*")
 source_group("docs" REGULAR_EXPRESSION "docs/.*")
+source_group("ci" REGULAR_EXPRESSION "\.github/.*\.yml")
+source_group("ci" FILES appveyor.yml codecov.yml .travis.yml)
 
 if(ROOT_PROJECT)
     include_directories(libs)
@@ -472,9 +482,12 @@ file(GLOB sources
     *.yml
     *.adoc
     *.md
+    *.rst
     *.props
     configure.bat)
 file(GLOB_RECURSE allnames docs/*)
+list(APPEND sources ${allnames})
+file(GLOB_RECURSE allnames .github/*.yml)
 list(APPEND sources ${allnames})
 add_file_project(about ${sources})
 
