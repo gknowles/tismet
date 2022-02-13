@@ -12,6 +12,7 @@
 #include "file/file.h"
 #include "net/net.h"
 #include "system/system.h"
+#include "tools/tools.h"
 
 #include "carbon/carbon.h"
 #include "db/db.h"

@@ -59,13 +59,18 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("index", "Metric index tests.") {}
+    Test();
     void onTestRun() override;
 };
 
 } // namespace
 
 static Test s_test;
+
+//===========================================================================
+Test::Test()
+    : ITest("index", "Metric index tests.") 
+ {}
 
 //===========================================================================
 void Test::onTestRun() {

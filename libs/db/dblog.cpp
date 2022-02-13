@@ -28,20 +28,20 @@ static_assert(kLogWriteBuffers > 1);
 ***/
 
 enum class DbLog::Buffer : int {
-    Empty,
-    PartialDirty,
-    PartialWriting,
-    PartialClean,
-    FullWriting,
+    kEmpty,
+    kPartialDirty,
+    kPartialWriting,
+    kPartialClean,
+    kFullWriting,
 };
 
 enum class DbLog::Checkpoint : int {
-    StartRecovery,
-    Complete,
-    WaitForPageFlush,
-    WaitForStablePageFlush,
-    WaitForCheckpointCommit,
-    WaitForTruncateCommit,
+    kStartRecovery,
+    kComplete,
+    kWaitForPageFlush,
+    kWaitForStablePageFlush,
+    kWaitForCheckpointCommit,
+    kWaitForTruncateCommit,
 };
 
 struct DbLog::AnalyzeData {
@@ -318,7 +318,8 @@ static FileHandle openDbFile(
         oflags |= File::fTrunc;
     if (flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
-    auto f = fileOpen(logfile, oflags);
+    FileHandle f;
+    fileOpen(&f, logfile, oflags);
     if (!f)
         logMsgError() << "Open failed, " << logfile;
     return f;
@@ -340,14 +341,15 @@ bool DbLog::open(
         return false;
 
     auto fps = filePageSize(m_flog);
-    auto len = fileSize(m_flog);
+    uint64_t len;
+    fileSize(&len, m_flog);
     ZeroPage zp{};
     if (!len) {
         if (!dataPageSize)
             dataPageSize = kDefaultPageSize;
     } else {
         auto rawbuf = aligned_alloc(fps, fps);
-        fileReadWait(rawbuf, fps, m_flog, 0);
+        fileReadWait(nullptr, rawbuf, fps, m_flog, 0);
         memcpy(&zp, rawbuf, sizeof(zp));
         if (!dataPageSize)
             dataPageSize = zp.pageSize / 2;
@@ -362,7 +364,7 @@ bool DbLog::open(
 
     m_pageSize = 2 * dataPageSize;
     m_numBufs = kLogWriteBuffers;
-    m_bufStates.resize(m_numBufs, Buffer::Empty);
+    m_bufStates.resize(m_numBufs, Buffer::kEmpty);
     m_emptyBufs = m_numBufs;
     m_buffers = (char *) aligned_alloc(m_pageSize, m_numBufs * m_pageSize);
     memset(m_buffers, 0, m_numBufs * m_pageSize);
@@ -379,7 +381,7 @@ bool DbLog::open(
     m_bufPos = m_pageSize;
 
     if (!len) {
-        m_phase = Checkpoint::Complete;
+        m_phase = Checkpoint::kComplete;
         m_newFiles = true;
 
         zp.hdr.type = (DbPageType) LogPageType::kZero;
@@ -390,7 +392,7 @@ bool DbLog::open(
         memcpy(nraw, &zp, sizeof(zp));
         zp.hdr.checksum = hash_crc32c(nraw, m_pageSize);
         memcpy(nraw, &zp, sizeof(zp));
-        fileWriteWait(m_flog, 0, nraw, m_pageSize);
+        fileWriteWait(nullptr, m_flog, 0, nraw, m_pageSize);
         s_perfWrites += 1;
         m_numPages = 1;
         s_perfPages += (unsigned) m_numPages;
@@ -421,7 +423,7 @@ void DbLog::close() {
         return;
 
     m_closing = true;
-    if (m_phase == Checkpoint::StartRecovery
+    if (m_phase == Checkpoint::kStartRecovery
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
         fileClose(m_flog);
@@ -435,11 +437,11 @@ void DbLog::close() {
     }
     unique_lock lk{m_bufMut};
     for (;;) {
-        if (m_phase == Checkpoint::Complete) {
+        if (m_phase == Checkpoint::kComplete) {
             if (m_emptyBufs == m_numBufs)
                 break;
             auto bst = m_bufStates[m_curBuf];
-            if (m_emptyBufs == m_numBufs - 1 && bst == Buffer::PartialClean)
+            if (m_emptyBufs == m_numBufs - 1 && bst == Buffer::kPartialClean)
                 break;
         }
         m_bufAvailCv.wait(lk);
@@ -485,7 +487,7 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     if (enable) {
         DbProgressInfo info = {};
         m_checkpointBlocks.push_back(notify);
-        if (m_phase == Checkpoint::Complete) {
+        if (m_phase == Checkpoint::kComplete) {
             notify->onDbProgress(kRunStopped, info);
         } else {
             notify->onDbProgress(kRunStopping, info);
@@ -497,7 +499,7 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     auto i = find(m_checkpointBlocks.begin(), m_checkpointBlocks.end(), notify);
     if (i != m_checkpointBlocks.end())
         m_checkpointBlocks.erase(i);
-    if (m_checkpointBlocks.empty() && m_phase == Checkpoint::Complete)
+    if (m_checkpointBlocks.empty() && m_phase == Checkpoint::kComplete)
         checkpointWaitForNext();
 }
 
@@ -510,18 +512,20 @@ void DbLog::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
 
 //===========================================================================
 bool DbLog::recover(EnumFlags<RecoverFlags> flags) {
-    if (m_phase != Checkpoint::StartRecovery)
+    if (m_phase != Checkpoint::kStartRecovery)
         return true;
 
-    m_phase = Checkpoint::Complete;
+    m_phase = Checkpoint::kComplete;
     m_checkpointStart = timeNow();
 
+    FileHandle flog;
     auto logfile = filePath(m_flog);
-    auto flog = fileOpen(
+    auto ec = fileOpen(
+        &flog,
         logfile,
         File::fReadOnly | File::fBlocking | File::fDenyNone | File::fSequential
     );
-    if (!flog) {
+    if (ec) {
         logMsgError() << "Open failed, " << logfile;
         return false;
     }
@@ -595,7 +599,7 @@ bool DbLog::loadPages(FileHandle flog) {
     uint32_t checksum;
     // load info for each page
     for (auto i = (pgno_t) 1; i < m_numPages; i = pgno_t(i + 1)) {
-        fileReadWait(rawbuf, m_pageSize, flog, i * m_pageSize);
+        fileReadWait(nullptr, rawbuf, m_pageSize, flog, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
         case LogPageType::kInvalid:
@@ -613,6 +617,7 @@ bool DbLog::loadPages(FileHandle flog) {
             pack(rawbuf, lp, 0);
             checksum = hash_crc32c(rawbuf, m_pageSize);
             if (checksum != lp.checksum) {
+                
                 logMsgError() << "Invalid checksum on page #"
                     << i << " of " << filePath(flog);
                 goto MAKE_FREE;
@@ -668,7 +673,7 @@ void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
     auto log = (Record *) nullptr;
 
     for (auto&& pi : m_pages) {
-        fileReadWait(buf2, m_pageSize, flog, pi.pgno * m_pageSize);
+        fileReadWait(nullptr, buf2, m_pageSize, flog, pi.pgno * m_pageSize);
         unpack(&lp, buf2);
         if (bytesBefore) {
             auto bytesAfter = lp.firstPos - logHdrLen(lp.type);
@@ -700,7 +705,7 @@ void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
     if (data->analyze && logPos < m_pageSize) {
         memcpy(m_buffers, buf, logPos);
         m_bufPos = logPos;
-        m_bufStates[m_curBuf] = Buffer::PartialClean;
+        m_bufStates[m_curBuf] = Buffer::kPartialClean;
         m_emptyBufs -= 1;
         auto & pi = m_pages.back();
         unpack(&lp, bufPtr(m_curBuf));
@@ -813,7 +818,7 @@ void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
 // that are needed to fully recover the database. Any entries before that point
 // will subsequently be skipped and/or discarded.
 void DbLog::checkpoint() {
-    if (m_phase != Checkpoint::Complete
+    if (m_phase != Checkpoint::kComplete
         || !m_checkpointBlocks.empty()
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
@@ -824,7 +829,7 @@ void DbLog::checkpoint() {
         logMsgInfo() << "Checkpoint started";
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
-    m_phase = Checkpoint::WaitForPageFlush;
+    m_phase = Checkpoint::kWaitForPageFlush;
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -832,26 +837,26 @@ void DbLog::checkpoint() {
 
 //===========================================================================
 void DbLog::checkpointPages() {
-    assert(m_phase == Checkpoint::WaitForPageFlush);
-    if (!fileFlush(m_flog))
+    assert(m_phase == Checkpoint::kWaitForPageFlush);
+    if (auto ec = fileFlush(m_flog))
         logMsgFatal() << "Checkpointing failed.";
     auto nextLsn = m_page->onLogCheckpointPages(m_checkpointLsn);
     if (nextLsn == m_checkpointLsn) {
-        m_phase = Checkpoint::WaitForTruncateCommit;
+        m_phase = Checkpoint::kWaitForTruncateCommit;
         checkpointTruncateCommit();
         return;
     }
     m_checkpointLsn = nextLsn;
     logCommitCheckpoint(m_checkpointLsn);
-    m_phase = Checkpoint::WaitForCheckpointCommit;
+    m_phase = Checkpoint::kWaitForCheckpointCommit;
     queueTask(&m_checkpointStableCommitTask, m_lastLsn);
     flushWriteBuffer();
 }
 
 //===========================================================================
 void DbLog::checkpointStableCommit() {
-    assert(m_phase == Checkpoint::WaitForCheckpointCommit);
-    if (!fileFlush(m_flog))
+    assert(m_phase == Checkpoint::kWaitForCheckpointCommit);
+    if (auto ec = fileFlush(m_flog))
         logMsgFatal() << "Checkpointing failed.";
 
     auto lastPgno = pgno_t{0};
@@ -874,7 +879,7 @@ void DbLog::checkpointStableCommit() {
             (unsigned) (before - m_pages.size() - (bool) lastPgno);
     }
 
-    m_phase = Checkpoint::WaitForTruncateCommit;
+    m_phase = Checkpoint::kWaitForTruncateCommit;
     if (!lastPgno) {
         checkpointTruncateCommit();
     } else {
@@ -894,10 +899,10 @@ void DbLog::checkpointStableCommit() {
 
 //===========================================================================
 void DbLog::checkpointTruncateCommit() {
-    assert(m_phase == Checkpoint::WaitForTruncateCommit);
+    assert(m_phase == Checkpoint::kWaitForTruncateCommit);
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
-    m_phase = Checkpoint::Complete;
+    m_phase = Checkpoint::kComplete;
     s_perfCurCps -= 1;
     if (m_checkpointBlocks.empty()) {
         checkpointWaitForNext();
@@ -1006,10 +1011,10 @@ uint64_t DbLog::log(
     m_bufPos += bytes;
 
     if (m_bufPos != m_pageSize) {
-        if (m_bufStates[m_curBuf] == Buffer::PartialClean
-            || m_bufStates[m_curBuf] == Buffer::Empty
+        if (m_bufStates[m_curBuf] == Buffer::kPartialClean
+            || m_bufStates[m_curBuf] == Buffer::kEmpty
         ) {
-            m_bufStates[m_curBuf] = Buffer::PartialDirty;
+            m_bufStates[m_curBuf] = Buffer::kPartialDirty;
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
         if (txnMode == TxnMode::kCommit)
@@ -1017,8 +1022,8 @@ uint64_t DbLog::log(
         return lsn;
     }
 
-    bool writeInProgress = m_bufStates[m_curBuf] == Buffer::PartialWriting;
-    m_bufStates[m_curBuf] = Buffer::FullWriting;
+    bool writeInProgress = m_bufStates[m_curBuf] == Buffer::kPartialWriting;
+    m_bufStates[m_curBuf] = Buffer::kFullWriting;
     LogPage lp;
     auto rawbuf = bufPtr(m_curBuf);
     unpack(&lp, rawbuf);
@@ -1062,10 +1067,10 @@ void DbLog::queueTask(
 //===========================================================================
 void DbLog::flushWriteBuffer() {
     unique_lock lk{m_bufMut};
-    if (m_bufStates[m_curBuf] != Buffer::PartialDirty)
+    if (m_bufStates[m_curBuf] != Buffer::kPartialDirty)
         return;
 
-    m_bufStates[m_curBuf] = Buffer::PartialWriting;
+    m_bufStates[m_curBuf] = Buffer::kPartialWriting;
     LogPage lp;
     auto rawbuf = bufPtr(m_curBuf);
     unpack(&lp, rawbuf);
@@ -1156,7 +1161,8 @@ void DbLog::onFileWrite(
     int written,
     string_view data,
     int64_t offset,
-    FileHandle f
+    FileHandle f,
+    error_code ec
 ) {
     if (written != data.size()) {
         logMsgFatal() << "Write to .tsl failed, " << errno << ", "
@@ -1185,7 +1191,7 @@ void DbLog::onFileWrite(
         assert(data.size() == m_pageSize);
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers) / m_pageSize;
-        m_bufStates[ibuf] = Buffer::Empty;
+        m_bufStates[ibuf] = Buffer::kEmpty;
         lp.type = LogPageType::kFree;
         pack(rawbuf, lp, lp.checksum);
         m_checkpointData += m_pageSize;
@@ -1206,17 +1212,17 @@ void DbLog::onFileWrite(
     rawbuf = bufPtr(ibuf);
     LogPage olp;
     unpack(&olp, rawbuf);
-    if (m_bufStates[ibuf] == Buffer::PartialWriting) {
+    if (m_bufStates[ibuf] == Buffer::kPartialWriting) {
         if (olp.numLogs == lp.numLogs) {
-            m_bufStates[ibuf] = Buffer::PartialClean;
+            m_bufStates[ibuf] = Buffer::kPartialClean;
             lk.unlock();
             m_bufAvailCv.notify_one();
         } else {
-            m_bufStates[ibuf] = Buffer::PartialDirty;
+            m_bufStates[ibuf] = Buffer::kPartialDirty;
             lk.unlock();
             timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
         }
-    } else if (m_bufStates[ibuf] == Buffer::FullWriting) {
+    } else if (m_bufStates[ibuf] == Buffer::kFullWriting) {
         lk.unlock();
         pack(rawbuf, olp, hash_crc32c(rawbuf, m_pageSize));
         fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
@@ -1233,7 +1239,7 @@ void DbLog::prepareBuffer_LK(
     for (;;) {
         if (++m_curBuf == m_numBufs)
             m_curBuf = 0;
-        if (m_bufStates[m_curBuf] == Buffer::Empty)
+        if (m_bufStates[m_curBuf] == Buffer::kEmpty)
             break;
     }
 
@@ -1266,7 +1272,7 @@ void DbLog::prepareBuffer_LK(
     pi.numLogs = 0;
     pi.commitTxns.emplace_back(lp.firstLsn, 0);
 
-    m_bufStates[m_curBuf] = Buffer::PartialDirty;
+    m_bufStates[m_curBuf] = Buffer::kPartialDirty;
     m_emptyBufs -= 1;
     memcpy(
         rawbuf + hdrLen,

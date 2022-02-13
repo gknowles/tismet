@@ -31,20 +31,18 @@ static List<ITest> & tests() {
 }
 
 //===========================================================================
-ITest::ITest (std::string_view name, std::string_view desc)
-    : m_name{name}
+ITest::ITest (std::string_view name, std::string_view desc) 
+    : m_name(name)
 {
-    Cli cli;
-    cli.command(string(name))
+    m_cli.command(m_name)
         .desc(string(desc))
-        .action([&](Cli & cli) { this->onTestRun(); return true; });
+        .action([&](Cli & cli) { 
+            cout << this->name() << "...\n";
+            this->onTestRun(); 
+        });
 
     tests().link(this);
 }
-
-//===========================================================================
-void ITest::onTestDefine(Cli & cli)
-{}
 
 
 /****************************************************************************
@@ -70,23 +68,10 @@ static void app(int argc, char * argv[]) {
     cli.command("all")
         .desc("Run all tests.")
         .action(allCmd);
-    for (auto && test : tests()) {
-        cli.command(string(test.name()));
-        test.onTestDefine(cli);
-    }
-    if (!cli.exec(argc, argv))
+    if (!cli.parse(argc, argv))
         return appSignalUsageError();
-    if (cli.commandMatched() == "help")
-        return appSignalShutdown(EX_OK);
-
-    if (int errors = logGetMsgCount(kLogTypeError)) {
-        ConsoleScopedAttr attr(kConsoleError);
-        cerr << "*** " << errors << " FAILURES" << endl;
-        appSignalShutdown(EX_SOFTWARE);
-    } else {
-        cout << "All tests passed" << endl;
-        appSignalShutdown(EX_OK);
-    }
+    cli.exec();
+    testSignalShutdown();
 }
 
 

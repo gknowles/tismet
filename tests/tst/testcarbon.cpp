@@ -42,7 +42,7 @@ static void parseTest(
     bool result = carbonParse(upd, text, time);
     EXPECT(result);
     EXPECT(upd.name == name);
-    EXPECT(upd.value == value);
+    EXPECT((float) upd.value == value);
     EXPECT(upd.time == time);
 }
 
@@ -57,13 +57,18 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("carbon", "Carbon message parsing tests.") {}
+    Test();
     void onTestRun() override;
 };
 
 } // namespace
 
 static Test s_test;
+
+//===========================================================================
+Test::Test() 
+    : ITest("carbon", "Carbon message parsing tests.")
+{}
 
 //===========================================================================
 void Test::onTestRun() {

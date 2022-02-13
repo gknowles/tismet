@@ -55,13 +55,18 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("query", "Query parsing tests.") {}
+    Test();
     void onTestRun() override;
 };
 
 } // namespace
 
 static Test s_test;
+
+//===========================================================================
+Test::Test()
+    : ITest("query", "Query parsing tests.") 
+{}
 
 //===========================================================================
 void Test::onTestRun() {

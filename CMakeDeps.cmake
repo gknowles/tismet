@@ -126,8 +126,6 @@
 # vendor/dimapp/libs/core/charbuf.h
 # vendor/dimapp/libs/core/core.h
 # vendor/dimapp/libs/core/core.natvis
-# vendor/dimapp/libs/core/cron.cpp
-# vendor/dimapp/libs/core/cron.h
 # vendor/dimapp/libs/core/handle.cpp
 # vendor/dimapp/libs/core/handle.h
 # vendor/dimapp/libs/core/hash.cpp
@@ -148,6 +146,8 @@
 # vendor/dimapp/libs/core/shutdown.h
 # vendor/dimapp/libs/core/str.cpp
 # vendor/dimapp/libs/core/str.h
+# vendor/dimapp/libs/core/strtrie.cpp
+# vendor/dimapp/libs/core/strtrie.h
 # vendor/dimapp/libs/core/task.cpp
 # vendor/dimapp/libs/core/task.h
 # vendor/dimapp/libs/core/tempheap.cpp
@@ -174,6 +174,7 @@
 # vendor/dimapp/libs/file/file.cpp
 # vendor/dimapp/libs/file/file.h
 # vendor/dimapp/libs/file/file.natvis
+# vendor/dimapp/libs/file/fileio.h
 # vendor/dimapp/libs/file/filemon.h
 # vendor/dimapp/libs/file/path.cpp
 # vendor/dimapp/libs/file/path.h
@@ -276,6 +277,7 @@
 # vendor/dimapp/libs/win/winsockint.h
 # vendor/dimapp/libs/win/winsvc.cpp
 # vendor/dimapp/libs/win/winsvcctrl.cpp
+# vendor/dimapp/libs/win/winsvcctrl.h
 # vendor/dimapp/libs/win/winthread.cpp
 # vendor/dimapp/libs/win/wintime.cpp
 # vendor/dimapp/libs/win/winutil.cpp

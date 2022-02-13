@@ -44,7 +44,8 @@ private:
         string_view data,
         bool more,
         int64_t offset,
-        FileHandle f
+        FileHandle f,
+        error_code ec
     ) override;
 
     // Inherited via IParserNotify
@@ -132,9 +133,10 @@ bool DumpReader::onFileRead(
     string_view data,
     bool more,
     int64_t offset,
-    FileHandle f
+    FileHandle f,
+    error_code ec
 ) {
-    auto ec = m_parser.parse(bytesUsed, data);
+    ec = m_parser.parse(bytesUsed, data);
     s_progress.bytes += *bytesUsed;
     more = more && (!ec || ec == errc::operation_in_progress);
     if (!more)
@@ -412,7 +414,7 @@ static bool loadCmd(Cli & cli) {
     conf.checkpointMaxInterval = 24h;
     dbConfigure(h, conf);
     s_db = h;
-    s_progress.totalBytes = fileSize(s_opts.dumpfile);
+    fileSize(&s_progress.totalBytes, s_opts.dumpfile);
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
 
     return cli.fail(EX_PENDING, "");

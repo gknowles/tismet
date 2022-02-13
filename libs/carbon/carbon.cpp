@@ -221,7 +221,8 @@ bool ICarbonFileNotify::onFileRead(
     string_view data,
     bool more,
     int64_t offset,
-    FileHandle f
+    FileHandle f,
+    error_code ec
 ) {
     *bytesUsed = data.size();
     auto incomplete = append(data);
@@ -262,7 +263,7 @@ void carbonAckValue(unsigned reqId, unsigned completed) {
 //  prometheus:
 //      [a-zA-Z_:]([a-zA-Z0-9+:])*
 bool carbonParse(CarbonUpdate & upd, string_view & src, TimePoint now) {
-    assert(*src.end() == 0);
+    assert(src.data()[src.size()] == 0);
     upd.name = {};
     if (src.empty())
         return true;

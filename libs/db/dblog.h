@@ -122,7 +122,8 @@ private:
         int written,
         std::string_view data,
         int64_t offset,
-        Dim::FileHandle f
+        Dim::FileHandle f,
+        std::error_code ec
     ) override;
 
     bool loadPages(Dim::FileHandle flog);

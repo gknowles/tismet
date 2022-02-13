@@ -96,7 +96,8 @@ protected:
         std::string_view data,
         bool more,
         int64_t offset,
-        Dim::FileHandle f
+        Dim::FileHandle f,
+        std::error_code ec
     ) override;
 };
 

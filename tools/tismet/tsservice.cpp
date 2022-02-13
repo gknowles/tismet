@@ -104,7 +104,7 @@ static bool installService() {
         { WinServiceConfig::Action::kRestart, 10min },
     };
 
-    return winSvcCreate(sconf);
+    return !winSvcCreate(sconf);
 }
 
 //===========================================================================
@@ -124,7 +124,7 @@ static bool setFileAccess() {
     unsigned failed = 0;
     for (auto&& right : rights) {
         auto rpath = path / right.path;
-        if (!fileAddAccess(
+        if (fileAddAccess(
             rpath,
             "NT SERVICE\\Tismet",
             right.allow,

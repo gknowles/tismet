@@ -104,7 +104,8 @@ inline static size_t queryPageSize(FileHandle f) {
     if (!f)
         return 0;
     DbData::ZeroPage zp;
-    if (auto bytes = fileReadWait(&zp, sizeof(zp), f, 0); bytes != sizeof(zp))
+    uint64_t bytes;
+    if (fileReadWait(&bytes, &zp, sizeof(zp), f, 0); bytes != sizeof(zp))
         return 0;
     if (zp.hdr.type != zp.kPageType)
         return 0;

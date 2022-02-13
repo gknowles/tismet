@@ -90,8 +90,7 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("db", "Database manipulation tests.") {}
-    void onTestDefine(Cli & cli) override;
+    Test();
     void onTestRun() override;
 
 private:
@@ -103,8 +102,10 @@ private:
 static Test s_test;
 
 //===========================================================================
-void Test::onTestDefine(Cli & cli) {
-    cli.opt<bool>(&m_verbose, "v verbose")
+Test::Test()
+    : ITest("db", "Database manipulation tests.") 
+{
+    m_cli.opt<bool>(&m_verbose, "v verbose")
         .desc("Display additional information during test");
 }
 

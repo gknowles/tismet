@@ -38,14 +38,15 @@ bool DbFileView<Writable>::open(
 
     // First view is the size of the entire file rounded up to segment size,
     // and always at least two segments.
-    auto len = fileSize(file);
+    uint64_t len = 0;
+    fileSize(&len, file);
     m_firstViewSize = len + viewSize - 1;
     m_firstViewSize -= m_firstViewSize % viewSize;
     m_firstViewSize = max(m_firstViewSize, minFirstSize());
 
     int64_t commit = m_firstViewSize > minFirstSize() ? m_firstViewSize : 0;
     m_view = nullptr;
-    if (!fileOpenView(
+    if (fileOpenView(
         m_view,
         file,
         kMode,
@@ -81,7 +82,8 @@ void DbFileView<Writable>::growToFit(pgno_t pgno) {
     auto pos = pgno * m_pageSize;
     if (pos < m_firstViewSize) {
         if (pos < minFirstSize()) {
-            fileExtendView(m_file, m_view, pos + m_pageSize);
+            if (fileExtendView(m_file, m_view, pos + m_pageSize))
+                logMsgFatal() << "Extend file failed on " << filePath(m_file);
         }
         return;
     }
@@ -92,7 +94,7 @@ void DbFileView<Writable>::growToFit(pgno_t pgno) {
         return;
     assert(iview == m_views.size() && "non-contiguous grow request");
     Pointer view;
-    if (!fileOpenView(
+    if (fileOpenView(
         view,
         m_file,
         kMode,

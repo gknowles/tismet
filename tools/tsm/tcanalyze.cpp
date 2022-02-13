@@ -95,7 +95,8 @@ private:
         string_view data,
         bool more,
         int64_t offset,
-        FileHandle f
+        FileHandle f,
+        error_code ec
     ) override;
 
     string m_buf;
@@ -146,9 +147,17 @@ bool RecordFile::onFileRead(
     string_view data,
     bool more,
     int64_t offset,
-    FileHandle f
+    FileHandle f,
+    error_code ec
 ) {
-    bool good = ICarbonFileNotify::onFileRead(bytesUsed, data, more, offset, f);
+    bool good = ICarbonFileNotify::onFileRead(
+        bytesUsed, 
+        data, 
+        more, 
+        offset, 
+        f, 
+        ec
+    );
     if (good && more)
         return true;
     appSignalShutdown();

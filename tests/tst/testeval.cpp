@@ -555,8 +555,7 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("eval", "Function evaluation tests.") {}
-    void onTestDefine(Cli & cli) override;
+    Test();
     void onTestRun() override;
 
 private:
@@ -569,13 +568,15 @@ private:
 static Test s_test;
 
 //===========================================================================
-void Test::onTestDefine(Cli & cli) {
-    auto & subs = cli.optVec(&m_subtests, "[subtests]")
+Test::Test()
+    : ITest("eval", "Function evaluation tests.") 
+{
+    auto & subs = m_cli.optVec(&m_subtests, "[subtests]")
         .desc("Specific function tests to run, defaults to all.");
     for (auto && ut : s_unitTests) {
         subs.choice(ut.name(), ut.name());
     }
-    cli.opt(&m_verbose, "v verbose")
+    m_cli.opt(&m_verbose, "v verbose")
         .desc("Display test progress.");
 }
 

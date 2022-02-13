@@ -114,7 +114,8 @@ private:
         string_view data,
         bool more,
         int64_t offset,
-        FileHandle f
+        FileHandle f,
+        error_code ec
     ) override;
 
     struct RequestBucket {
@@ -314,10 +315,12 @@ void DbBase::backupNextFile() {
     if (!m_backupFiles.empty()) {
         auto [dst, src] = m_backupFiles.front();
         if (m_dstFile.open(dst, FileAppendStream::kTrunc)) {
+            uint64_t bytes;
+            fileSize(&bytes, src);
             if (m_info.totalBytes == size_t(-1)) {
-                m_info.totalBytes = fileSize(src);
+                m_info.totalBytes = bytes;
             } else {
-                m_info.totalBytes += fileSize(src);
+                m_info.totalBytes += bytes;
             }
             m_backupFiles.erase(m_backupFiles.begin());
             fileStreamBinary(this, src, 65536, taskComputeQueue());
@@ -341,7 +344,8 @@ bool DbBase::onFileRead(
     string_view data,
     bool more,
     int64_t offset,
-    FileHandle f
+    FileHandle f,
+    error_code ec
 ) {
     *bytesUsed = data.size();
     m_info.bytes += *bytesUsed;

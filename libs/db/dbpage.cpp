@@ -114,13 +114,24 @@ bool DbPage::openData(string_view datafile) {
         oflags |= File::fTrunc;
     if (m_flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
-    m_fdata = fileOpen(datafile, oflags);
+    auto ec = fileOpen(&m_fdata, datafile, oflags);
     if (!m_fdata)
         return false;
-    auto len = fileSize(m_fdata);
+    Finally fin([fh = m_fdata, fl = m_flags, datafile]() { 
+        fileClose(fh); 
+        if (fl.all(fDbOpenCreat | fDbOpenExcl))
+            fileRemove(datafile);
+    });
+
+    uint64_t len = 0;
+    if (fileSize(&len, m_fdata))
+        return false;
     if (!len) {
         DbPageHeader hdr = {};
-        fileWriteWait(m_fdata, 0, &hdr, sizeof(hdr));
+        if (fileWriteWait(nullptr, m_fdata, 0, &hdr, sizeof(hdr))) {
+            logMsgError() << "Open new failed, " << datafile;
+            return false;
+        }
         m_newFiles = true;
     }
     if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
@@ -138,6 +149,7 @@ bool DbPage::openData(string_view datafile) {
     }
     m_pages.resize(lastPage + 1);
 
+    fin.release();
     return true;
 }
 
@@ -150,19 +162,29 @@ bool DbPage::openWork(string_view workfile) {
     oflags |= File::fCreat;
     if (m_flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
-    m_fwork = fileOpen(workfile, oflags);
+    auto ec = fileOpen(&m_fwork, workfile, oflags);
     if (!m_fwork)
         return false;
-    auto len = fileSize(m_fwork);
+    Finally fin([fh = m_fwork, fl = m_flags, workfile]() {
+        fileClose(fh);
+        if (fl.all(fDbOpenCreat | fDbOpenExcl))
+            fileRemove(workfile);
+    });
+
+    uint64_t len = 0;
+    fileSize(&len, m_fwork);
     ZeroPage zp{};
     if (!len) {
         zp.hdr.type = (DbPageType) kWorkPageTypeZero;
         memcpy(zp.signature, kWorkFileSig, sizeof(zp.signature));
         zp.pageSize = (unsigned) m_pageSize;
-        fileWriteWait(m_fwork, 0, &zp, sizeof(zp));
+        if (fileWriteWait(nullptr, m_fwork, 0, &zp, sizeof(zp))) {
+            logMsgError() << "Open new failed, " << workfile;
+            return false;
+        }
         len = m_pageSize;
     } else {
-        fileReadWait(&zp, sizeof(zp), m_fwork, 0);
+        fileReadWait(nullptr, &zp, sizeof(zp), m_fwork, 0);
     }
     if (zp.pageSize != m_pageSize) {
         logMsgError() << "Mismatched page size, " << workfile;
@@ -271,7 +293,7 @@ uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
         }
     }
 
-    if (!fileFlush(m_fdata))
+    if (fileFlush(m_fdata))
         logMsgFatal() << "Checkpointing failed.";
     return lsn;
 }
@@ -490,7 +512,7 @@ void DbPage::writePageWait(DbPageHeader * hdr) {
     s_perfWrites += 1;
     hdr->checksum = 0;
     hdr->checksum = hash_crc32c(hdr, m_pageSize);
-    fileWriteWait(m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
+    fileWriteWait(nullptr, m_fdata, hdr->pgno * m_pageSize, hdr, m_pageSize);
 }
 
 

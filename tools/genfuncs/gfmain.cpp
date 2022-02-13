@@ -222,16 +222,19 @@ static void updateFile(string_view fname, string_view content) {
         ncontent += lines[i];
     }
     string ocontent;
-    if (fileExists(fname))
+    bool found = false;
+    if (auto ec = fileExists(&found, fname); found)
         fileLoadBinaryWait(&ocontent, fname);
     if (ocontent == ncontent) {
         cout << fname << ", no change\n";
     } else {
-        auto f = fileOpen(
+        FileHandle f;
+        fileOpen(
+            &f,
             fname,
             File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
         );
-        fileAppendWait(f, ncontent.data(), ncontent.size());
+        fileAppendWait(nullptr, f, ncontent.data(), ncontent.size());
         fileClose(f);
         cout << fname << ", ";
         ConsoleScopedAttr attr(kConsoleNote);
@@ -259,7 +262,8 @@ static void app(int argc, char * argv[]) {
         return appSignalUsageError();
 
     auto sln = *root / "tismet.sln";
-    if (!fileExists(sln)) {
+    bool found = false;
+    if (fileExists(&found, sln); !found) {
         return appSignalUsageError(
             "'" + string(*root) + "' not tismet source root."
         );

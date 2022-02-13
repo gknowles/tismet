@@ -158,10 +158,11 @@ static bool dumpCmd(Cli & cli) {
     if (!s_opts.dumpfile)
         s_opts.dumpfile.assign(s_opts.database).setExt("tsdump");
     if (s_opts.dumpfile == string_view("-")) {
-        fout = fileAttachStdout();
+        fileAttachStdout(&fout);
     } else {
         s_opts.dumpfile.defaultExt("tsdump");
-        fout = fileOpen(
+        fileOpen(
+            &fout,
             s_opts.dumpfile,
             File::fCreat | File::fTrunc | File::fReadWrite | File::fDenyWrite
         );
