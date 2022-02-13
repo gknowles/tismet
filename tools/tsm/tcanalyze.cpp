@@ -90,14 +90,7 @@ public:
         uint32_t idHint
     ) override;
 private:
-    bool onFileRead(
-        size_t * bytesUsed,
-        string_view data,
-        bool more,
-        int64_t offset,
-        FileHandle f,
-        error_code ec
-    ) override;
+    bool onFileRead(size_t * bytesUsed, const FileReadData & data) override;
 
     string m_buf;
 };
@@ -144,21 +137,10 @@ bool RecordFile::onCarbonValue(
 //===========================================================================
 bool RecordFile::onFileRead(
     size_t * bytesUsed,
-    string_view data,
-    bool more,
-    int64_t offset,
-    FileHandle f,
-    error_code ec
+    const FileReadData & data
 ) {
-    bool good = ICarbonFileNotify::onFileRead(
-        bytesUsed, 
-        data, 
-        more, 
-        offset, 
-        f, 
-        ec
-    );
-    if (good && more)
+    bool good = ICarbonFileNotify::onFileRead(bytesUsed, data);
+    if (good && data.more)
         return true;
     appSignalShutdown();
     return false;

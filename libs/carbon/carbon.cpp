@@ -218,14 +218,10 @@ AppSocket::MatchType CarbonMatch::onMatch(
 //===========================================================================
 bool ICarbonFileNotify::onFileRead(
     size_t * bytesUsed,
-    string_view data,
-    bool more,
-    int64_t offset,
-    FileHandle f,
-    error_code ec
+    const FileReadData & data
 ) {
-    *bytesUsed = data.size();
-    auto incomplete = append(data);
+    *bytesUsed = data.data.size();
+    auto incomplete = append(data.data);
     if (incomplete == EOF)
         return false;
     assert(!incomplete);

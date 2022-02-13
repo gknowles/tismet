@@ -39,14 +39,7 @@ public:
 
 private:
     // Inherited via IFileReadNotify
-    bool onFileRead(
-        size_t * bytesUsed,
-        string_view data,
-        bool more,
-        int64_t offset,
-        FileHandle f,
-        error_code ec
-    ) override;
+    bool onFileRead(size_t * bytesUsed, const FileReadData & data) override;
 
     // Inherited via IParserNotify
     bool startArray(size_t length) override;
@@ -130,13 +123,10 @@ DumpReader::DumpReader()
 //===========================================================================
 bool DumpReader::onFileRead(
     size_t * bytesUsed,
-    string_view data,
-    bool more,
-    int64_t offset,
-    FileHandle f,
-    error_code ec
+    const FileReadData & data
 ) {
-    ec = m_parser.parse(bytesUsed, data);
+    auto more = data.more;
+    auto ec = m_parser.parse(bytesUsed, data.data);
     s_progress.bytes += *bytesUsed;
     more = more && (!ec || ec == errc::operation_in_progress);
     if (!more)

@@ -92,12 +92,8 @@ class ICarbonFileNotify
 protected:
     // Inherited via IFileReadNotify
     bool onFileRead(
-        size_t * bytesUsed,
-        std::string_view data,
-        bool more,
-        int64_t offset,
-        Dim::FileHandle f,
-        std::error_code ec
+        size_t * bytesUsed, 
+        const Dim::FileReadData & data
     ) override;
 };
 

@@ -118,13 +118,7 @@ private:
     char * bufPtr(size_t ibuf);
     char * partialPtr(size_t ibuf);
 
-    void onFileWrite(
-        int written,
-        std::string_view data,
-        int64_t offset,
-        Dim::FileHandle f,
-        std::error_code ec
-    ) override;
+    void onFileWrite(const Dim::FileWriteData & data) override;
 
     bool loadPages(Dim::FileHandle flog);
 

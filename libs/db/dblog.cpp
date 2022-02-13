@@ -1157,19 +1157,13 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
 }
 
 //===========================================================================
-void DbLog::onFileWrite(
-    int written,
-    string_view data,
-    int64_t offset,
-    FileHandle f,
-    error_code ec
-) {
-    if (written != data.size()) {
+void DbLog::onFileWrite(const FileWriteData & data) {
+    if (data.written != data.data.size()) {
         logMsgFatal() << "Write to .tsl failed, " << errno << ", "
             << _doserrno;
     }
 
-    auto rawbuf = (char *) data.data();
+    auto rawbuf = (char *) data.data.data();
     s_perfWrites += 1;
     LogPage lp;
     unpack(&lp, rawbuf);
@@ -1188,7 +1182,7 @@ void DbLog::onFileWrite(
         && rawbuf < m_buffers + m_numBufs * m_pageSize;
     updatePages_LK(pi, fullPageWrite);
     if (fullPageWrite) {
-        assert(data.size() == m_pageSize);
+        assert(data.data.size() == m_pageSize);
         m_emptyBufs += 1;
         auto ibuf = (rawbuf - m_buffers) / m_pageSize;
         m_bufStates[ibuf] = Buffer::kEmpty;
@@ -1225,7 +1219,7 @@ void DbLog::onFileWrite(
     } else if (m_bufStates[ibuf] == Buffer::kFullWriting) {
         lk.unlock();
         pack(rawbuf, olp, hash_crc32c(rawbuf, m_pageSize));
-        fileWrite(this, m_flog, offset, rawbuf, m_pageSize, logQueue());
+        fileWrite(this, m_flog, data.offset, rawbuf, m_pageSize, logQueue());
     }
 }
 
