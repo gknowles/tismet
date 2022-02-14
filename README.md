@@ -3,8 +3,14 @@ Copyright Glen Knowles 2016 - 2020.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
-[![Build status](https://ci.appveyor.com/api/projects/status/nlcftmonh607sv3a?svg=true)
-    ](https://ci.appveyor.com/project/gknowles/tismet "msvc 2019")
+| MSVC 2022 | Test Coverage |
+| :-------: | :-----------: |
+| [![Build][gh-image]][gh-link] | [![Codecov][cc-image]][cc-link] |
+
+[gh-image]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml/badge.svg "GitHub Actions"
+[gh-link]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml
+[cc-image]: https://img.shields.io/badge/dynamic/json?color=success&label=codecov&logo=codecov&query=%24.commit.totals.c&suffix=%25&url=https%3A%2F%2Fcodecov.io%2Fapi%2Fgh%2Fgknowles%2Ftismet%2Fbranch%2Fmaster "Codecov"
+[cc-link]: https://codecov.io/gh/gknowles/tismet
 
 # Tismet
 
