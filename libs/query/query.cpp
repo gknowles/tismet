@@ -105,7 +105,7 @@ bool Query::parse(
     string_view src,
     const ITokenConvNotify * notify
 ) {
-    assert(*src.end() == 0);
+    assert(src.data()[src.size()] == 0);
     qry = {};
     auto ptr = src.data();
     auto parser = QueryParser{&qry};

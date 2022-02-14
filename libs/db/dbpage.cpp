@@ -207,6 +207,7 @@ bool DbPage::openWork(string_view workfile) {
         return false;
     }
 
+    fin.release();
     return true;
 }
 

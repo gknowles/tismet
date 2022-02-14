@@ -332,8 +332,10 @@ bool DbLog::open(
     EnumFlags<DbOpenFlags> flags
 ) {
     assert(!m_closing && !m_flog);
-    assert(dataPageSize == bit_ceil(dataPageSize));
-    assert(!dataPageSize || dataPageSize >= kMinPageSize);
+    if (dataPageSize) {
+        assert(dataPageSize == bit_ceil(dataPageSize));
+        assert(dataPageSize >= kMinPageSize);
+    }
 
     m_openFlags = flags;
     m_flog = openDbFile(logfile, flags, true);

@@ -241,7 +241,7 @@ bool DbData::loadFreePages (DbTxn & txn) {
                 last = pps;
             m_freePages.insert(
                 pgno + (unsigned) first,
-                pgno + (unsigned) last - 1
+                unsigned(last - first)
             );
             if (first < m_numPages) {
                 auto num = (unsigned) (min(last, m_numPages - pgno) - first);
@@ -303,7 +303,7 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
         s_perfPages += 1;
         txn.growToFit(segPage);
         auto pps = pagesPerSegment(m_pageSize);
-        m_freePages.insert(segPage + 1, segPage + pps - 1);
+        m_freePages.insert(segPage + 1, pps - 1);
     }
     auto pgno = (pgno_t) m_freePages.pop_front();
     if (pgno < m_numPages) {
