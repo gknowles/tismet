@@ -247,7 +247,8 @@ CmdOpts::CmdOpts() {
 //===========================================================================
 static bool replayCmd(Cli & cli) {
     AddrJob job;
-    return cli.fail(EX_UNAVAILABLE, "replay not implemented");
+    cli.fail(EX_UNAVAILABLE, "replay not implemented");
+    return false;
     //auto job = make_unique<AddrJob>();
     //if (job->start(cli))
     //    job.release();

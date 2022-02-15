@@ -217,8 +217,10 @@ CmdOpts::CmdOpts() {
 static bool recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
         s_file.init(10, 2, envMemoryConfig().pageSize);
-        if (!s_file.open(s_opts.ofile.view(), s_opts.openMode))
-            return cli.fail(EX_DATAERR, string(s_opts.ofile) + ": open failed");
+        if (!s_file.open(s_opts.ofile.view(), s_opts.openMode)) {
+            cli.fail(EX_DATAERR, string(s_opts.ofile) + ": open failed");
+            return true;
+        }
     }
 
     consoleCatchCtrlC();
@@ -236,5 +238,6 @@ static bool recordCmd(Cli & cli) {
     );
     sockMgrSetAddresses(s_mgr, &s_opts.addr, 1);
 
-    return cli.fail(EX_PENDING, "");
+    cli.fail(EX_PENDING, "");
+    return true;
 }

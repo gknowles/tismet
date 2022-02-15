@@ -403,10 +403,11 @@ static bool textCmd(Cli & cli) {
     } else {
         ofile.open(s_opts.ofile.str(), ios::trunc);
         if (!ofile) {
-            return cli.fail(
+            cli.fail(
                 EX_DATAERR,
                 string(s_opts.ofile) + ": invalid <outputFile[.txt]>"
             );
+            return true;
         }
         os = &ofile;
     }
@@ -422,6 +423,5 @@ static bool textCmd(Cli & cli) {
     dlog.recover(flags);
     dlog.close();
     tcLogShutdown(&s_progress);
-
     return true;
 }

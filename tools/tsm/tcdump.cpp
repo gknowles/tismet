@@ -171,19 +171,21 @@ static bool dumpCmd(Cli & cli) {
     s_dump.init(10, 2, envMemoryConfig().pageSize);
     if (!fout || !s_dump.attach(fout)) {
         fileClose(fout);
-        return cli.fail(
+        cli.fail(
             EX_DATAERR,
             s_opts.dumpfile.str() + ": invalid <outputFile[.tsdump]>"
         );
+        return true;
     }
 
     logMsgInfo() << "Dumping " << s_opts.database << " to " << s_opts.dumpfile;
     auto h = dbOpen(s_opts.database, 0, fDbOpenReadOnly);
     if (!h) {
-        return cli.fail(
+        cli.fail(
             EX_DATAERR,
             s_opts.database.str() + ": malformed database"
         );
+        return true;
     }
     DumpWriter out;
     UnsignedSet ids;

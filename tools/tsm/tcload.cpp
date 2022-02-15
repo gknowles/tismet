@@ -396,8 +396,10 @@ static bool loadCmd(Cli & cli) {
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
     auto h = dbOpen(s_opts.database, 0, flags);
-    if (!h)
-        return cli.fail(EX_ABORTED, "Canceled");
+    if (!h) {
+        cli.fail(EX_ABORTED, "Canceled");
+        return true;
+    }
 
     DbConfig conf = {};
     conf.checkpointMaxData = 1'000'000'000;
@@ -407,5 +409,6 @@ static bool loadCmd(Cli & cli) {
     fileSize(&s_progress.totalBytes, s_opts.dumpfile);
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
 
-    return cli.fail(EX_PENDING, "");
+    cli.fail(EX_PENDING, "");
+    return true;
 }

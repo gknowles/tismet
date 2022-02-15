@@ -155,8 +155,8 @@ static bool installCmd(Cli & cli) {
     }
 
     logMonitorClose(consoleBasicLogger());
-    if (!success)
-        return cli.fail(EX_OSERR, "Unable to create service.");
+    if (!success) 
+        cli.fail(EX_OSERR, "Unable to create service.");
 
     return true;
 }

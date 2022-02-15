@@ -39,6 +39,7 @@ ITest::ITest (std::string_view name, std::string_view desc)
         .action([&](Cli & cli) { 
             cout << this->name() << "...\n";
             this->onTestRun(); 
+            return true;
         });
 
     tests().link(this);
@@ -68,9 +69,8 @@ static void app(int argc, char * argv[]) {
     cli.command("all")
         .desc("Run all tests.")
         .action(allCmd);
-    if (!cli.parse(argc, argv))
+    if (!cli.exec(argc, argv))
         return appSignalUsageError();
-    cli.exec();
     testSignalShutdown();
 }
 

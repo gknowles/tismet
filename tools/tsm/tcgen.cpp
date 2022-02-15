@@ -379,10 +379,11 @@ bool FileJob::start(Cli & cli) {
         return cli.badUsage("No value given for <output file[.txt]>");
     if (fname.view() != "-") {
         if (!m_file.open(fname.defaultExt("txt"), FileAppendStream::kTrunc)) {
-            return cli.fail(
+            cli.fail(
                 EX_DATAERR,
                 fname.str() + ": open <outputFile[.txt]> failed"
             );
+            return true;
         }
     }
 

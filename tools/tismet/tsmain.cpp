@@ -146,7 +146,8 @@ static bool serveCmd(Cli & cli) {
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
-    return cli.fail(EX_PENDING, "");
+    cli.fail(EX_PENDING, "");
+    return true;
 }
 
 //===========================================================================
