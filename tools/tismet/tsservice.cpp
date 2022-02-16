@@ -59,13 +59,13 @@ static bool execElevated(const vector<string> & rawArgs) {
 *
 ***/
 
-static bool installCmd(Cli & cli);
+static void installCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
     Cli cli;
     cli.before([&](auto & cli, auto & args) {
-        this->args = args; return true;
+        this->args = args;
     });
     cli.command("install")
         .desc("Install Tismet service.")
@@ -138,7 +138,7 @@ static bool setFileAccess() {
 }
 
 //===========================================================================
-static bool installCmd(Cli & cli) {
+static void installCmd(Cli & cli) {
     auto success = false;
     logMonitor(consoleBasicLogger());
 
@@ -157,6 +157,4 @@ static bool installCmd(Cli & cli) {
     logMonitorClose(consoleBasicLogger());
     if (!success) 
         cli.fail(EX_OSERR, "Unable to create service.");
-
-    return true;
 }

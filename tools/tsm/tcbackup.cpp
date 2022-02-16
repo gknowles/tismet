@@ -273,7 +273,7 @@ void AddrJob::onSockAddrFound(const SockAddr * ptr, int count) {
 *
 ***/
 
-static bool backupCmd(Cli & cli);
+static void backupCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -291,7 +291,6 @@ CmdOpts::CmdOpts() {
 }
 
 //===========================================================================
-static bool backupCmd(Cli & cli) {
+static void backupCmd(Cli & cli) {
     s_job.start(cli);
-    return false;
 }

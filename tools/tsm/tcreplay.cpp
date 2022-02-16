@@ -208,7 +208,7 @@ void AddrJob::onSockAddrFound(const SockAddr * ptr, int count) {
 *
 ***/
 
-static bool replayCmd(Cli & cli);
+static void replayCmd(Cli & cli);
 
 // 2001-01-01 12:00:00 UTC
 constexpr TimePoint kDefaultStartTime{12'622'824'000s};
@@ -245,10 +245,9 @@ CmdOpts::CmdOpts() {
 }
 
 //===========================================================================
-static bool replayCmd(Cli & cli) {
+static void replayCmd(Cli & cli) {
     AddrJob job;
     cli.fail(EX_UNAVAILABLE, "replay not implemented");
-    return false;
     //auto job = make_unique<AddrJob>();
     //if (job->start(cli))
     //    job.release();

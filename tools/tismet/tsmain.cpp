@@ -136,7 +136,7 @@ static string s_product = "tismet";
 static string s_productVersion;
 
 //===========================================================================
-static bool serveCmd(Cli & cli) {
+static void serveCmd(Cli & cli) {
     httpRouteSetDefaultReplyHeader(kHttpServer, s_productVersion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
@@ -147,7 +147,6 @@ static bool serveCmd(Cli & cli) {
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
     cli.fail(EX_PENDING, "");
-    return true;
 }
 
 //===========================================================================
@@ -159,19 +158,19 @@ static void app(int argc, char * argv[]) {
     cli.before([](auto & cli, auto & args) {
         if (args.size() == 1)
             args.push_back(appFlags().any(fAppIsService) ? "serve" : "help");
-        return true;
     });
     cli.opt<unsigned>("console")
         .show(false).desc("Attach to console of other process.")
         .after([](auto & cli, auto & opt, auto & val) {
-            return !opt || consoleAttach(*opt);
+            if (opt && !consoleAttach(*opt))
+                cli.fail(EX_OSERR, "Unable to attach");
         });
     cli.command("serve")
         .desc("Run Tismet server and process requests.")
         .action(serveCmd);
 
-    (void) cli.exec(argc, argv);
-    return appSignalUsageError();
+    cli.exec(argc, argv);
+    appSignalUsageError();
 }
 
 

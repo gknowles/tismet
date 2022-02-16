@@ -126,7 +126,7 @@ bool DumpWriter::onDbSample(uint32_t id, TimePoint time, double val) {
 *
 ***/
 
-static bool dumpCmd(Cli & cli);
+static void dumpCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -151,7 +151,7 @@ CmdOpts::CmdOpts() {
 ***/
 
 //===========================================================================
-static bool dumpCmd(Cli & cli) {
+static void dumpCmd(Cli & cli) {
     tcLogStart();
 
     FileHandle fout;
@@ -171,21 +171,19 @@ static bool dumpCmd(Cli & cli) {
     s_dump.init(10, 2, envMemoryConfig().pageSize);
     if (!fout || !s_dump.attach(fout)) {
         fileClose(fout);
-        cli.fail(
+        return cli.fail(
             EX_DATAERR,
             s_opts.dumpfile.str() + ": invalid <outputFile[.tsdump]>"
         );
-        return true;
     }
 
     logMsgInfo() << "Dumping " << s_opts.database << " to " << s_opts.dumpfile;
     auto h = dbOpen(s_opts.database, 0, fDbOpenReadOnly);
     if (!h) {
-        cli.fail(
+        return cli.fail(
             EX_DATAERR,
             s_opts.database.str() + ": malformed database"
         );
-        return true;
     }
     DumpWriter out;
     UnsignedSet ids;
@@ -204,5 +202,4 @@ static bool dumpCmd(Cli & cli) {
     s_dump.close();
     dbClose(h);
     tcLogShutdown(&s_progress);
-    return true;
 }

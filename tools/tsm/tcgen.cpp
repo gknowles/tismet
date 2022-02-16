@@ -375,15 +375,17 @@ FileJob::~FileJob() {
 //===========================================================================
 bool FileJob::start(Cli & cli) {
     auto fname = s_opts.ofile;
-    if (!fname)
-        return cli.badUsage("No value given for <output file[.txt]>");
+    if (!fname) {
+        cli.badUsage("No value given for <output file[.txt]>");
+        return false;
+    }
     if (fname.view() != "-") {
         if (!m_file.open(fname.defaultExt("txt"), FileAppendStream::kTrunc)) {
             cli.fail(
                 EX_DATAERR,
                 fname.str() + ": open <outputFile[.txt]> failed"
             );
-            return true;
+            return false;
         }
     }
 
@@ -422,7 +424,7 @@ void FileJob::onTask() {
 *
 ***/
 
-static bool genCmd(Cli & cli);
+static void genCmd(Cli & cli);
 
 // 2001-01-01 12:00:00 UTC
 constexpr TimePoint kDefaultStartTime{12'622'824'000s};
@@ -439,8 +441,8 @@ CmdOpts::CmdOpts() {
         .desc("Output file, '-' for stdout, extension defaults to '.txt'")
         .check([&](auto&, auto&, auto&) { return otype = kFileOutput; })
         .after([&](auto & cli, auto&, auto&) {
-            return otype
-                || cli.badUsage("No output target given.");
+            if (!otype)
+                cli.badUsage("No output target given.");
         });
     cli.opt(&oaddr, "A addr")
         .desc("Socket endpoint to receive metrics, port defaults to 2003")
@@ -480,7 +482,7 @@ CmdOpts::CmdOpts() {
 }
 
 //===========================================================================
-static bool genCmd(Cli & cli) {
+static void genCmd(Cli & cli) {
     if (s_opts.otype == CmdOpts::kFileOutput) {
         auto job = make_unique<FileJob>();
         if (job->start(cli))
@@ -491,5 +493,4 @@ static bool genCmd(Cli & cli) {
         if (job->start(cli))
             job.release();
     }
-    return false;
 }

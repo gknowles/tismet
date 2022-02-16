@@ -190,12 +190,11 @@ CmdOpts::CmdOpts() {
         .desc("'-' for stdout, otherwise extension defaults to '.txt'")
         .check([](auto & cli, auto & opt, auto & val) {
             if (*opt) {
-                return opt->view() == "-"
-                    ? true
-                    : (bool) opt->defaultExt("txt");
+                if (opt->view() != "-")
+                    opt->defaultExt("txt");
             } else {
                 // empty path not allowed
-                return cli.badUsage("Missing argument", opt.from());
+                cli.badUsage("Missing argument", opt.from());
             }
         });
 

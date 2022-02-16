@@ -39,7 +39,6 @@ ITest::ITest (std::string_view name, std::string_view desc)
         .action([&](Cli & cli) { 
             cout << this->name() << "...\n";
             this->onTestRun(); 
-            return true;
         });
 
     tests().link(this);
@@ -53,13 +52,12 @@ ITest::ITest (std::string_view name, std::string_view desc)
 ***/
 
 //===========================================================================
-static bool allCmd(Cli & cli) {
+static void allCmd(Cli & cli) {
     for (auto && test : tests()) {
         cout << test.name() << "...\n";
         test.onTestRun();
     }
     cout << endl;
-    return true;
 }
 
 //===========================================================================

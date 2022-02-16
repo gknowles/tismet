@@ -361,7 +361,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 *
 ***/
 
-static bool loadCmd(Cli & cli);
+static void loadCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -386,7 +386,7 @@ CmdOpts::CmdOpts() {
 ***/
 
 //===========================================================================
-static bool loadCmd(Cli & cli) {
+static void loadCmd(Cli & cli) {
     s_opts.dumpfile.defaultExt("tsdump");
 
     logMsgInfo() << "Loading " << s_opts.dumpfile
@@ -396,10 +396,8 @@ static bool loadCmd(Cli & cli) {
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
     auto h = dbOpen(s_opts.database, 0, flags);
-    if (!h) {
-        cli.fail(EX_ABORTED, "Canceled");
-        return true;
-    }
+    if (!h) 
+        return cli.fail(EX_ABORTED, "Canceled");
 
     DbConfig conf = {};
     conf.checkpointMaxData = 1'000'000'000;
@@ -410,5 +408,4 @@ static bool loadCmd(Cli & cli) {
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
 
     cli.fail(EX_PENDING, "");
-    return true;
 }

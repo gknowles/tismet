@@ -364,7 +364,7 @@ void * TextWriter::onLogGetRedoPtr(
 *
 ***/
 
-static bool textCmd(Cli & cli);
+static void textCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -389,8 +389,8 @@ CmdOpts::CmdOpts() {
 ***/
 
 //===========================================================================
-static bool textCmd(Cli & cli) {
-    if (!s_opts.tslfile)
+static void textCmd(Cli & cli) {
+    if (!s_opts.tslfile) 
         return cli.badUsage("No value given for <wal file[.tsl]>");
     s_opts.tslfile.defaultExt("tsl");
 
@@ -403,11 +403,10 @@ static bool textCmd(Cli & cli) {
     } else {
         ofile.open(s_opts.ofile.str(), ios::trunc);
         if (!ofile) {
-            cli.fail(
+            return cli.fail(
                 EX_DATAERR,
                 string(s_opts.ofile) + ": invalid <outputFile[.txt]>"
             );
-            return true;
         }
         os = &ofile;
     }
@@ -423,5 +422,4 @@ static bool textCmd(Cli & cli) {
     dlog.recover(flags);
     dlog.close();
     tcLogShutdown(&s_progress);
-    return true;
 }

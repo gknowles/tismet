@@ -165,7 +165,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 *
 ***/
 
-static bool recordCmd(Cli & cli);
+static void recordCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -177,19 +177,18 @@ CmdOpts::CmdOpts() {
         .desc("'-' for stdout, otherwise extension defaults to '.txt'")
         .check([](auto & cli, auto & opt, auto & val) {
             if (*opt) {
-                return opt->view() == "-"
-                    ? true
-                    : (bool) opt->defaultExt("txt");
+                if (opt->view() != "-")
+                    opt->defaultExt("txt");
             } else {
                 // empty path not allowed
-                return cli.badUsage("Missing argument", opt.from());
+                cli.badUsage("Missing argument", opt.from());
             }
         });
     cli.opt(&addrStr, "[address]", "127.0.0.1:2003")
         .desc("Socket address to listen on")
         .after([](auto & cli, auto & opt, auto & val) {
-            return parse(&s_opts.addr, *opt, 2003)
-                || cli.badUsage(opt, *opt);
+            if (!parse(&s_opts.addr, *opt, 2003))
+                cli.badUsage(opt, *opt);
         });
 
     cli.group("~").title("Other");
@@ -214,12 +213,12 @@ CmdOpts::CmdOpts() {
 }
 
 //===========================================================================
-static bool recordCmd(Cli & cli) {
+static void recordCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
         s_file.init(10, 2, envMemoryConfig().pageSize);
         if (!s_file.open(s_opts.ofile.view(), s_opts.openMode)) {
             cli.fail(EX_DATAERR, string(s_opts.ofile) + ": open failed");
-            return true;
+            return;
         }
     }
 
@@ -239,5 +238,4 @@ static bool recordCmd(Cli & cli) {
     sockMgrSetAddresses(s_mgr, &s_opts.addr, 1);
 
     cli.fail(EX_PENDING, "");
-    return true;
 }
