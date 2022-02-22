@@ -18,8 +18,12 @@ enum DbLogRecType : int8_t {
 
     kRecTypeZeroInit            = 4,  // [master]
     kRecTypePageFree            = 5,  // [any]
+    kRecTypeFullPage            = 16, // [any] id, data
     kRecTypeSegmentAlloc        = 6,  // [master/segment] refPage
     kRecTypeSegmentFree         = 7,  // [master/segment] refPage
+    kRecTypeBitInit             = 17, // [bitmap] pos
+    kRecTypeBitSet              = 38, // [bitmap] pos
+    kRecTypeBitReset            = 39, // [bitmap] pos
     kRecTypeRadixInit           = 8,  // [radix] id, height
     kRecTypeRadixInitList       = 9,  // [radix] id, height, page list
     kRecTypeRadixErase          = 10, // [metric/radix] firstPos, lastPos
@@ -62,10 +66,9 @@ enum DbLogRecType : int8_t {
     kRecTypeSampleUpdateInt16LastTxn    = 29,
     kRecTypeSampleUpdateInt32LastTxn    = 31,
 
-    kRecTypeUnused_16       = 16,   // Available
     kRecTypeUnused_17       = 17,   // Available
 
-    kRecType_LastAvailable  = 38,
+    kRecType_LastAvailable  = 40,
 };
 
 #pragma pack(push)

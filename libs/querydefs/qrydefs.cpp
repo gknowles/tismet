@@ -70,70 +70,93 @@ struct StringNode : Node {
 *
 ***/
 
-static bool operator< (const Node & a, const Node & b);
+static partial_ordering operator<=> (const Node & a, const Node & b);
 
 //===========================================================================
-static bool operator< (const List<Node> & a, const List<Node> & b) {
-    return lexicographical_compare(
-        a.begin(),
-        a.end(),
-        b.begin(),
-        b.end(),
-        [](auto & a, auto & b) { return a < b; }
-    );
+static partial_ordering operator<=> (
+    const List<Node> & a, 
+    const List<Node> & b
+) {
+    //return lexicographical_compare_three_way(
+    //    a.begin(), 
+    //    a.end(), 
+    //    b.begin(), 
+    //    b.end()
+    //);
+    auto a1 = a.begin();
+    auto a2 = a.end();
+    auto b1 = b.begin();
+    auto b2 = b.end();
+    for (;; ++a1, ++b1) {
+        if (a1 == a2)
+            return b1 == b2 ? strong_ordering::equal : strong_ordering::less;
+        if (b1 == b2)
+            return strong_ordering::greater;
+        if (auto rc = *a1 <=> *b1; rc != 0)
+            return rc;
+    }
 }
 
 //===========================================================================
 template<size_t N>
-static bool operator< (const bitset<N> & a, const bitset<N> & b) {
-    return memcmp(&a, &b, sizeof(a)) < 0;
+static strong_ordering operator<=> (
+    const bitset<N> & a, 
+    const bitset<N> & b
+) {
+    if (auto rc = memcmp(&a, &b, sizeof(a)); rc == 0) {
+        return strong_ordering::equal;
+    } else if (rc < 0) {
+        return strong_ordering::less;
+    } else {
+        return strong_ordering::greater;
+    }
 }
 
 //===========================================================================
-static bool operator< (const Node & a, const Node & b) {
+static partial_ordering operator<=> (const Node & a, const Node & b) {
     if (a.type != b.type)
-        return a.type < b.type;
+        return a.type <=> b.type;
 
     switch (a.type) {
     case kPath:
         return static_cast<const PathNode &>(a).segs
-            < static_cast<const PathNode &>(b).segs;
+            <=> static_cast<const PathNode &>(b).segs;
     case kPathSeg:
         return static_cast<const PathSeg &>(a).nodes
-            < static_cast<const PathSeg &>(b).nodes;
+            <=> static_cast<const PathSeg &>(b).nodes;
     case kSegEmpty:
-        return false;
+        return strong_ordering::equal;
     case kSegLiteral:
         return static_cast<const SegLiteral &>(a).val
-            < static_cast<const SegLiteral &>(b).val;
+            <=> static_cast<const SegLiteral &>(b).val;
     case kSegBlot:
-        return false;
+        return strong_ordering::equal;
     case kSegDoubleBlot:
-        return false;
+        return strong_ordering::equal;
     case kSegCharChoice:
         return static_cast<const SegCharChoice &>(a).vals
-            < static_cast<const SegCharChoice &>(b).vals;
+            <=> static_cast<const SegCharChoice &>(b).vals;
     case kSegSegChoice:
         return static_cast<const SegSegChoice &>(a).segs
-            < static_cast<const SegSegChoice &>(b).segs;
+            <=> static_cast<const SegSegChoice &>(b).segs;
     case kNum:
         return static_cast<const NumNode &>(a).val
-            < static_cast<const NumNode &>(b).val;
+            <=> static_cast<const NumNode &>(b).val;
     case kString:
         return static_cast<const StringNode &>(a).val
-            < static_cast<const StringNode &>(b).val;
+            <=> static_cast<const StringNode &>(b).val;
     case kFunc:
         {
             auto & af = static_cast<const FuncNode &>(a);
             auto & bf = static_cast<const FuncNode &>(b);
-            if (af.func != bf.func)
-                return af.func < bf.func;
-            return af.args < bf.args;
+            if (auto rc = af.func <=> bf.func; rc != 0)
+                return rc;
+            return af.args <=> bf.args;
         }
     }
 
     assert(!"Unknown node type");
-    return false;
+    return strong_ordering::equal;
 }
 
 //===========================================================================

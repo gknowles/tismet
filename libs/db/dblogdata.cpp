@@ -35,6 +35,18 @@ struct TransactionRec {
 };
 
 //---------------------------------------------------------------------------
+// Full Page
+struct FullPageRec {
+    DbLog::Record hdr;
+    DbPageType type;
+    uint32_t id;
+    uint16_t dataLen;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+
+//---------------------------------------------------------------------------
 // Segment
 struct SegmentUpdateRec {
     DbLog::Record hdr;
@@ -264,6 +276,23 @@ APPLY(PageFree) {
 }
 
 //===========================================================================
+static uint16_t sizeFullPage(const DbLog::Record & log) {
+    auto & rec = reinterpret_cast<const FullPageRec &>(log);
+    return offsetof(FullPageRec, data) + rec.dataLen;
+}
+
+//===========================================================================
+APPLY(FullPage) {
+    auto & rec = reinterpret_cast<const FullPageRec &>(log);
+    notify->onLogApplyFullPage(
+        page,
+        rec.type,
+        rec.id,
+        {rec.data, rec.dataLen}
+    );
+}
+
+//===========================================================================
 APPLY(SegmentAlloc) {
     auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
     notify->onLogApplySegmentUpdate(page, rec.refPage, false);
@@ -302,6 +331,10 @@ static DbLogRecInfo::Table s_dataRecInfo{
         DbLogRecInfo::sizeFn<DbLog::Record>,
         applyPageFree,
     },
+    { kRecTypeFullPage,
+        sizeFullPage,
+        applyFullPage,
+    },
     { kRecTypeSegmentAlloc,
         DbLogRecInfo::sizeFn<SegmentUpdateRec>,
         applySegmentAlloc,
@@ -329,6 +362,28 @@ void DbTxn::logZeroInit(pgno_t pgno) {
 void DbTxn::logPageFree(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
     log(rec, bytes);
+}
+
+//===========================================================================
+void DbTxn::logFullPage(
+    pgno_t pgno, 
+    DbPageType type, 
+    uint32_t id, 
+    std::span<uint8_t> data
+) {
+    auto extra = data.size();
+    auto offset = offsetof(FullPageRec, data);
+    assert(offset + extra <= pageSize());
+    auto [rec, bytes] = alloc<FullPageRec>(
+        kRecTypeFullPage,
+        pgno,
+        offset + extra
+    );
+    rec->type = type;
+    rec->id = id;
+    rec->dataLen = (uint16_t) extra;
+    memcpy(rec->data, data.data(), extra);
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================

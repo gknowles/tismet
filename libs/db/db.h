@@ -57,7 +57,7 @@ enum DbSampleType : int8_t {
     kSampleTypeInt32   = 5,
     kSampleTypes,
 };
-const char * toString(DbSampleType type, char const def[] = nullptr);
+const char * toString(DbSampleType type, const char def[] = nullptr);
 DbSampleType fromString(std::string_view src, DbSampleType def);
 
 struct DbStats {
@@ -237,7 +237,10 @@ enum class DbPageType : int32_t {
     kMetric = 'm',
     kRadix = 'r',
     kSample = 's',
+    kTrie = 't',
+    kBitmap = 'b',
 };
+std::string toString(DbPageType type);
 
 enum DbPageFlags : uint32_t {
     fDbPageDirty = 1,

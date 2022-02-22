@@ -37,6 +37,12 @@ private:
 
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
+    void onLogApplyFullPage(
+        void * ptr,
+        DbPageType type,
+        uint32_t id,
+        std::span<const uint8_t> data
+    ) override;
     void onLogApplySegmentUpdate(
         void * ptr,
         pgno_t refPage,
@@ -59,6 +65,17 @@ private:
         void * ptr,
         size_t pos,
         pgno_t refPage
+    ) override;
+    void onLogApplyBitInit(
+        void * ptr,
+        uint32_t id,
+        bool fill,
+        uint32_t pos
+    ) override;
+    void onLogApplyBitUpdate(
+        void * ptr,
+        uint32_t pos,
+        bool value
     ) override;
     void onLogApplyMetricInit(
         void * ptr,
@@ -181,12 +198,25 @@ void TextWriter::onLogApplyPageFree(void * ptr) {
 }
 
 //===========================================================================
+void TextWriter::onLogApplyFullPage(
+    void * ptr,
+    DbPageType type,
+    uint32_t id,
+    std::span<const uint8_t> data
+) {
+    auto & os = out(ptr);
+    os << "page/" << id << ".full " << toString(type) << ", " 
+        << data.size() << " bytes\n";
+    hexDump(os, {(char *) data.data(), data.size()});
+}
+
+//===========================================================================
 void TextWriter::onLogApplySegmentUpdate(
     void * ptr,
     pgno_t refPage,
     bool free
 ) {
-    out(ptr) << "free[@" << refPage << "] = " << (free ? 1 : 0) << '\n';
+    out(ptr) << "seg.free[@" << refPage << "] = " << (free ? 1 : 0) << '\n';
 }
 
 //===========================================================================
@@ -226,6 +256,29 @@ void TextWriter::onLogApplyRadixUpdate(
     pgno_t refPage
 ) {
     out(ptr) << "radix[" << pos << "] = @" << refPage << '\n';
+}
+
+//===========================================================================
+void TextWriter::onLogApplyBitInit(
+    void * ptr,
+    uint32_t id,
+    bool fill,
+    uint32_t pos
+) {
+    auto & os = out(ptr);
+    os << "bit/" << id << ".init = " << (fill ? 1 : 0);
+    if (pos != numeric_limits<uint32_t>::max())
+        os << ", bit[" << pos << "] = " << (fill ? 0 : 1);
+    os << '\n';
+}
+
+//===========================================================================
+void TextWriter::onLogApplyBitUpdate(
+    void * ptr,
+    uint32_t pos,
+    bool value
+) {
+    out(ptr) << "bit[" << pos << "] = " << (value ? 1 : 0) << '\n';
 }
 
 //===========================================================================

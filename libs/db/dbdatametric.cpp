@@ -23,8 +23,6 @@ static_assert(kDefaultRetention >= kDefaultInterval);
 unsigned const kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
-auto const kMetricIndexPageNum = (pgno_t) 1;
-
 
 /****************************************************************************
 *
@@ -297,9 +295,9 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     // update index
     {
         scoped_lock lk{m_mndxMut};
-        bool inserted [[maybe_unused]] = radixInsertOrAssign(
+        [[maybe_unused]] bool inserted = radixInsertOrAssign(
             txn,
-            kMetricIndexPageNum,
+            m_metricStoreRoot,
             id,
             pgno
         );
@@ -363,7 +361,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
     if (mi.infoPage) {
         *name = txn.viewPage<MetricPage>(mi.infoPage)->name;
-        auto rp = txn.viewPage<RadixPage>(kMetricIndexPageNum);
+        auto rp = txn.viewPage<RadixPage>(m_metricStoreRoot);
         scoped_lock lk{m_mndxMut};
         radixErase(txn, rp->hdr, id, id + 1);
         return true;
@@ -996,7 +994,7 @@ pgno_t DbData::sampleMakePhysical(
         lastSample,
         fill
     );
-    bool inserted [[maybe_unused]] = radixInsertOrAssign(
+    [[maybe_unused]] bool inserted = radixInsertOrAssign(
         txn,
         mi.infoPage,
         sppos,

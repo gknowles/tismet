@@ -301,6 +301,12 @@ public:
 
     virtual void onLogApplyZeroInit(void * ptr) = 0;
     virtual void onLogApplyPageFree(void * ptr) = 0;
+    virtual void onLogApplyFullPage(
+        void * ptr,
+        DbPageType type,
+        uint32_t id,
+        std::span<const uint8_t> data
+    ) = 0;
     virtual void onLogApplySegmentUpdate(
         void * ptr,
         pgno_t refPage,
@@ -324,6 +330,18 @@ public:
         void * ptr,
         size_t pos,
         pgno_t refPage
+    ) = 0;
+
+    virtual void onLogApplyBitInit(
+        void * ptr,
+        uint32_t id,
+        bool fill,
+        uint32_t pos
+    ) = 0;
+    virtual void onLogApplyBitUpdate(
+        void * ptr,
+        uint32_t pos,
+        bool value
     ) = 0;
 
     virtual void onLogApplyMetricInit(

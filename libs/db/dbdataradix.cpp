@@ -335,3 +335,34 @@ bool DbData::radixFind(
     }
     return *out;
 }
+
+//===========================================================================
+static bool radixVisit(
+    DbTxn & txn,
+    const DbPageHeader & hdr,
+    const function<bool(DbTxn&, const DbPageHeader&)> & fn
+) {
+    if (hdr.type == DbPageType::kRadix) {
+        auto rp = reinterpret_cast<const DbData::RadixPage &>(hdr);
+        for (auto && pgno : rp.rd) {
+            if (pgno) {
+                auto p = txn.viewPage<DbPageHeader>(pgno);
+                if (!radixVisit(txn, *p, fn))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    return fn(txn, hdr);
+}
+
+//===========================================================================
+bool DbData::radixVisit(
+    DbTxn & txn,
+    pgno_t root,
+    const function<bool(DbTxn&, const DbPageHeader&)> & fn
+) {
+    auto hdr = txn.viewPage<DbPageHeader>(root);
+    return ::radixVisit(txn, *hdr, fn);
+}

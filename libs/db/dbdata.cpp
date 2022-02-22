@@ -16,7 +16,7 @@ using namespace Dim;
 ***/
 
 auto const kZeroPageNum = (pgno_t) 0;
-auto const kMetricIndexPageNum = (pgno_t) 1;
+auto const kMetricStoreRootPageNum = (pgno_t) 1;
 
 
 /****************************************************************************
@@ -46,6 +46,8 @@ struct DbData::ZeroPage {
     char signature[sizeof(kDataFileSig)];
     unsigned pageSize;
     unsigned segmentSize;
+    pgno_t metricStoreRoot;
+    pgno_t metricTagStoreRoot;
 };
 static_assert(is_standard_layout_v<DbData::ZeroPage>);
 static_assert(2 * sizeof(DbData::ZeroPage) <= kMinPageSize);
@@ -92,6 +94,13 @@ constexpr pair<pgno_t, size_t> segmentPage(pgno_t pgno, size_t pageSize) {
     return {(pgno_t) segPage, segPos};
 }
 
+//===========================================================================
+static BitView segmentBitView(void * hdr, size_t pageSize) {
+    auto base = (uint64_t *) ((char *) hdr + pageSize / 2);
+    auto words = pageSize / 2 / sizeof(*base);
+    return {base, words};
+}
+
 
 /****************************************************************************
 *
@@ -100,7 +109,8 @@ constexpr pair<pgno_t, size_t> segmentPage(pgno_t pgno, size_t pageSize) {
 ***/
 
 //===========================================================================
-inline static size_t queryPageSize(FileHandle f) {
+[[maybe_unused]]
+static size_t queryPageSize(FileHandle f) {
     if (!f)
         return 0;
     DbData::ZeroPage zp;
@@ -158,19 +168,21 @@ bool DbData::openForUpdate(
     m_numPages = txn.numPages();
     s_perfPages += (unsigned) m_numPages;
     m_segmentSize = zp->segmentSize;
+    m_metricStoreRoot = zp->metricStoreRoot;
+    m_metricTagStoreRoot = zp->metricTagStoreRoot;
 
     if (m_verbose)
         logMsgInfo() << "Load free page list";
     if (!loadFreePages(txn))
         return false;
     if (m_numPages == 1) {
-        auto pgno = allocPgno(txn);
-        assert(pgno == kMetricIndexPageNum);
-        txn.logRadixInit(pgno, 0, 0, nullptr, nullptr);
+        m_metricStoreRoot = allocPgno(txn);
+        assert(m_metricStoreRoot == kMetricStoreRootPageNum);
+        txn.logRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
     }
     if (m_verbose)
         logMsgInfo() << "Build metric index";
-    if (!loadMetrics(txn, notify, kMetricIndexPageNum))
+    if (!loadMetrics(txn, notify, m_metricStoreRoot))
         return false;
 
     return true;
@@ -209,19 +221,45 @@ void DbData::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
 void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
 {}
 
+//===========================================================================
+void DbData::onLogApplyZeroInit(void * ptr) {
+    auto zp = static_cast<ZeroPage *>(ptr);
+    assert(zp->hdr.type == DbPageType::kInvalid);
+    zp->hdr.type = zp->kPageType;
+    zp->hdr.id = 0;
+    assert(zp->hdr.pgno == kZeroPageNum);
+    auto segSize = segmentSize(m_pageSize);
+    assert(segSize <= numeric_limits<decltype(zp->segmentSize)>::max());
+    zp->segmentSize = (unsigned) segSize;
+    memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
+    zp->pageSize = (unsigned) m_pageSize;
+    zp->metricStoreRoot = kMetricStoreRootPageNum;
+    zp->metricTagStoreRoot = {};
+    auto bits = segmentBitView(zp, m_pageSize);
+    bits.set();
+    bits.reset(0);
+}
+
+//===========================================================================
+void DbData::onLogApplyFullPage(
+    void * ptr,
+    DbPageType type,
+    uint32_t id,
+    std::span<const uint8_t> data
+) {
+    auto hdr = static_cast<DbPageHeader *>(ptr);
+    assert(sizeof(*hdr) + data.size() <= m_pageSize);
+    hdr->type = type;
+    hdr->id = id;
+    memcpy(hdr + 1, data.data(), data.size());
+}
+
 
 /****************************************************************************
 *
 *   Segments
 *
 ***/
-
-//===========================================================================
-static BitView segmentBitView(void * hdr, size_t pageSize) {
-    auto base = (uint64_t *) ((char *) hdr + pageSize / 2);
-    auto words = pageSize / 2 / sizeof(*base);
-    return {base, words};
-}
 
 //===========================================================================
 bool DbData::loadFreePages (DbTxn & txn) {
@@ -320,7 +358,7 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
         txn.growToFit(pgno);
     }
 
-    auto fp [[maybe_unused]] = txn.viewPage<DbPageHeader>(pgno);
+    [[maybe_unused]] auto fp = txn.viewPage<DbPageHeader>(pgno);
     assert(fp->type == DbPageType::kInvalid || fp->type == DbPageType::kFree);
     return pgno;
 }
@@ -365,23 +403,6 @@ void DbData::onLogApplyPageFree(void * ptr) {
     assert(fp->hdr.type != DbPageType::kInvalid
         && fp->hdr.type != DbPageType::kFree);
     fp->hdr.type = DbPageType::kFree;
-}
-
-//===========================================================================
-void DbData::onLogApplyZeroInit(void * ptr) {
-    auto zp = static_cast<ZeroPage *>(ptr);
-    assert(zp->hdr.type == DbPageType::kInvalid);
-    zp->hdr.type = zp->kPageType;
-    zp->hdr.id = 0;
-    assert(zp->hdr.pgno == kZeroPageNum);
-    auto segSize = segmentSize(m_pageSize);
-    assert(segSize <= numeric_limits<decltype(zp->segmentSize)>::max());
-    zp->segmentSize = (unsigned) segSize;
-    memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
-    zp->pageSize = (unsigned) m_pageSize;
-    auto bits = segmentBitView(zp, m_pageSize);
-    bits.set();
-    bits.reset(0);
 }
 
 //===========================================================================

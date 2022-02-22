@@ -226,6 +226,12 @@ public:
     void logZeroInit(pgno_t pgno);
     void logPageFree(pgno_t pgno);
     void logSegmentUpdate(pgno_t pgno, pgno_t refPage, bool free);
+    void logFullPage(
+        pgno_t pgno, 
+        DbPageType type, 
+        uint32_t id, 
+        std::span<uint8_t> data
+    );
     void logRadixInit(
         pgno_t pgno,
         uint32_t id,
@@ -236,6 +242,8 @@ public:
     void logRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
     void logRadixPromote(pgno_t pgno, pgno_t refPage);
     void logRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
+    void logBitInit(pgno_t, uint32_t id, bool fill, size_t pos = -1);
+    void logBitUpdate(pgno_t, size_t pos, bool value);
     void logMetricInit(
         pgno_t pgno,
         uint32_t id,
@@ -333,6 +341,7 @@ public:
     struct ZeroPage;
     struct FreePage;
     struct RadixPage;
+    struct BitmapPage;
     struct MetricPage;
     struct SamplePage;
 
@@ -413,6 +422,12 @@ public:
 
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
+    void onLogApplyFullPage(
+        void * ptr,
+        DbPageType type,
+        uint32_t id,
+        std::span<const uint8_t> data
+    ) override;
     void onLogApplySegmentUpdate(
         void * ptr,
         pgno_t refPage,
@@ -435,6 +450,17 @@ public:
         void * ptr,
         size_t pos,
         pgno_t refPage
+    ) override;
+    void onLogApplyBitInit(
+        void * ptr,
+        uint32_t id,
+        bool fill,
+        uint32_t pos
+    ) override;
+    void onLogApplyBitUpdate(
+        void * ptr,
+        uint32_t pos,
+        bool value
     ) override;
     void onLogApplyMetricInit(
         void * ptr,
@@ -535,6 +561,23 @@ private:
     // past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
 
+    // Calls fn for each page in index, exits immediately if an fn() call 
+    // returns false. Returns true if no fn() calls returned false.
+    bool radixVisit(
+        DbTxn & txn,
+        pgno_t root,
+        const std::function<bool(DbTxn&, const DbPageHeader&)> & fn
+    );
+
+    void bitUpdate(
+        DbTxn & txn, 
+        pgno_t root, 
+        uint32_t id, 
+        size_t pos, 
+        bool value
+    );
+    bool bitLoad(DbTxn & txn, Dim::UnsignedSet * out, pgno_t root);
+
     pgno_t sampleMakePhysical(
         DbTxn & txn,
         uint32_t id,
@@ -559,6 +602,8 @@ private:
     bool m_verbose{false};
     size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
+    pgno_t m_metricStoreRoot = {};
+    pgno_t m_metricTagStoreRoot = {};
 
     mutable std::shared_mutex m_mposMut;
     std::vector<MetricPosition> m_metricPos;

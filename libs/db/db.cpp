@@ -635,7 +635,7 @@ void dbClose(DbHandle h) {
     }
 }
 
-static TokenTable::Token s_sampleTypes[] = {
+static const TokenTable::Token s_sampleTypes[] = {
     { kSampleTypeFloat32,   "float32" },
     { kSampleTypeFloat64,   "float64" },
     { kSampleTypeInt8,      "int8" },
@@ -643,10 +643,10 @@ static TokenTable::Token s_sampleTypes[] = {
     { kSampleTypeInt32,     "int32" },
 };
 static_assert(size(s_sampleTypes) == kSampleTypes - 1);
-static TokenTable s_sampleTypeTbl{s_sampleTypes};
+static const TokenTable s_sampleTypeTbl{s_sampleTypes};
 
 //===========================================================================
-const char * toString(DbSampleType type, char const def[]) {
+const char * toString(DbSampleType type, const char def[]) {
     return s_sampleTypeTbl.findName(type, def);
 }
 
@@ -761,4 +761,14 @@ bool dbGetSamples(
     unsigned presamples
 ) {
     return db(h)->getSamples(notify, id, first, last, presamples);
+}
+
+//===========================================================================
+string toString(DbPageType type) {
+    string out;
+    auto val = to_underlying(type);
+    out += (char) (val % 256);
+    while (val /= 256) 
+        out += (char) (val % 256);
+    return out;
 }

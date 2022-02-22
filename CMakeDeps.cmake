@@ -19,6 +19,7 @@
 # libs/cppconf/dimapp_userconfig.h
 # libs/db/db.cpp
 # libs/db/db.h
+# libs/db/dbbitmap.cpp
 # libs/db/dbdata.cpp
 # libs/db/dbdatametric.cpp
 # libs/db/dbdataradix.cpp
