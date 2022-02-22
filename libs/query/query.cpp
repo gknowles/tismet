@@ -120,7 +120,7 @@ bool Query::parse(
     qry = {};
     qry.text = qry.heap.strDup(text.c_str());
     parser = QueryParser{&qry};
-    bool success [[maybe_unused]] = parser.parse(qry.text);
+    [[maybe_unused]] bool success = parser.parse(qry.text);
     assert(success);
 
     // check if query is kAny

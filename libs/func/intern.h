@@ -26,7 +26,7 @@ public:
     );
     FuncFactory & arg(
         std::string_view name,
-        char const enumName[],
+        const char enumName[],
         bool require = false,
         bool multiple = false
     );
@@ -102,7 +102,7 @@ Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
 template<typename T>
 Eval::FuncFactory<T> & Eval::FuncFactory<T>::arg(
     std::string_view name,
-    char const enumName[],
+    const char enumName[],
     bool require,
     bool multiple
 ) {

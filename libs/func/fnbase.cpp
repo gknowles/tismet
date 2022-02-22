@@ -401,7 +401,7 @@ unique_ptr<IFuncInstance> funcCreate(Function::Type type) {
 }
 
 //===========================================================================
-const char * toString(Eval::Function::Type ftype, char const def[]) {
+const char * toString(Eval::Function::Type ftype, const char def[]) {
     return s_funcTbl.findName(ftype, def);
 }
 
@@ -411,6 +411,6 @@ Function::Type fromString(string_view src, Function::Type def) {
 }
 
 //===========================================================================
-const char * toString(Eval::FuncArg::Type atype, char const def[]) {
+const char * toString(Eval::FuncArg::Type atype, const char def[]) {
     return s_argTypeTbl.findName(atype, def);
 }

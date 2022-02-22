@@ -751,7 +751,8 @@ void DbTxn::logSampleUpdate(
 
 //===========================================================================
 void DbTxn::logSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
-    auto [rec, bytes] = alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
+    auto [rec, bytes] = 
+        alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
     log(&rec->hdr, bytes);
 }

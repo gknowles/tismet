@@ -165,10 +165,10 @@ void funcInitialize();
 
 std::unique_ptr<Eval::IFuncInstance> funcCreate(Eval::Function::Type type);
 
-const char * toString(Eval::Function::Type ftype, char const def[] = "");
+const char * toString(Eval::Function::Type ftype, const char def[] = "");
 Eval::Function::Type fromString(std::string_view src, Eval::Function::Type def);
 
-const char * toString(Eval::AggFunc::Type ftype, char const def[] = "");
+const char * toString(Eval::AggFunc::Type ftype, const char def[] = "");
 Eval::AggFunc::Type fromString(
     std::string_view src,
     Eval::AggFunc::Type def
@@ -214,4 +214,4 @@ const Query::ITokenConvNotify & funcTokenConv();
 Dim::List<Eval::IFuncFactory> & funcFactories();
 Dim::List<Eval::FuncArg::Enum> & funcEnums();
 
-const char * toString(Eval::FuncArg::Type atype, char const def[] = "");
+const char * toString(Eval::FuncArg::Type atype, const char def[] = "");

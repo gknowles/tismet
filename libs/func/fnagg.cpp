@@ -307,7 +307,7 @@ AggFunc::Type AggFunc::defaultType() {
 }
 
 //===========================================================================
-const char * toString(AggFunc::Type ftype, char const def[]) {
+const char * toString(AggFunc::Type ftype, const char def[]) {
     return s_methodTbl.findName(ftype, def);
 }
 

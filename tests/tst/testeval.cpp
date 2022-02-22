@@ -587,7 +587,7 @@ void Test::onTestRun() {
     auto start = timeFromUnix(900'000'000);
     auto name = "this.is.metric.1"s;
 
-    char const dat[] = "test";
+    const char dat[] = "test";
     auto h = dbOpen(dat, 128, fDbOpenCreat | fDbOpenTrunc);
     EXPECT(h && "Failure to create database");
     if (!h)
