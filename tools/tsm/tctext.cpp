@@ -43,11 +43,6 @@ private:
         uint32_t id,
         std::span<const uint8_t> data
     ) override;
-    void onLogApplySegmentUpdate(
-        void * ptr,
-        pgno_t refPage,
-        bool free
-    ) override;
     void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
@@ -69,12 +64,14 @@ private:
     void onLogApplyBitInit(
         void * ptr,
         uint32_t id,
+        uint32_t base,
         bool fill,
         uint32_t pos
     ) override;
     void onLogApplyBitUpdate(
         void * ptr,
-        uint32_t pos,
+        uint32_t firstPos,
+        uint32_t lastPos,
         bool value
     ) override;
     void onLogApplyMetricInit(
@@ -211,15 +208,6 @@ void TextWriter::onLogApplyFullPage(
 }
 
 //===========================================================================
-void TextWriter::onLogApplySegmentUpdate(
-    void * ptr,
-    pgno_t refPage,
-    bool free
-) {
-    out(ptr) << "seg.free[@" << refPage << "] = " << (free ? 1 : 0) << '\n';
-}
-
-//===========================================================================
 void TextWriter::onLogApplyRadixInit(
     void * ptr,
     uint32_t id,
@@ -262,11 +250,12 @@ void TextWriter::onLogApplyRadixUpdate(
 void TextWriter::onLogApplyBitInit(
     void * ptr,
     uint32_t id,
+    uint32_t base,
     bool fill,
     uint32_t pos
 ) {
     auto & os = out(ptr);
-    os << "bit/" << id << ".init = " << (fill ? 1 : 0);
+    os << "bit/" << id << ".init[" << base << "] = " << (fill ? 1 : 0);
     if (pos != numeric_limits<uint32_t>::max())
         os << ", bit[" << pos << "] = " << (fill ? 0 : 1);
     os << '\n';
@@ -275,10 +264,15 @@ void TextWriter::onLogApplyBitInit(
 //===========================================================================
 void TextWriter::onLogApplyBitUpdate(
     void * ptr,
-    uint32_t pos,
+    uint32_t firstPos,
+    uint32_t lastPos,
     bool value
 ) {
-    out(ptr) << "bit[" << pos << "] = " << (value ? 1 : 0) << '\n';
+    auto & os = out(ptr);
+    os << "bit[" << firstPos;
+    if (lastPos - firstPos > 1) 
+        os << "," << lastPos;
+    os << "] = " << (value ? 1 : 0) << '\n';
 }
 
 //===========================================================================

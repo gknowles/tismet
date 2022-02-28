@@ -46,13 +46,6 @@ struct FullPageRec {
     uint8_t data[1];
 };
 
-//---------------------------------------------------------------------------
-// Segment
-struct SegmentUpdateRec {
-    DbLog::Record hdr;
-    pgno_t refPage;
-};
-
 } // namespace
 
 #pragma pack(pop)
@@ -215,7 +208,7 @@ void DbLog::apply(uint64_t lsn, const Record & log) {
 //===========================================================================
 void DbLog::applyUpdate(void * page, const Record & log) {
     if (log.type && log.type < ::size(s_codecs)) {
-        auto fn = s_codecs[log.type].m_apply;
+        auto * fn = s_codecs[log.type].m_apply;
         if (fn)
             return fn(m_data, page, log);
     }
@@ -292,18 +285,6 @@ APPLY(FullPage) {
     );
 }
 
-//===========================================================================
-APPLY(SegmentAlloc) {
-    auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
-    notify->onLogApplySegmentUpdate(page, rec.refPage, false);
-}
-
-//===========================================================================
-APPLY(SegmentFree) {
-    auto & rec = reinterpret_cast<const SegmentUpdateRec &>(log);
-    notify->onLogApplySegmentUpdate(page, rec.refPage, true);
-}
-
 static DbLogRecInfo::Table s_dataRecInfo{
     { kRecTypeCommitCheckpoint,
         DbLogRecInfo::sizeFn<CheckpointCommitRec>,
@@ -334,14 +315,6 @@ static DbLogRecInfo::Table s_dataRecInfo{
     { kRecTypeFullPage,
         sizeFullPage,
         applyFullPage,
-    },
-    { kRecTypeSegmentAlloc,
-        DbLogRecInfo::sizeFn<SegmentUpdateRec>,
-        applySegmentAlloc,
-    },
-    { kRecTypeSegmentFree,
-        DbLogRecInfo::sizeFn<SegmentUpdateRec>,
-        applySegmentFree,
     },
 };
 
@@ -383,19 +356,5 @@ void DbTxn::logFullPage(
     rec->id = id;
     rec->dataLen = (uint16_t) extra;
     memcpy(rec->data, data.data(), extra);
-    log(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::logSegmentUpdate(
-    pgno_t pgno,
-    pgno_t refPage,
-    bool free
-) {
-    auto [rec, bytes] = alloc<SegmentUpdateRec>(
-        free ? kRecTypeSegmentFree : kRecTypeSegmentAlloc,
-        pgno
-    );
-    rec->refPage = refPage;
     log(&rec->hdr, bytes);
 }

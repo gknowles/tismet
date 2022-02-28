@@ -25,12 +25,19 @@ namespace {
 struct BitInitRec {
     DbLog::Record hdr;
     uint32_t id;
+    uint32_t base;
     uint32_t pos;
     bool fill;
 };
 struct BitUpdateRec {
     DbLog::Record hdr;
     uint32_t pos;
+};
+struct BitUpdateRangeRec {
+    DbLog::Record hdr;
+    uint32_t firstPos;
+    uint32_t lastPos;
+    bool value;
 };
 
 } // namespace
@@ -43,6 +50,10 @@ struct BitUpdateRec {
 struct DbData::BitmapPage {
     static const auto kPageType = DbPageType::kBitmap;
     DbPageHeader hdr;
+    uint32_t base;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint64_t bits[1];
 };
 
 
@@ -55,17 +66,16 @@ struct DbData::BitmapPage {
 //===========================================================================
 [[maybe_unused]]
 static size_t bitmapBitsPerPage(size_t pageSize) {
-    auto offset = sizeof DbData::BitmapPage + sizeof uint64_t;
-    offset -= offset % sizeof uint64_t;
-    return (pageSize - offset) * CHAR_BIT;
+    auto offset = offsetof(DbData::BitmapPage, bits);
+    auto words = (pageSize - offset) / sizeof uint64_t;
+    return words * 64;
 }
 
 //===========================================================================
 static BitView bitmapView(void * hdr, size_t pageSize) {
-    auto offset = sizeof DbData::BitmapPage + sizeof uint64_t;
-    offset -= offset % sizeof uint64_t;
-    auto base = (uint64_t *) ((char *) hdr + offset);
+    auto offset = offsetof(DbData::BitmapPage, bits);
     auto words = (pageSize - offset) / sizeof uint64_t;
+    auto base = (uint64_t *) ((char *) hdr + offset);
     return {base, words};
 }
 
@@ -77,54 +87,74 @@ static BitView bitmapView(void * hdr, size_t pageSize) {
 ***/
 
 //===========================================================================
-void DbData::bitUpdate(
+size_t DbData::bitsPerPage() const {
+    return bitmapBitsPerPage(m_pageSize);
+}
+
+//===========================================================================
+bool DbData::bitUpsert(
     DbTxn & txn, 
     pgno_t root, 
     uint32_t id, 
-    size_t pos, 
+    size_t firstPos, 
+    size_t lastPos,
     bool value
 ) {
-    auto bpp = bitmapBitsPerPage(m_pageSize);
-    auto rpos = pos / bpp;
-    auto bpos = pos % bpp;
+    auto count = lastPos - firstPos;
+    auto bpp = bitsPerPage();
+    auto rpos = firstPos / bpp;
+    auto bpos = firstPos % bpp;
     auto bpno = pgno_t{};
     radixFind(txn, &bpno, root, rpos);
     if (bpno) {
-        if (!value) {
-            auto hdr = txn.viewPage<BitmapPage>(bpno);
-            auto bits = bitmapView(const_cast<BitmapPage *>(hdr), m_pageSize);
-            if (bits[bpos] && bits.count() == 1) {
-                radixErase(txn, hdr->hdr, rpos, rpos + 1);
-                return;
+        auto hdr = txn.viewPage<BitmapPage>(bpno);
+        auto bits = bitmapView(const_cast<BitmapPage *>(hdr), m_pageSize);
+        auto num = bits.count(bpos, count);
+        if (value) {
+            if (num == count)
+                return false;
+        } else {
+            if (!num)
+                return false;
+            if (num == bits.count()) {
+                radixErase(txn, root, rpos, rpos + 1);
+                return true;
             }
         }
-        txn.logBitUpdate(bpno, bpos, value);
+        txn.logBitUpdate(bpno, bpos, bpos + count, value);
     } else {
-        assert(value);
+        if (!value)
+            return false;
         bpno = allocPgno(txn);
-        txn.logBitInit(bpno, id, false, bpos);
+        txn.logBitInit(bpno, id, (uint32_t) rpos, false, bpos);
+        if (count > 1)
+            txn.logBitUpdate(bpno, bpos + 1, bpos + count, true);
         radixInsertOrAssign(txn, root, rpos, bpno);
     }
+    return true;
 }
 
 //===========================================================================
 static bool addBits(
     DbTxn & txn, 
     UnsignedSet * out,
+    uint32_t index,
     const DbPageHeader & hdr,
     size_t pageSize
 ) {
     if (hdr.type != DbPageType::kBitmap) {
-        logMsgError() << "Bad bitmap page #" << hdr.pgno;
+        logMsgError() << "Bad bitmap page #" << hdr.pgno << ", type"
+            << (unsigned) hdr.type;
         return false;
     }
     auto bpp = bitmapBitsPerPage(pageSize);
+    index *= (uint32_t) bpp;
     auto bits = bitmapView(const_cast<DbPageHeader *>(&hdr), pageSize);
     for (auto first = bits.find(0); first != bits.npos; ) {
         auto last = bits.findZero(first);
         if (last == bits.npos)
             last = bpp;
-        out->insert(hdr.pgno + (unsigned) first, unsigned(last - first));
+        out->insert(index + (unsigned) first, unsigned(last - first));
         first = bits.find(last);
     }
     return true;
@@ -135,8 +165,8 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
     return radixVisit(
         txn, 
         root, 
-        [out, pageSize = m_pageSize](DbTxn & txn, const DbPageHeader & hdr) {
-            return addBits(txn, out, hdr, pageSize);
+        [out, pageSize = m_pageSize](DbTxn & txn, auto index, auto & hdr) {
+            return addBits(txn, out, index, hdr, pageSize);
     });
 }
 
@@ -144,29 +174,36 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
 void DbData::onLogApplyBitInit(
     void * ptr,
     uint32_t id,
+    uint32_t base,
     bool fill,
-    uint32_t pos
+    uint32_t bpos
 ) {
     auto bp = static_cast<BitmapPage *>(ptr);
+    if (bp->hdr.type == DbPageType::kFree) {
+        memset((char *) bp + sizeof(bp->hdr), 0, m_pageSize - sizeof(bp->hdr));
+    } else {
+        assert(bp->hdr.type == DbPageType::kInvalid);
+    }
     bp->hdr.type = bp->kPageType;
     bp->hdr.id = id;
+    bp->base = base;
     auto bits = bitmapView(bp, m_pageSize);
     if (fill) 
         bits.set();
-    if (pos != numeric_limits<uint32_t>::max()) 
-        bits.set(pos, !fill);
+    if (bpos != numeric_limits<uint32_t>::max()) 
+        bits.set(bpos, !fill);
 }
 
 //===========================================================================
 void DbData::onLogApplyBitUpdate(
     void * ptr,
-    uint32_t pos,
+    uint32_t firstPos,
+    uint32_t lastPos,
     bool value
 ) {
     auto bp = static_cast<BitmapPage *>(ptr);
     auto bits = bitmapView(bp, m_pageSize);
-    assert(bits[pos] != value);
-    bits.set(pos, value);
+    bits.set(firstPos, lastPos - firstPos, value);
 }
 
 
@@ -181,21 +218,39 @@ static DbLogRecInfo::Table s_bitRecInfo{
         DbLogRecInfo::sizeFn<BitInitRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<const BitInitRec &>(log);
-            notify->onLogApplyBitInit(page, rec.id, rec.fill, rec.pos);
+            notify->onLogApplyBitInit(
+                page, 
+                rec.id, 
+                rec.base, 
+                rec.fill, 
+                rec.pos
+            );
         },
     },
     { kRecTypeBitSet,
         DbLogRecInfo::sizeFn<BitUpdateRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<const BitUpdateRec &>(log);
-            notify->onLogApplyBitUpdate(page, rec.pos, true);
+            notify->onLogApplyBitUpdate(page, rec.pos, rec.pos + 1, true);
         },
     },
     { kRecTypeBitReset,
         DbLogRecInfo::sizeFn<BitUpdateRec>,
         [](auto notify, void * page, auto & log) {
             auto & rec = reinterpret_cast<const BitUpdateRec &>(log);
-            notify->onLogApplyBitUpdate(page, rec.pos, false);
+            notify->onLogApplyBitUpdate(page, rec.pos, rec.pos + 1, false);
+        },
+    },
+    { kRecTypeBitUpdateRange,
+        DbLogRecInfo::sizeFn<BitUpdateRangeRec>,
+        [](auto notify, void * page, auto & log) {
+            auto & rec = reinterpret_cast<const BitUpdateRangeRec &>(log);
+            notify->onLogApplyBitUpdate(
+                page, 
+                rec.firstPos, 
+                rec.lastPos, 
+                rec.value
+            );
         },
     },
 };
@@ -208,20 +263,41 @@ static DbLogRecInfo::Table s_bitRecInfo{
 ***/
 
 //===========================================================================
-void DbTxn::logBitInit(pgno_t pgno, uint32_t id, bool fill, size_t pos) {
+void DbTxn::logBitInit(
+    pgno_t pgno, 
+    uint32_t id, 
+    uint32_t base, 
+    bool fill, 
+    size_t bpos
+) {
     auto [rec, bytes] = alloc<BitInitRec>(kRecTypeBitInit, pgno);
     rec->id = id;
+    rec->base = base;
     rec->fill = fill;
-    rec->pos = (uint32_t) pos;
+    rec->pos = (uint32_t) bpos;
     log(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logBitUpdate(pgno_t pgno, size_t pos, bool value) {
-    auto [rec, bytes] = alloc<BitUpdateRec>(
-        value ? kRecTypeBitSet : kRecTypeBitReset, 
-        pgno
-    );
-    rec->pos = (uint32_t) pos;
+void DbTxn::logBitUpdate(
+    pgno_t pgno, 
+    size_t firstPos, 
+    size_t lastPos, 
+    bool value
+) {
+    if (firstPos + 1 == lastPos) {
+        auto [rec, bytes] = alloc<BitUpdateRec>(
+            value ? kRecTypeBitSet : kRecTypeBitReset, 
+            pgno
+        );
+        rec->pos = (uint32_t) firstPos;
+        log(&rec->hdr, bytes);
+        return;
+    }
+
+    auto [rec, bytes] = alloc<BitUpdateRangeRec>(kRecTypeBitUpdateRange, pgno);
+    rec->firstPos = (uint32_t) firstPos;
+    rec->lastPos = (uint32_t) lastPos;
+    rec->value = value;
     log(&rec->hdr, bytes);
 }

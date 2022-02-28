@@ -11,18 +11,18 @@
 *
 ***/
 
-unsigned const kDefaultPageSize = 4096;
+constexpr unsigned kDefaultPageSize = 4096;
 static_assert(kDefaultPageSize == std::bit_ceil(kDefaultPageSize));
 
-unsigned const kMinPageSize = 128;
+constexpr unsigned kMinPageSize = 128;
 static_assert(kDefaultPageSize % kMinPageSize == 0);
 
 static_assert(std::is_same_v<std::underlying_type_t<pgno_t>, uint32_t>);
-auto const kMaxPageNum = (pgno_t) 0x7fff'ffff;
-auto const kFreePageMark = (pgno_t) 0xffff'ffff;
+constexpr auto kMaxPageNum = (pgno_t) 0x7fff'ffff;
+constexpr auto kFreePageMark = (pgno_t) 0xffff'ffff;
 
-int const kMaxVirtualSample = 0x3fff'ffff;
-int const kMinVirtualSample = -kMaxVirtualSample;
+constexpr int kMaxVirtualSample = 0x3fff'ffff;
+constexpr int kMinVirtualSample = -kMaxVirtualSample;
 
 
 /****************************************************************************
@@ -225,7 +225,6 @@ public:
 
     void logZeroInit(pgno_t pgno);
     void logPageFree(pgno_t pgno);
-    void logSegmentUpdate(pgno_t pgno, pgno_t refPage, bool free);
     void logFullPage(
         pgno_t pgno, 
         DbPageType type, 
@@ -242,8 +241,14 @@ public:
     void logRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
     void logRadixPromote(pgno_t pgno, pgno_t refPage);
     void logRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
-    void logBitInit(pgno_t, uint32_t id, bool fill, size_t pos = -1);
-    void logBitUpdate(pgno_t, size_t pos, bool value);
+    void logBitInit(
+        pgno_t, 
+        uint32_t id, 
+        uint32_t base, 
+        bool fill, 
+        size_t pos = -1
+    );
+    void logBitUpdate(pgno_t, size_t firstPos, size_t lastPos, bool value);
     void logMetricInit(
         pgno_t pgno,
         uint32_t id,
@@ -337,7 +342,6 @@ const T * DbTxn::viewPage(pgno_t pgno) const {
 
 class DbData : public DbLog::IApplyNotify, public Dim::HandleContent {
 public:
-    struct SegmentPage;
     struct ZeroPage;
     struct FreePage;
     struct RadixPage;
@@ -346,7 +350,11 @@ public:
     struct SamplePage;
 
     struct RadixData {
-        uint16_t height;
+        // Distance from leaf radix pages. Therefore initialized to 0 when
+        // the root page is created, and increased by 1 each time the root 
+        // page is promoted.
+        uint16_t height;    
+
         uint16_t numPages;
 
         // EXTENDS BEYOND END OF STRUCT
@@ -354,13 +362,6 @@ public:
 
         const pgno_t * begin() const { return pages; }
         const pgno_t * end() const { return pages + numPages; }
-    };
-    struct RadixPage {
-        static const auto kPageType = DbPageType::kRadix;
-        DbPageHeader hdr;
-
-        // EXTENDS BEYOND END OF STRUCT
-        RadixData rd;
     };
 
     struct MetricPosition {
@@ -371,6 +372,19 @@ public:
         uint16_t pageLastSample; // position of last sample on last page
         DbSampleType sampleType;
     };
+
+public:
+    static uint16_t entriesPerMetricPage(size_t pageSize);
+    static size_t metricNameSize(size_t pageSize);
+    static RadixData * radixData(MetricPage * mp, size_t pageSize);
+
+    static uint16_t entriesPerRadixPage(size_t pageSize);
+
+    static RadixData * radixData(DbPageHeader * hdr, size_t pageSize);
+    static const RadixData * radixData(
+        const DbPageHeader * hdr, 
+        size_t pageSize
+    );
 
 public:
     ~DbData();
@@ -428,11 +442,6 @@ public:
         uint32_t id,
         std::span<const uint8_t> data
     ) override;
-    void onLogApplySegmentUpdate(
-        void * ptr,
-        pgno_t refPage,
-        bool free
-    ) override;
     void onLogApplyRadixInit(
         void * ptr,
         uint32_t id,
@@ -454,12 +463,14 @@ public:
     void onLogApplyBitInit(
         void * ptr,
         uint32_t id,
+        uint32_t base,
         bool fill,
         uint32_t pos
     ) override;
     void onLogApplyBitUpdate(
         void * ptr,
-        uint32_t pos,
+        uint32_t firstPos,
+        uint32_t lastPos,
         bool value
     ) override;
     void onLogApplyMetricInit(
@@ -507,25 +518,19 @@ public:
     ) override;
 
 private:
-    RadixData * radixData(DbPageHeader * hdr) const;
-    RadixData * radixData(MetricPage * mp) const;
-    const RadixData * radixData(const DbPageHeader * hdr) const;
-
-    bool loadMetrics(
+    bool loadMetric(
         DbTxn & txn,
         IDbDataNotify * notify,
-        pgno_t pgno
+        const DbPageHeader & hdr
     );
+    bool loadMetrics(DbTxn & txn, IDbDataNotify * notify);
     void metricDestructPage(DbTxn & txn, pgno_t pgno);
-    size_t metricNameSize() const;
     void metricClearCounters();
 
     bool loadFreePages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, pgno_t pgno);
 
-    uint16_t entriesPerMetricPage() const;
-    uint16_t entriesPerRadixPage() const;
     size_t radixPageEntries(
         int * ents,
         size_t maxEnts,
@@ -536,7 +541,7 @@ private:
     void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
     void radixErase(
         DbTxn & txn,
-        const DbPageHeader & hdr,
+        pgno_t root,
         size_t firstPos,
         size_t lastPos
     );
@@ -566,17 +571,19 @@ private:
     bool radixVisit(
         DbTxn & txn,
         pgno_t root,
-        const std::function<bool(DbTxn&, const DbPageHeader&)> & fn
+        const std::function<bool(DbTxn&, uint32_t, const DbPageHeader&)> & fn
     );
 
-    void bitUpdate(
+    bool bitUpsert(
         DbTxn & txn, 
         pgno_t root, 
         uint32_t id, 
-        size_t pos, 
+        size_t firstPos, 
+        size_t lastPos,
         bool value
     );
     bool bitLoad(DbTxn & txn, Dim::UnsignedSet * out, pgno_t root);
+    size_t bitsPerPage() const;
 
     pgno_t sampleMakePhysical(
         DbTxn & txn,
@@ -600,8 +607,8 @@ private:
     );
 
     bool m_verbose{false};
-    size_t m_segmentSize = 0;
     size_t m_pageSize = 0;
+    pgno_t m_freeStoreRoot = {};
     pgno_t m_metricStoreRoot = {};
     pgno_t m_metricTagStoreRoot = {};
 

@@ -307,11 +307,6 @@ public:
         uint32_t id,
         std::span<const uint8_t> data
     ) = 0;
-    virtual void onLogApplySegmentUpdate(
-        void * ptr,
-        pgno_t refPage,
-        bool free
-    ) = 0;
 
     virtual void onLogApplyRadixInit(
         void * ptr,
@@ -335,12 +330,14 @@ public:
     virtual void onLogApplyBitInit(
         void * ptr,
         uint32_t id,
+        uint32_t base,
         bool fill,
         uint32_t pos
     ) = 0;
     virtual void onLogApplyBitUpdate(
         void * ptr,
-        uint32_t pos,
+        uint32_t firstPos,
+        uint32_t lastPos,
         bool value
     ) = 0;
 

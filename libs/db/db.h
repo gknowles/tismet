@@ -63,7 +63,7 @@ DbSampleType fromString(std::string_view src, DbSampleType def);
 struct DbStats {
     // Constant for life of database
     unsigned pageSize;
-    unsigned segmentSize;
+    unsigned bitsPerPage;
     unsigned metricNameSize; // includes terminating null
     unsigned samplesPerPage[kSampleTypes];
 
