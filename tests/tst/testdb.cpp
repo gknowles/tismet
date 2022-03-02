@@ -125,7 +125,7 @@ void Test::onTestRun() {
     auto stats = dbQueryStats(h);
     EXPECT(stats.metrics == 0);
     EXPECT(stats.pageSize == 128);
-    EXPECT(stats.numPages == 3);
+    EXPECT(stats.numPages == 4);
     EXPECT(stats.freePages == 0);
     auto spp = stats.samplesPerPage[kSampleTypeFloat32];
     auto pgt = spp * 1min;
@@ -143,7 +143,7 @@ void Test::onTestRun() {
     dbUpdateSample(h, id, start, 1.0);
     dbCloseContext(ctx);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 5);
+    EXPECT(stats.numPages == 6);
     dbClose(h);
     EXPECT(count == 1);
 
@@ -157,7 +157,7 @@ void Test::onTestRun() {
     // add to first of new page 2
     dbUpdateSample(h, id, start + pgt - 1min, 5.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 6);
+    EXPECT(stats.numPages == 7);
     // another on page 2
     dbUpdateSample(h, id, start + pgt, 6.0);
     dbCloseContext(ctx);
@@ -168,23 +168,23 @@ void Test::onTestRun() {
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 6);
+    EXPECT(stats.numPages == 7);
     // add to very end of page 2
     dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 6);
+    EXPECT(stats.numPages == 7);
     // add to new page 5. leaves sample pages 3, 4 unallocated
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 8);
+    EXPECT(stats.numPages == 9);
     // add to new historical page, and adds a radix page
     dbUpdateSample(h, id, start - 2min, 1);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 9);
+    EXPECT(stats.numPages == 10);
     // circle back onto that historical page, reassigning it's time
     dbUpdateSample(h, id, start + 6 * pgt, 6);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 9);
+    EXPECT(stats.numPages == 10);
     EXPECT(stats.freePages == 0);
     EXPECT(stats.metrics == 1);
     // add sample more than the retention period in the future
@@ -195,7 +195,7 @@ void Test::onTestRun() {
     // erase metric
     dbEraseMetric(h, id);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 10);
+    EXPECT(stats.numPages == 11);
     EXPECT(stats.freePages == 6);
     EXPECT(stats.metrics == 0);
 

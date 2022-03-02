@@ -17,7 +17,8 @@ using namespace Dim;
 
 constexpr auto kZeroPageNum = (pgno_t) 0;
 constexpr auto kFreeStoreRootPageNum = (pgno_t) 1;
-constexpr auto kMetricStoreRootPageNum = (pgno_t) 2;
+constexpr auto kDeprecatedStoreRootPageNum = (pgno_t) 2;
+constexpr auto kMetricStoreRootPageNum = (pgno_t) 3;
 
 
 /****************************************************************************
@@ -39,6 +40,7 @@ struct DbData::ZeroPage {
     char signature[sizeof(kDataFileSig)];
     unsigned pageSize;
     pgno_t freeStoreRoot;
+    pgno_t deprecatedStoreRoot;
     pgno_t metricStoreRoot;
     pgno_t metricTagStoreRoot;
 };
@@ -123,6 +125,7 @@ bool DbData::openForUpdate(
     m_numPages = txn.numPages();
     s_perfPages += (unsigned) m_numPages;
     m_freeStoreRoot = zp->freeStoreRoot;
+    m_deprecatedStoreRoot = zp->deprecatedStoreRoot;
     m_metricStoreRoot = zp->metricStoreRoot;
     m_metricTagStoreRoot = zp->metricTagStoreRoot;
 
@@ -130,6 +133,9 @@ bool DbData::openForUpdate(
         m_freeStoreRoot = allocPgno(txn);
         assert(m_freeStoreRoot == kFreeStoreRootPageNum);
         txn.logRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
+        m_deprecatedStoreRoot = allocPgno(txn);
+        assert(m_deprecatedStoreRoot == kDeprecatedStoreRootPageNum);
+        txn.logRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
         m_metricStoreRoot = allocPgno(txn);
         assert(m_metricStoreRoot == kMetricStoreRootPageNum);
         txn.logRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
@@ -138,6 +144,8 @@ bool DbData::openForUpdate(
     if (m_verbose)
         logMsgInfo() << "Load free page list";
     if (!loadFreePages(txn))
+        return false;
+    if (!loadDeprecatedPages(txn))
         return false;
     if (m_verbose)
         logMsgInfo() << "Build metric index";
@@ -176,7 +184,7 @@ DbStats DbData::queryStats() {
 ***/
 
 //===========================================================================
-bool DbData::loadFreePages (DbTxn & txn) {
+bool DbData::loadFreePages(DbTxn & txn) {
     assert(!m_freePages);
     if (!bitLoad(txn, &m_freePages, m_freeStoreRoot)) 
         return false;
@@ -222,6 +230,20 @@ bool DbData::loadFreePages (DbTxn & txn) {
         s_perfFreePages -= trimmed;
     }
 
+    return true;
+}
+
+//===========================================================================
+bool DbData::loadDeprecatedPages(DbTxn & txn) {
+    assert(!m_deprecatedPages);
+    if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedStoreRoot))
+        return false;
+    if (appStopping())
+        return false;
+    while (m_deprecatedPages) {
+        auto pgno = (pgno_t) m_deprecatedPages.pop_front();
+        freePage(txn, pgno);
+    }
     return true;
 }
 
@@ -444,6 +466,7 @@ void DbData::onLogApplyZeroInit(void * ptr) {
     memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
     zp->pageSize = (unsigned) m_pageSize;
     zp->freeStoreRoot = kFreeStoreRootPageNum;
+    zp->deprecatedStoreRoot = kDeprecatedStoreRootPageNum;
     zp->metricStoreRoot = kMetricStoreRootPageNum;
     zp->metricTagStoreRoot = {};
 }

@@ -545,6 +545,7 @@ private:
     void metricClearCounters();
 
     bool loadFreePages(DbTxn & txn);
+    bool loadDeprecatedPages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, pgno_t pgno);
 
@@ -626,6 +627,7 @@ private:
     bool m_verbose{false};
     size_t m_pageSize = 0;
     pgno_t m_freeStoreRoot = {};
+    pgno_t m_deprecatedStoreRoot = {};
     pgno_t m_metricStoreRoot = {};
     pgno_t m_metricTagStoreRoot = {};
 
@@ -637,6 +639,7 @@ private:
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
     size_t m_numFreed = 0;
+    Dim::UnsignedSet m_deprecatedPages;
 
     // used to manage the index at kMetricIndexPageNum
     std::mutex m_mndxMut;
