@@ -793,7 +793,11 @@ void DbLog::applyCommitTxn(
 }
 
 //===========================================================================
-void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
+void DbLog::applyUpdate(
+    AnalyzeData * data, 
+    uint64_t lsn, 
+    const Record & log
+) {
     if (data->analyze)
         return;
 
@@ -807,7 +811,7 @@ void DbLog::applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log) {
 
     auto pgno = getPgno(log);
     if (auto ptr = m_page->onLogGetRedoPtr(pgno, lsn, localTxn))
-        applyUpdate(ptr, log);
+        applyUpdate(ptr, lsn, log);
 }
 
 
@@ -1144,6 +1148,9 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
     }
     if (!last)
         return;
+
+    // FIXME: It is somehow possible for this to trigger. It did once when 
+    // running "tsm db" with last and m_stableLsn both equal to 4272.
     assert(last > m_stableLsn);
 
     m_stableLsn = last;
@@ -1332,4 +1339,20 @@ void DbTxn::log(DbLog::Record * rec, size_t bytes) {
     if (!m_txn)
         m_txn = m_log.beginTxn();
     m_log.logAndApply(m_txn, rec, bytes);
+}
+
+//===========================================================================
+std::pair<void *, size_t> DbTxn::alloc(
+    DbLogRecType type,
+    pgno_t pgno,
+    size_t bytes
+) {
+    if (!m_txn)
+        m_txn = m_log.beginTxn();
+    m_buffer.resize(bytes);
+    auto * lr = (DbLog::Record *) m_buffer.data();
+    lr->type = type;
+    lr->pgno = pgno;
+    lr->localTxn = 0;
+    return {m_buffer.data(), bytes};
 }

@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017 - 2021.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dblogmetric.cpp - tismet db
+// dbmetriclog.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -150,93 +150,93 @@ static uint16_t sizeMetricInit(const DbLog::Record & log) {
 }
 
 //===========================================================================
-APPLY(MetricInit) {
-    auto & rec = reinterpret_cast<const MetricInitRec &>(log);
-    notify->onLogApplyMetricInit(
-        page,
-        rec.id,
-        rec.name,
-        rec.creation,
-        rec.sampleType,
-        rec.retention,
-        rec.interval
+static void applyMetricInit(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricInitRec *>(args.log);
+    args.notify->onLogApplyMetricInit(
+        args.page,
+        rec->id,
+        rec->name,
+        rec->creation,
+        rec->sampleType,
+        rec->retention,
+        rec->interval
     );
 }
 
 //===========================================================================
-APPLY(MetricUpdate) {
-    auto & rec = reinterpret_cast<const MetricUpdateRec &>(log);
-    notify->onLogApplyMetricUpdate(
-        page,
-        rec.creation,
-        rec.sampleType,
-        rec.retention,
-        rec.interval
+static void applyMetricUpdate(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateRec *>(args.log);
+    args.notify->onLogApplyMetricUpdate(
+        args.page,
+        rec->creation,
+        rec->sampleType,
+        rec->retention,
+        rec->interval
     );
 }
 
 //===========================================================================
-APPLY(MetricClearSamples) {
-    notify->onLogApplyMetricClearSamples(page);
+static void applyMetricClearSamples(const DbLogApplyArgs & args) {
+    args.notify->onLogApplyMetricClearSamples(args.page);
 }
 
 //===========================================================================
-APPLY(MetricUpdatePos) {
-    auto & rec = reinterpret_cast<const MetricUpdatePosRec &>(log);
-    notify->onLogApplyMetricUpdateSamples(
-        page,
-        rec.refPos,
-        rec.refTime,
+static void applyMetricUpdatePos(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdatePosRec *>(args.log);
+    args.notify->onLogApplyMetricUpdateSamples(
+        args.page,
+        rec->refPos,
+        rec->refTime,
         (size_t) -1,
         {}
     );
 }
 
 //===========================================================================
-APPLY(MetricUpdatePosAndIndex) {
-    auto & rec = reinterpret_cast<const MetricUpdatePosAndIndexRec &>(log);
-    notify->onLogApplyMetricUpdateSamples(
-        page,
-        rec.refPos,
-        rec.refTime,
+static void applyMetricUpdatePosAndIndex(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdatePosAndIndexRec *>(args.log);
+    args.notify->onLogApplyMetricUpdateSamples(
+        args.page,
+        rec->refPos,
+        rec->refTime,
         (size_t) -1,
-        rec.refPage
+        rec->refPage
     );
 }
 
 //===========================================================================
-APPLY(MetricUpdateSampleTxn) {
-    auto & rec = reinterpret_cast<const MetricUpdateSampleTxnRec &>(log);
-    notify->onLogApplyMetricUpdateSamples(
-        page,
+static void applyMetricUpdateSampleTxn(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleTxnRec *>(args.log);
+    args.notify->onLogApplyMetricUpdateSamples(
+        args.page,
         (size_t) -1,
         {},
-        rec.refSample,
+        rec->refSample,
         {}
     );
 }
 
 //===========================================================================
-APPLY(MetricUpdateSample) {
-    auto & rec = reinterpret_cast<const MetricUpdateSampleRec &>(log);
-    notify->onLogApplyMetricUpdateSamples(
-        page,
+static void applyMetricUpdateSample(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleRec *>(args.log);
+    args.notify->onLogApplyMetricUpdateSamples(
+        args.page,
         (size_t) -1,
         {},
-        rec.refSample,
+        rec->refSample,
         {}
     );
 }
 
 //===========================================================================
-APPLY(MetricUpdateSampleAndIndex) {
-    auto & rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec &>(log);
-    notify->onLogApplyMetricUpdateSamples(
-        page,
-        rec.refPos,
-        rec.refTime,
-        rec.refSample,
-        rec.refPage
+static void applyMetricUpdateSampleAndIndex(const DbLogApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec *>(args.log);
+    args.notify->onLogApplyMetricUpdateSamples(
+        args.page,
+        rec->refPos,
+        rec->refTime,
+        rec->refSample,
+        rec->refPage
     );
 }
 
@@ -284,176 +284,176 @@ static DbLogRecInfo::Table s_metricRecInfo {
 
 //===========================================================================
 APPLY(SampleInit) {
-    auto & rec = reinterpret_cast<const SampleInitRec &>(log);
-    notify->onLogApplySampleInit(
-        page,
-        rec.id,
-        rec.sampleType,
-        rec.pageTime,
-        rec.lastSample,
+    auto rec = reinterpret_cast<const SampleInitRec *>(args.log);
+    args.notify->onLogApplySampleInit(
+        args.page,
+        rec->id,
+        rec->sampleType,
+        rec->pageTime,
+        rec->lastSample,
         NAN
     );
 }
 
 //===========================================================================
 APPLY(SampleInitFill) {
-    auto & rec = reinterpret_cast<const SampleInitFillRec &>(log);
-    notify->onLogApplySampleInit(
-        page,
-        rec.id,
-        rec.sampleType,
-        rec.pageTime,
-        rec.lastSample,
-        rec.value
+    auto rec = reinterpret_cast<const SampleInitFillRec *>(args.log);
+    args.notify->onLogApplySampleInit(
+        args.page,
+        rec->id,
+        rec->sampleType,
+        rec->pageTime,
+        rec->lastSample,
+        rec->value
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdate) {
-    auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.firstSample,
-        rec.lastSample,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->firstSample,
+        rec->lastSample,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateLast) {
-    auto & rec = reinterpret_cast<const SampleUpdateRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.firstSample,
-        rec.lastSample,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->firstSample,
+        rec->lastSample,
+        rec->value,
         true
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateTime) {
-    auto & rec = reinterpret_cast<const SampleUpdateTimeRec &>(log);
-    notify->onLogApplySampleUpdateTime(page, rec.pageTime);
+    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.log);
+    args.notify->onLogApplySampleUpdateTime(args.page, rec->pageTime);
 }
 
 //===========================================================================
 APPLY(SampleUpdateFloat32Txn) {
-    auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateFloat64Txn) {
-    auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt8Txn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt16Txn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt32Txn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         false
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateFloat32LastTxn) {
-    auto & rec = reinterpret_cast<const SampleUpdateFloat32TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         true
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateFloat64LastTxn) {
-    auto & rec = reinterpret_cast<const SampleUpdateFloat64TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         true
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt8LastTxn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt8TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         true
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt16LastTxn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt16TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         true
     );
 }
 
 //===========================================================================
 APPLY(SampleUpdateInt32LastTxn) {
-    auto & rec = reinterpret_cast<const SampleUpdateInt32TxnRec &>(log);
-    notify->onLogApplySampleUpdate(
-        page,
-        rec.pos,
-        rec.pos,
-        rec.value,
+    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.log);
+    args.notify->onLogApplySampleUpdate(
+        args.page,
+        rec->pos,
+        rec->pos,
+        rec->value,
         true
     );
 }

@@ -15,35 +15,6 @@ using namespace Dim;
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
-
-namespace {
-
-//---------------------------------------------------------------------------
-// Bitmap
-struct BitInitRec {
-    DbLog::Record hdr;
-    uint32_t id;
-    uint32_t base;
-    uint32_t pos;
-    bool fill;
-};
-struct BitUpdateRec {
-    DbLog::Record hdr;
-    uint32_t pos;
-};
-struct BitUpdateRangeRec {
-    DbLog::Record hdr;
-    uint32_t firstPos;
-    uint32_t lastPos;
-    bool value;
-};
-
-} // namespace
-
-#pragma pack(pop)
-
 //---------------------------------------------------------------------------
 // DbData
 
@@ -82,7 +53,7 @@ static BitView bitmapView(void * hdr, size_t pageSize) {
 
 /****************************************************************************
 *
-*   DbData
+*   Bitmap index
 *
 ***/
 
@@ -170,42 +141,6 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
     });
 }
 
-//===========================================================================
-void DbData::onLogApplyBitInit(
-    void * ptr,
-    uint32_t id,
-    uint32_t base,
-    bool fill,
-    uint32_t bpos
-) {
-    auto bp = static_cast<BitmapPage *>(ptr);
-    if (bp->hdr.type == DbPageType::kFree) {
-        memset((char *) bp + sizeof(bp->hdr), 0, m_pageSize - sizeof(bp->hdr));
-    } else {
-        assert(bp->hdr.type == DbPageType::kInvalid);
-    }
-    bp->hdr.type = bp->kPageType;
-    bp->hdr.id = id;
-    bp->base = base;
-    auto bits = bitmapView(bp, m_pageSize);
-    if (fill) 
-        bits.set();
-    if (bpos != numeric_limits<uint32_t>::max()) 
-        bits.set(bpos, !fill);
-}
-
-//===========================================================================
-void DbData::onLogApplyBitUpdate(
-    void * ptr,
-    uint32_t firstPos,
-    uint32_t lastPos,
-    bool value
-) {
-    auto bp = static_cast<BitmapPage *>(ptr);
-    auto bits = bitmapView(bp, m_pageSize);
-    bits.set(firstPos, lastPos - firstPos, value);
-}
-
 
 /****************************************************************************
 *
@@ -213,43 +148,81 @@ void DbData::onLogApplyBitUpdate(
 *
 ***/
 
-static DbLogRecInfo::Table s_bitRecInfo{
+#pragma pack(push)
+#pragma pack(1)
+
+namespace {
+
+struct BitInitRec {
+    DbLog::Record hdr;
+    uint32_t id;
+    uint32_t base;
+    uint32_t pos;
+    bool fill;
+};
+struct BitUpdateRec {
+    DbLog::Record hdr;
+    uint32_t pos;
+};
+struct BitUpdateRangeRec {
+    DbLog::Record hdr;
+    uint32_t firstPos;
+    uint32_t lastPos;
+    bool value;
+};
+
+} // namespace
+
+#pragma pack(pop)
+
+
+static DbLogRecInfo::Table s_bitRecInfo = {
     { kRecTypeBitInit,
         DbLogRecInfo::sizeFn<BitInitRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<const BitInitRec &>(log);
-            notify->onLogApplyBitInit(
-                page, 
-                rec.id, 
-                rec.base, 
-                rec.fill, 
-                rec.pos
+        [](auto args) {
+            auto rec = reinterpret_cast<const BitInitRec *>(args.log);
+            args.notify->onLogApplyBitInit(
+                args.page, 
+                rec->id, 
+                rec->base, 
+                rec->fill, 
+                rec->pos
             );
         },
     },
     { kRecTypeBitSet,
         DbLogRecInfo::sizeFn<BitUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<const BitUpdateRec &>(log);
-            notify->onLogApplyBitUpdate(page, rec.pos, rec.pos + 1, true);
+        [](auto args) {
+            auto rec = reinterpret_cast<const BitUpdateRec *>(args.log);
+            args.notify->onLogApplyBitUpdate(
+                args.page, 
+                rec->pos, 
+                rec->pos + 1, 
+                true
+            );
         },
     },
     { kRecTypeBitReset,
         DbLogRecInfo::sizeFn<BitUpdateRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<const BitUpdateRec &>(log);
-            notify->onLogApplyBitUpdate(page, rec.pos, rec.pos + 1, false);
+        [](auto args) {
+            auto rec = reinterpret_cast<const BitUpdateRec *>(args.log);
+            args.notify->onLogApplyBitUpdate(
+                args.page, 
+                rec->pos, 
+                rec->pos + 1, 
+                false
+            );
         },
     },
     { kRecTypeBitUpdateRange,
         DbLogRecInfo::sizeFn<BitUpdateRangeRec>,
-        [](auto notify, void * page, auto & log) {
-            auto & rec = reinterpret_cast<const BitUpdateRangeRec &>(log);
-            notify->onLogApplyBitUpdate(
-                page, 
-                rec.firstPos, 
-                rec.lastPos, 
-                rec.value
+        [](auto args) {
+            auto rec = reinterpret_cast<const BitUpdateRangeRec *>(args.log);
+            args.notify->onLogApplyBitUpdate(
+                args.page, 
+                rec->firstPos, 
+                rec->lastPos, 
+                rec->value
             );
         },
     },
@@ -300,4 +273,47 @@ void DbTxn::logBitUpdate(
     rec->lastPos = (uint32_t) lastPos;
     rec->value = value;
     log(&rec->hdr, bytes);
+}
+
+
+/****************************************************************************
+*
+*   Bitmap log apply
+*
+***/
+
+//===========================================================================
+void DbData::onLogApplyBitInit(
+    void * ptr,
+    uint32_t id,
+    uint32_t base,
+    bool fill,
+    uint32_t bpos
+) {
+    auto bp = static_cast<BitmapPage *>(ptr);
+    if (bp->hdr.type == DbPageType::kFree) {
+        memset((char *) bp + sizeof(bp->hdr), 0, m_pageSize - sizeof(bp->hdr));
+    } else {
+        assert(bp->hdr.type == DbPageType::kInvalid);
+    }
+    bp->hdr.type = bp->kPageType;
+    bp->hdr.id = id;
+    bp->base = base;
+    auto bits = bitmapView(bp, m_pageSize);
+    if (fill) 
+        bits.set();
+    if (bpos != numeric_limits<uint32_t>::max()) 
+        bits.set(bpos, !fill);
+}
+
+//===========================================================================
+void DbData::onLogApplyBitUpdate(
+    void * ptr,
+    uint32_t firstPos,
+    uint32_t lastPos,
+    bool value
+) {
+    auto bp = static_cast<BitmapPage *>(ptr);
+    auto bits = bitmapView(bp, m_pageSize);
+    bits.set(firstPos, lastPos - firstPos, value);
 }

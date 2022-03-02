@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017 - 2021.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dbdatametric.cpp - tismet db
+// dbmetricdata.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 

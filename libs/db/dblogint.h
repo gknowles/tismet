@@ -81,11 +81,14 @@ struct DbLog::Record {
 
 #pragma pack(pop)
 
-#define APPLY(name) static void apply ## name ( \
-    DbLog::IApplyNotify * notify, \
-    void * page, \
-    const DbLog::Record & log)
+#define APPLY(name) static void apply ## name (const DbLogApplyArgs & args)
 
+struct DbLogApplyArgs {
+    DbLog::IApplyNotify * notify;
+    void * page;
+    const DbLog::Record * log;
+    uint64_t lsn;
+};
 struct DbLogRecInfo {
     class Table;
 
@@ -103,11 +106,7 @@ struct DbLogRecInfo {
 
     uint16_t (*m_size)(const DbLog::Record & log);
 
-    void (*m_apply)(
-        DbLog::IApplyNotify * notify,
-        void * page,
-        const DbLog::Record & log
-    );
+    void (*m_apply)(const DbLogApplyArgs & args);
 
     uint16_t (*m_localTxn)(const DbLog::Record & log) = defLocalTxnFn;
 
@@ -123,29 +122,4 @@ public:
 template<typename T>
 uint16_t DbLogRecInfo::sizeFn(const DbLog::Record & log) {
     return sizeof(T);
-}
-
-
-/****************************************************************************
-*
-*   DbTxn
-*
-***/
-
-//===========================================================================
-template<typename T>
-std::pair<T *, size_t> DbTxn::alloc(
-    DbLogRecType type,
-    pgno_t pgno,
-    size_t bytes
-) {
-    assert(bytes >= sizeof(T));
-    if (!m_txn)
-        m_txn = m_log.beginTxn();
-    m_buffer.resize(bytes);
-    auto * lr = (DbLog::Record *) m_buffer.data();
-    lr->type = type;
-    lr->pgno = pgno;
-    lr->localTxn = 0;
-    return {(T *) m_buffer.data(), bytes};
 }

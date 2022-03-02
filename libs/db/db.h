@@ -227,7 +227,7 @@ void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 *
 ***/
 
-enum pgno_t : uint32_t {};
+enum pgno_t : uint32_t { npos = std::numeric_limits<uint32_t>::max() };
 
 enum class DbPageType : int32_t {
     kInvalid = 0,

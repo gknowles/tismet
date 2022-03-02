@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017 - 2021.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dblogdata.cpp - tismet db
+// dblogcodec.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -32,18 +32,6 @@ struct CheckpointCommitRec {
 struct TransactionRec {
     DbLogRecType type;
     uint16_t localTxn;
-};
-
-//---------------------------------------------------------------------------
-// Full Page
-struct FullPageRec {
-    DbLog::Record hdr;
-    DbPageType type;
-    uint32_t id;
-    uint16_t dataLen;
-
-    // EXTENDS BEYOND END OF STRUCT
-    uint8_t data[1];
 };
 
 } // namespace
@@ -185,32 +173,29 @@ void DbLog::logAndApply(uint64_t txn, Record * rec, size_t bytes) {
     if (txn)
         rec->localTxn = getLocalTxn(txn);
     auto lsn = log(*rec, bytes, TxnMode::kContinue);
-    apply(lsn, *rec);
-}
 
-//===========================================================================
-void DbLog::apply(uint64_t lsn, const Record & log) {
-    switch (log.type) {
-    case kRecTypeCommitCheckpoint:
-    case kRecTypeTxnBegin:
-    case kRecTypeTxnCommit:
-        return;
-    default:
-        break;
+    void * ptr = nullptr;
+    auto pgno = getPgno(*rec);
+    if (pgno != pgno_t::npos) {
+        auto localTxn = getLocalTxn(*rec);
+        ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
     }
-
-    auto pgno = getPgno(log);
-    auto localTxn = getLocalTxn(log);
-    auto ptr = m_page->onLogGetUpdatePtr(pgno, lsn, localTxn);
-    applyUpdate(ptr, log);
+    applyUpdate(ptr, lsn, *rec);
 }
 
 //===========================================================================
-void DbLog::applyUpdate(void * page, const Record & log) {
+void DbLog::applyUpdate(void * page, uint64_t lsn, const Record & log) {
     if (log.type && log.type < ::size(s_codecs)) {
         auto * fn = s_codecs[log.type].m_apply;
-        if (fn)
-            return fn(m_data, page, log);
+        if (fn) {
+            DbLogApplyArgs args = {
+                .notify = m_data,
+                .page = page,
+                .log = &log,
+                .lsn = lsn
+            };
+            return fn(args);
+        }
     }
     logMsgFatal() << "Unknown log record type, " << log.type;
 }
@@ -259,102 +244,36 @@ static uint16_t localTxnTransaction(const DbLog::Record & log) {
 }
 
 //===========================================================================
-APPLY(ZeroInit) {
-    notify->onLogApplyZeroInit(page);
+static pgno_t invalidPgno(const DbLog::Record & log) {
+    return pgno_t::npos;
 }
 
-//===========================================================================
-APPLY(PageFree) {
-    notify->onLogApplyPageFree(page);
-}
-
-//===========================================================================
-static uint16_t sizeFullPage(const DbLog::Record & log) {
-    auto & rec = reinterpret_cast<const FullPageRec &>(log);
-    return offsetof(FullPageRec, data) + rec.dataLen;
-}
-
-//===========================================================================
-APPLY(FullPage) {
-    auto & rec = reinterpret_cast<const FullPageRec &>(log);
-    notify->onLogApplyFullPage(
-        page,
-        rec.type,
-        rec.id,
-        {rec.data, rec.dataLen}
-    );
-}
-
-static DbLogRecInfo::Table s_dataRecInfo{
+static DbLogRecInfo::Table s_dataRecInfo = {
     { kRecTypeCommitCheckpoint,
         DbLogRecInfo::sizeFn<CheckpointCommitRec>,
-        nullptr,
-        nullptr,
-        nullptr,
+        [](auto args) {
+            auto rec = reinterpret_cast<const CheckpointCommitRec *>(args.log);
+            args.notify->onLogApplyCommitCheckpoint(args.lsn, rec->startLsn);
+        },
+        nullptr,    // localTxn
+        invalidPgno,
     },
     { kRecTypeTxnBegin,
         DbLogRecInfo::sizeFn<TransactionRec>,
-        nullptr,
+        [](auto args) {
+            auto rec = reinterpret_cast<const TransactionRec *>(args.log);
+            args.notify->onLogApplyBeginTxn(args.lsn, rec->localTxn);
+        },
         localTxnTransaction,
-        nullptr,
+        invalidPgno,
     },
     { kRecTypeTxnCommit,
         DbLogRecInfo::sizeFn<TransactionRec>,
-        nullptr,
+        [](auto args) {
+            auto rec = reinterpret_cast<const TransactionRec *>(args.log);
+            args.notify->onLogApplyCommitTxn(args.lsn, rec->localTxn);
+        },
         localTxnTransaction,
-        nullptr,
-    },
-    { kRecTypeZeroInit,
-        DbLogRecInfo::sizeFn<DbLog::Record>,
-        applyZeroInit,
-    },
-    { kRecTypePageFree,
-        DbLogRecInfo::sizeFn<DbLog::Record>,
-        applyPageFree,
-    },
-    { kRecTypeFullPage,
-        sizeFullPage,
-        applyFullPage,
+        invalidPgno,
     },
 };
-
-
-/****************************************************************************
-*
-*   DbTxn
-*
-***/
-
-//===========================================================================
-void DbTxn::logZeroInit(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
-    log(rec, bytes);
-}
-
-//===========================================================================
-void DbTxn::logPageFree(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
-    log(rec, bytes);
-}
-
-//===========================================================================
-void DbTxn::logFullPage(
-    pgno_t pgno, 
-    DbPageType type, 
-    uint32_t id, 
-    std::span<uint8_t> data
-) {
-    auto extra = data.size();
-    auto offset = offsetof(FullPageRec, data);
-    assert(offset + extra <= pageSize());
-    auto [rec, bytes] = alloc<FullPageRec>(
-        kRecTypeFullPage,
-        pgno,
-        offset + extra
-    );
-    rec->type = type;
-    rec->id = id;
-    rec->dataLen = (uint16_t) extra;
-    memcpy(rec->data, data.data(), extra);
-    log(&rec->hdr, bytes);
-}

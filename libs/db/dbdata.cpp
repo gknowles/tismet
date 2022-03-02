@@ -168,48 +168,6 @@ DbStats DbData::queryStats() {
     return s;
 }
 
-//===========================================================================
-void DbData::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
-{}
-
-//===========================================================================
-void DbData::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
-{}
-
-//===========================================================================
-void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
-{}
-
-//===========================================================================
-void DbData::onLogApplyZeroInit(void * ptr) {
-    auto zp = static_cast<ZeroPage *>(ptr);
-    assert(zp->hdr.type == DbPageType::kInvalid);
-    // We only init the zero page when making a new database, so we can forgo
-    // the normal logic to memset when init'd from free pages.
-    zp->hdr.type = zp->kPageType;
-    zp->hdr.id = 0;
-    assert(zp->hdr.pgno == kZeroPageNum);
-    memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
-    zp->pageSize = (unsigned) m_pageSize;
-    zp->freeStoreRoot = kFreeStoreRootPageNum;
-    zp->metricStoreRoot = kMetricStoreRootPageNum;
-    zp->metricTagStoreRoot = {};
-}
-
-//===========================================================================
-void DbData::onLogApplyFullPage(
-    void * ptr,
-    DbPageType type,
-    uint32_t id,
-    std::span<const uint8_t> data
-) {
-    auto hdr = static_cast<DbPageHeader *>(ptr);
-    assert(sizeof(*hdr) + data.size() <= m_pageSize);
-    hdr->type = type;
-    hdr->id = id;
-    memcpy(hdr + 1, data.data(), data.size());
-}
-
 
 /****************************************************************************
 *
@@ -357,10 +315,157 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     }
 }
 
+
+/****************************************************************************
+*
+*   DbLogRecInfo
+*
+***/
+
+#pragma pack(push)
+#pragma pack(1)
+
+namespace {
+
+struct FullPageRec {
+    DbLog::Record hdr;
+    DbPageType type;
+    uint32_t id;
+    uint16_t dataLen;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+
+} // namespace
+
+#pragma pack(pop)
+
+
+static DbLogRecInfo::Table s_dataRecInfo = {
+    { kRecTypeZeroInit,
+        DbLogRecInfo::sizeFn<DbLog::Record>,
+        [](auto args) {
+            args.notify->onLogApplyZeroInit(args.page);
+        },
+    },
+    { kRecTypePageFree,
+        DbLogRecInfo::sizeFn<DbLog::Record>,
+        [](auto args) {
+            args.notify->onLogApplyPageFree(args.page);
+        },
+    },
+    { kRecTypeFullPage,
+        [](auto & log) -> uint16_t {    // size
+            auto & rec = reinterpret_cast<const FullPageRec &>(log);
+            return offsetof(FullPageRec, data) + rec.dataLen;
+        },
+        [](auto args) {
+            auto rec = reinterpret_cast<const FullPageRec *>(args.log);
+            args.notify->onLogApplyFullPage(
+                args.page,
+                rec->type,
+                rec->id,
+                {rec->data, rec->dataLen}
+            );
+        },
+    },
+};
+
+
+/****************************************************************************
+*
+*   DbTxn
+*
+***/
+
+//===========================================================================
+void DbTxn::logZeroInit(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
+    log(rec, bytes);
+}
+
+//===========================================================================
+void DbTxn::logPageFree(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
+    log(rec, bytes);
+}
+
+//===========================================================================
+void DbTxn::logFullPage(
+    pgno_t pgno, 
+    DbPageType type, 
+    uint32_t id, 
+    std::span<uint8_t> data
+) {
+    auto extra = data.size();
+    auto offset = offsetof(FullPageRec, data);
+    assert(offset + extra <= pageSize());
+    auto [rec, bytes] = alloc<FullPageRec>(
+        kRecTypeFullPage,
+        pgno,
+        offset + extra
+    );
+    rec->type = type;
+    rec->id = id;
+    rec->dataLen = (uint16_t) extra;
+    memcpy(rec->data, data.data(), extra);
+    log(&rec->hdr, bytes);
+}
+
+
+/****************************************************************************
+*
+*   Log apply
+*
+***/
+
+//===========================================================================
+void DbData::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
+{}
+
+//===========================================================================
+void DbData::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
+{}
+
+//===========================================================================
+void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
+{}
+
+//===========================================================================
+void DbData::onLogApplyZeroInit(void * ptr) {
+    auto zp = static_cast<ZeroPage *>(ptr);
+    assert(zp->hdr.type == DbPageType::kInvalid);
+    // We only init the zero page when making a new database, so we can forgo
+    // the normal logic to memset when init'd from free pages.
+    zp->hdr.type = zp->kPageType;
+    zp->hdr.id = 0;
+    assert(zp->hdr.pgno == kZeroPageNum);
+    memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
+    zp->pageSize = (unsigned) m_pageSize;
+    zp->freeStoreRoot = kFreeStoreRootPageNum;
+    zp->metricStoreRoot = kMetricStoreRootPageNum;
+    zp->metricTagStoreRoot = {};
+}
+
 //===========================================================================
 void DbData::onLogApplyPageFree(void * ptr) {
     auto fp = static_cast<FreePage *>(ptr);
     assert(fp->hdr.type != DbPageType::kInvalid
         && fp->hdr.type != DbPageType::kFree);
     fp->hdr.type = DbPageType::kFree;
+}
+
+//===========================================================================
+void DbData::onLogApplyFullPage(
+    void * ptr,
+    DbPageType type,
+    uint32_t id,
+    std::span<const uint8_t> data
+) {
+    auto hdr = static_cast<DbPageHeader *>(ptr);
+    assert(sizeof(*hdr) + data.size() <= m_pageSize);
+    hdr->type = type;
+    hdr->id = id;
+    memcpy(hdr + 1, data.data(), data.size());
 }

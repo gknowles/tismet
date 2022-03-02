@@ -161,8 +161,7 @@ private:
     void applyCommitTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
     void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log);
 
-    void apply(uint64_t lsn, const Record & log);
-    void applyUpdate(void * page, const Record & log);
+    void applyUpdate(void * page, uint64_t lsn, const Record & log);
 
     IApplyNotify * m_data;
     IPageNotify * m_page;

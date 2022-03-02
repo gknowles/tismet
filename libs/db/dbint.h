@@ -311,6 +311,11 @@ private:
         pgno_t pgno,
         size_t bytes = sizeof(T)
     );
+    std::pair<void *, size_t> alloc(
+        DbLogRecType type,
+        pgno_t pgno,
+        size_t bytes
+    );
     void log(DbLog::Record * rec, size_t bytes);
 
     DbLog & m_log;
@@ -331,6 +336,18 @@ const T * DbTxn::viewPage(pgno_t pgno) const {
         assert(ptr->hdr.type == ptr->kPageType);
     }
     return ptr;
+}
+
+//===========================================================================
+template<typename T>
+std::pair<T *, size_t> DbTxn::alloc(
+    DbLogRecType type,
+    pgno_t pgno,
+    size_t bytes
+) {
+    assert(bytes >= sizeof(T));
+    auto&& [ptr, count] = alloc(type, pgno, bytes);
+    return {(T *) ptr, count};
 }
 
 
