@@ -17,7 +17,7 @@ using namespace Dim;
 
 constexpr auto kDirtyWriteBufferTimeout = 500ms;
 
-unsigned const kLogWriteBuffers = 10;
+const unsigned kLogWriteBuffers = 10;
 static_assert(kLogWriteBuffers > 1);
 
 
@@ -55,7 +55,7 @@ struct DbLog::AnalyzeData {
 
 namespace {
 
-unsigned const kLogFileSig[] = {
+const unsigned kLogFileSig[] = {
     0xee4b1a59,
     0x4ba38e05,
     0xc589d585,

@@ -16,7 +16,7 @@ using namespace Query;
 *
 ***/
 
-unsigned const kQueryMaxSize = 8192;
+const unsigned kQueryMaxSize = 8192;
 
 
 /****************************************************************************

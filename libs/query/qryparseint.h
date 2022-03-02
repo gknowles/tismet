@@ -16,7 +16,7 @@ class QueryParser : public QueryParserBase {
 public:
     using QueryParserBase::QueryParserBase;
 
-    bool parse (char const src[]);
+    bool parse (const char src[]);
     size_t errpos () const { return m_errpos; }
 
 private:

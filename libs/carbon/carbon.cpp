@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-unsigned const kCarbonMaxRecordSize = 1024;
+const unsigned kCarbonMaxRecordSize = 1024;
 
 
 /****************************************************************************

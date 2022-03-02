@@ -294,14 +294,14 @@ static vector<IFuncFactory *> s_funcVec;
 static vector<TokenTable::Token> s_funcTokens;
 static TokenTable s_funcTbl;
 
-TokenTable::Token const s_argTypes[] = {
+const TokenTable::Token s_argTypes[] = {
     { FuncArg::kEnum, "enum" },
     { FuncArg::kNum, "num" },
     { FuncArg::kNumOrString, "numOrString" },
     { FuncArg::kPathOrFunc, "query" },
     { FuncArg::kString, "string" },
 };
-TokenTable const s_argTypeTbl(s_argTypes);
+const TokenTable s_argTypeTbl(s_argTypes);
 
 
 /****************************************************************************

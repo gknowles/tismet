@@ -28,7 +28,7 @@ size_t const kDefaultFirstViewSize = 2 * kViewSize;
 
 namespace {
 
-unsigned const kWorkFileSig[] = {
+const unsigned kWorkFileSig[] = {
     0xa6e6fd51,
     0x4a443864,
     0x8b4302ae,

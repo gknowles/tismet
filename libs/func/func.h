@@ -67,7 +67,7 @@ struct ResultInfo {
 
 namespace FuncArg {
     struct Enum : Dim::ListLink<> {
-        std::string const name;
+        const std::string name;
         const Dim::TokenTable * table{};
 
         Enum(std::string name, const Dim::TokenTable * tbl);
@@ -142,22 +142,22 @@ std::shared_ptr<SampleList> reduce(
     AggFunc::Type method = {} // use defaultType()
 );
 
-using AggFn = double(double const vals[], size_t count);
+using AggFn = double(const double vals[], size_t count);
 AggFn * aggFunc(
     AggFunc::Type method = {} // use defaultType()
 );
-double aggAverage(double const vals[], size_t count);
-double aggCount(double const vals[], size_t count);
-double aggDiff(double const vals[], size_t count);
-double aggFirst(double const vals[], size_t count);
-double aggLast(double const vals[], size_t count);
-double aggMax(double const vals[], size_t count);
-double aggMedian(double const vals[], size_t count);
-double aggMin(double const vals[], size_t count);
-double aggMultiply(double const vals[], size_t count);
-double aggRange(double const vals[], size_t count);
-double aggStddev(double const vals[], size_t count);
-double aggSum(double const vals[], size_t count);
+double aggAverage(const double vals[], size_t count);
+double aggCount(const double vals[], size_t count);
+double aggDiff(const double vals[], size_t count);
+double aggFirst(const double vals[], size_t count);
+double aggLast(const double vals[], size_t count);
+double aggMax(const double vals[], size_t count);
+double aggMedian(const double vals[], size_t count);
+double aggMin(const double vals[], size_t count);
+double aggMultiply(const double vals[], size_t count);
+double aggRange(const double vals[], size_t count);
+double aggStddev(const double vals[], size_t count);
+double aggSum(const double vals[], size_t count);
 
 } // namespace
 

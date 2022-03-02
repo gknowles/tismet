@@ -27,7 +27,7 @@ constexpr auto kMetricStoreRootPageNum = (pgno_t) 3;
 *
 ***/
 
-unsigned const kDataFileSig[] = {
+const unsigned kDataFileSig[] = {
     0x39515728,
     0x4873456d,
     0xf6bfd8a1,

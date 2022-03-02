@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-unsigned const kRequestBuckets = 8;
+const unsigned kRequestBuckets = 8;
 
 
 /****************************************************************************
@@ -635,7 +635,7 @@ void dbClose(DbHandle h) {
     }
 }
 
-static const TokenTable::Token s_sampleTypes[] = {
+const TokenTable::Token s_sampleTypes[] = {
     { kSampleTypeFloat32,   "float32" },
     { kSampleTypeFloat64,   "float64" },
     { kSampleTypeInt8,      "int8" },
@@ -643,7 +643,7 @@ static const TokenTable::Token s_sampleTypes[] = {
     { kSampleTypeInt32,     "int32" },
 };
 static_assert(size(s_sampleTypes) == kSampleTypes - 1);
-static const TokenTable s_sampleTypeTbl{s_sampleTypes};
+const TokenTable s_sampleTypeTbl{s_sampleTypes};
 
 //===========================================================================
 const char * toString(DbSampleType type, const char def[]) {

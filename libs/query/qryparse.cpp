@@ -213,7 +213,7 @@
 // Parser function covering:
 //  - 4 states
 [[gsl::suppress(bounds)]]
-bool QueryParser::parse (char const src[]) {
+bool QueryParser::parse (const char src[]) {
     const char * ptr = src;
     unsigned char ch;
     goto state2;
