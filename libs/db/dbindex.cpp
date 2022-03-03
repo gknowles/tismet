@@ -373,7 +373,6 @@ void DbIndex::find(UnsignedSet * out, string_view name) const {
     auto seglen = segs.size() - prefix;
     unsigned numDyn = 0;
     unsigned maxDyn = (unsigned) m_lenIds.size() - numStatic - 1;
-    UnsignedSetWithCount subsetw;
     for (;;) {
         auto & lens = m_lenIds[numStatic + numDyn];
         auto ssptr = &lens;
