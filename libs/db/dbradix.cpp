@@ -155,8 +155,8 @@ bool DbData::radixInsertOrAssign(
 ) {
     assert(value);
     auto hdr = txn.viewPage<DbPageHeader>(root);
-    auto id = hdr->id;
     auto rd = radixData(hdr, m_pageSize);
+    auto id = hdr->id;
 
     int digits[10];
     size_t count = radixPageEntries(
@@ -177,6 +177,8 @@ bool DbData::radixInsertOrAssign(
             rd->pages + rd->numPages
         );
         txn.logRadixPromote(root, pgno);
+        hdr = txn.viewPage<DbPageHeader>(root);
+        rd = radixData(hdr, m_pageSize);
     }
     int * d = digits;
     while (count) {
