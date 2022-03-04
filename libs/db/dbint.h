@@ -365,6 +365,7 @@ public:
     struct BitmapPage;
     struct MetricPage;
     struct SamplePage;
+    struct TriePage;
 
     struct RadixData {
         // Distance from leaf radix pages. Therefore initialized to 0 when
@@ -406,7 +407,8 @@ public:
 public:
     ~DbData();
 
-    // Allows updates from DbLog to be applied
+    // Allows updates from DbLog to be applied, pageSize *MUST* match page
+    // size of existing data file.
     void openForApply(size_t pageSize, Dim::EnumFlags<DbOpenFlags> flags);
 
     // After open metrics and samples can be updated and queried

@@ -228,7 +228,7 @@ void tsDataInitialize() {
     shutdownMonitor(&s_cleanup);
     configMonitor("app.xml", &s_appXml);
     appDataPath(&s_dbPath, "metrics");
-    s_db = dbOpen(s_dbPath, 0, fDbOpenVerbose | fDbOpenCreat);
+    s_db = dbOpen(s_dbPath, fDbOpenVerbose | fDbOpenCreat, 512);
     if (!s_db) {
         logMsgError() << "Unable to open database, " << s_dbPath;
         return appSignalShutdown(EX_DATAERR);

@@ -68,12 +68,12 @@ public:
     DbLog(IApplyNotify * data, IPageNotify * page);
     ~DbLog();
 
-    // pageSize must match the size saved in the data file or be zero. If it is
-    // zero fDbOpenCreat must not be specified.
+    // pageSize is only applied if new files are being created, 0 defaults to 
+    // the same size as memory pages.
     bool open(
         std::string_view file, 
-        size_t pageSize, 
-        Dim::EnumFlags<DbOpenFlags> flags
+        Dim::EnumFlags<DbOpenFlags> flags,
+        size_t pageSize = 0
     );
 
     enum RecoverFlags : unsigned {

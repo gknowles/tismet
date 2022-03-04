@@ -58,8 +58,8 @@ public:
 
     bool open(
         string_view name, 
-        size_t pageSize, 
-        EnumFlags<DbOpenFlags> flags
+        EnumFlags<DbOpenFlags> flags,
+        size_t pageSize
     );
     void close();
     void configure(const DbConfig & conf);
@@ -202,15 +202,15 @@ DbBase::DbBase ()
 //===========================================================================
 bool DbBase::open(
     string_view name, 
-    size_t pageSize, 
-    EnumFlags<DbOpenFlags> flags
+    EnumFlags<DbOpenFlags> flags,
+    size_t pageSize
 ) {
     m_verbose = flags.any(fDbOpenVerbose);
 
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
     auto logfile = Path(name).setExt("tsl");
-    if (!m_log.open(logfile, pageSize, flags))
+    if (!m_log.open(logfile, flags, pageSize))
         return false;
     if (!m_log.newFiles())
         flags.reset(fDbOpenCreat);
@@ -610,11 +610,11 @@ bool DbBase::getSamples(
 //===========================================================================
 DbHandle dbOpen(
     string_view name, 
-    size_t pageSize, 
-    EnumFlags<DbOpenFlags> flags
+    EnumFlags<DbOpenFlags> flags,
+    size_t pageSize
 ) {
     auto db = make_unique<DbBase>();
-    if (!db->open(name, pageSize, flags)) {
+    if (!db->open(name, flags, pageSize)) {
         db->close();
         return DbHandle{};
     }

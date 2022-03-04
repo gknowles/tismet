@@ -33,10 +33,12 @@ enum DbOpenFlags : unsigned {
     fDbOpenVerbose = 0x08,
     fDbOpenReadOnly = 0x10,
 };
+// pageSize is only used if new files are being created, use 0 for the same 
+// size as system memory pages.
 DbHandle dbOpen(
     std::string_view path,
-    size_t pageSize = 0, // 0 for same size as system memory pages
-    Dim::EnumFlags<DbOpenFlags> flags = {}
+    Dim::EnumFlags<DbOpenFlags> flags = {},
+    size_t pageSize = 0
 );
 
 void dbClose(DbHandle h);

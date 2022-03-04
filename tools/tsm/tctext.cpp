@@ -462,7 +462,7 @@ static void textCmd(Cli & cli) {
     tcLogStart();
     TextWriter writer(*os);
     DbLog dlog(&writer, &writer);
-    dlog.open(s_opts.tslfile, 0, fDbOpenReadOnly);
+    dlog.open(s_opts.tslfile, fDbOpenReadOnly);
     EnumFlags flags = DbLog::fRecoverIncompleteTxns;
     if (s_opts.all)
         flags |= DbLog::fRecoverBeforeCheckpoint;

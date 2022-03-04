@@ -328,8 +328,8 @@ static FileHandle openDbFile(
 //===========================================================================
 bool DbLog::open(
     string_view logfile, 
-    size_t dataPageSize, 
-    EnumFlags<DbOpenFlags> flags
+    EnumFlags<DbOpenFlags> flags,
+    size_t dataPageSize
 ) {
     assert(!m_closing && !m_flog);
     if (dataPageSize) {
@@ -353,8 +353,7 @@ bool DbLog::open(
         auto rawbuf = aligned_alloc(fps, fps);
         fileReadWait(nullptr, rawbuf, fps, m_flog, 0);
         memcpy(&zp, rawbuf, sizeof(zp));
-        if (!dataPageSize)
-            dataPageSize = zp.pageSize / 2;
+        dataPageSize = zp.pageSize / 2;
         aligned_free(rawbuf);
     }
     if (dataPageSize < fps) {

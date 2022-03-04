@@ -453,16 +453,19 @@ CmdOpts::CmdOpts() {
 
     cli.group("When to Stop").sortKey("2");
     cli.opt(&progress.totalBytes, "B bytes", 0)
+        .siUnits({}, Cli::fUnitInsensitive)
         .desc("Max bytes to generate, 0 for unlimited");
     //cli.opt(&totalSecs, "T time", 0)
     //    .desc("Max seconds to run, 0 for unlimited");
     cli.opt(&progress.totalSamples, "S samples", 10)
+        .siUnits({}, Cli::fUnitInsensitive)
         .desc("Max samples to generate, 0 for unlimited");
 
     cli.group("Metrics to Generate").sortKey("3");
     cli.opt(&prefix, "prefix", "test.")
         .desc("Prefix to generated metric names");
     cli.opt(&metrics, "m metrics", 100)
+        .siUnits({}, Cli::fUnitInsensitive)
         .range(1, numeric_limits<decltype(metrics)>::max())
         .desc("Number of metrics");
     cli.opt(&startTime, "s start", kDefaultStartTime)
@@ -471,7 +474,7 @@ CmdOpts::CmdOpts() {
     cli.opt(&endTime, "e end")
         .desc("Time of last sample, rounded up to next interval")
         .valueDesc("TIME");
-    cli.opt(&intervalSecs, "i interval", 60)
+    cli.opt(&intervalSecs, "i interval", 60).timeUnits()
         .desc("Seconds between samples");
     cli.opt(&minDelta, "dmin", 0.0)
         .desc("Minimum delta between consecutive samples")

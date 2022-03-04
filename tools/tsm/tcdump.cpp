@@ -178,7 +178,7 @@ static void dumpCmd(Cli & cli) {
     }
 
     logMsgInfo() << "Dumping " << s_opts.database << " to " << s_opts.dumpfile;
-    auto h = dbOpen(s_opts.database, 0, fDbOpenReadOnly);
+    auto h = dbOpen(s_opts.database, fDbOpenReadOnly);
     if (!h) {
         return cli.fail(
             EX_DATAERR,

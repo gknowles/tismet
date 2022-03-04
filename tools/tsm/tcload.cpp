@@ -395,7 +395,7 @@ static void loadCmd(Cli & cli) {
     EnumFlags flags = fDbOpenCreat;
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
-    auto h = dbOpen(s_opts.database, 0, flags);
+    auto h = dbOpen(s_opts.database, flags, 512);
     if (!h) 
         return cli.fail(EX_ABORTED, "Canceled");
 
