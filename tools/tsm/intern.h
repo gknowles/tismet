@@ -12,6 +12,6 @@
 
 void tcLogStart(
     const DbProgressInfo * limit = {},
-    std::chrono::duration<double> timeLimit = {}
+    Dim::Duration timeLimit = {}
 );
 void tcLogShutdown(const DbProgressInfo * total = {});

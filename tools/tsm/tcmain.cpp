@@ -75,7 +75,7 @@ static void dump(
     size_t metrics,
     size_t samples,
     size_t bytes,
-    chrono::duration<double> time
+    Duration time
 ) {
     pair<const char *, size_t> nums[] = {
         { "files", files },
@@ -90,9 +90,10 @@ static void dump(
             os << "; " << num.first << ": " << num.second;
         }
     }
-    if (auto num = time.count()) {
+    if (time.count()) {
         found = true;
-        os << "; seconds: " << num;
+        auto tstr = toString(time, DurationFormat::kTwoPart);
+        os << "; time: " << tstr;
     }
     if (!found)
         os << "; none";
@@ -102,7 +103,7 @@ static void dump(
 static void dump(
     ostream & os,
     const DbProgressInfo & info,
-    chrono::duration<double> time
+    Duration time
 ) {
     dump(os, info.files, info.metrics, info.samples, info.bytes, time);
 }
@@ -111,7 +112,7 @@ static void dump(
 static void dumpTotals(
     ostream & os,
     const DbProgressInfo & info,
-    chrono::duration<double> time
+    Duration time
 ) {
     dump(
         os,
@@ -126,7 +127,7 @@ static void dumpTotals(
 //===========================================================================
 void tcLogStart(
     const DbProgressInfo * limit,
-    chrono::duration<double> timeLimit
+    Duration timeLimit
 ) {
     s_startTime = timeNow();
     if (limit
@@ -147,7 +148,7 @@ void tcLogStart(
 //===========================================================================
 void tcLogShutdown(const DbProgressInfo * total) {
     TimePoint finish = timeNow();
-    chrono::duration<double> elapsed = finish - s_startTime;
+    auto elapsed = finish - s_startTime;
     auto os = logMsgInfo();
     os.imbue(locale(""));
     os << "Done";
