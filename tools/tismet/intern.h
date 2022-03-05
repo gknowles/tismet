@@ -15,7 +15,6 @@ void tsDataInitialize();
 void tsDataBackup(IDbProgressNotify * notify);
 DbHandle tsDataHandle();
 const Dim::Path & tsDataPath();
-DbContextHandle tsDataOpenContext();
 
 // Returns false if the metric is not being stored
 bool tsDataInsertMetric(

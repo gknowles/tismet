@@ -57,7 +57,7 @@ public:
     bool onEvalApply(ResultInfo & info);
 
     IEvalNotify * m_notify{};
-    DbContextHandle m_ctx;
+    DbContext m_ctx;
     TimePoint m_first;
     TimePoint m_last;
     Duration m_minInterval{};
@@ -565,8 +565,6 @@ Evaluate::Evaluate() {
 
 //===========================================================================
 Evaluate::~Evaluate() {
-    dbCloseContext(m_ctx);
-
     unique_lock lk{s_mut};
     s_execs.unlink(this);
 }
@@ -678,7 +676,7 @@ void evaluate(
     auto hostage = RefPtr<Evaluate>(new Evaluate);
     auto ex = hostage.get();
     ex->m_notify = notify;
-    ex->m_ctx = dbOpenContext(s_db);
+    ex->m_ctx.reset(s_db);
     ex->m_unfinished = 1;
     ex->m_first = first;
     ex->m_last = last;

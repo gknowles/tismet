@@ -111,7 +111,7 @@ class MetricIndex : public IHttpRouteNotify {
 //===========================================================================
 void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
+    DbContext ctx(f);
     UnsignedSet ids;
     dbFindMetrics(&ids, f);
     vector<string_view> names;
@@ -134,7 +134,6 @@ void MetricIndex::onHttpRequest(unsigned reqId, HttpRequest & req) {
     }
     bld.end();
     xferRest(move(res), started, reqId);
-    dbCloseContext(ctx);
 }
 
 
@@ -191,7 +190,7 @@ void MetricFind::onHttpRequest(unsigned reqId, HttpRequest & req) {
 //===========================================================================
 void MetricFind::jsonReply(unsigned reqId, string_view target) {
     auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
+    DbContext ctx(f);
     UnsignedSet ids;
     dbFindMetrics(&ids, f, target);
     UnsignedSet bids;
@@ -229,13 +228,12 @@ void MetricFind::jsonReply(unsigned reqId, string_view target) {
     }
     bld.end();
     xferRest(move(res), started, reqId);
-    dbCloseContext(ctx);
 }
 
 //===========================================================================
 void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
+    DbContext ctx(f);
     UnsignedSet ids;
     dbFindMetrics(&ids, f, target);
     UnsignedSet bids;
@@ -268,7 +266,6 @@ void MetricFind::msgpackReply(unsigned reqId, string_view target) {
     }
     assert(bld.depth() == 0);
     xferRest(move(res), started, reqId);
-    dbCloseContext(ctx);
 }
 
 
@@ -639,7 +636,7 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     m_res.addHeader(kHttp_Status, "200");
 
     auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
+    DbContext ctx(f);
     vector<UnsignedSet> idSets;
     for (auto && target : targets) {
         UnsignedSet & out = idSets.emplace_back();
@@ -667,7 +664,6 @@ RenderAlternativeStorage::RenderAlternativeStorage(
     }
     assert(m_bld.depth() == 0);
     xferRest(move(m_res), m_started, reqId);
-    dbCloseContext(ctx);
 }
 
 //===========================================================================

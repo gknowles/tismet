@@ -83,12 +83,19 @@ DbStats dbQueryStats(DbHandle h);
 *
 ***/
 
-// Metric context prevents metric ids from changing their meaning (i.e. being
-// reassigned to different metrics) during the life of the context.
-struct DbContextHandle : Dim::HandleBase {};
+class DbContext : public Dim::NoCopy {
+public:
+    DbContext() noexcept = default;
+    DbContext(DbHandle f);
+    ~DbContext();
 
-DbContextHandle dbOpenContext(DbHandle h);
-void dbCloseContext(DbContextHandle h);
+    DbHandle handle() const;
+    void reset(DbHandle f = {});
+
+private:
+    DbHandle m_f;
+    uint64_t m_instance{0};
+};
 
 // returns true if found
 bool dbFindMetric(uint32_t * out, DbHandle h, std::string_view name);

@@ -69,11 +69,10 @@ CarbonTask::~CarbonTask() {
 void CarbonTask::onTask() {
     if (auto name = m_name.get()) {
         auto f = tsDataHandle();
-        auto ctx = tsDataOpenContext();
+        DbContext ctx(f);
         uint32_t id;
         if (tsDataInsertMetric(&id, f, name))
             dbUpdateSample(f, id, m_time, m_value);
-        dbCloseContext(ctx);
         m_name.reset();
         taskPushEvent(this);
         return;

@@ -61,7 +61,7 @@ Duration SampleTimer::onTimer(TimePoint now) {
 void SampleTimer::onTask() {
     auto now = timeNow();
     auto f = tsDataHandle();
-    auto ctx = tsDataOpenContext();
+    DbContext ctx(f);
     perfGetValues(&m_vals);
     for (auto && val : m_vals) {
         m_tmp.reserve(val.name.size() + size(s_prefix));
@@ -91,7 +91,6 @@ void SampleTimer::onTask() {
         dbUpdateMetric(f, id, info);
         dbUpdateSample(f, id, now, val.raw);
     }
-    dbCloseContext(ctx);
     now = timeNow();
     auto wait = ceil<SampleInterval>(now) - now;
     timerUpdate(this, wait);

@@ -135,19 +135,6 @@ private:
     DbLog m_log; // MUST be last! (and destroyed first)
 };
 
-class DbContext : public HandleContent {
-public:
-    DbContext(DbHandle f);
-    ~DbContext();
-
-    DbHandle handle() const;
-    void release_RL();
-
-private:
-    DbHandle m_f;
-    uint64_t m_instance{0};
-};
-
 } // namespace
 
 
@@ -157,9 +144,8 @@ private:
 *
 ***/
 
-static shared_mutex s_mut;
+static mutex s_mut;
 static HandleMap<DbHandle, DbBase> s_files;
-static HandleMap<DbContextHandle, DbContext> s_contexts;
 
 static auto & s_perfCreated = uperf("db.metrics created");
 static auto & s_perfDeleted = uperf("db.metrics deleted");
@@ -173,14 +159,8 @@ static auto & s_perfTrunc = uperf("db.metric names truncated");
 ***/
 
 //===========================================================================
-inline static DbBase * db(DbContextHandle h) {
-    shared_lock lk{s_mut};
-    return s_files.find(s_contexts.find(h)->handle());
-}
-
-//===========================================================================
 inline static DbBase * db(DbHandle h) {
-    shared_lock lk{s_mut};
+    scoped_lock lk{s_mut};
     return s_files.find(h);
 }
 
@@ -359,16 +339,13 @@ bool DbBase::onFileRead(size_t * bytesUsed, const FileReadData & data) {
 ***/
 
 //===========================================================================
-DbContext::DbContext(DbHandle f)
-    : m_f{f}
-{
-    if (auto * file = db(handle()))
-        m_instance = file->acquireInstanceRef();
+DbContext::DbContext(DbHandle f) {
+    reset(f);
 }
 
 //===========================================================================
 DbContext::~DbContext() {
-    assert(!m_instance);
+    reset();
 }
 
 //===========================================================================
@@ -377,10 +354,23 @@ DbHandle DbContext::handle() const {
 }
 
 //===========================================================================
-void DbContext::release_RL() {
-    if (auto * file = s_files.find(handle()))
-        file->releaseInstanceRef(m_instance);
+void DbContext::reset(DbHandle f) {
+    if (!f && !m_instance) {
+        m_f = f;
+        return;
+    }
+
+    scoped_lock lk{s_mut};
+    if (m_f && m_instance) {
+        if (auto * file = s_files.find(m_f))
+            file->releaseInstanceRef(m_instance);
+    }
+    m_f = f;
     m_instance = 0;
+    if (f) {
+        if (auto * file = s_files.find(m_f))
+            m_instance = file->acquireInstanceRef();
+    }
 }
 
 
@@ -676,24 +666,9 @@ bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
 }
 
 //===========================================================================
-DbContextHandle dbOpenContext(DbHandle f) {
+unique_ptr<DbContext> dbNewContext(DbHandle f) {
     auto ptr = make_unique<DbContext>(f);
-
-    scoped_lock lk{s_mut};
-    if (!s_files.find(f)) {
-        return {};
-    } else {
-        return s_contexts.insert(ptr.release());
-    }
-}
-
-//===========================================================================
-void dbCloseContext(DbContextHandle h) {
-    scoped_lock lk{s_mut};
-    if (auto ctx = s_contexts.release(h)) {
-        ctx->release_RL();
-        delete ctx;
-    }
+    return ptr;
 }
 
 //===========================================================================

@@ -250,12 +250,6 @@ DbHandle tsDataHandle() {
 }
 
 //===========================================================================
-DbContextHandle tsDataOpenContext() {
-    assert(s_db);
-    return dbOpenContext(s_db);
-}
-
-//===========================================================================
 bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
     assert(f);
     if (dbFindMetric(id, f, name))

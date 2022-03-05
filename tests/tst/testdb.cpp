@@ -130,7 +130,7 @@ void Test::onTestRun() {
     auto spp = stats.samplesPerPage[kSampleTypeFloat32];
     auto pgt = spp * 1min;
 
-    auto ctx = dbOpenContext(h);
+    DbContext ctx(h);
     uint32_t id;
     unsigned count = 0;
     count += dbInsertMetric(&id, h, name);
@@ -141,14 +141,14 @@ void Test::onTestRun() {
     info.interval = 1min;
     dbUpdateMetric(h, id, info);
     dbUpdateSample(h, id, start, 1.0);
-    dbCloseContext(ctx);
+    ctx.reset();
     stats = dbQueryStats(h);
     EXPECT(stats.numPages == 6);
     dbClose(h);
     EXPECT(count == 1);
 
     h = dbOpen(dat);
-    ctx = dbOpenContext(h);
+    ctx.reset(h);
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
     dbUpdateSample(h, id, start, 3.0);
@@ -160,11 +160,11 @@ void Test::onTestRun() {
     EXPECT(stats.numPages == 7);
     // another on page 2
     dbUpdateSample(h, id, start + pgt, 6.0);
-    dbCloseContext(ctx);
+    ctx.reset();
     dbClose(h);
 
     h = dbOpen(dat);
-    ctx = dbOpenContext(h);
+    ctx.reset(h);
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
     stats = dbQueryStats(h);
@@ -227,21 +227,21 @@ void Test::onTestRun() {
         count += dbInsertMetric(&id, h, name);
         dbUpdateSample(h, id, start, (float) i);
     };
-    dbCloseContext(ctx);
+    ctx.reset();
     dbClose(h);
 
     h = dbOpen(dat);
-    ctx = dbOpenContext(h);
+    ctx.reset(h);
     EXPECT(h);
     dbFindMetrics(&found, h);
     id = found.pop_front();
     dbEraseMetric(h, id);
     dbInsertMetric(&id, h, "replacement.metric.1");
-    dbCloseContext(ctx);
+    ctx.reset();
     dbClose(h);
 
     h = dbOpen(dat);
-    ctx = dbOpenContext(h);
+    ctx.reset(h);
     EXPECT(h);
     dbFindMetrics(&found, h);
     for (auto && id : found)
@@ -299,6 +299,6 @@ void Test::onTestRun() {
     );
     EXPECT(samples.m_count == 3);
 
-    dbCloseContext(ctx);
+    ctx.reset();
     dbClose(h);
 }
