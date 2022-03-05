@@ -281,9 +281,9 @@ DbLog::~DbLog() {
     if (m_flog)
         fileClose(m_flog);
     if (m_buffers)
-        aligned_free(m_buffers);
+        freeAligned(m_buffers);
     if (m_partialBuffers)
-        aligned_free(m_partialBuffers);
+        freeAligned(m_partialBuffers);
 }
 
 //===========================================================================
@@ -350,11 +350,11 @@ bool DbLog::open(
         if (!dataPageSize)
             dataPageSize = kDefaultPageSize;
     } else {
-        auto rawbuf = aligned_alloc(fps, fps);
+        auto rawbuf = mallocAligned(fps, fps);
         fileReadWait(nullptr, rawbuf, fps, m_flog, 0);
         memcpy(&zp, rawbuf, sizeof(zp));
         dataPageSize = zp.pageSize / 2;
-        aligned_free(rawbuf);
+        freeAligned(rawbuf);
     }
     if (dataPageSize < fps) {
         // Page size is smaller than minimum required for aligned access.
@@ -367,9 +367,9 @@ bool DbLog::open(
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::kEmpty);
     m_emptyBufs = m_numBufs;
-    m_buffers = (char *) aligned_alloc(m_pageSize, m_numBufs * m_pageSize);
+    m_buffers = (char *) mallocAligned(m_pageSize, m_numBufs * m_pageSize);
     memset(m_buffers, 0, m_numBufs * m_pageSize);
-    m_partialBuffers = (char *) aligned_alloc(
+    m_partialBuffers = (char *) mallocAligned(
         m_pageSize,
         m_numBufs * m_pageSize
     );
@@ -667,9 +667,9 @@ bool DbLog::loadPages(FileHandle flog) {
 //===========================================================================
 void DbLog::applyAll(AnalyzeData * data, FileHandle flog) {
     LogPage lp;
-    auto buf = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
-    auto buf2 = (char *) aligned_alloc(m_pageSize, 2 * m_pageSize);
-    auto finally = Finally([&] { aligned_free(buf); aligned_free(buf2); });
+    auto buf = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
+    auto buf2 = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
+    auto finally = Finally([&] { freeAligned(buf); freeAligned(buf2); });
     int bytesBefore{0};
     int logPos{0};
     auto lsn = uint64_t{0};
@@ -890,7 +890,7 @@ void DbLog::checkpointStableCommit() {
     if (!lastPgno) {
         checkpointTruncateCommit();
     } else {
-        auto vptr = aligned_alloc(m_pageSize, m_pageSize);
+        auto vptr = mallocAligned(m_pageSize, m_pageSize);
         auto mp = new(vptr) MinimumPage{ LogPageType::kFree };
         mp->pgno = lastPgno;
         fileWrite(
@@ -1183,7 +1183,7 @@ void DbLog::onFileWrite(const FileWriteData & data) {
         m_freePages.insert(lp.pgno);
         s_perfFreePages += 1;
         lk.unlock();
-        aligned_free(rawbuf);
+        freeAligned(rawbuf);
         checkpointTruncateCommit();
         return;
     }
