@@ -349,7 +349,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
 namespace {
 
-struct FullPageRec {
+struct FullPageInitRec {
     DbLog::Record hdr;
     DbPageType type;
     uint32_t id;
@@ -379,12 +379,12 @@ static DbLogRecInfo::Table s_dataRecInfo = {
     },
     { kRecTypeFullPage,
         [](auto & log) -> uint16_t {    // size
-            auto & rec = reinterpret_cast<const FullPageRec &>(log);
-            return offsetof(FullPageRec, data) + rec.dataLen;
+            auto & rec = reinterpret_cast<const FullPageInitRec &>(log);
+            return offsetof(FullPageInitRec, data) + rec.dataLen;
         },
         [](auto args) {
-            auto rec = reinterpret_cast<const FullPageRec *>(args.log);
-            args.notify->onLogApplyFullPage(
+            auto rec = reinterpret_cast<const FullPageInitRec *>(args.log);
+            args.notify->onLogApplyFullPageInit(
                 args.page,
                 rec->type,
                 rec->id,
@@ -414,16 +414,16 @@ void DbTxn::logPageFree(pgno_t pgno) {
 }
 
 //===========================================================================
-void DbTxn::logFullPage(
+void DbTxn::logFullPageInit(
     pgno_t pgno, 
     DbPageType type, 
     uint32_t id, 
     std::span<uint8_t> data
 ) {
     auto extra = data.size();
-    auto offset = offsetof(FullPageRec, data);
+    auto offset = offsetof(FullPageInitRec, data);
     assert(offset + extra <= pageSize());
-    auto [rec, bytes] = alloc<FullPageRec>(
+    auto [rec, bytes] = alloc<FullPageInitRec>(
         kRecTypeFullPage,
         pgno,
         offset + extra
@@ -480,14 +480,20 @@ void DbData::onLogApplyPageFree(void * ptr) {
 }
 
 //===========================================================================
-void DbData::onLogApplyFullPage(
+void DbData::onLogApplyFullPageInit(
     void * ptr,
     DbPageType type,
     uint32_t id,
     std::span<const uint8_t> data
 ) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    assert(sizeof(*hdr) + data.size() <= m_pageSize);
+    auto offset = sizeof *hdr + data.size();
+    assert(offset <= m_pageSize);
+    if (hdr->type == DbPageType::kFree) {
+        memset((char *) hdr + offset, 0, m_pageSize - offset);
+    } else {
+        assert(hdr->type == DbPageType::kInvalid);
+    }
     hdr->type = type;
     hdr->id = id;
     memcpy(hdr + 1, data.data(), data.size());

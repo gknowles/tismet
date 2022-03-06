@@ -37,7 +37,7 @@ private:
 
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
-    void onLogApplyFullPage(
+    void onLogApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,
@@ -195,7 +195,7 @@ void TextWriter::onLogApplyPageFree(void * ptr) {
 }
 
 //===========================================================================
-void TextWriter::onLogApplyFullPage(
+void TextWriter::onLogApplyFullPageInit(
     void * ptr,
     DbPageType type,
     uint32_t id,

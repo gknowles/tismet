@@ -300,7 +300,7 @@ public:
 
     virtual void onLogApplyZeroInit(void * ptr) = 0;
     virtual void onLogApplyPageFree(void * ptr) = 0;
-    virtual void onLogApplyFullPage(
+    virtual void onLogApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,

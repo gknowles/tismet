@@ -225,7 +225,7 @@ public:
 
     void logZeroInit(pgno_t pgno);
     void logPageFree(pgno_t pgno);
-    void logFullPage(
+    void logFullPageInit(
         pgno_t pgno, 
         DbPageType type, 
         uint32_t id, 
@@ -455,7 +455,7 @@ public:
 
     void onLogApplyZeroInit(void * ptr) override;
     void onLogApplyPageFree(void * ptr) override;
-    void onLogApplyFullPage(
+    void onLogApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,

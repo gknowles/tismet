@@ -118,17 +118,20 @@ private:
     unique_ptr<RequestBucket[]> m_reqBuckets;
     bool m_verbose{false};
 
+    // Backup process
     RunMode m_backupMode{kRunStopped};
     DbProgressInfo m_info;
     IDbProgressNotify * m_backer{};
     vector<pair<Path, Path>> m_backupFiles;
     FileAppendStream m_dstFile;
 
+    // Metric name search
     mutable shared_mutex m_indexMut;
     uint64_t m_instance{};
     DbIndex m_leaf;
     DbIndex m_branch;
 
+    // Persistent data
     DbPage m_page;
     DbData m_data;
     unsigned m_maxNameLen{};
