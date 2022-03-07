@@ -158,7 +158,9 @@ pgno_t DbFileView<Writable>::pgno(const void * vptr) const {
 ***/
 
 //===========================================================================
-void * DbWriteView::wptr(pgno_t pgno) const {
+auto DbWriteView::wptr(pgno_t pgno) const 
+    -> Pointer
+{
     return ptr(pgno);
 }
 

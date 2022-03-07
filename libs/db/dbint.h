@@ -68,7 +68,7 @@ class DbReadView : public DbFileView<false>
 
 class DbWriteView : public DbFileView<true> {
 public:
-    void * wptr(pgno_t pgno) const;
+    Pointer wptr(pgno_t pgno) const;
 };
 
 
@@ -224,13 +224,21 @@ public:
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
 
     void logZeroInit(pgno_t pgno);
+    void logTagRootUpdate(pgno_t pgno, pgno_t rootPage);
     void logPageFree(pgno_t pgno);
+
+    std::pair<void *, size_t> allocFullPage(pgno_t pgno, size_t bytes);
+    // "bytes" must be less or equal to amount passed in to preceding 
+    // allocFullPage() call.
+    void logFullPageInit(DbPageType type, uint32_t id, size_t bytes);
+
     void logFullPageInit(
         pgno_t pgno, 
         DbPageType type, 
         uint32_t id, 
         std::span<uint8_t> data
     );
+
     void logRadixInit(
         pgno_t pgno,
         uint32_t id,
@@ -353,6 +361,37 @@ std::pair<T *, size_t> DbTxn::alloc(
 
 /****************************************************************************
 *
+*   DbPageHeap
+*
+***/
+
+class DbPageHeap : public Dim::IPageHeap {
+public:
+    DbPageHeap(DbTxn & txn, DbData & data);
+
+    // Inherited via IPageHeap
+    size_t create() override;
+    void destroy(size_t pgno) override;
+    void setRoot(size_t pgno) override;
+    size_t root() const override;
+    size_t pageSize() const override;
+    bool empty() const override;
+    bool empty(size_t pgno) const override;
+    uint8_t * wptr(size_t pgno) override;
+    const uint8_t * ptr(size_t pgno) const override;
+
+private:
+    void commitIfPending() const;
+
+    DbData & m_data;
+    DbTxn & m_txn;
+    pgno_t m_updatePgno = pgno_t::npos;
+    mutable uint8_t * m_updatePtr = {};
+};
+
+
+/****************************************************************************
+*
 *   DbData
 *
 ***/
@@ -454,6 +493,7 @@ public:
     void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
     void onLogApplyZeroInit(void * ptr) override;
+    void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplyFullPageInit(
         void * ptr,
@@ -537,6 +577,8 @@ public:
     ) override;
 
 private:
+    friend DbPageHeap;
+
     bool loadMetric(
         DbTxn & txn,
         IDbDataNotify * notify,
@@ -550,6 +592,8 @@ private:
     bool loadDeprecatedPages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
     void freePage(DbTxn & txn, pgno_t pgno);
+    void deprecatePage(DbTxn & txn, pgno_t pgno);
+    void freeDeprecatedPage(DbTxn & txn, pgno_t pgno);
 
     size_t radixPageEntries(
         int * ents,

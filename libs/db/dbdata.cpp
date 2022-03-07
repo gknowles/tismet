@@ -277,10 +277,11 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
         assert(updated);
     }
 
-#ifndef NDEBUG
-    auto fp = txn.viewPage<DbPageHeader>(pgno);
-    assert(fp->type == DbPageType::kInvalid || fp->type == DbPageType::kFree);
-#endif
+    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
+        auto fp = txn.viewPage<DbPageHeader>(pgno);
+        assert(fp->type == DbPageType::kInvalid 
+            || fp->type == DbPageType::kFree);
+    }
     return pgno;
 }
 
@@ -337,6 +338,30 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     }
 }
 
+//===========================================================================
+void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
+    scoped_lock lk{m_pageMut};
+    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
+        auto fp = txn.viewPage<DbPageHeader>(pgno);
+        assert(fp->type != DbPageType::kInvalid 
+            && fp->type != DbPageType::kFree);
+    }
+    assert(m_deprecatedStoreRoot);
+    [[maybe_unused]] bool updated =
+        bitUpsert(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, true);
+    assert(updated);
+    updated = m_deprecatedPages.insert(pgno);
+    assert(updated);
+}
+
+//===========================================================================
+void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
+    freePage(txn, pgno);
+    scoped_lock lk{m_pageMut};
+    bool updated = m_deprecatedPages.erase(pgno);
+    assert(updated);
+}
+
 
 /****************************************************************************
 *
@@ -349,14 +374,9 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
 namespace {
 
-struct FullPageInitRec {
+struct TagRootUpdateRec {
     DbLog::Record hdr;
-    DbPageType type;
-    uint32_t id;
-    uint16_t dataLen;
-
-    // EXTENDS BEYOND END OF STRUCT
-    uint8_t data[1];
+    pgno_t rootPage;
 };
 
 } // namespace
@@ -371,25 +391,17 @@ static DbLogRecInfo::Table s_dataRecInfo = {
             args.notify->onLogApplyZeroInit(args.page);
         },
     },
+    { kRecTypeTagRootUpdate,
+        DbLogRecInfo::sizeFn<TagRootUpdateRec>,
+        [](auto args) {
+            auto rec = reinterpret_cast<const TagRootUpdateRec *>(args.log);
+            args.notify->onLogApplyTagRootUpdate(args.page, rec->rootPage);
+        },
+    },
     { kRecTypePageFree,
         DbLogRecInfo::sizeFn<DbLog::Record>,
         [](auto args) {
             args.notify->onLogApplyPageFree(args.page);
-        },
-    },
-    { kRecTypeFullPage,
-        [](auto & log) -> uint16_t {    // size
-            auto & rec = reinterpret_cast<const FullPageInitRec &>(log);
-            return offsetof(FullPageInitRec, data) + rec.dataLen;
-        },
-        [](auto args) {
-            auto rec = reinterpret_cast<const FullPageInitRec *>(args.log);
-            args.notify->onLogApplyFullPageInit(
-                args.page,
-                rec->type,
-                rec->id,
-                {rec->data, rec->dataLen}
-            );
         },
     },
 };
@@ -408,31 +420,16 @@ void DbTxn::logZeroInit(pgno_t pgno) {
 }
 
 //===========================================================================
-void DbTxn::logPageFree(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
-    log(rec, bytes);
+void DbTxn::logTagRootUpdate(pgno_t pgno, pgno_t rootPage) {
+    auto [rec, bytes] = alloc<TagRootUpdateRec>(kRecTypeTagRootUpdate, pgno);
+    rec->rootPage = rootPage;
+    log(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logFullPageInit(
-    pgno_t pgno, 
-    DbPageType type, 
-    uint32_t id, 
-    std::span<uint8_t> data
-) {
-    auto extra = data.size();
-    auto offset = offsetof(FullPageInitRec, data);
-    assert(offset + extra <= pageSize());
-    auto [rec, bytes] = alloc<FullPageInitRec>(
-        kRecTypeFullPage,
-        pgno,
-        offset + extra
-    );
-    rec->type = type;
-    rec->id = id;
-    rec->dataLen = (uint16_t) extra;
-    memcpy(rec->data, data.data(), extra);
-    log(&rec->hdr, bytes);
+void DbTxn::logPageFree(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
+    log(rec, bytes);
 }
 
 
@@ -472,29 +469,16 @@ void DbData::onLogApplyZeroInit(void * ptr) {
 }
 
 //===========================================================================
+void DbData::onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
+    auto zp = static_cast<ZeroPage *>(ptr);
+    assert(zp->hdr.type == DbPageType::kZero);
+    zp->metricTagStoreRoot = rootPage;
+}
+
+//===========================================================================
 void DbData::onLogApplyPageFree(void * ptr) {
     auto fp = static_cast<FreePage *>(ptr);
     assert(fp->hdr.type != DbPageType::kInvalid
         && fp->hdr.type != DbPageType::kFree);
     fp->hdr.type = DbPageType::kFree;
-}
-
-//===========================================================================
-void DbData::onLogApplyFullPageInit(
-    void * ptr,
-    DbPageType type,
-    uint32_t id,
-    std::span<const uint8_t> data
-) {
-    auto hdr = static_cast<DbPageHeader *>(ptr);
-    auto offset = sizeof *hdr + data.size();
-    assert(offset <= m_pageSize);
-    if (hdr->type == DbPageType::kFree) {
-        memset((char *) hdr + offset, 0, m_pageSize - offset);
-    } else {
-        assert(hdr->type == DbPageType::kInvalid);
-    }
-    hdr->type = type;
-    hdr->id = id;
-    memcpy(hdr + 1, data.data(), data.size());
 }

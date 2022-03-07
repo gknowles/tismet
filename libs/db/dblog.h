@@ -299,6 +299,7 @@ public:
     virtual void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
 
     virtual void onLogApplyZeroInit(void * ptr) = 0;
+    virtual void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) = 0;
     virtual void onLogApplyPageFree(void * ptr) = 0;
     virtual void onLogApplyFullPageInit(
         void * ptr,

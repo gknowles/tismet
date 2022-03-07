@@ -31,6 +31,7 @@
 # libs/db/dbmetricdata.cpp
 # libs/db/dbmetriclog.cpp
 # libs/db/dbpage.cpp
+# libs/db/dbpageheap.cpp
 # libs/db/dbradix.cpp
 # libs/db/dbview.cpp
 # libs/db/pch.cpp

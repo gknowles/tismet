@@ -36,6 +36,7 @@ private:
     void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
     void onLogApplyZeroInit(void * ptr) override;
+    void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
     void onLogApplyPageFree(void * ptr) override;
     void onLogApplyFullPageInit(
         void * ptr,
@@ -187,6 +188,11 @@ void TextWriter::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) {
 //===========================================================================
 void TextWriter::onLogApplyZeroInit(void * ptr) {
     out(ptr) << "zero.init\n";
+}
+
+//===========================================================================
+void TextWriter::onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
+    out(ptr) << "zero.tagRoot = " << rootPage << '\n';
 }
 
 //===========================================================================

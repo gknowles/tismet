@@ -17,6 +17,7 @@ enum DbLogRecType : int8_t {
     kRecTypeTxnCommit           = 3,  // [N/A]
 
     kRecTypeZeroInit            = 4,  // [master]
+    kRecTypeTagRootUpdate       = 7,  // [master] rootPage
     kRecTypePageFree            = 5,  // [any]
     kRecTypeFullPage            = 16, // [any] id, data
     kRecTypeBitInit             = 17, // [bitmap] pos
@@ -64,8 +65,6 @@ enum DbLogRecType : int8_t {
     kRecTypeSampleUpdateInt8LastTxn     = 27,
     kRecTypeSampleUpdateInt16LastTxn    = 29,
     kRecTypeSampleUpdateInt32LastTxn    = 31,
-
-    kRecTypeUnused_7        = 7,   // Available
 
     kRecType_LastAvailable  = 40,
 };
