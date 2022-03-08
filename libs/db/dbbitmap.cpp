@@ -110,17 +110,18 @@ static bool addBits(
     DbTxn & txn, 
     UnsignedSet * out,
     uint32_t index,
-    const DbPageHeader & hdr,
+    pgno_t pgno,
     size_t pageSize
 ) {
-    if (hdr.type != DbPageType::kBitmap) {
-        logMsgError() << "Bad bitmap page #" << hdr.pgno << ", type"
-            << (unsigned) hdr.type;
+    auto hdr = txn.viewPage<DbPageHeader>(pgno);
+    if (hdr->type != DbPageType::kBitmap) {
+        logMsgError() << "Bad bitmap page #" << pgno << ", type"
+            << (unsigned) hdr->type;
         return false;
     }
     auto bpp = bitmapBitsPerPage(pageSize);
     index *= (uint32_t) bpp;
-    auto bits = bitmapView(const_cast<DbPageHeader *>(&hdr), pageSize);
+    auto bits = bitmapView(const_cast<DbPageHeader *>(hdr), pageSize);
     for (auto first = bits.find(0); first != bits.npos; ) {
         auto last = bits.findZero(first);
         if (last == bits.npos)
@@ -136,8 +137,8 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
     return radixVisit(
         txn, 
         root, 
-        [out, pageSize = m_pageSize](DbTxn & txn, auto index, auto & hdr) {
-            return addBits(txn, out, index, hdr, pageSize);
+        [out, pageSize = m_pageSize](DbTxn & txn, auto index, auto pgno) {
+            return addBits(txn, out, index, pgno, pageSize);
     });
 }
 

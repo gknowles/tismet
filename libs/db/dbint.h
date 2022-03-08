@@ -582,7 +582,7 @@ private:
     bool loadMetric(
         DbTxn & txn,
         IDbDataNotify * notify,
-        const DbPageHeader & hdr
+        pgno_t pgno
     );
     bool loadMetrics(DbTxn & txn, IDbDataNotify * notify);
     void metricDestructPage(DbTxn & txn, pgno_t pgno);
@@ -635,7 +635,7 @@ private:
     bool radixVisit(
         DbTxn & txn,
         pgno_t root,
-        const std::function<bool(DbTxn&, uint32_t, const DbPageHeader&)> & fn
+        const std::function<bool(DbTxn&, uint32_t, pgno_t)> & fn
     );
 
     bool bitUpsert(

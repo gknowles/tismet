@@ -82,7 +82,7 @@ struct DbData::SamplePage {
 static auto & s_perfCount = uperf("db.metrics (total)");
 
 static auto & s_perfAncient = uperf("db.samples ignored (old)");
-static auto & s_perfDup = uperf("db.samples ignored (same)");
+static auto & s_perfDup = uperf("db.samples ignored (dup)");
 static auto & s_perfChange = uperf("db.samples changed");
 static auto & s_perfAdd = uperf("db.samples added");
 
@@ -203,7 +203,7 @@ size_t DbData::metricNameSize(size_t pageSize) {
 }
 
 //===========================================================================
-void DbData::metricDestructPage (DbTxn & txn, pgno_t pgno) {
+void DbData::metricDestructPage(DbTxn & txn, pgno_t pgno) {
     auto mp = txn.viewPage<MetricPage>(pgno);
     radixDestruct(txn, mp->hdr);
 
@@ -214,43 +214,39 @@ void DbData::metricDestructPage (DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-bool DbData::loadMetric(
-    DbTxn & txn,
-    IDbDataNotify * notify,
-    const DbPageHeader & hdr
-) {
-    if (hdr.type != DbPageType::kMetric) {
-        logMsgError() << "Bad metric page #" << hdr.pgno << ", type "
-            << (unsigned) hdr.type;
+bool DbData::loadMetric(DbTxn & txn, IDbDataNotify * notify, pgno_t pgno) {
+    auto mp = txn.viewPage<MetricPage>(pgno);
+    if (mp->hdr.type != DbPageType::kMetric) {
+        logMsgError() << "Bad metric page #" << pgno << ", type "
+            << (unsigned) mp->hdr.type;
         return false;
     }
-    auto & mp = reinterpret_cast<const DbData::MetricPage &>(hdr);
     if (notify) {
         DbSeriesInfo info;
-        info.id = mp.hdr.id;
-        info.name = mp.name;
-        info.type = mp.sampleType;
-        info.last = info.first + mp.retention;
-        info.interval = mp.interval;
+        info.id = mp->hdr.id;
+        info.name = mp->name;
+        info.type = mp->sampleType;
+        info.last = info.first + mp->retention;
+        info.interval = mp->interval;
         if (!notify->onDbSeriesStart(info))
             return false;
     }
     pgno_t lastPage;
-    if (!radixFind(txn, &lastPage, hdr.pgno, mp.lastPagePos)
-        && !empty(mp.lastPageFirstTime)
+    if (!radixFind(txn, &lastPage, pgno, mp->lastPagePos)
+        && !empty(mp->lastPageFirstTime)
     ) {
         return false;
     }
     if (appStopping())
         return false;
 
-    if (m_metricPos.size() <= hdr.id)
-        m_metricPos.resize(hdr.id + 1);
-    auto & mi = m_metricPos[hdr.id];
-    mi.infoPage = hdr.pgno;
-    mi.interval = mp.interval;
+    if (m_metricPos.size() <= mp->hdr.id)
+        m_metricPos.resize(mp->hdr.id + 1);
+    auto & mi = m_metricPos[mp->hdr.id];
+    mi.infoPage = pgno;
+    mi.interval = mp->interval;
     mi.lastPage = lastPage;
-    mi.sampleType = mp.sampleType;
+    mi.sampleType = mp->sampleType;
 
     s_perfCount += 1;
     m_numMetrics += 1;
@@ -258,15 +254,12 @@ bool DbData::loadMetric(
 }
 
 //===========================================================================
-bool DbData::loadMetrics (
-    DbTxn & txn,
-    IDbDataNotify * notify
-) {
+bool DbData::loadMetrics(DbTxn & txn, IDbDataNotify * notify) {
     return radixVisit(
         txn, 
         m_metricStoreRoot,
-        [notify, this](DbTxn & txn, auto index, auto & hdr) {
-            return loadMetric(txn, notify, hdr);
+        [notify, this](DbTxn & txn, auto index, auto pgno) {
+            return loadMetric(txn, notify, pgno);
         }
     );
 }
@@ -903,11 +896,7 @@ static void setSample(T * out, double value) {
 }
 
 //===========================================================================
-static void setSample(
-    DbData::SamplePage * sp,
-    size_t pos,
-    double value
-) {
+static void setSample(DbData::SamplePage * sp, size_t pos, double value) {
     switch (sp->sampleType) {
     case kSampleTypeFloat32:
         return setSample(sp->samples.f32 + pos, value);
@@ -926,11 +915,7 @@ static void setSample(
 
 //===========================================================================
 template<typename T>
-static void setSamples(
-    T * out,
-    size_t count,
-    double value
-) {
+static void setSamples(T * out, size_t count, double value) {
     if (count) {
         setSample(out, value);
         for (auto i = 1; i < count; ++i)
@@ -1241,10 +1226,7 @@ uint16_t DbData::entriesPerMetricPage(size_t pageSize) {
 
 //===========================================================================
 // static
-DbData::RadixData * DbData::radixData(
-    MetricPage * mp, 
-    size_t pageSize
-) {
+DbData::RadixData * DbData::radixData(MetricPage * mp, size_t pageSize) {
     auto ents = entriesPerMetricPage(pageSize);
     auto off = offsetof(RadixData, pages) + ents * sizeof(*RadixData::pages);
     auto ptr = (char *) mp + pageSize - off;

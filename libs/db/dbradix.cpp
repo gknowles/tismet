@@ -278,28 +278,24 @@ bool DbData::radixFind(
 static bool radixVisit(
     DbTxn & txn,
     uint32_t index,
-    const DbPageHeader & hdr,
-    const function<bool(DbTxn&, uint32_t index, const DbPageHeader&)> & fn,
+    pgno_t root,
+    const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn,
     size_t pageSize
 ) {
-    if (index == 0xffff'ffff) {
-        // Always continue from root page.
-        index = 0;
-    } else if (hdr.type == DbPageType::kRadix) {
-        // Always continue from radix page.
-    } else {
-        return fn(txn, index, hdr);
-    }
-
-    auto rd = DbData::radixData(&hdr, pageSize);
+    auto hdr = txn.viewPage<DbPageHeader>(root);
+    auto rd = DbData::radixData(hdr, pageSize);
     uint32_t step = 1;
     for (auto i = 0; i < rd->height; ++i) 
         step *= rd->numPages;
     for (auto && pgno : *rd) {
         if (pgno) {
-            auto p = txn.viewPage<DbPageHeader>(pgno);
-            if (!radixVisit(txn, index, *p, fn, pageSize))
-                return false;
+            if (rd->height == 0) {
+                if (!fn(txn, index, pgno))
+                    return false;
+            } else {
+                if (!radixVisit(txn, index, pgno, fn, pageSize))
+                    return false;
+            }
         }
         index += step;
     }
@@ -310,10 +306,9 @@ static bool radixVisit(
 bool DbData::radixVisit(
     DbTxn & txn,
     pgno_t root,
-    const function<bool(DbTxn&, uint32_t index, const DbPageHeader&)> & fn
+    const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn
 ) {
-    auto hdr = txn.viewPage<DbPageHeader>(root);
-    return ::radixVisit(txn, 0xffff'ffff, *hdr, fn, m_pageSize);
+    return ::radixVisit(txn, 0, root, fn, m_pageSize);
 }
 
 

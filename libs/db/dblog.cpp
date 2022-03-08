@@ -1149,7 +1149,7 @@ void DbLog::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
         return;
 
     // FIXME: It is somehow possible for this to trigger. It did once when 
-    // running "tsm db" with last and m_stableLsn both equal to 4272.
+    // running "tst db" with last and m_stableLsn both equal to 4272.
     assert(last > m_stableLsn);
 
     m_stableLsn = last;

@@ -264,9 +264,9 @@ public:
 
     // Reports the stable LSN and the additional bytes of WAL that were written
     // to get there. A LSN is stable when all transactions that include logs at
-    // or earlier than it have been either rolled back or been committed and
-    // have had all of their logs (including any after this LSN!) written to
-    // stable storage.
+    // or earlier than it have been either rolled back or committed and have 
+    // had all of their logs (including ones after this LSN!) written to stable 
+    // storage.
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.
