@@ -97,7 +97,7 @@ private:
     uint64_t m_instance{0};
 };
 
-// returns true if found
+// Returns true if found.
 bool dbFindMetric(uint32_t * out, DbHandle h, std::string_view name);
 
 void dbFindMetrics(
@@ -107,14 +107,14 @@ void dbFindMetrics(
 );
 const char * dbGetMetricName(DbHandle h, uint32_t id);
 
-// Returns true if it completed synchronously
+// Returns true if it completed synchronously.
 bool dbGetMetricInfo(
     IDbDataNotify * notify,
     DbHandle h,
     uint32_t id
 );
 
-// returns true if inserted, false if it already existed, sets out either way
+// Returns true if inserted, false if it already existed, sets out either way.
 bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
 
 void dbEraseMetric(DbHandle h, uint32_t id);
@@ -133,7 +133,7 @@ void dbUpdateMetric(
     const DbMetricInfo & info
 );
 
-// returns all branches containing metrics that match the pattern
+// Returns all branches containing metrics that match the pattern.
 void dbFindBranches(
     Dim::UnsignedSet * out,
     DbHandle h,
@@ -165,7 +165,7 @@ struct DbSeriesInfo {
     Dim::TimePoint last; // time of first interval after the end
     Dim::Duration interval{};
 };
-// Used in callback from dbGetMetricInfo()
+// Used in callback from dbGetMetricInfo().
 struct DbSeriesInfoEx : DbSeriesInfo {
     DbSeriesInfoEx() { infoEx = true; }
     Dim::Duration retention{};
@@ -186,7 +186,9 @@ struct IDbDataNotify {
         uint32_t id,
         Dim::TimePoint time,
         double value
-    ) { return false; }
+    ) { 
+        return false; 
+    }
 };
 // Returns true if it completed synchronously, false if the request was
 // queued.
@@ -224,7 +226,7 @@ struct IDbProgressNotify {
     ) = 0;
 };
 
-// returns false if backup is already running
+// Returns false if backup is already running.
 bool dbBackup(IDbProgressNotify * notify, DbHandle h, std::string_view dst);
 
 void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
