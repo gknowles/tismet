@@ -358,7 +358,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
     freePage(txn, pgno);
     scoped_lock lk{m_pageMut};
-    bool updated = m_deprecatedPages.erase(pgno);
+    [[maybe_unused]] bool updated = m_deprecatedPages.erase(pgno);
     assert(updated);
 }
 
