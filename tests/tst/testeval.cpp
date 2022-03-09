@@ -236,10 +236,21 @@ void UnitTest::onTest(DbHandle h) {
     bool matched = equal(
         m_out.begin(), m_out.end(),
         m_found.begin(), m_found.end(),
-        [](auto & a, auto & b) { return a == b; }
+        [](auto & a, auto & b) { 
+            if (a == b)
+                return true;
+            auto secs = duration_cast<duration<double>>(b.interval).count();
+            logMsgInfo() << "Found: " << b.name << ", time=" << b.first 
+                << ", interval=" << secs << 's';
+            auto os = logMsgInfo();
+            os << "Found: " << b.samples.size() << " values";
+            for (auto&& val : b.samples) 
+                os << ", " << val;
+            return false;
+        }
     );
     if (!matched) {
-        if (m_errmsg.size())
+        if (m_errmsg.size()) 
             logMsgInfo() << m_errmsg;
         logMsgError() << "Query failed, " << m_query;
     }
