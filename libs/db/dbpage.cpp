@@ -57,7 +57,7 @@ static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
 static auto & s_perfAmortized = uperf("db.work pages (amortized)");
 static auto & s_perfWrites = uperf("db.work writes (total)");
-static auto & s_perfStableBytes = uperf("db.work stable bytes");
+static auto & s_perfDurableBytes = uperf("db.wal durable bytes");
 static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
 
 
@@ -214,7 +214,7 @@ bool DbPage::openWork(string_view workfile) {
 //===========================================================================
 DbConfig DbPage::configure(const DbConfig & conf) {
     // checkpoint configuration is assumed to have already been validated
-    // by DbLog.
+    // by DbWal.
     assert(conf.checkpointMaxInterval.count());
     assert(conf.checkpointMaxData);
 
@@ -236,8 +236,8 @@ void DbPage::close() {
     m_freeInfos.clear();
     m_currentWal.clear();
     m_overflowWal.clear();
-    m_stableBytes = 0;
-    m_overflowBytes = 0;
+    m_durableWalBytes = 0;
+    m_overflowWalBytes = 0;
 
     m_vdata.close();
     fileClose(m_fdata);
@@ -262,27 +262,27 @@ void DbPage::close() {
 ***/
 
 //===========================================================================
-void DbPage::onLogStable(uint64_t lsn, size_t bytes) {
+void DbPage::onWalDurable(uint64_t lsn, size_t bytes) {
     unique_lock lk{m_workMut};
-    m_stableLsn = lsn;
+    m_durableLsn = lsn;
     if (bytes) {
-        s_perfStableBytes += (unsigned) bytes;
+        s_perfDurableBytes += (unsigned) bytes;
         s_perfReqWalPages += 1;
-        m_stableBytes += bytes;
+        m_durableWalBytes += bytes;
     }
     m_currentWal.push_back({lsn, timeNow(), bytes});
-    while (m_stableBytes - m_overflowBytes > m_maxDirtyData) {
+    while (m_durableWalBytes - m_overflowWalBytes > m_maxDirtyData) {
         auto wi = m_currentWal.front();
         m_overflowWal.push_back(wi);
         m_currentWal.pop_front();
-        m_overflowBytes += wi.bytes;
+        m_overflowWalBytes += wi.bytes;
     }
 
     queueSaveWork_LK();
 }
 
 //===========================================================================
-uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
+uint64_t DbPage::onWalCheckpointPages(uint64_t lsn) {
     {
         scoped_lock lk{m_workMut};
         if (!m_overflowWal.empty()) {
@@ -301,12 +301,12 @@ uint64_t DbPage::onLogCheckpointPages(uint64_t lsn) {
 
 //===========================================================================
 Duration DbPage::untilNextSave_LK() {
-    if (m_oldPages && m_stableLsn >= m_oldPages.front()->hdr->lsn)
+    if (m_oldPages && m_durableLsn >= m_oldPages.front()->hdr->lsn)
         return 0ms;
     if (!m_dirtyPages)
         return kTimerInfinite;
     auto front = m_dirtyPages.front();
-    if (m_overflowBytes && m_stableLsn >= front->hdr->lsn)
+    if (m_overflowWalBytes && m_durableLsn >= front->hdr->lsn)
         return 0ms;
 
     auto minTime = timeNow() - m_maxDirtyAge;
@@ -348,7 +348,7 @@ void DbPage::saveWork() {
     }
 
     auto minTime = now - m_maxDirtyAge;
-    auto minDataLsn = m_overflowBytes
+    auto minDataLsn = m_overflowWalBytes
         ? m_currentWal.front().lsn
         : 0;
     size_t minSaves = 1;
@@ -387,7 +387,7 @@ void DbPage::saveWork() {
         pi->flags.reset(fDbPageDirty);
         s_perfDirtyPages -= 1;
 
-        if (pi->hdr->lsn > m_stableLsn) {
+        if (pi->hdr->lsn > m_durableLsn) {
             auto npi = allocWorkInfo_LK();
             m_oldPages.link(npi);
             npi->hdr = dupPage_LK(pi->hdr);
@@ -427,7 +427,7 @@ void DbPage::saveOldPages_LK() {
     List<WorkPageInfo> pages;
     uint64_t savedLsn = 0;
     while (auto pi = m_oldPages.front()) {
-        if (pi->hdr->lsn > m_stableLsn)
+        if (pi->hdr->lsn > m_durableLsn)
             break;
         savedLsn = pi->firstLsn;
         pages.link(pi);
@@ -474,7 +474,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         }
         m_overflowWal.pop_front();
     }
-    m_overflowBytes -= bytes;
+    m_overflowWalBytes -= bytes;
 
     if (m_overflowWal.empty()) {
         while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
@@ -500,8 +500,8 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         }
     }
 
-    s_perfStableBytes -= (unsigned) bytes;
-    m_stableBytes -= bytes;
+    s_perfDurableBytes -= (unsigned) bytes;
+    m_durableWalBytes -= bytes;
     s_perfReqWalPages -= (unsigned) pages;
     m_pageDebt -= debt;
     s_perfAmortized -= (unsigned) debt;
@@ -563,7 +563,7 @@ void DbPage::freeWorkInfo_LK(WorkPageInfo * pi) {
 }
 
 //===========================================================================
-void * DbPage::onLogGetRedoPtr(
+void * DbPage::onWalGetRedoPtr(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
@@ -585,7 +585,7 @@ void * DbPage::onLogGetRedoPtr(
 }
 
 //===========================================================================
-void * DbPage::onLogGetUpdatePtr(
+void * DbPage::onWalGetUpdatePtr(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn

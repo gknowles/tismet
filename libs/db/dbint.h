@@ -78,7 +78,7 @@ public:
 *
 ***/
 
-class DbPage : public DbLog::IPageNotify {
+class DbPage : public DbWal::IPageNotify {
 public:
     DbPage();
     ~DbPage();
@@ -113,15 +113,15 @@ private:
     WorkPageInfo * allocWorkInfo_LK();
     void freeWorkInfo_LK(WorkPageInfo * pi);
 
-    // Inherited by DbLog::IPageNotify
-    void * onLogGetUpdatePtr(
+    // Inherited by DbWal::IPageNotify
+    void * onWalGetUpdatePtr(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t txn
     ) override;
-    void * onLogGetRedoPtr(pgno_t pgno, uint64_t lsn, uint16_t txn) override;
-    void onLogStable(uint64_t lsn, size_t bytes) override;
-    uint64_t onLogCheckpointPages(uint64_t lsn) override;
+    void * onWalGetRedoPtr(pgno_t pgno, uint64_t lsn, uint16_t txn) override;
+    void onWalDurable(uint64_t lsn, size_t bytes) override;
+    uint64_t onWalCheckpointPages(uint64_t lsn) override;
 
     Dim::Duration untilNextSave_LK();
     void queueSaveWork_LK();
@@ -156,8 +156,10 @@ private:
     // List of all dirty pages in order of when they became dirty as measured
     // by LSN (and therefore also time).
     Dim::List<WorkPageInfo> m_dirtyPages;
-    // Static copies of old versions of dirty pages, that aren't yet stable,
-    // waiting to be written.
+    // Static copies of old versions of dirty pages waiting for their
+    // modifying LSNs to become durable so that they can be saved. These
+    // copies are made so pages that are updated faster than LSNs are saved
+    // can eventually be saved.
     Dim::List<WorkPageInfo> m_oldPages;
     // Clean pages that were recently dirty in the order they became clean.
     Dim::List<WorkPageInfo> m_cleanPages;
@@ -173,30 +175,30 @@ private:
     // The LSN up to which all data can be safely recovered. All WAL for any
     // transaction, that has not been rolled back and includes logs from this
     // or any previous LSN, has been persisted to stable storage.
-    uint64_t m_stableLsn{0};
+    uint64_t m_durableLsn{0};
 
     // Info about WAL pages that have been persisted but with some or all of
     // their corresponding data pages still dirty. Used to pace the speed at
     // which dirty pages are written.
     struct WalPageInfo {
         uint64_t lsn; // first LSN on the page
-        Dim::TimePoint time; // time page became stable
+        Dim::TimePoint time; // time page became durable
         size_t bytes; // bytes on the page
     };
-    // Stable WAL pages that are within the "checkpoint bytes" threshold
+    // Durable WAL pages that are within the "checkpoint bytes" threshold
     std::deque<WalPageInfo> m_currentWal;
-    // Stable WAL pages older than the "checkpoint bytes" threshold
+    // Durable WAL pages older than the "checkpoint bytes" threshold
     std::deque<WalPageInfo> m_overflowWal;
     // Sum of bytes in overflow WAL pages
-    size_t m_overflowBytes{0};
-    // Sum of bytes in all stable WAL pages (both current and overflow)
-    size_t m_stableBytes{0};
+    size_t m_overflowWalBytes = 0;
+    // Sum of bytes in all durable WAL pages (both current and overflow)
+    size_t m_durableWalBytes = 0;
 
     DbReadView m_vdata;
     Dim::FileHandle m_fdata;
     DbWriteView m_vwork;
     Dim::FileHandle m_fwork;
-    size_t m_workPages{0};
+    size_t m_workPages = 0;
     Dim::UnsignedSet m_freeWorkPages;
 
     Dim::TimerProxy m_saveTimer;
@@ -211,11 +213,11 @@ private:
 *
 ***/
 
-enum DbLogRecType : int8_t;
+enum DbWalRecType : int8_t;
 
 class DbTxn {
 public:
-    DbTxn(DbLog & log, DbPage & page);
+    DbTxn(DbWal & wal, DbPage & page);
     ~DbTxn();
 
     template<typename T> const T * viewPage(pgno_t pgno) const;
@@ -223,41 +225,41 @@ public:
     size_t numPages() const { return m_page.size(); }
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
 
-    void logZeroInit(pgno_t pgno);
-    void logTagRootUpdate(pgno_t pgno, pgno_t rootPage);
-    void logPageFree(pgno_t pgno);
+    void walZeroInit(pgno_t pgno);
+    void walTagRootUpdate(pgno_t pgno, pgno_t rootPage);
+    void walPageFree(pgno_t pgno);
 
     std::pair<void *, size_t> allocFullPage(pgno_t pgno, size_t bytes);
     // "bytes" must be less or equal to amount passed in to preceding 
     // allocFullPage() call.
-    void logFullPageInit(DbPageType type, uint32_t id, size_t bytes);
+    void walFullPageInit(DbPageType type, uint32_t id, size_t bytes);
 
-    void logFullPageInit(
+    void walFullPageInit(
         pgno_t pgno, 
         DbPageType type, 
         uint32_t id, 
         std::span<uint8_t> data
     );
 
-    void logRadixInit(
+    void walRadixInit(
         pgno_t pgno,
         uint32_t id,
         uint16_t height,
         const pgno_t * firstPage,
         const pgno_t * lastPage
     );
-    void logRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
-    void logRadixPromote(pgno_t pgno, pgno_t refPage);
-    void logRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
-    void logBitInit(
+    void walRadixErase(pgno_t pgno, size_t firstPos, size_t lastPos);
+    void walRadixPromote(pgno_t pgno, pgno_t refPage);
+    void walRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
+    void walBitInit(
         pgno_t, 
         uint32_t id, 
         uint32_t base, 
         bool fill, 
         size_t pos = -1
     );
-    void logBitUpdate(pgno_t, size_t firstPos, size_t lastPos, bool value);
-    void logMetricInit(
+    void walBitUpdate(pgno_t, size_t firstPos, size_t lastPos, bool value);
+    void walMetricInit(
         pgno_t pgno,
         uint32_t id,
         std::string_view name,
@@ -266,30 +268,30 @@ public:
         Dim::Duration retention,
         Dim::Duration interval
     );
-    void logMetricUpdate(
+    void walMetricUpdate(
         pgno_t pgno,
         Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     );
-    void logMetricClearSamples(pgno_t pgno);
-    void logMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample);
-    void logMetricUpdateSamples(
+    void walMetricClearSamples(pgno_t pgno);
+    void walMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample);
+    void walMetricUpdateSamples(
         pgno_t pgno,
         size_t refPos,
         Dim::TimePoint refTime,
         size_t refSample,
         pgno_t refPage
     );
-    void logSampleInit(
+    void walSampleInit(
         pgno_t pgno,
         uint32_t id,
         DbSampleType sampleType,
         Dim::TimePoint pageTime,
         size_t lastSample
     );
-    void logSampleInit(
+    void walSampleInit(
         pgno_t pgno,
         uint32_t id,
         DbSampleType sampleType,
@@ -297,36 +299,36 @@ public:
         size_t lastSample,
         double fill
     );
-    void logSampleUpdateTxn(
+    void walSampleUpdateTxn(
         pgno_t pgno,
         size_t pos,
         double value,
         bool updateLast
     );
-    void logSampleUpdate(
+    void walSampleUpdate(
         pgno_t pgno,
         size_t firstSample,
         size_t lastSample,
         double value,
         bool updateLast
     );
-    void logSampleUpdateTime(pgno_t pgno, Dim::TimePoint pageTime);
+    void walSampleUpdateTime(pgno_t pgno, Dim::TimePoint pageTime);
 
 private:
     template<typename T>
     std::pair<T *, size_t> alloc(
-        DbLogRecType type,
+        DbWalRecType type,
         pgno_t pgno,
         size_t bytes = sizeof(T)
     );
     std::pair<void *, size_t> alloc(
-        DbLogRecType type,
+        DbWalRecType type,
         pgno_t pgno,
         size_t bytes
     );
-    void log(DbLog::Record * rec, size_t bytes);
+    void wal(DbWal::Record * rec, size_t bytes);
 
-    DbLog & m_log;
+    DbWal & m_wal;
     DbPage & m_page;
     uint64_t m_txn{0};
     std::string m_buffer;
@@ -335,7 +337,7 @@ private:
 //===========================================================================
 template<typename T>
 const T * DbTxn::viewPage(pgno_t pgno) const {
-    auto lsn = DbLog::getLsn(m_txn);
+    auto lsn = DbWal::getLsn(m_txn);
     auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         // Must start with and be layout compatible with DbPageHeader
@@ -349,7 +351,7 @@ const T * DbTxn::viewPage(pgno_t pgno) const {
 //===========================================================================
 template<typename T>
 std::pair<T *, size_t> DbTxn::alloc(
-    DbLogRecType type,
+    DbWalRecType type,
     pgno_t pgno,
     size_t bytes
 ) {
@@ -396,7 +398,7 @@ private:
 *
 ***/
 
-class DbData : public DbLog::IApplyNotify, public Dim::HandleContent {
+class DbData : public DbWal::IApplyNotify, public Dim::HandleContent {
 public:
     struct ZeroPage;
     struct FreePage;
@@ -446,7 +448,7 @@ public:
 public:
     ~DbData();
 
-    // Allows updates from DbLog to be applied, pageSize *MUST* match page
+    // Allows updates from DbWal to be applied, pageSize *MUST* match page
     // size of existing data file.
     void openForApply(size_t pageSize, Dim::EnumFlags<DbOpenFlags> flags);
 
@@ -488,51 +490,51 @@ public:
     );
 
     // Inherited via IApplyNotify
-    void onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
-    void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
-    void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
-    void onLogApplyZeroInit(void * ptr) override;
-    void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
-    void onLogApplyPageFree(void * ptr) override;
-    void onLogApplyFullPageInit(
+    void onWalApplyZeroInit(void * ptr) override;
+    void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
+    void onWalApplyPageFree(void * ptr) override;
+    void onWalApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,
         std::span<const uint8_t> data
     ) override;
-    void onLogApplyRadixInit(
+    void onWalApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
         const pgno_t * firstPgno,
         const pgno_t * lastPgno
     ) override;
-    void onLogApplyRadixErase(
+    void onWalApplyRadixErase(
         void * ptr,
         size_t firstPos,
         size_t lastPos
     ) override;
-    void onLogApplyRadixPromote(void * ptr, pgno_t refPage) override;
-    void onLogApplyRadixUpdate(
+    void onWalApplyRadixPromote(void * ptr, pgno_t refPage) override;
+    void onWalApplyRadixUpdate(
         void * ptr,
         size_t pos,
         pgno_t refPage
     ) override;
-    void onLogApplyBitInit(
+    void onWalApplyBitInit(
         void * ptr,
         uint32_t id,
         uint32_t base,
         bool fill,
         uint32_t pos
     ) override;
-    void onLogApplyBitUpdate(
+    void onWalApplyBitUpdate(
         void * ptr,
         uint32_t firstPos,
         uint32_t lastPos,
         bool value
     ) override;
-    void onLogApplyMetricInit(
+    void onWalApplyMetricInit(
         void * ptr,
         uint32_t id,
         std::string_view name,
@@ -541,22 +543,22 @@ public:
         Dim::Duration retention,
         Dim::Duration interval
     ) override;
-    void onLogApplyMetricUpdate(
+    void onWalApplyMetricUpdate(
         void * ptr,
         Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     ) override;
-    void onLogApplyMetricClearSamples(void * ptr);
-    void onLogApplyMetricUpdateSamples(
+    void onWalApplyMetricClearSamples(void * ptr);
+    void onWalApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
         Dim::TimePoint refTime,
         size_t refSample,
         pgno_t refPage
     ) override;
-    void onLogApplySampleInit(
+    void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
         DbSampleType sampleType,
@@ -564,14 +566,14 @@ public:
         size_t lastSample,
         double fill
     ) override;
-    void onLogApplySampleUpdate(
+    void onWalApplySampleUpdate(
         void * ptr,
         size_t firstPos,
         size_t lastPos,
         double value,
         bool updateLast
     ) override;
-    void onLogApplySampleUpdateTime(
+    void onWalApplySampleUpdateTime(
         void * ptr,
         Dim::TimePoint pageTime
     ) override;

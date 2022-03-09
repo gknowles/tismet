@@ -138,7 +138,7 @@ void DbData::radixErase(
                 pages.push_back(p);
         }
         if (!pages.empty()) {
-            txn.logRadixErase(hdr->pgno, rpos, lastPagePos);
+            txn.walRadixErase(hdr->pgno, rpos, lastPagePos);
             for (auto&& p : pages)
                 freePage(txn, p);
         }
@@ -169,14 +169,14 @@ bool DbData::radixInsertOrAssign(
     count -= 1;
     while (rd->height < count) {
         auto pgno = allocPgno(txn);
-        txn.logRadixInit(
+        txn.walRadixInit(
             pgno,
             id,
             rd->height,
             rd->pages,
             rd->pages + rd->numPages
         );
-        txn.logRadixPromote(root, pgno);
+        txn.walRadixPromote(root, pgno);
         hdr = txn.viewPage<DbPageHeader>(root);
         rd = radixData(hdr, m_pageSize);
     }
@@ -186,14 +186,14 @@ bool DbData::radixInsertOrAssign(
         auto pgno = rd->pages[pos];
         if (!pgno) {
             pgno = allocPgno(txn);
-            txn.logRadixInit(
+            txn.walRadixInit(
                 pgno,
                 id,
                 rd->height - 1,
                 nullptr,
                 nullptr
             );
-            txn.logRadixUpdate(hdr->pgno, pos, pgno);
+            txn.walRadixUpdate(hdr->pgno, pos, pgno);
         }
         hdr = txn.viewPage<DbPageHeader>(pgno);
         rd = radixData(hdr, m_pageSize);
@@ -204,7 +204,7 @@ bool DbData::radixInsertOrAssign(
     auto oval = rd->pages[*d];
     auto inserted = !oval;
     if (oval != value)
-        txn.logRadixUpdate(hdr->pgno, *d, value);
+        txn.walRadixUpdate(hdr->pgno, *d, value);
     return inserted;
 }
 
@@ -314,7 +314,7 @@ bool DbData::radixVisit(
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbWalRecInfo
 *
 ***/
 
@@ -326,12 +326,12 @@ namespace {
 //---------------------------------------------------------------------------
 // Radix
 struct RadixInitRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     uint16_t height;
 };
 struct RadixInitListRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     uint16_t height;
     uint16_t numPages;
@@ -340,16 +340,16 @@ struct RadixInitListRec {
     pgno_t pages[1];
 };
 struct RadixEraseRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t firstPos;
     uint16_t lastPos;
 };
 struct RadixPromoteRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     pgno_t refPage;
 };
 struct RadixUpdateRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t refPos;
     pgno_t refPage;
 };
@@ -359,12 +359,12 @@ struct RadixUpdateRec {
 #pragma pack(pop)
 
 
-static DbLogRecInfo::Table s_radixRecInfo = {
+static DbWalRecInfo::Table s_radixRecInfo = {
     { kRecTypeRadixInit,
-        DbLogRecInfo::sizeFn<RadixInitRec>,
+        DbWalRecInfo::sizeFn<RadixInitRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const RadixInitRec *>(args.log);
-            args.notify->onLogApplyRadixInit(
+            auto rec = reinterpret_cast<const RadixInitRec *>(args.rec);
+            args.notify->onWalApplyRadixInit(
                 args.page,
                 rec->id,
                 rec->height,
@@ -374,14 +374,14 @@ static DbLogRecInfo::Table s_radixRecInfo = {
         },
     },
     { kRecTypeRadixInitList,
-        [](const DbLog::Record & log) -> uint16_t {
-            auto & rec = reinterpret_cast<const RadixInitListRec &>(log);
+        [](const DbWal::Record & raw) -> uint16_t {
+            auto & rec = reinterpret_cast<const RadixInitListRec &>(raw);
             return offsetof(RadixInitListRec, pages)
                 + rec.numPages * sizeof(*rec.pages);
         },
         [](auto args) {
-            auto rec = reinterpret_cast<const RadixInitListRec *>(args.log);
-            args.notify->onLogApplyRadixInit(
+            auto rec = reinterpret_cast<const RadixInitListRec *>(args.rec);
+            args.notify->onWalApplyRadixInit(
                 args.page,
                 rec->id,
                 rec->height,
@@ -391,10 +391,10 @@ static DbLogRecInfo::Table s_radixRecInfo = {
         },
     },
     { kRecTypeRadixErase,
-        DbLogRecInfo::sizeFn<RadixEraseRec>,
+        DbWalRecInfo::sizeFn<RadixEraseRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const RadixEraseRec *>(args.log);
-            args.notify->onLogApplyRadixErase(
+            auto rec = reinterpret_cast<const RadixEraseRec *>(args.rec);
+            args.notify->onWalApplyRadixErase(
                 args.page,
                 rec->firstPos,
                 rec->lastPos
@@ -402,17 +402,17 @@ static DbLogRecInfo::Table s_radixRecInfo = {
         },
     },
     { kRecTypeRadixPromote,
-        DbLogRecInfo::sizeFn<RadixPromoteRec>,
+        DbWalRecInfo::sizeFn<RadixPromoteRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const RadixPromoteRec *>(args.log);
-            args.notify->onLogApplyRadixPromote(args.page, rec->refPage);
+            auto rec = reinterpret_cast<const RadixPromoteRec *>(args.rec);
+            args.notify->onWalApplyRadixPromote(args.page, rec->refPage);
         },
     },
     { kRecTypeRadixUpdate,
-        DbLogRecInfo::sizeFn<RadixUpdateRec>,
+        DbWalRecInfo::sizeFn<RadixUpdateRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const RadixUpdateRec *>(args.log);
-            args.notify->onLogApplyRadixUpdate(
+            auto rec = reinterpret_cast<const RadixUpdateRec *>(args.rec);
+            args.notify->onWalApplyRadixUpdate(
                 args.page, 
                 rec->refPos, 
                 rec->refPage
@@ -429,7 +429,7 @@ static DbLogRecInfo::Table s_radixRecInfo = {
 ***/
 
 //===========================================================================
-void DbTxn::logRadixInit(
+void DbTxn::walRadixInit(
     pgno_t pgno,
     uint32_t id,
     uint16_t height,
@@ -440,7 +440,7 @@ void DbTxn::logRadixInit(
         auto [rec, bytes] = alloc<RadixInitRec>(kRecTypeRadixInit, pgno);
         rec->id = id;
         rec->height = height;
-        log(&rec->hdr, bytes);
+        wal(&rec->hdr, bytes);
         return;
     }
 
@@ -457,11 +457,11 @@ void DbTxn::logRadixInit(
     rec->height = height;
     rec->numPages = (uint16_t) count;
     memcpy(rec->pages, firstPage, extra);
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logRadixErase(
+void DbTxn::walRadixErase(
     pgno_t pgno,
     size_t firstPos,
     size_t lastPos
@@ -469,18 +469,18 @@ void DbTxn::logRadixErase(
     auto [rec, bytes] = alloc<RadixEraseRec>(kRecTypeRadixErase, pgno);
     rec->firstPos = (uint16_t) firstPos;
     rec->lastPos = (uint16_t) lastPos;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logRadixPromote(pgno_t pgno, pgno_t refPage) {
+void DbTxn::walRadixPromote(pgno_t pgno, pgno_t refPage) {
     auto [rec, bytes] = alloc<RadixPromoteRec>(kRecTypeRadixPromote, pgno);
     rec->refPage = refPage;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logRadixUpdate(
+void DbTxn::walRadixUpdate(
     pgno_t pgno,
     size_t refPos,
     pgno_t refPage
@@ -488,18 +488,18 @@ void DbTxn::logRadixUpdate(
     auto [rec, bytes] = alloc<RadixUpdateRec>(kRecTypeRadixUpdate, pgno);
     rec->refPos = (uint16_t) refPos;
     rec->refPage = refPage;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 
 /****************************************************************************
 *
-*   Radix log apply
+*   Radix wal apply
 *
 ***/
 
 //===========================================================================
-void DbData::onLogApplyRadixInit(
+void DbData::onWalApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
@@ -523,7 +523,7 @@ void DbData::onLogApplyRadixInit(
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixErase(
+void DbData::onWalApplyRadixErase(
     void * ptr,
     size_t firstPos,
     size_t lastPos
@@ -537,7 +537,7 @@ void DbData::onLogApplyRadixErase(
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixPromote(void * ptr, pgno_t refPage) {
+void DbData::onWalApplyRadixPromote(void * ptr, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == DbPageType::kMetric || hdr->type == DbPageType::kRadix);
     auto rd = radixData(hdr, m_pageSize);
@@ -547,7 +547,7 @@ void DbData::onLogApplyRadixPromote(void * ptr, pgno_t refPage) {
 }
 
 //===========================================================================
-void DbData::onLogApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
+void DbData::onWalApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
     assert(hdr->type == DbPageType::kMetric || hdr->type == DbPageType::kRadix);
     auto rd = radixData(hdr, m_pageSize);

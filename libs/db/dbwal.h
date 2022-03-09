@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017 - 2022.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dblog.h - tismet db
+// dbwal.h - tismet db
 #pragma once
 
 #include "core/core.h"
@@ -28,14 +28,14 @@ constexpr Dim::Duration kDefaultMaxCheckpointInterval = (std::chrono::hours) 1;
 
 /****************************************************************************
 *
-*   DbLog
+*   DbWal
 *
 ***/
 
-enum DbLogRecType : int8_t;
+enum DbWalRecType : int8_t;
 class DbData;
 
-class DbLog : Dim::IFileWriteNotify {
+class DbWal : Dim::IFileWriteNotify {
 public:
     enum class Buffer : int;
     enum class Checkpoint : int;
@@ -43,19 +43,19 @@ public:
     class IApplyNotify;
 
     struct Record;
-    static uint16_t getSize(const Record & log);
-    static pgno_t getPgno(const Record & log);
-    static uint16_t getLocalTxn(const Record & log);
-    static void setLocalTxn(Record * log, uint16_t localTxn);
+    static uint16_t getSize(const Record & rec);
+    static pgno_t getPgno(const Record & rec);
+    static uint16_t getLocalTxn(const Record & rec);
+    static void setLocalTxn(Record * rec, uint16_t localTxn);
 
-    static uint64_t getLsn(uint64_t logPos);
-    static uint16_t getLocalTxn(uint64_t logPos);
+    static uint64_t getLsn(uint64_t walPos);
+    static uint16_t getLocalTxn(uint64_t walPos);
     static uint64_t getTxn(uint64_t lsn, uint16_t localTxn);
 
     struct PageInfo {
         pgno_t pgno;
         uint64_t firstLsn;
-        uint16_t numLogs;
+        uint16_t numRecs;
 
         unsigned activeTxns;
         std::vector<std::pair<
@@ -65,8 +65,8 @@ public:
     };
 
 public:
-    DbLog(IApplyNotify * data, IPageNotify * page);
-    ~DbLog();
+    DbWal(IApplyNotify * data, IPageNotify * page);
+    ~DbWal();
 
     // pageSize is only applied if new files are being created, 0 defaults to 
     // the same size as memory pages.
@@ -83,7 +83,7 @@ public:
         // apply logic.
         fRecoverIncompleteTxns = 0x01,
 
-        // Include log records from before the last checkpoint, also only for
+        // Include wal records from before the last checkpoint, also only for
         // WAL dump tool.
         fRecoverBeforeCheckpoint = 0x02,
     };
@@ -98,10 +98,10 @@ public:
     void checkpoint();
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
 
-    void logAndApply(uint64_t txn, Record * log, size_t bytes);
+    void walAndApply(uint64_t txn, Record * rec, size_t bytes);
 
-    // Queues task to be run after the indicated LSN is committed to stable
-    // storage.
+    // Queues task to be run after the indicated LSN becomes durable (is 
+    // committed to stable storage).
     void queueTask(
         Dim::ITaskNotify * task,
         uint64_t waitLsn,
@@ -109,9 +109,9 @@ public:
     );
 
     size_t dataPageSize() const { return m_pageSize / 2; }
-    size_t logPageSize() const { return m_pageSize; }
+    size_t walPageSize() const { return m_pageSize; }
 
-    Dim::FileHandle logFile() const { return m_flog; }
+    Dim::FileHandle walFile() const { return m_fwal; }
     bool newFiles() const { return m_newFiles; }
 
 private:
@@ -120,23 +120,23 @@ private:
 
     void onFileWrite(const Dim::FileWriteData & data) override;
 
-    bool loadPages(Dim::FileHandle flog);
+    bool loadPages(Dim::FileHandle fwal);
 
-    void logCommitCheckpoint(uint64_t startLsn);
-    uint64_t logBeginTxn(uint16_t localTxn);
-    void logCommit(uint64_t txn);
+    void walCommitCheckpoint(uint64_t startLsn);
+    uint64_t walBeginTxn(uint16_t localTxn);
+    void walCommit(uint64_t txn);
 
     // returns LSN
     enum class TxnMode { kBegin, kContinue, kCommit };
-    uint64_t log(
-        const Record & log,
+    uint64_t wal(
+        const Record & rec,
         size_t bytes,
         TxnMode txnMode,
         uint64_t txn = 0
     );
 
     void prepareBuffer_LK(
-        const Record & log,
+        const Record & rec,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
@@ -144,14 +144,14 @@ private:
     void countCommitTxn_LK(uint64_t txn);
     void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
     void checkpointPages();
-    void checkpointStableCommit();
+    void checkpointDurableCommit();
     void checkpointTruncateCommit();
     void checkpointWaitForNext();
     void flushWriteBuffer();
 
     struct AnalyzeData;
-    void applyAll(AnalyzeData * data, Dim::FileHandle flog);
-    void apply(AnalyzeData * data, uint64_t lsn, const Record & log);
+    void applyAll(AnalyzeData * data, Dim::FileHandle fwal);
+    void apply(AnalyzeData * data, uint64_t lsn, const Record & rec);
     void applyCommitCheckpoint(
         AnalyzeData * data,
         uint64_t lsn,
@@ -159,13 +159,13 @@ private:
     );
     void applyBeginTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
     void applyCommitTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
-    void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & log);
+    void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & rec);
 
-    void applyUpdate(void * page, uint64_t lsn, const Record & log);
+    void applyUpdate(void * page, uint64_t lsn, const Record & rec);
 
     IApplyNotify * m_data;
     IPageNotify * m_page;
-    Dim::FileHandle m_flog;
+    Dim::FileHandle m_fwal;
     bool m_closing{false};
     bool m_newFiles{false}; // did the open create new data files?
     Dim::EnumFlags<DbOpenFlags> m_openFlags{};
@@ -184,19 +184,19 @@ private:
     Dim::Duration m_maxCheckpointInterval = kDefaultMaxCheckpointInterval;
     Dim::TimerProxy m_checkpointTimer;
     Dim::TaskProxy m_checkpointPagesTask;
-    Dim::TaskProxy m_checkpointStableCommitTask;
+    Dim::TaskProxy m_checkpointDurableCommitTask;
     Checkpoint m_phase{};
 
     // Checkpoint blocks prevent checkpoints from occurring so that backups
     // can be done safely.
     std::vector<IDbProgressNotify *> m_checkpointBlocks;
 
-    // last started (perhaps unfinished) checkpoint
+    // Last started (perhaps unfinished) checkpoint.
     Dim::TimePoint m_checkpointStart;
-    uint64_t m_checkpointLsn{0};
+    uint64_t m_checkpointLsn = 0;
 
-    // last known durably saved
-    uint64_t m_stableLsn{0};
+    // Last known durably saved.
+    uint64_t m_durableLsn = 0;
 
     struct LsnTaskInfo {
         Dim::ITaskNotify * notify;
@@ -228,120 +228,120 @@ private:
 };
 
 //===========================================================================
-inline bool operator<(const DbLog::PageInfo & a, const DbLog::PageInfo & b) {
+inline bool operator<(const DbWal::PageInfo & a, const DbWal::PageInfo & b) {
     return a.firstLsn < b.firstLsn;
 }
 
 
 /****************************************************************************
 *
-*   DbLog::IPageNotify
+*   DbWal::IPageNotify
 *
 ***/
 
-class DbLog::IPageNotify {
+class DbWal::IPageNotify {
 public:
     virtual ~IPageNotify() = default;
 
     // Returns content of page that will be updated in place by applying the
     // action already recorded at the specified LSN. The pgno and lsn fields of
     // the buffer must be set before returning.
-    virtual void * onLogGetUpdatePtr(
+    virtual void * onWalGetUpdatePtr(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
 
-    // Similar to onLogGetUpdatePtr, except that if the page has already been
+    // Similar to onWalGetUpdatePtr, except that if the page has already been
     // updated no action is taken and null is returned. A page is considered
     // to have been updated if the on page LSN is greater or equal to the LSN
     // of the update.
-    virtual void * onLogGetRedoPtr(
+    virtual void * onWalGetRedoPtr(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
 
-    // Reports the stable LSN and the additional bytes of WAL that were written
-    // to get there. A LSN is stable when all transactions that include logs at
-    // or earlier than it have been either rolled back or committed and have 
-    // had all of their logs (including ones after this LSN!) written to stable 
-    // storage.
+    // Reports the durable LSN and the additional bytes of WAL that were 
+    // written to get there. A LSN is durable when all transactions that 
+    // include logs at or earlier than it have been either rolled back or 
+    // committed and have had all of their logs (including ones after this 
+    // LSN!) written to stable storage.
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.
-    virtual void onLogStable(uint64_t lsn, size_t bytes) {}
+    virtual void onWalDurable(uint64_t lsn, size_t bytes) {}
 
-    // The stable LSN is passed in, and the first stable LSN that still has
+    // The durable LSN is passed in, and the first durable LSN that still has
     // volatile (not yet persisted to stable storage) data pages associated
     // with it is returned.
     //
     // Upon return, all WAL prior to the returned LSN may be purged.
-    virtual uint64_t onLogCheckpointPages(uint64_t lsn) { return lsn; }
+    virtual uint64_t onWalCheckpointPages(uint64_t lsn) { return lsn; }
 };
 
 
 /****************************************************************************
 *
-*   DbLog::IApplyNotify
+*   DbWal::IApplyNotify
 *
 ***/
 
-class DbLog::IApplyNotify {
+class DbWal::IApplyNotify {
 public:
     virtual ~IApplyNotify() = default;
 
-    virtual void onLogApplyCommitCheckpoint(
+    virtual void onWalApplyCommitCheckpoint(
         uint64_t lsn,
         uint64_t startLsn
     ) = 0;
-    virtual void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) = 0;
-    virtual void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
+    virtual void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) = 0;
+    virtual void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
 
-    virtual void onLogApplyZeroInit(void * ptr) = 0;
-    virtual void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) = 0;
-    virtual void onLogApplyPageFree(void * ptr) = 0;
-    virtual void onLogApplyFullPageInit(
+    virtual void onWalApplyZeroInit(void * ptr) = 0;
+    virtual void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) = 0;
+    virtual void onWalApplyPageFree(void * ptr) = 0;
+    virtual void onWalApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,
         std::span<const uint8_t> data
     ) = 0;
 
-    virtual void onLogApplyRadixInit(
+    virtual void onWalApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
         const pgno_t * firstPgno,
         const pgno_t * lastPgno
     ) = 0;
-    virtual void onLogApplyRadixErase(
+    virtual void onWalApplyRadixErase(
         void * ptr,
         size_t firstPos,
         size_t lastPos
     ) = 0;
-    virtual void onLogApplyRadixPromote(void * ptr, pgno_t refPage) = 0;
-    virtual void onLogApplyRadixUpdate(
+    virtual void onWalApplyRadixPromote(void * ptr, pgno_t refPage) = 0;
+    virtual void onWalApplyRadixUpdate(
         void * ptr,
         size_t pos,
         pgno_t refPage
     ) = 0;
 
-    virtual void onLogApplyBitInit(
+    virtual void onWalApplyBitInit(
         void * ptr,
         uint32_t id,
         uint32_t base,
         bool fill,
         uint32_t pos
     ) = 0;
-    virtual void onLogApplyBitUpdate(
+    virtual void onWalApplyBitUpdate(
         void * ptr,
         uint32_t firstPos,
         uint32_t lastPos,
         bool value
     ) = 0;
 
-    virtual void onLogApplyMetricInit(
+    virtual void onWalApplyMetricInit(
         void * ptr,
         uint32_t id,
         std::string_view name,
@@ -350,22 +350,22 @@ public:
         Dim::Duration retention,
         Dim::Duration interval
     ) = 0;
-    virtual void onLogApplyMetricUpdate(
+    virtual void onWalApplyMetricUpdate(
         void * ptr,
         Dim::TimePoint creation,
         DbSampleType sampleType,
         Dim::Duration retention,
         Dim::Duration interval
     ) = 0;
-    virtual void onLogApplyMetricClearSamples(void * ptr) = 0;
-    virtual void onLogApplyMetricUpdateSamples(
+    virtual void onWalApplyMetricClearSamples(void * ptr) = 0;
+    virtual void onWalApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
         Dim::TimePoint refTime,
         size_t refSample,
         pgno_t refPage
     ) = 0;
-    virtual void onLogApplySampleInit(
+    virtual void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
         DbSampleType sampleType,
@@ -373,14 +373,14 @@ public:
         size_t lastSample,
         double fill
     ) = 0;
-    virtual void onLogApplySampleUpdate(
+    virtual void onWalApplySampleUpdate(
         void * ptr,
         size_t firstPos,
         size_t lastPos,
         double value,
         bool updateLast
     ) = 0;
-    virtual void onLogApplySampleUpdateTime(
+    virtual void onWalApplySampleUpdateTime(
         void * ptr,
         Dim::TimePoint pageTime
     ) = 0;

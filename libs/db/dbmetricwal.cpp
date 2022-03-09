@@ -1,7 +1,7 @@
 // Copyright Glen Knowles 2017 - 2022.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dbmetriclog.cpp - tismet db
+// dbmetricwal.cpp - tismet db
 #include "pch.h"
 #pragma hdrstop
 
@@ -23,7 +23,7 @@ namespace {
 //---------------------------------------------------------------------------
 // Metric
 struct MetricInitRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     DbSampleType sampleType;
     Duration retention;
@@ -34,19 +34,19 @@ struct MetricInitRec {
     char name[1]; // has terminating null
 };
 struct MetricUpdateRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     TimePoint creation;
     DbSampleType sampleType;
     Duration retention;
     Duration interval;
 };
 struct MetricUpdatePosRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t refPos;
     TimePoint refTime;
 };
 struct MetricUpdatePosAndIndexRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t refPos;
     TimePoint refTime;
     pgno_t refPage;
@@ -54,17 +54,17 @@ struct MetricUpdatePosAndIndexRec {
 
 // Also an implicit transaction, non-standard format
 struct MetricUpdateSampleTxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t refSample;
 };
 
 struct MetricUpdateSampleRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t refSample;
 };
 struct MetricUpdateSampleAndIndexRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t refPos;
     TimePoint refTime;
     uint16_t refSample;
@@ -74,14 +74,14 @@ struct MetricUpdateSampleAndIndexRec {
 //---------------------------------------------------------------------------
 // Sample
 struct SampleInitRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     DbSampleType sampleType;
     TimePoint pageTime;
     uint16_t lastSample;
 };
 struct SampleInitFillRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     DbSampleType sampleType;
     TimePoint pageTime;
@@ -89,43 +89,43 @@ struct SampleInitFillRec {
     double value;
 };
 struct SampleUpdateRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint16_t firstSample;
     uint16_t lastSample;
     double value;
 };
 struct SampleUpdateTimeRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     TimePoint pageTime;
 };
 
 // Update (with or without last) is also an implicit transaction
 struct SampleUpdateFloat64TxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t pos;
     double value;
 };
 struct SampleUpdateFloat32TxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t pos;
     float value;
 };
 struct SampleUpdateInt32TxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t pos;
     int32_t value;
 };
 struct SampleUpdateInt16TxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t pos;
     int16_t value;
 };
 struct SampleUpdateInt8TxnRec {
-    DbLogRecType type;
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t pos;
     int8_t value;
@@ -138,21 +138,21 @@ struct SampleUpdateInt8TxnRec {
 
 /****************************************************************************
 *
-*   DbLogRecInfo - Metric
+*   DbWalRecInfo - Metric
 *
 ***/
 
 //===========================================================================
-static uint16_t sizeMetricInit(const DbLog::Record & log) {
-    auto & rec = reinterpret_cast<const MetricInitRec &>(log);
+static uint16_t sizeMetricInit(const DbWal::Record & raw) {
+    auto & rec = reinterpret_cast<const MetricInitRec &>(raw);
     return offsetof(MetricInitRec, name)
         + (uint16_t) strlen(rec.name) + 1;
 }
 
 //===========================================================================
-static void applyMetricInit(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricInitRec *>(args.log);
-    args.notify->onLogApplyMetricInit(
+static void applyMetricInit(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricInitRec *>(args.rec);
+    args.notify->onWalApplyMetricInit(
         args.page,
         rec->id,
         rec->name,
@@ -164,9 +164,9 @@ static void applyMetricInit(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricUpdate(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateRec *>(args.log);
-    args.notify->onLogApplyMetricUpdate(
+static void applyMetricUpdate(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdate(
         args.page,
         rec->creation,
         rec->sampleType,
@@ -176,14 +176,14 @@ static void applyMetricUpdate(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricClearSamples(const DbLogApplyArgs & args) {
-    args.notify->onLogApplyMetricClearSamples(args.page);
+static void applyMetricClearSamples(const DbWalApplyArgs & args) {
+    args.notify->onWalApplyMetricClearSamples(args.page);
 }
 
 //===========================================================================
-static void applyMetricUpdatePos(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdatePosRec *>(args.log);
-    args.notify->onLogApplyMetricUpdateSamples(
+static void applyMetricUpdatePos(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdatePosRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdateSamples(
         args.page,
         rec->refPos,
         rec->refTime,
@@ -193,9 +193,9 @@ static void applyMetricUpdatePos(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricUpdatePosAndIndex(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdatePosAndIndexRec *>(args.log);
-    args.notify->onLogApplyMetricUpdateSamples(
+static void applyMetricUpdatePosAndIndex(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdatePosAndIndexRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdateSamples(
         args.page,
         rec->refPos,
         rec->refTime,
@@ -205,9 +205,9 @@ static void applyMetricUpdatePosAndIndex(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricUpdateSampleTxn(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleTxnRec *>(args.log);
-    args.notify->onLogApplyMetricUpdateSamples(
+static void applyMetricUpdateSampleTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleTxnRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdateSamples(
         args.page,
         (size_t) -1,
         {},
@@ -217,9 +217,9 @@ static void applyMetricUpdateSampleTxn(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricUpdateSample(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleRec *>(args.log);
-    args.notify->onLogApplyMetricUpdateSamples(
+static void applyMetricUpdateSample(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdateSamples(
         args.page,
         (size_t) -1,
         {},
@@ -229,9 +229,9 @@ static void applyMetricUpdateSample(const DbLogApplyArgs & args) {
 }
 
 //===========================================================================
-static void applyMetricUpdateSampleAndIndex(const DbLogApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec *>(args.log);
-    args.notify->onLogApplyMetricUpdateSamples(
+static void applyMetricUpdateSampleAndIndex(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec *>(args.rec);
+    args.notify->onWalApplyMetricUpdateSamples(
         args.page,
         rec->refPos,
         rec->refTime,
@@ -240,37 +240,37 @@ static void applyMetricUpdateSampleAndIndex(const DbLogApplyArgs & args) {
     );
 }
 
-static DbLogRecInfo::Table s_metricRecInfo {
+static DbWalRecInfo::Table s_metricRecInfo {
     { kRecTypeMetricInit,
         sizeMetricInit,
         applyMetricInit,
     },
     { kRecTypeMetricUpdate,
-        DbLogRecInfo::sizeFn<MetricUpdateRec>,
+        DbWalRecInfo::sizeFn<MetricUpdateRec>,
         applyMetricUpdate,
     },
     { kRecTypeMetricClearSamples,
-        DbLogRecInfo::sizeFn<DbLog::Record>,
+        DbWalRecInfo::sizeFn<DbWal::Record>,
         applyMetricClearSamples,
     },
     { kRecTypeMetricUpdatePos,
-        DbLogRecInfo::sizeFn<MetricUpdatePosRec>,
+        DbWalRecInfo::sizeFn<MetricUpdatePosRec>,
         applyMetricUpdatePos,
     },
     { kRecTypeMetricUpdatePosAndIndex,
-        DbLogRecInfo::sizeFn<MetricUpdatePosAndIndexRec>,
+        DbWalRecInfo::sizeFn<MetricUpdatePosAndIndexRec>,
         applyMetricUpdatePosAndIndex,
     },
     { kRecTypeMetricUpdateSampleTxn,
-        DbLogRecInfo::sizeFn<MetricUpdateSampleTxnRec>,
+        DbWalRecInfo::sizeFn<MetricUpdateSampleTxnRec>,
         applyMetricUpdateSampleTxn,
     },
     { kRecTypeMetricUpdateSample,
-        DbLogRecInfo::sizeFn<MetricUpdateSampleRec>,
+        DbWalRecInfo::sizeFn<MetricUpdateSampleRec>,
         applyMetricUpdateSample,
     },
     { kRecTypeMetricUpdateSampleAndIndex,
-        DbLogRecInfo::sizeFn<MetricUpdateSampleAndIndexRec>,
+        DbWalRecInfo::sizeFn<MetricUpdateSampleAndIndexRec>,
         applyMetricUpdateSampleAndIndex,
     },
 };
@@ -278,14 +278,14 @@ static DbLogRecInfo::Table s_metricRecInfo {
 
 /****************************************************************************
 *
-*   DbLogRecInfo - Sample
+*   DbWalRecInfo - Sample
 *
 ***/
 
 //===========================================================================
-APPLY(SampleInit) {
-    auto rec = reinterpret_cast<const SampleInitRec *>(args.log);
-    args.notify->onLogApplySampleInit(
+static void applySampleInit(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleInitRec *>(args.rec);
+    args.notify->onWalApplySampleInit(
         args.page,
         rec->id,
         rec->sampleType,
@@ -296,9 +296,9 @@ APPLY(SampleInit) {
 }
 
 //===========================================================================
-APPLY(SampleInitFill) {
-    auto rec = reinterpret_cast<const SampleInitFillRec *>(args.log);
-    args.notify->onLogApplySampleInit(
+static void applySampleInitFill(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleInitFillRec *>(args.rec);
+    args.notify->onWalApplySampleInit(
         args.page,
         rec->id,
         rec->sampleType,
@@ -309,9 +309,9 @@ APPLY(SampleInitFill) {
 }
 
 //===========================================================================
-APPLY(SampleUpdate) {
-    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdate(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->firstSample,
         rec->lastSample,
@@ -321,9 +321,9 @@ APPLY(SampleUpdate) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateLast) {
-    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateLast(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->firstSample,
         rec->lastSample,
@@ -333,15 +333,15 @@ APPLY(SampleUpdateLast) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateTime) {
-    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.log);
-    args.notify->onLogApplySampleUpdateTime(args.page, rec->pageTime);
+static void applySampleUpdateTime(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.rec);
+    args.notify->onWalApplySampleUpdateTime(args.page, rec->pageTime);
 }
 
 //===========================================================================
-APPLY(SampleUpdateFloat32Txn) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateFloat32Txn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -351,9 +351,9 @@ APPLY(SampleUpdateFloat32Txn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateFloat64Txn) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateFloat64Txn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -363,9 +363,9 @@ APPLY(SampleUpdateFloat64Txn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt8Txn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt8Txn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -375,9 +375,9 @@ APPLY(SampleUpdateInt8Txn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt16Txn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt16Txn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -387,9 +387,9 @@ APPLY(SampleUpdateInt16Txn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt32Txn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt32Txn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -399,9 +399,9 @@ APPLY(SampleUpdateInt32Txn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateFloat32LastTxn) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateFloat32LastTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -411,9 +411,9 @@ APPLY(SampleUpdateFloat32LastTxn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateFloat64LastTxn) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateFloat64LastTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -423,9 +423,9 @@ APPLY(SampleUpdateFloat64LastTxn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt8LastTxn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt8LastTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -435,9 +435,9 @@ APPLY(SampleUpdateInt8LastTxn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt16LastTxn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt16LastTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -447,9 +447,9 @@ APPLY(SampleUpdateInt16LastTxn) {
 }
 
 //===========================================================================
-APPLY(SampleUpdateInt32LastTxn) {
-    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.log);
-    args.notify->onLogApplySampleUpdate(
+static void applySampleUpdateInt32LastTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.rec);
+    args.notify->onWalApplySampleUpdate(
         args.page,
         rec->pos,
         rec->pos,
@@ -459,65 +459,65 @@ APPLY(SampleUpdateInt32LastTxn) {
 }
 
 
-static DbLogRecInfo::Table s_sampleRecInfo{
+static DbWalRecInfo::Table s_sampleRecInfo{
     { kRecTypeSampleInit,
-        DbLogRecInfo::sizeFn<SampleInitRec>,
+        DbWalRecInfo::sizeFn<SampleInitRec>,
         applySampleInit,
     },
     { kRecTypeSampleInitFill,
-        DbLogRecInfo::sizeFn<SampleInitFillRec>,
+        DbWalRecInfo::sizeFn<SampleInitFillRec>,
         applySampleInitFill,
     },
     { kRecTypeSampleUpdate,
-        DbLogRecInfo::sizeFn<SampleUpdateRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateRec>,
         applySampleUpdate,
     },
     { kRecTypeSampleUpdateLast,
-        DbLogRecInfo::sizeFn<SampleUpdateRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateRec>,
         applySampleUpdateLast,
     },
     { kRecTypeSampleUpdateTime,
-        DbLogRecInfo::sizeFn<SampleUpdateTimeRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
         applySampleUpdateTime,
     },
     { kRecTypeSampleUpdateFloat32Txn,
-        DbLogRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
         applySampleUpdateFloat32Txn,
     },
     { kRecTypeSampleUpdateFloat64Txn,
-        DbLogRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
         applySampleUpdateFloat64Txn,
     },
     { kRecTypeSampleUpdateInt8Txn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
         applySampleUpdateInt8Txn,
     },
     { kRecTypeSampleUpdateInt16Txn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
         applySampleUpdateInt16Txn,
     },
     { kRecTypeSampleUpdateInt32Txn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
         applySampleUpdateInt32Txn,
     },
     { kRecTypeSampleUpdateFloat32LastTxn,
-        DbLogRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
         applySampleUpdateFloat32LastTxn,
     },
     { kRecTypeSampleUpdateFloat64LastTxn,
-        DbLogRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
         applySampleUpdateFloat64LastTxn,
     },
     { kRecTypeSampleUpdateInt8LastTxn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
         applySampleUpdateInt8LastTxn,
     },
     { kRecTypeSampleUpdateInt16LastTxn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
         applySampleUpdateInt16LastTxn,
     },
     { kRecTypeSampleUpdateInt32LastTxn,
-        DbLogRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
+        DbWalRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
         applySampleUpdateInt32LastTxn,
     },
 };
@@ -530,7 +530,7 @@ static DbLogRecInfo::Table s_sampleRecInfo{
 ***/
 
 //===========================================================================
-void DbTxn::logMetricInit(
+void DbTxn::walMetricInit(
     pgno_t pgno,
     uint32_t id,
     string_view name,
@@ -553,11 +553,11 @@ void DbTxn::logMetricInit(
     rec->creation = creation;
     memcpy(rec->name, name.data(), extra - 1);
     rec->name[extra] = 0;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logMetricUpdate(
+void DbTxn::walMetricUpdate(
     pgno_t pgno,
     TimePoint creation,
     DbSampleType sampleType,
@@ -569,29 +569,29 @@ void DbTxn::logMetricUpdate(
     rec->sampleType = sampleType;
     rec->retention = retention;
     rec->interval = interval;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logMetricClearSamples(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeMetricClearSamples, pgno);
-    log(rec, bytes);
+void DbTxn::walMetricClearSamples(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbWal::Record>(kRecTypeMetricClearSamples, pgno);
+    wal(rec, bytes);
 }
 
 //===========================================================================
-void DbTxn::logMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample) {
+void DbTxn::walMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample) {
     if (m_txn)
-        return logMetricUpdateSamples(pgno, (size_t) -1, {}, refSample, {});
+        return walMetricUpdateSamples(pgno, (size_t) -1, {}, refSample, {});
 
     MetricUpdateSampleTxnRec rec;
     rec.type = kRecTypeMetricUpdateSampleTxn;
     rec.pgno = pgno;
     rec.refSample = (uint16_t) refSample;
-    m_log.logAndApply(0, (DbLog::Record *) &rec, sizeof(rec));
+    m_wal.walAndApply(0, (DbWal::Record *) &rec, sizeof(rec));
 }
 
 //===========================================================================
-void DbTxn::logMetricUpdateSamples(
+void DbTxn::walMetricUpdateSamples(
     pgno_t pgno,
     size_t refPos,
     TimePoint refTime,
@@ -603,7 +603,7 @@ void DbTxn::logMetricUpdateSamples(
         auto [rec, bytes] =
             alloc<MetricUpdateSampleRec>(kRecTypeMetricUpdateSample, pgno);
         rec->refSample = (uint16_t) refSample;
-        return log(&rec->hdr, bytes);
+        return wal(&rec->hdr, bytes);
     }
     if (refSample != -1) {
         assert(refPos != -1);
@@ -615,7 +615,7 @@ void DbTxn::logMetricUpdateSamples(
         rec->refTime = refTime;
         rec->refSample = (uint16_t) refSample;
         rec->refPage = refPage;
-        return log(&rec->hdr, bytes);
+        return wal(&rec->hdr, bytes);
     }
     if (!refPage) {
         assert(refPos != -1 && refSample == -1);
@@ -623,7 +623,7 @@ void DbTxn::logMetricUpdateSamples(
             alloc<MetricUpdatePosRec>(kRecTypeMetricUpdatePos, pgno);
         rec->refPos = (uint16_t) refPos;
         rec->refTime = refTime;
-        return log(&rec->hdr, bytes);
+        return wal(&rec->hdr, bytes);
     }
     assert(refPos != -1);
     auto [rec, bytes] = alloc<MetricUpdatePosAndIndexRec>(
@@ -633,11 +633,11 @@ void DbTxn::logMetricUpdateSamples(
     rec->refPos = (uint16_t) refPos;
     rec->refTime = refTime;
     rec->refPage = refPage;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logSampleInit(
+void DbTxn::walSampleInit(
     pgno_t pgno,
     uint32_t id,
     DbSampleType sampleType,
@@ -649,11 +649,11 @@ void DbTxn::logSampleInit(
     rec->sampleType = sampleType;
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logSampleInit(
+void DbTxn::walSampleInit(
     pgno_t pgno,
     uint32_t id,
     DbSampleType sampleType,
@@ -667,20 +667,20 @@ void DbTxn::logSampleInit(
     rec->pageTime = pageTime;
     rec->lastSample = (uint16_t) lastSample;
     rec->value = fill;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
 // This one is not like the others, it represents a transaction with just
 // a single value update.
-void DbTxn::logSampleUpdateTxn(
+void DbTxn::walSampleUpdateTxn(
     pgno_t pgno,
     size_t pos,
     double value,
     bool updateLast
 ) {
     if (m_txn)
-        return logSampleUpdate(pgno, pos, pos, value, updateLast);
+        return walSampleUpdate(pgno, pos, pos, value, updateLast);
 
     union {
         SampleUpdateFloat32TxnRec f32;
@@ -728,11 +728,11 @@ void DbTxn::logSampleUpdateTxn(
             bytes = sizeof(tmp.i32);
         }
     }
-    m_log.logAndApply(0, (DbLog::Record *) &tmp, bytes);
+    m_wal.walAndApply(0, (DbWal::Record *) &tmp, bytes);
 }
 
 //===========================================================================
-void DbTxn::logSampleUpdate(
+void DbTxn::walSampleUpdate(
     pgno_t pgno,
     size_t firstSample,
     size_t lastSample,
@@ -746,13 +746,13 @@ void DbTxn::logSampleUpdate(
     rec->firstSample = (uint16_t) firstSample;
     rec->lastSample = (uint16_t) lastSample;
     rec->value = value;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
+void DbTxn::walSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
     auto [rec, bytes] = 
         alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }

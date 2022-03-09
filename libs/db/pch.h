@@ -6,7 +6,7 @@
 // Public header
 #include "db/db.h"
 #include "db/dbindex.h"
-#include "db/dblog.h"
+#include "db/dbwal.h"
 
 // External library public headers
 #include "dimcli/cli.h"
@@ -37,4 +37,4 @@
 // External library internal headers
 // Internal headers
 #include "dbint.h"
-#include "dblogint.h"
+#include "dbwalint.h"

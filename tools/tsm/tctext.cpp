@@ -25,57 +25,57 @@ struct CmdOpts {
     CmdOpts();
 };
 
-class TextWriter : public DbLog::IApplyNotify, public DbLog::IPageNotify {
+class TextWriter : public DbWal::IApplyNotify, public DbWal::IPageNotify {
 public:
     TextWriter(ostream & os);
 
 private:
     // Inherited via IApplyNotify
-    void onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
-    void onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
-    void onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
-    void onLogApplyZeroInit(void * ptr) override;
-    void onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
-    void onLogApplyPageFree(void * ptr) override;
-    void onLogApplyFullPageInit(
+    void onWalApplyZeroInit(void * ptr) override;
+    void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
+    void onWalApplyPageFree(void * ptr) override;
+    void onWalApplyFullPageInit(
         void * ptr,
         DbPageType type,
         uint32_t id,
         std::span<const uint8_t> data
     ) override;
-    void onLogApplyRadixInit(
+    void onWalApplyRadixInit(
         void * ptr,
         uint32_t id,
         uint16_t height,
         const pgno_t * firstPgno,
         const pgno_t * lastPgno
     ) override;
-    void onLogApplyRadixErase(
+    void onWalApplyRadixErase(
         void * ptr,
         size_t firstPos,
         size_t lastPos
     ) override;
-    void onLogApplyRadixPromote(void * ptr, pgno_t refPage) override;
-    void onLogApplyRadixUpdate(
+    void onWalApplyRadixPromote(void * ptr, pgno_t refPage) override;
+    void onWalApplyRadixUpdate(
         void * ptr,
         size_t pos,
         pgno_t refPage
     ) override;
-    void onLogApplyBitInit(
+    void onWalApplyBitInit(
         void * ptr,
         uint32_t id,
         uint32_t base,
         bool fill,
         uint32_t pos
     ) override;
-    void onLogApplyBitUpdate(
+    void onWalApplyBitUpdate(
         void * ptr,
         uint32_t firstPos,
         uint32_t lastPos,
         bool value
     ) override;
-    void onLogApplyMetricInit(
+    void onWalApplyMetricInit(
         void * ptr,
         uint32_t id,
         string_view name,
@@ -84,22 +84,22 @@ private:
         Duration retention,
         Duration interval
     ) override;
-    void onLogApplyMetricUpdate(
+    void onWalApplyMetricUpdate(
         void * ptr,
         TimePoint creation,
         DbSampleType sampleType,
         Duration retention,
         Duration interval
     ) override;
-    void onLogApplyMetricClearSamples(void * ptr) override;
-    void onLogApplyMetricUpdateSamples(
+    void onWalApplyMetricClearSamples(void * ptr) override;
+    void onWalApplyMetricUpdateSamples(
         void * ptr,
         size_t pos,
         TimePoint refTime,
         size_t refSample,
         pgno_t refPage
     ) override;
-    void onLogApplySampleInit(
+    void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
         DbSampleType sampleType,
@@ -107,22 +107,22 @@ private:
         size_t lastSample,
         double fill
     ) override;
-    void onLogApplySampleUpdate(
+    void onWalApplySampleUpdate(
         void * ptr,
         size_t firstPos,
         size_t lastPos,
         double value,
         bool updateLast
     ) override;
-    void onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
+    void onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
 
     // Inherited via IPageNotify
-    void * onLogGetUpdatePtr(
+    void * onWalGetUpdatePtr(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) override;
-    void * onLogGetRedoPtr(
+    void * onWalGetRedoPtr(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
@@ -171,37 +171,37 @@ ostream & TextWriter::out(void * ptr) {
 }
 
 //===========================================================================
-void TextWriter::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) {
+void TextWriter::onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) {
     m_os << lsn << '.' << 0 << ": CHECKPOINT.commit = " << startLsn << "\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn) {
+void TextWriter::onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) {
     m_os << lsn << '.' << localTxn << ": txn.begin\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn) {
+void TextWriter::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) {
     m_os << lsn << '.' << localTxn << ": txn.commit\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyZeroInit(void * ptr) {
+void TextWriter::onWalApplyZeroInit(void * ptr) {
     out(ptr) << "zero.init\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
+void TextWriter::onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
     out(ptr) << "zero.tagRoot = " << rootPage << '\n';
 }
 
 //===========================================================================
-void TextWriter::onLogApplyPageFree(void * ptr) {
+void TextWriter::onWalApplyPageFree(void * ptr) {
     out(ptr) << "page.free\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyFullPageInit(
+void TextWriter::onWalApplyFullPageInit(
     void * ptr,
     DbPageType type,
     uint32_t id,
@@ -214,7 +214,7 @@ void TextWriter::onLogApplyFullPageInit(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyRadixInit(
+void TextWriter::onWalApplyRadixInit(
     void * ptr,
     uint32_t id,
     uint16_t height,
@@ -226,7 +226,7 @@ void TextWriter::onLogApplyRadixInit(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyRadixErase(
+void TextWriter::onWalApplyRadixErase(
     void * ptr,
     size_t firstPos,
     size_t lastPos
@@ -239,12 +239,12 @@ void TextWriter::onLogApplyRadixErase(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyRadixPromote(void * ptr, pgno_t refPage) {
+void TextWriter::onWalApplyRadixPromote(void * ptr, pgno_t refPage) {
     out(ptr) << "radix.promote(@" << refPage << ")\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyRadixUpdate(
+void TextWriter::onWalApplyRadixUpdate(
     void * ptr,
     size_t pos,
     pgno_t refPage
@@ -253,7 +253,7 @@ void TextWriter::onLogApplyRadixUpdate(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyBitInit(
+void TextWriter::onWalApplyBitInit(
     void * ptr,
     uint32_t id,
     uint32_t base,
@@ -268,7 +268,7 @@ void TextWriter::onLogApplyBitInit(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyBitUpdate(
+void TextWriter::onWalApplyBitUpdate(
     void * ptr,
     uint32_t firstPos,
     uint32_t lastPos,
@@ -282,7 +282,7 @@ void TextWriter::onLogApplyBitUpdate(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricInit(
+void TextWriter::onWalApplyMetricInit(
     void * ptr,
     uint32_t id,
     string_view name,
@@ -299,7 +299,7 @@ void TextWriter::onLogApplyMetricInit(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricUpdate(
+void TextWriter::onWalApplyMetricUpdate(
     void * ptr,
     TimePoint creation,
     DbSampleType sampleType,
@@ -314,12 +314,12 @@ void TextWriter::onLogApplyMetricUpdate(
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricClearSamples(void * ptr) {
+void TextWriter::onWalApplyMetricClearSamples(void * ptr) {
     out(ptr) << "metric.samples.clear\n";
 }
 
 //===========================================================================
-void TextWriter::onLogApplyMetricUpdateSamples(
+void TextWriter::onWalApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
     TimePoint refTime,
@@ -342,7 +342,7 @@ void TextWriter::onLogApplyMetricUpdateSamples(
 }
 
 //===========================================================================
-void TextWriter::onLogApplySampleInit(
+void TextWriter::onWalApplySampleInit(
     void * ptr,
     uint32_t id,
     DbSampleType sampleType,
@@ -357,7 +357,7 @@ void TextWriter::onLogApplySampleInit(
 }
 
 //===========================================================================
-void TextWriter::onLogApplySampleUpdate(
+void TextWriter::onWalApplySampleUpdate(
     void * ptr,
     size_t firstPos,
     size_t lastPos,
@@ -384,12 +384,12 @@ void TextWriter::onLogApplySampleUpdate(
 }
 
 //===========================================================================
-void TextWriter::onLogApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
+void TextWriter::onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
     out(ptr) << "samples.time = " << pageTime << '\n';
 }
 
 //===========================================================================
-void * TextWriter::onLogGetUpdatePtr(
+void * TextWriter::onWalGetUpdatePtr(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
@@ -399,7 +399,7 @@ void * TextWriter::onLogGetUpdatePtr(
 }
 
 //===========================================================================
-void * TextWriter::onLogGetRedoPtr(
+void * TextWriter::onWalGetRedoPtr(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
@@ -467,12 +467,12 @@ static void textCmd(Cli & cli) {
     logMsgInfo() << "Dumping " << s_opts.tslfile << " to " << s_opts.ofile;
     tcLogStart();
     TextWriter writer(*os);
-    DbLog dlog(&writer, &writer);
-    dlog.open(s_opts.tslfile, fDbOpenReadOnly);
-    EnumFlags flags = DbLog::fRecoverIncompleteTxns;
+    DbWal wal(&writer, &writer);
+    wal.open(s_opts.tslfile, fDbOpenReadOnly);
+    EnumFlags flags = DbWal::fRecoverIncompleteTxns;
     if (s_opts.all)
-        flags |= DbLog::fRecoverBeforeCheckpoint;
-    dlog.recover(flags);
-    dlog.close();
+        flags |= DbWal::fRecoverBeforeCheckpoint;
+    wal.recover(flags);
+    wal.close();
     tcLogShutdown(&s_progress);
 }

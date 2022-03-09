@@ -1,17 +1,17 @@
 // Copyright Glen Knowles 2017 - 2022.
 // Distributed under the Boost Software License, Version 1.0.
 //
-// dblogint.h - tismet db
+// dbwalint.h - tismet db
 #pragma once
 
 
 /****************************************************************************
 *
-*   DbLog::Record
+*   DbWal::Record
 *
 ***/
 
-enum DbLogRecType : int8_t {
+enum DbWalRecType : int8_t {
     kRecTypeCommitCheckpoint    = 1,  // [N/A] startLsn
     kRecTypeTxnBegin            = 2,  // [N/A]
     kRecTypeTxnCommit           = 3,  // [N/A]
@@ -72,53 +72,51 @@ enum DbLogRecType : int8_t {
 #pragma pack(push)
 #pragma pack(1)
 
-struct DbLog::Record {
-    DbLogRecType type;
+struct DbWal::Record {
+    DbWalRecType type;
     pgno_t pgno;
     uint16_t localTxn;
 };
 
 #pragma pack(pop)
 
-#define APPLY(name) static void apply ## name (const DbLogApplyArgs & args)
-
-struct DbLogApplyArgs {
-    DbLog::IApplyNotify * notify;
+struct DbWalApplyArgs {
+    DbWal::IApplyNotify * notify;
     void * page;
-    const DbLog::Record * log;
+    const DbWal::Record * rec;
     uint64_t lsn;
 };
-struct DbLogRecInfo {
+struct DbWalRecInfo {
     class Table;
 
     template<typename T>
-    static uint16_t sizeFn(const DbLog::Record & log);
+    static uint16_t sizeFn(const DbWal::Record & rec);
 
-    static uint16_t defLocalTxnFn(const DbLog::Record & log) {
-        return log.localTxn;
+    static uint16_t defLocalTxnFn(const DbWal::Record & rec) {
+        return rec.localTxn;
     }
-    static pgno_t defPgnoFn(const DbLog::Record & log) {
-        return log.pgno;
+    static pgno_t defPgnoFn(const DbWal::Record & rec) {
+        return rec.pgno;
     }
 
-    DbLogRecType m_type;
+    DbWalRecType m_type;
 
-    uint16_t (*m_size)(const DbLog::Record & log);
+    uint16_t (*m_size)(const DbWal::Record & rec);
 
-    void (*m_apply)(const DbLogApplyArgs & args);
+    void (*m_apply)(const DbWalApplyArgs & args);
 
-    uint16_t (*m_localTxn)(const DbLog::Record & log) = defLocalTxnFn;
+    uint16_t (*m_localTxn)(const DbWal::Record & rec) = defLocalTxnFn;
 
-    pgno_t (*m_pgno)(const DbLog::Record & log) = defPgnoFn;
+    pgno_t (*m_pgno)(const DbWal::Record & rec) = defPgnoFn;
 };
 
-class DbLogRecInfo::Table {
+class DbWalRecInfo::Table {
 public:
-    Table(std::initializer_list<DbLogRecInfo> list);
+    Table(std::initializer_list<DbWalRecInfo> list);
 };
 
 //===========================================================================
 template<typename T>
-uint16_t DbLogRecInfo::sizeFn(const DbLog::Record & log) {
+uint16_t DbWalRecInfo::sizeFn(const DbWal::Record & rec) {
     return sizeof(T);
 }

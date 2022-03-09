@@ -92,14 +92,14 @@ bool DbData::bitUpsert(
                 return true;
             }
         }
-        txn.logBitUpdate(bpno, bpos, bpos + count, value);
+        txn.walBitUpdate(bpno, bpos, bpos + count, value);
     } else {
         if (!value)
             return false;
         bpno = allocPgno(txn);
-        txn.logBitInit(bpno, id, (uint32_t) rpos, false, bpos);
+        txn.walBitInit(bpno, id, (uint32_t) rpos, false, bpos);
         if (count > 1)
-            txn.logBitUpdate(bpno, bpos + 1, bpos + count, true);
+            txn.walBitUpdate(bpno, bpos + 1, bpos + count, true);
         radixInsertOrAssign(txn, root, rpos, bpno);
     }
     return true;
@@ -145,7 +145,7 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbWalRecInfo
 *
 ***/
 
@@ -155,18 +155,18 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
 namespace {
 
 struct BitInitRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t id;
     uint32_t base;
     uint32_t pos;
     bool fill;
 };
 struct BitUpdateRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t pos;
 };
 struct BitUpdateRangeRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     uint32_t firstPos;
     uint32_t lastPos;
     bool value;
@@ -177,12 +177,12 @@ struct BitUpdateRangeRec {
 #pragma pack(pop)
 
 
-static DbLogRecInfo::Table s_bitRecInfo = {
+static DbWalRecInfo::Table s_bitRecInfo = {
     { kRecTypeBitInit,
-        DbLogRecInfo::sizeFn<BitInitRec>,
+        DbWalRecInfo::sizeFn<BitInitRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const BitInitRec *>(args.log);
-            args.notify->onLogApplyBitInit(
+            auto rec = reinterpret_cast<const BitInitRec *>(args.rec);
+            args.notify->onWalApplyBitInit(
                 args.page, 
                 rec->id, 
                 rec->base, 
@@ -192,10 +192,10 @@ static DbLogRecInfo::Table s_bitRecInfo = {
         },
     },
     { kRecTypeBitSet,
-        DbLogRecInfo::sizeFn<BitUpdateRec>,
+        DbWalRecInfo::sizeFn<BitUpdateRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const BitUpdateRec *>(args.log);
-            args.notify->onLogApplyBitUpdate(
+            auto rec = reinterpret_cast<const BitUpdateRec *>(args.rec);
+            args.notify->onWalApplyBitUpdate(
                 args.page, 
                 rec->pos, 
                 rec->pos + 1, 
@@ -204,10 +204,10 @@ static DbLogRecInfo::Table s_bitRecInfo = {
         },
     },
     { kRecTypeBitReset,
-        DbLogRecInfo::sizeFn<BitUpdateRec>,
+        DbWalRecInfo::sizeFn<BitUpdateRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const BitUpdateRec *>(args.log);
-            args.notify->onLogApplyBitUpdate(
+            auto rec = reinterpret_cast<const BitUpdateRec *>(args.rec);
+            args.notify->onWalApplyBitUpdate(
                 args.page, 
                 rec->pos, 
                 rec->pos + 1, 
@@ -216,10 +216,10 @@ static DbLogRecInfo::Table s_bitRecInfo = {
         },
     },
     { kRecTypeBitUpdateRange,
-        DbLogRecInfo::sizeFn<BitUpdateRangeRec>,
+        DbWalRecInfo::sizeFn<BitUpdateRangeRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const BitUpdateRangeRec *>(args.log);
-            args.notify->onLogApplyBitUpdate(
+            auto rec = reinterpret_cast<const BitUpdateRangeRec *>(args.rec);
+            args.notify->onWalApplyBitUpdate(
                 args.page, 
                 rec->firstPos, 
                 rec->lastPos, 
@@ -237,7 +237,7 @@ static DbLogRecInfo::Table s_bitRecInfo = {
 ***/
 
 //===========================================================================
-void DbTxn::logBitInit(
+void DbTxn::walBitInit(
     pgno_t pgno, 
     uint32_t id, 
     uint32_t base, 
@@ -249,11 +249,11 @@ void DbTxn::logBitInit(
     rec->base = base;
     rec->fill = fill;
     rec->pos = (uint32_t) bpos;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logBitUpdate(
+void DbTxn::walBitUpdate(
     pgno_t pgno, 
     size_t firstPos, 
     size_t lastPos, 
@@ -265,7 +265,7 @@ void DbTxn::logBitUpdate(
             pgno
         );
         rec->pos = (uint32_t) firstPos;
-        log(&rec->hdr, bytes);
+        wal(&rec->hdr, bytes);
         return;
     }
 
@@ -273,18 +273,18 @@ void DbTxn::logBitUpdate(
     rec->firstPos = (uint32_t) firstPos;
     rec->lastPos = (uint32_t) lastPos;
     rec->value = value;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 
 /****************************************************************************
 *
-*   Bitmap log apply
+*   Bitmap wal apply
 *
 ***/
 
 //===========================================================================
-void DbData::onLogApplyBitInit(
+void DbData::onWalApplyBitInit(
     void * ptr,
     uint32_t id,
     uint32_t base,
@@ -308,7 +308,7 @@ void DbData::onLogApplyBitInit(
 }
 
 //===========================================================================
-void DbData::onLogApplyBitUpdate(
+void DbData::onWalApplyBitUpdate(
     void * ptr,
     uint32_t firstPos,
     uint32_t lastPos,

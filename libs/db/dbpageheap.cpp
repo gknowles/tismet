@@ -33,7 +33,7 @@ void DbPageHeap::destroy(size_t pgno) {
 
 //===========================================================================
 void DbPageHeap::setRoot(size_t pgno) {
-    m_txn.logTagRootUpdate((pgno_t) 0, (pgno_t) pgno);
+    m_txn.walTagRootUpdate((pgno_t) 0, (pgno_t) pgno);
 }
 
 //===========================================================================
@@ -79,7 +79,7 @@ const uint8_t * DbPageHeap::ptr(size_t pgno) const {
 void DbPageHeap::commitIfPending() const {
     if (m_updatePtr) {
         assert(m_updatePgno != pgno_t::npos);
-        m_txn.logFullPageInit(DbPageType::kTrie, 0, m_txn.pageSize());
+        m_txn.walFullPageInit(DbPageType::kTrie, 0, m_txn.pageSize());
         m_updatePtr = nullptr;
     }
 }
@@ -87,7 +87,7 @@ void DbPageHeap::commitIfPending() const {
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbWalRecInfo
 *
 ***/
 
@@ -97,7 +97,7 @@ void DbPageHeap::commitIfPending() const {
 namespace {
 
 struct FullPageInitRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     DbPageType type;
     uint32_t id;
     uint16_t dataLen;
@@ -111,15 +111,15 @@ struct FullPageInitRec {
 #pragma pack(pop)
 
 
-static DbLogRecInfo::Table s_dataRecInfo = {
+static DbWalRecInfo::Table s_dataRecInfo = {
     { kRecTypeFullPage,
-        [](auto & log) -> uint16_t {    // size
-            auto & rec = reinterpret_cast<const FullPageInitRec &>(log);
+        [](auto & raw) -> uint16_t {    // size
+            auto & rec = reinterpret_cast<const FullPageInitRec &>(raw);
             return offsetof(FullPageInitRec, data) + rec.dataLen;
         },
         [](auto args) {
-            auto rec = reinterpret_cast<const FullPageInitRec *>(args.log);
-            args.notify->onLogApplyFullPageInit(
+            auto rec = reinterpret_cast<const FullPageInitRec *>(args.rec);
+            args.notify->onWalApplyFullPageInit(
                 args.page,
                 rec->type,
                 rec->id,
@@ -144,7 +144,7 @@ std::pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
 }
 
 //===========================================================================
-void DbTxn::logFullPageInit(DbPageType type, uint32_t id, size_t extra) {
+void DbTxn::walFullPageInit(DbPageType type, uint32_t id, size_t extra) {
     assert(extra <= pageSize());
     auto offset = offsetof(FullPageInitRec, data);
     auto rec = reinterpret_cast<FullPageInitRec *>(m_buffer.data());
@@ -152,11 +152,11 @@ void DbTxn::logFullPageInit(DbPageType type, uint32_t id, size_t extra) {
     rec->type = type;
     rec->id = id;
     rec->dataLen = (uint16_t) extra;
-    log(&rec->hdr, offset + extra);
+    wal(&rec->hdr, offset + extra);
 }
 
 //===========================================================================
-void DbTxn::logFullPageInit(
+void DbTxn::walFullPageInit(
     pgno_t pgno, 
     DbPageType type, 
     uint32_t id, 
@@ -174,7 +174,7 @@ void DbTxn::logFullPageInit(
     rec->id = id;
     rec->dataLen = (uint16_t) extra;
     memcpy(rec->data, data.data(), extra);
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 
@@ -185,7 +185,7 @@ void DbTxn::logFullPageInit(
 ***/
 
 //===========================================================================
-void DbData::onLogApplyFullPageInit(
+void DbData::onWalApplyFullPageInit(
     void * ptr,
     DbPageType type,
     uint32_t id,

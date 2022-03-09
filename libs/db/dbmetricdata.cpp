@@ -273,7 +273,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
 
     // set info page
     auto pgno = allocPgno(txn);
-    txn.logMetricInit(
+    txn.walMetricInit(
         pgno,
         id,
         name,
@@ -319,7 +319,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
 }
 
 //===========================================================================
-void DbData::onLogApplyMetricInit(
+void DbData::onWalApplyMetricInit(
     void * ptr,
     uint32_t id,
     string_view name,
@@ -387,7 +387,7 @@ void DbData::updateMetric(
 
     // Remove all existing samples
     radixDestruct(txn, mp->hdr);
-    txn.logMetricUpdate(
+    txn.walMetricUpdate(
         mi.infoPage,
         info.creation,
         info.type,
@@ -433,7 +433,7 @@ void DbData::getMetricInfo(
 }
 
 //===========================================================================
-void DbData::onLogApplyMetricUpdate(
+void DbData::onWalApplyMetricUpdate(
     void * ptr,
     TimePoint creation,
     DbSampleType sampleType,
@@ -546,8 +546,8 @@ DbData::MetricPosition DbData::loadMetricPos(
     auto lastSample = (uint16_t) (id % samplesPerPage(mi.sampleType));
     auto pageTime = time - lastSample * mi.interval;
     auto spno = allocPgno(txn);
-    txn.logSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
-    txn.logMetricUpdateSamples(mi.infoPage, 0, pageTime, (size_t) -1, spno);
+    txn.walSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
+    txn.walMetricUpdateSamples(mi.infoPage, 0, pageTime, (size_t) -1, spno);
 
     mi.lastPage = spno;
     mi.pageFirstTime = pageTime;
@@ -557,7 +557,7 @@ DbData::MetricPosition DbData::loadMetricPos(
 }
 
 //===========================================================================
-void DbData::onLogApplyMetricClearSamples(void * ptr) {
+void DbData::onWalApplyMetricClearSamples(void * ptr) {
     auto mp = static_cast<MetricPage *>(ptr);
     assert(mp->hdr.type == mp->kPageType);
     mp->lastPagePos = 0;
@@ -569,7 +569,7 @@ void DbData::onLogApplyMetricClearSamples(void * ptr) {
 }
 
 //===========================================================================
-void DbData::onLogApplyMetricUpdateSamples(
+void DbData::onWalApplyMetricUpdateSamples(
     void * ptr,
     size_t pos,
     TimePoint refTime,
@@ -716,7 +716,7 @@ void DbData::updateSample(
             } else {
                 s_perfChange += 1;
             }
-            txn.logSampleUpdateTxn(spno, ent, value, false);
+            txn.walSampleUpdateTxn(spno, ent, value, false);
             if (sampleTryMakeVirtual(txn, mi, spno))
                 setMetricPos(id, mi);
         }
@@ -734,7 +734,7 @@ void DbData::updateSample(
         // and add as new initial sample.
         if (time >= lastSampleTime + mp->retention) {
             radixDestruct(txn, mp->hdr);
-            txn.logMetricClearSamples(mi.infoPage);
+            txn.walMetricClearSamples(mi.infoPage);
             mi.lastPage = {};
             mi.pageFirstTime = {};
             mi.pageLastSample = 0;
@@ -751,7 +751,7 @@ void DbData::updateSample(
         if (mi.lastPage > kMaxPageNum) {
             auto fill = getSample(&mi.lastPage);
             if (fill == value && ent == mi.pageLastSample + 1) {
-                txn.logMetricUpdateSamplesTxn(mi.infoPage, ent);
+                txn.walMetricUpdateSamplesTxn(mi.infoPage, ent);
                 mi.pageLastSample = ent;
                 setMetricPos(id, mi);
                 return;
@@ -773,12 +773,12 @@ void DbData::updateSample(
             assert(mi.pageLastSample == sp->pageLastSample);
         }
         if (ent == mi.pageLastSample + 1) {
-            txn.logSampleUpdateTxn(mi.lastPage, ent, value, true);
+            txn.walSampleUpdateTxn(mi.lastPage, ent, value, true);
             mi.pageLastSample = ent;
             if (ent == spp - 1)
                 sampleTryMakeVirtual(txn, mi, mi.lastPage);
         } else {
-            txn.logSampleUpdate(
+            txn.walSampleUpdate(
                 mi.lastPage,
                 mi.pageLastSample + 1,
                 ent,
@@ -792,7 +792,7 @@ void DbData::updateSample(
     }
 
     if (mi.lastPage <= kMaxPageNum) {
-        txn.logSampleUpdate(mi.lastPage, mi.pageLastSample + 1, spp, NAN, true);
+        txn.walSampleUpdate(mi.lastPage, mi.pageLastSample + 1, spp, NAN, true);
     } else {
         if (mi.pageLastSample + 1 < spp) {
             auto mp = txn.viewPage<MetricPage>(mi.infoPage);
@@ -805,7 +805,7 @@ void DbData::updateSample(
                 mi.pageLastSample,
                 mi.lastPage
             );
-            txn.logSampleUpdate(
+            txn.walSampleUpdate(
                 mi.lastPage,
                 mi.pageLastSample + 1,
                 spp,
@@ -842,7 +842,7 @@ void DbData::updateSample(
     if (radixFind(txn, &lastPage, mi.infoPage, last)
         && lastPage <= kMaxPageNum
     ) {
-        txn.logSampleUpdateTime(lastPage, endPageTime);
+        txn.walSampleUpdateTime(lastPage, endPageTime);
     } else {
         lastPage = sampleMakePhysical(
             txn,
@@ -854,7 +854,7 @@ void DbData::updateSample(
             lastPage
         );
     }
-    txn.logMetricUpdateSamples(
+    txn.walMetricUpdateSamples(
         mi.infoPage,
         last,
         endPageTime,
@@ -968,7 +968,7 @@ pgno_t DbData::sampleMakePhysical(
         assert(!isnan(fill));
     }
     auto spno = allocPgno(txn);
-    txn.logSampleInit(
+    txn.walSampleInit(
         spno,
         id,
         mi.sampleType,
@@ -1012,7 +1012,7 @@ bool DbData::sampleTryMakeVirtual(
         auto sppos = mp->lastPagePos;
         radixErase(txn, mp->hdr.pgno, sppos, sppos + 1);
         radixInsertOrAssign(txn, mi.infoPage, sppos, vpage);
-        txn.logMetricUpdateSamplesTxn(mi.infoPage, mi.pageLastSample);
+        txn.walMetricUpdateSamplesTxn(mi.infoPage, mi.pageLastSample);
         mi.lastPage = vpage;
     } else {
         auto pageInterval = spp * mi.interval;
@@ -1029,7 +1029,7 @@ bool DbData::sampleTryMakeVirtual(
 }
 
 //===========================================================================
-void DbData::onLogApplySampleInit(
+void DbData::onWalApplySampleInit(
     void * ptr,
     uint32_t id,
     DbSampleType sampleType,
@@ -1053,7 +1053,7 @@ void DbData::onLogApplySampleInit(
 }
 
 //===========================================================================
-void DbData::onLogApplySampleUpdate(
+void DbData::onWalApplySampleUpdate(
     void * ptr,
     size_t firstPos,
     size_t lastPos,
@@ -1070,7 +1070,7 @@ void DbData::onLogApplySampleUpdate(
 }
 
 //===========================================================================
-void DbData::onLogApplySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
+void DbData::onWalApplySampleUpdateTime(void * ptr, Dim::TimePoint pageTime) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
     sp->pageFirstTime = pageTime;

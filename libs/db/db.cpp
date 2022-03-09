@@ -135,7 +135,7 @@ private:
     DbPage m_page;
     DbData m_data;
     unsigned m_maxNameLen{};
-    DbLog m_log; // MUST be last! (and destroyed first)
+    DbWal m_wal; // MUST be last! (and destroyed first)
 };
 
 } // namespace
@@ -177,7 +177,7 @@ inline static DbBase * db(DbHandle h) {
 //===========================================================================
 DbBase::DbBase ()
     : m_dstFile(100, 2, envMemoryConfig().pageSize)
-    , m_log(&m_data, &m_page)
+    , m_wal(&m_data, &m_page)
 {
     m_reqBuckets.reset(new RequestBucket[kRequestBuckets]);
 }
@@ -192,27 +192,27 @@ bool DbBase::open(
 
     auto datafile = Path(name).setExt("tsd");
     auto workfile = Path(name).setExt("tsw");
-    auto logfile = Path(name).setExt("tsl");
-    if (!m_log.open(logfile, flags, pageSize))
+    auto walfile = Path(name).setExt("tsl");
+    if (!m_wal.open(walfile, flags, pageSize))
         return false;
-    if (!m_log.newFiles())
+    if (!m_wal.newFiles())
         flags.reset(fDbOpenCreat);
-    if (!m_page.open(datafile, workfile, m_log.dataPageSize(), flags))
+    if (!m_page.open(datafile, workfile, m_wal.dataPageSize(), flags))
         return false;
     m_data.openForApply(m_page.pageSize(), flags);
-    if (!m_log.recover())
+    if (!m_wal.recover())
         return false;
     m_maxNameLen = m_data.queryStats().metricNameSize - 1;
-    DbTxn txn{m_log, m_page};
+    DbTxn txn{m_wal, m_page};
     if (!m_data.openForUpdate(txn, this, datafile, flags))
         return false;
-    m_log.checkpoint();
+    m_wal.checkpoint();
     return true;
 }
 
 //===========================================================================
 void DbBase::close() {
-    m_log.close();
+    m_wal.close();
 }
 
 //===========================================================================
@@ -225,7 +225,7 @@ bool DbBase::onDbSeriesStart(const DbSeriesInfo & info) {
 //===========================================================================
 void DbBase::configure(const DbConfig & conf) {
     m_page.configure(conf);
-    m_log.configure(conf);
+    m_wal.configure(conf);
 }
 
 //===========================================================================
@@ -235,7 +235,7 @@ DbStats DbBase::queryStats() {
 
 //===========================================================================
 void DbBase::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
-    m_log.blockCheckpoint(notify, enable);
+    m_wal.blockCheckpoint(notify, enable);
 }
 
 
@@ -257,7 +257,7 @@ bool DbBase::backup(IDbProgressNotify * notify, string_view dstStem) {
     auto dst = (Path) dstStem;
     dst.setExt(src.extension());
     m_backupFiles.push_back(make_pair(dst, src));
-    src = filePath(m_log.logFile());
+    src = filePath(m_wal.walFile());
     dst.setExt(src.extension());
     m_backupFiles.push_back(make_pair(dst, src));
     m_backer = notify;
@@ -385,7 +385,7 @@ void DbContext::reset(DbHandle f) {
 
 //===========================================================================
 void DbBase::apply(uint32_t id, DbReq && req) {
-    DbTxn txn{m_log, m_page};
+    DbTxn txn{m_wal, m_page};
     switch (req.type) {
     case kGetMetric:
         m_data.getMetricInfo(req.notify, txn, id);

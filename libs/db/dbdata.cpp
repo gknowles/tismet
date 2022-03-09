@@ -110,7 +110,7 @@ bool DbData::openForUpdate(
 
     auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {
-        txn.logZeroInit(kZeroPageNum);
+        txn.walZeroInit(kZeroPageNum);
         zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
     }
 
@@ -132,13 +132,13 @@ bool DbData::openForUpdate(
     if (m_numPages == 1) {
         m_freeStoreRoot = allocPgno(txn);
         assert(m_freeStoreRoot == kFreeStoreRootPageNum);
-        txn.logRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
+        txn.walRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
         m_deprecatedStoreRoot = allocPgno(txn);
         assert(m_deprecatedStoreRoot == kDeprecatedStoreRootPageNum);
-        txn.logRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
+        txn.walRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
         m_metricStoreRoot = allocPgno(txn);
         assert(m_metricStoreRoot == kMetricStoreRootPageNum);
-        txn.logRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
+        txn.walRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
     }
 
     if (m_verbose)
@@ -310,7 +310,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
             << "): invalid page type (" << (unsigned) type << ")";
     }
 
-    txn.logPageFree(pgno);
+    txn.walPageFree(pgno);
     assert(m_freeStoreRoot);
     [[maybe_unused]] bool updated = 
         bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
@@ -365,7 +365,7 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 
 /****************************************************************************
 *
-*   DbLogRecInfo
+*   DbWalRecInfo
 *
 ***/
 
@@ -375,7 +375,7 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 namespace {
 
 struct TagRootUpdateRec {
-    DbLog::Record hdr;
+    DbWal::Record hdr;
     pgno_t rootPage;
 };
 
@@ -384,24 +384,24 @@ struct TagRootUpdateRec {
 #pragma pack(pop)
 
 
-static DbLogRecInfo::Table s_dataRecInfo = {
+static DbWalRecInfo::Table s_dataRecInfo = {
     { kRecTypeZeroInit,
-        DbLogRecInfo::sizeFn<DbLog::Record>,
+        DbWalRecInfo::sizeFn<DbWal::Record>,
         [](auto args) {
-            args.notify->onLogApplyZeroInit(args.page);
+            args.notify->onWalApplyZeroInit(args.page);
         },
     },
     { kRecTypeTagRootUpdate,
-        DbLogRecInfo::sizeFn<TagRootUpdateRec>,
+        DbWalRecInfo::sizeFn<TagRootUpdateRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const TagRootUpdateRec *>(args.log);
-            args.notify->onLogApplyTagRootUpdate(args.page, rec->rootPage);
+            auto rec = reinterpret_cast<const TagRootUpdateRec *>(args.rec);
+            args.notify->onWalApplyTagRootUpdate(args.page, rec->rootPage);
         },
     },
     { kRecTypePageFree,
-        DbLogRecInfo::sizeFn<DbLog::Record>,
+        DbWalRecInfo::sizeFn<DbWal::Record>,
         [](auto args) {
-            args.notify->onLogApplyPageFree(args.page);
+            args.notify->onWalApplyPageFree(args.page);
         },
     },
 };
@@ -414,22 +414,22 @@ static DbLogRecInfo::Table s_dataRecInfo = {
 ***/
 
 //===========================================================================
-void DbTxn::logZeroInit(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypeZeroInit, pgno);
-    log(rec, bytes);
+void DbTxn::walZeroInit(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbWal::Record>(kRecTypeZeroInit, pgno);
+    wal(rec, bytes);
 }
 
 //===========================================================================
-void DbTxn::logTagRootUpdate(pgno_t pgno, pgno_t rootPage) {
+void DbTxn::walTagRootUpdate(pgno_t pgno, pgno_t rootPage) {
     auto [rec, bytes] = alloc<TagRootUpdateRec>(kRecTypeTagRootUpdate, pgno);
     rec->rootPage = rootPage;
-    log(&rec->hdr, bytes);
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
-void DbTxn::logPageFree(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbLog::Record>(kRecTypePageFree, pgno);
-    log(rec, bytes);
+void DbTxn::walPageFree(pgno_t pgno) {
+    auto [rec, bytes] = alloc<DbWal::Record>(kRecTypePageFree, pgno);
+    wal(rec, bytes);
 }
 
 
@@ -440,19 +440,19 @@ void DbTxn::logPageFree(pgno_t pgno) {
 ***/
 
 //===========================================================================
-void DbData::onLogApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
+void DbData::onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
 {}
 
 //===========================================================================
-void DbData::onLogApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
+void DbData::onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
 {}
 
 //===========================================================================
-void DbData::onLogApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
+void DbData::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
 {}
 
 //===========================================================================
-void DbData::onLogApplyZeroInit(void * ptr) {
+void DbData::onWalApplyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(zp->hdr.type == DbPageType::kInvalid);
     // We only init the zero page when making a new database, so we can forgo
@@ -469,14 +469,14 @@ void DbData::onLogApplyZeroInit(void * ptr) {
 }
 
 //===========================================================================
-void DbData::onLogApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
+void DbData::onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(zp->hdr.type == DbPageType::kZero);
     zp->metricTagStoreRoot = rootPage;
 }
 
 //===========================================================================
-void DbData::onLogApplyPageFree(void * ptr) {
+void DbData::onWalApplyPageFree(void * ptr) {
     auto fp = static_cast<FreePage *>(ptr);
     assert(fp->hdr.type != DbPageType::kInvalid
         && fp->hdr.type != DbPageType::kFree);
