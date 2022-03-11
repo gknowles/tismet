@@ -84,13 +84,16 @@ bool DbPage::open(
     string_view datafile,
     string_view workfile,
     size_t pageSize,
+    size_t walPageSize,
     EnumFlags<DbOpenFlags> flags
 ) {
     assert(pageSize);
     assert(pageSize == bit_ceil(pageSize));
     assert(pageSize >= kMinPageSize);
+    assert(walPageSize / pageSize * pageSize == walPageSize);
 
     m_pageSize = pageSize;
+    m_walPageSize = walPageSize;
     m_flags = flags;
     if (m_flags.any(fDbOpenVerbose))
         logMsgInfo() << "Open data files";
@@ -267,7 +270,7 @@ void DbPage::onWalDurable(uint64_t lsn, size_t bytes) {
     m_durableLsn = lsn;
     if (bytes) {
         s_perfDurableBytes += (unsigned) bytes;
-        s_perfReqWalPages += 1;
+        s_perfReqWalPages += (unsigned) (bytes / m_walPageSize);
         m_durableWalBytes += bytes;
     }
     m_currentWal.push_back({lsn, timeNow(), bytes});
@@ -461,17 +464,14 @@ void DbPage::freePage_LK(DbPageHeader * hdr) {
 void DbPage::removeWalPages_LK(uint64_t lsn) {
     assert(lsn);
     size_t bytes = 0;
-    size_t pages = 0;
     size_t debt = 0;
 
     while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
         || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
     ) {
         auto & pi = m_overflowWal.front();
-        if (auto val = pi.bytes) {
+        if (auto val = pi.bytes) 
             bytes += val;
-            pages += 1;
-        }
         m_overflowWal.pop_front();
     }
     m_overflowWalBytes -= bytes;
@@ -479,10 +479,8 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     if (m_overflowWal.empty()) {
         while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
             auto & pi = m_currentWal.front();
-            if (auto val = pi.bytes) {
+            if (auto val = pi.bytes) 
                 bytes += val;
-                pages += 1;
-            }
             m_currentWal.pop_front();
         }
     }
@@ -502,7 +500,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
 
     s_perfDurableBytes -= (unsigned) bytes;
     m_durableWalBytes -= bytes;
-    s_perfReqWalPages -= (unsigned) pages;
+    s_perfReqWalPages -= (unsigned) (bytes / m_walPageSize);
     m_pageDebt -= debt;
     s_perfAmortized -= (unsigned) debt;
 }

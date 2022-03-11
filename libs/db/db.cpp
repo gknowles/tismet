@@ -197,8 +197,15 @@ bool DbBase::open(
         return false;
     if (!m_wal.newFiles())
         flags.reset(fDbOpenCreat);
-    if (!m_page.open(datafile, workfile, m_wal.dataPageSize(), flags))
+    if (!m_page.open(
+        datafile, 
+        workfile, 
+        m_wal.dataPageSize(), 
+        m_wal.walPageSize(),
+        flags
+    )) {
         return false;
+    }
     m_data.openForApply(m_page.pageSize(), flags);
     if (!m_wal.recover())
         return false;

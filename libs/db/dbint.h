@@ -87,6 +87,7 @@ public:
         std::string_view datafile,
         std::string_view workfile,
         size_t pageSize,
+        size_t walPageSize,
         Dim::EnumFlags<DbOpenFlags> flags
     );
     void close();
@@ -131,7 +132,8 @@ private:
     void saveWork();
 
     // Variables determined at open
-    size_t m_pageSize{0};
+    size_t m_pageSize = 0;
+    size_t m_walPageSize = 0;
     Dim::EnumFlags<DbOpenFlags> m_flags{};
     bool m_newFiles{false}; // did the open create new data files?
 
