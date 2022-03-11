@@ -111,6 +111,7 @@
 # vendor/dimapp/libs/app/app.cpp
 # vendor/dimapp/libs/app/app.h
 # vendor/dimapp/libs/app/appint.h
+# vendor/dimapp/libs/app/appperf.cpp
 # vendor/dimapp/libs/app/config.cpp
 # vendor/dimapp/libs/app/config.h
 # vendor/dimapp/libs/app/logfile.cpp
