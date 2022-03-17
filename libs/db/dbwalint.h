@@ -87,11 +87,10 @@ struct DbWalApplyArgs {
     uint64_t lsn;
 };
 struct DbWalRecInfo {
-    class Table;
-
     template<typename T>
-    static uint16_t sizeFn(const DbWal::Record & rec);
-
+    static uint16_t sizeFn(const DbWal::Record & rec) {
+        return sizeof(T);
+    }
     static uint16_t defLocalTxnFn(const DbWal::Record & rec) {
         return rec.localTxn;
     }
@@ -100,23 +99,14 @@ struct DbWalRecInfo {
     }
 
     DbWalRecType m_type;
-
     uint16_t (*m_size)(const DbWal::Record & rec);
-
     void (*m_apply)(const DbWalApplyArgs & args);
-
     uint16_t (*m_localTxn)(const DbWal::Record & rec) = defLocalTxnFn;
-
     pgno_t (*m_pgno)(const DbWal::Record & rec) = defPgnoFn;
 };
 
-class DbWalRecInfo::Table {
+class DbWalRegisterRec {
 public:
-    Table(std::initializer_list<DbWalRecInfo> list);
+    explicit DbWalRegisterRec(const DbWalRecInfo & info);
+    DbWalRegisterRec(std::initializer_list<DbWalRecInfo> infos);
 };
-
-//===========================================================================
-template<typename T>
-uint16_t DbWalRecInfo::sizeFn(const DbWal::Record & rec) {
-    return sizeof(T);
-}

@@ -240,7 +240,7 @@ static void applyMetricUpdateSampleAndIndex(const DbWalApplyArgs & args) {
     );
 }
 
-static DbWalRecInfo::Table s_metricRecInfo {
+static DbWalRegisterRec s_metricRecInfo {
     { kRecTypeMetricInit,
         sizeMetricInit,
         applyMetricInit,
@@ -459,7 +459,7 @@ static void applySampleUpdateInt32LastTxn(const DbWalApplyArgs & args) {
 }
 
 
-static DbWalRecInfo::Table s_sampleRecInfo{
+static DbWalRegisterRec s_sampleRecInfo{
     { kRecTypeSampleInit,
         DbWalRecInfo::sizeFn<SampleInitRec>,
         applySampleInit,

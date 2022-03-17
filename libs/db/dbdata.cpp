@@ -384,7 +384,7 @@ struct TagRootUpdateRec {
 #pragma pack(pop)
 
 
-static DbWalRecInfo::Table s_dataRecInfo = {
+static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeZeroInit,
         DbWalRecInfo::sizeFn<DbWal::Record>,
         [](auto args) {

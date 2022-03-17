@@ -359,7 +359,7 @@ struct RadixUpdateRec {
 #pragma pack(pop)
 
 
-static DbWalRecInfo::Table s_radixRecInfo = {
+static DbWalRegisterRec s_radixRecInfo = {
     { kRecTypeRadixInit,
         DbWalRecInfo::sizeFn<RadixInitRec>,
         [](auto args) {

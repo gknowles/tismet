@@ -177,7 +177,7 @@ struct BitUpdateRangeRec {
 #pragma pack(pop)
 
 
-static DbWalRecInfo::Table s_bitRecInfo = {
+static DbWalRegisterRec s_bitRecInfo = {
     { kRecTypeBitInit,
         DbWalRecInfo::sizeFn<BitInitRec>,
         [](auto args) {
@@ -226,7 +226,7 @@ static DbWalRecInfo::Table s_bitRecInfo = {
                 rec->value
             );
         },
-    },
+    }
 };
 
 

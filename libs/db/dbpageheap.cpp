@@ -111,7 +111,7 @@ struct FullPageInitRec {
 #pragma pack(pop)
 
 
-static DbWalRecInfo::Table s_dataRecInfo = {
+static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeFullPage,
         [](auto & raw) -> uint16_t {    // size
             auto & rec = reinterpret_cast<const FullPageInitRec &>(raw);

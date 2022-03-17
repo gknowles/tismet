@@ -41,19 +41,23 @@ struct TransactionRec {
 
 /****************************************************************************
 *
-*   DbWalRecInfo
+*   DbWalRegisterRec
 *
 ***/
 
 static DbWalRecInfo s_codecs[kRecType_LastAvailable];
 
 //===========================================================================
-DbWalRecInfo::Table::Table(initializer_list<DbWalRecInfo> list) {
-    for (auto && ri : list) {
-        assert(ri.m_type && ri.m_type < size(s_codecs));
-        assert(s_codecs[ri.m_type].m_type == 0);
-        s_codecs[ri.m_type] = ri;
-    }
+DbWalRegisterRec::DbWalRegisterRec(const DbWalRecInfo & info) {
+    assert(info.m_type && info.m_type < size(s_codecs));
+    assert(s_codecs[info.m_type].m_type == 0);
+    s_codecs[info.m_type] = info;
+}
+
+//===========================================================================
+DbWalRegisterRec::DbWalRegisterRec(initializer_list<DbWalRecInfo> infos) {
+    for (auto && ri : infos) 
+        (void) DbWalRegisterRec(ri);
 }
 
 
@@ -248,7 +252,7 @@ static pgno_t invalidPgno(const DbWal::Record & raw) {
     return pgno_t::npos;
 }
 
-static DbWalRecInfo::Table s_dataRecInfo = {
+static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeCheckpoint,
         DbWalRecInfo::sizeFn<CheckpointRec>,
         [](auto args) {
