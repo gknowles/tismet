@@ -22,7 +22,7 @@ namespace {
 
 //---------------------------------------------------------------------------
 // Checkpoint
-struct CheckpointCommitRec {
+struct CheckpointRec {
     DbWalRecType type;
     uint64_t startLsn;
 };
@@ -143,9 +143,9 @@ void DbWal::setLocalTxn(DbWal::Record * rec, uint16_t localTxn) {
 }
 
 //===========================================================================
-void DbWal::walCommitCheckpoint(uint64_t startLsn) {
-    CheckpointCommitRec rec;
-    rec.type = kRecTypeCommitCheckpoint;
+void DbWal::walCheckpoint(uint64_t startLsn) {
+    CheckpointRec rec;
+    rec.type = kRecTypeCheckpoint;
     rec.startLsn = startLsn;
     wal((Record &) rec, sizeof(rec), TxnMode::kContinue);
 }
@@ -160,7 +160,7 @@ uint64_t DbWal::walBeginTxn(uint16_t localTxn) {
 }
 
 //===========================================================================
-void DbWal::walCommit(uint64_t txn) {
+void DbWal::walCommitTxn(uint64_t txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
@@ -210,9 +210,9 @@ void DbWal::applyUpdate(void * page, uint64_t lsn, const Record & rec) {
 //===========================================================================
 void DbWal::apply(AnalyzeData * data, uint64_t lsn, const Record & raw) {
     switch (raw.type) {
-    case kRecTypeCommitCheckpoint: {
-            auto & rec = reinterpret_cast<const CheckpointCommitRec &>(raw);
-            applyCommitCheckpoint(data, lsn, rec.startLsn);
+    case kRecTypeCheckpoint: {
+            auto & rec = reinterpret_cast<const CheckpointRec &>(raw);
+            applyCheckpoint(data, lsn, rec.startLsn);
         }
         break;
     case kRecTypeTxnBegin: {
@@ -249,11 +249,11 @@ static pgno_t invalidPgno(const DbWal::Record & raw) {
 }
 
 static DbWalRecInfo::Table s_dataRecInfo = {
-    { kRecTypeCommitCheckpoint,
-        DbWalRecInfo::sizeFn<CheckpointCommitRec>,
+    { kRecTypeCheckpoint,
+        DbWalRecInfo::sizeFn<CheckpointRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const CheckpointCommitRec *>(args.rec);
-            args.notify->onWalApplyCommitCheckpoint(args.lsn, rec->startLsn);
+            auto rec = reinterpret_cast<const CheckpointRec *>(args.rec);
+            args.notify->onWalApplyCheckpoint(args.lsn, rec->startLsn);
         },
         nullptr,    // localTxn
         invalidPgno,

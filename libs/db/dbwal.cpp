@@ -39,8 +39,8 @@ enum class DbWal::Checkpoint : int {
     kStartRecovery,
     kComplete,
     kWaitForPageFlush,
-    kWaitForCheckpointCommit,
-    kWaitForTruncateCommit,
+    kWaitForCheckpointDurable,
+    kWaitForWalTruncated,
 };
 
 struct DbWal::AnalyzeData {
@@ -54,11 +54,13 @@ struct DbWal::AnalyzeData {
 
 namespace {
 
-const unsigned kLogFileSig[] = {
-    0xee4b1a59,
-    0x4ba38e05,
-    0xc589d585,
-    0xaf750c2f,
+// Guid in network byte order.
+const uint8_t kLogFileSig[] = {
+    0xb4, 0x5d, 0x8e, 0x5a, 
+    0x85, 0x1d, 
+    0x42, 0xf5, 
+    0xac, 0x31, 
+    0x9c, 0xa0, 0x01, 0x58, 0x59, 0x7b
 };
 
 enum class LogPageType {
@@ -93,7 +95,8 @@ struct LogPage {
 struct ZeroPage {
     DbPageHeader hdr;
     char signature[sizeof(kLogFileSig)];
-    uint32_t pageSize;
+    uint32_t walPageSize;
+    uint32_t dataPageSize;
 };
 
 struct MinimumPage {
@@ -271,7 +274,7 @@ DbWal::DbWal(IApplyNotify * data, IPageNotify * page)
     , m_page(page)
     , m_checkpointTimer([&](auto){ checkpoint(); return kTimerInfinite; })
     , m_checkpointPagesTask([&]{ checkpointPages(); })
-    , m_checkpointDurableCommitTask([&]{ checkpointDurableCommit(); })
+    , m_checkpointDurableTask([&]{ checkpointDurable(); })
     , m_flushTimer([&](auto){ flushWriteBuffer(); return kTimerInfinite; })
 {}
 
@@ -340,38 +343,44 @@ bool DbWal::open(
     m_fwal = openWalFile(fname, flags, true);
     if (!m_fwal)
         return false;
-
-    auto fps = filePageSize(m_fwal);
+    FileAlignment walAlign;
+    if (auto ec = fileAlignment(&walAlign, m_fwal); ec) 
+        return false;
+    auto fps = walAlign.physicalSector;
+    assert(fps > sizeof ZeroPage);
     uint64_t len;
     fileSize(&len, m_fwal);
     ZeroPage zp{};
     if (!len) {
-        if (!dataPageSize)
-            dataPageSize = kDefaultPageSize;
+        m_dataPageSize = dataPageSize ? dataPageSize : kDefaultPageSize;
+        m_pageSize = max<size_t>(2 * m_dataPageSize, fps);
     } else {
         auto rawbuf = mallocAligned(fps, fps);
+        assert(rawbuf);
         fileReadWait(nullptr, rawbuf, fps, m_fwal, 0);
-        memcpy(&zp, rawbuf, sizeof(zp));
-        dataPageSize = zp.pageSize / 2;
+        memcpy(&zp, rawbuf, sizeof zp);
+        m_dataPageSize = zp.dataPageSize;
+        m_pageSize = zp.walPageSize;
         freeAligned(rawbuf);
     }
-    if (dataPageSize < fps) {
+    if (m_pageSize < fps) {
         // Page size is smaller than minimum required for aligned access.
         // Reopen unaligned.
         fileClose(m_fwal);
         m_fwal = openWalFile(fname, flags, false);
     }
 
-    m_pageSize = 2 * dataPageSize;
     m_numBufs = kLogWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::kEmpty);
     m_emptyBufs = m_numBufs;
     m_buffers = (char *) mallocAligned(m_pageSize, m_numBufs * m_pageSize);
+    assert(m_buffers);
     memset(m_buffers, 0, m_numBufs * m_pageSize);
     m_partialBuffers = (char *) mallocAligned(
         m_pageSize,
         m_numBufs * m_pageSize
     );
+    assert(m_partialBuffers);
     memset(m_partialBuffers, 0, m_numBufs * m_pageSize);
     m_curBuf = 0;
     for (unsigned i = 0; i < m_numBufs; ++i) {
@@ -386,7 +395,8 @@ bool DbWal::open(
 
         zp.hdr.type = (DbPageType) LogPageType::kZero;
         memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
-        zp.pageSize = (unsigned) m_pageSize;
+        zp.walPageSize = (unsigned) m_pageSize;
+        zp.dataPageSize = (unsigned) m_dataPageSize;
         zp.hdr.checksum = 0;
         auto nraw = partialPtr(0);
         memcpy(nraw, &zp, sizeof(zp));
@@ -399,15 +409,19 @@ bool DbWal::open(
         m_lastLsn = 0;
         m_localTxns.clear();
         m_checkpointLsn = m_lastLsn + 1;
-        walCommitCheckpoint(m_checkpointLsn);
+        walCheckpoint(m_checkpointLsn);
         return true;
     }
 
+    if (zp.hdr.type != (DbPageType) LogPageType::kZero) {
+        logMsgError() << "Unknown wal file type, " << fname;
+        return false;
+    }
     if (memcmp(zp.signature, kLogFileSig, sizeof(zp.signature)) != 0) {
         logMsgError() << "Bad signature, " << fname;
         return false;
     }
-    if (zp.pageSize != m_pageSize) {
+    if (zp.walPageSize != m_pageSize) {
         logMsgError() << "Mismatched page size, " << fname;
         return false;
     }
@@ -487,8 +501,9 @@ DbConfig DbWal::configure(const DbConfig & conf) {
 //===========================================================================
 void DbWal::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     if (enable) {
+        // Add the block
         DbProgressInfo info = {};
-        m_checkpointBlocks.push_back(notify);
+        m_checkpointBlockers.push_back(notify);
         if (m_phase == Checkpoint::kComplete) {
             notify->onDbProgress(kRunStopped, info);
         } else {
@@ -498,10 +513,8 @@ void DbWal::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     }
 
     // Remove the block
-    auto i = find(m_checkpointBlocks.begin(), m_checkpointBlocks.end(), notify);
-    if (i != m_checkpointBlocks.end())
-        m_checkpointBlocks.erase(i);
-    if (m_checkpointBlocks.empty() && m_phase == Checkpoint::kComplete)
+    erase(m_checkpointBlockers, notify);
+    if (m_checkpointBlockers.empty() && m_phase == Checkpoint::kComplete)
         checkpointWaitForNext();
 }
 
@@ -717,7 +730,7 @@ void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
 }
 
 //===========================================================================
-void DbWal::applyCommitCheckpoint(
+void DbWal::applyCheckpoint(
     AnalyzeData * data,
     uint64_t lsn,
     uint64_t startLsn
@@ -731,7 +744,7 @@ void DbWal::applyCommitCheckpoint(
     // redo
     if (lsn < data->checkpoint)
         return;
-    m_data->onWalApplyCommitCheckpoint(lsn, startLsn);
+    m_data->onWalApplyCheckpoint(lsn, startLsn);
 }
 
 //===========================================================================
@@ -825,7 +838,7 @@ void DbWal::applyUpdate(
 // will subsequently be skipped and/or discarded.
 void DbWal::checkpoint() {
     if (m_phase != Checkpoint::kComplete
-        || !m_checkpointBlocks.empty()
+        || !m_checkpointBlockers.empty()
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
         return;
@@ -848,20 +861,20 @@ void DbWal::checkpointPages() {
         logMsgFatal() << "Checkpointing failed.";
     auto nextLsn = m_page->onWalCheckpointPages(m_checkpointLsn);
     if (nextLsn == m_checkpointLsn) {
-        m_phase = Checkpoint::kWaitForTruncateCommit;
-        checkpointTruncateCommit();
+        m_phase = Checkpoint::kWaitForWalTruncated;
+        checkpointWalTruncated();
         return;
     }
     m_checkpointLsn = nextLsn;
-    walCommitCheckpoint(m_checkpointLsn);
-    m_phase = Checkpoint::kWaitForCheckpointCommit;
-    queueTask(&m_checkpointDurableCommitTask, m_lastLsn);
+    walCheckpoint(m_checkpointLsn);
+    m_phase = Checkpoint::kWaitForCheckpointDurable;
+    queueTask(&m_checkpointDurableTask, m_lastLsn);
     flushWriteBuffer();
 }
 
 //===========================================================================
-void DbWal::checkpointDurableCommit() {
-    assert(m_phase == Checkpoint::kWaitForCheckpointCommit);
+void DbWal::checkpointDurable() {
+    assert(m_phase == Checkpoint::kWaitForCheckpointDurable);
     if (auto ec = fileFlush(m_fwal))
         logMsgFatal() << "Checkpointing failed.";
 
@@ -885,9 +898,9 @@ void DbWal::checkpointDurableCommit() {
             (unsigned) (before - m_pages.size() - (bool) lastPgno);
     }
 
-    m_phase = Checkpoint::kWaitForTruncateCommit;
+    m_phase = Checkpoint::kWaitForWalTruncated;
     if (!lastPgno) {
-        checkpointTruncateCommit();
+        checkpointWalTruncated();
     } else {
         auto vptr = mallocAligned(m_pageSize, m_pageSize);
         auto mp = new(vptr) MinimumPage{ LogPageType::kFree };
@@ -904,18 +917,18 @@ void DbWal::checkpointDurableCommit() {
 }
 
 //===========================================================================
-void DbWal::checkpointTruncateCommit() {
-    assert(m_phase == Checkpoint::kWaitForTruncateCommit);
+void DbWal::checkpointWalTruncated() {
+    assert(m_phase == Checkpoint::kWaitForWalTruncated);
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::kComplete;
     s_perfCurCps -= 1;
-    if (m_checkpointBlocks.empty()) {
+    if (m_checkpointBlockers.empty()) {
         checkpointWaitForNext();
     } else {
         DbProgressInfo info = {};
-        for (auto&& block : m_checkpointBlocks)
-            block->onDbProgress(kRunStopped, info);
+        for (auto&& blocker : m_checkpointBlockers)
+            blocker->onDbProgress(kRunStopped, info);
     }
     m_bufAvailCv.notify_one();
 }
@@ -963,7 +976,7 @@ uint64_t DbWal::beginTxn() {
 
 //===========================================================================
 void DbWal::commit(uint64_t txn) {
-    walCommit(txn);
+    walCommitTxn(txn);
     s_perfCurTxns -= 1;
 
     auto localTxn = getLocalTxn(txn);
@@ -1183,7 +1196,7 @@ void DbWal::onFileWrite(const FileWriteData & data) {
         s_perfFreePages += 1;
         lk.unlock();
         freeAligned(rawbuf);
-        checkpointTruncateCommit();
+        checkpointWalTruncated();
         return;
     }
 

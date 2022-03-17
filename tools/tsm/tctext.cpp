@@ -31,7 +31,7 @@ public:
 
 private:
     // Inherited via IApplyNotify
-    void onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) override;
     void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
     void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 
@@ -171,8 +171,8 @@ ostream & TextWriter::out(void * ptr) {
 }
 
 //===========================================================================
-void TextWriter::onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) {
-    m_os << lsn << '.' << 0 << ": CHECKPOINT.commit = " << startLsn << "\n";
+void TextWriter::onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) {
+    m_os << lsn << '.' << 0 << ": CHECKPOINT = " << startLsn << "\n";
 }
 
 //===========================================================================

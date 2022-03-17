@@ -12,7 +12,7 @@
 ***/
 
 enum DbWalRecType : int8_t {
-    kRecTypeCommitCheckpoint    = 1,  // [N/A] startLsn
+    kRecTypeCheckpoint          = 1,  // [N/A] startLsn
     kRecTypeTxnBegin            = 2,  // [N/A]
     kRecTypeTxnCommit           = 3,  // [N/A]
 

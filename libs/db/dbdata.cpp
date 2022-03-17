@@ -440,7 +440,7 @@ void DbTxn::walPageFree(pgno_t pgno) {
 ***/
 
 //===========================================================================
-void DbData::onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn)
+void DbData::onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn)
 {}
 
 //===========================================================================

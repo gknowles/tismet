@@ -134,17 +134,19 @@ private:
     // Variables determined at open
     size_t m_pageSize = 0;
     size_t m_walPageSize = 0;
-    Dim::EnumFlags<DbOpenFlags> m_flags{};
-    bool m_newFiles{false}; // did the open create new data files?
+    Dim::EnumFlags<DbOpenFlags> m_flags;
+    bool m_newFiles = false; // did the open create new data files?
 
-    // Configuration settings
-    Dim::Duration m_maxDirtyAge{};
-    size_t m_maxDirtyData{};
+    // Configuration settings, these provide a soft cap that triggers the 
+    // process (i.e. check pointing) of making wal removable and then 
+    // removing it.
+    Dim::Duration m_maxWalAge = {};
+    size_t m_maxWalBytes = 0;
 
 
     mutable std::mutex m_workMut;
 
-    bool m_saveInProgress{false}; // is saveWork() task running?
+    bool m_saveInProgress = false; // is saveWork() task running?
 
     // Info about work pages that have been modified in memory but not yet
     // written to disk.
@@ -167,7 +169,7 @@ private:
     Dim::List<WorkPageInfo> m_cleanPages;
     // Number of pages, dirty or clean, that haven't had their cleaning cost
     // fully repaid.
-    size_t m_pageDebt{0};
+    size_t m_pageDebt = 0;
     Dim::List<WorkPageInfo> m_freeInfos;
 
     // One entry for every data page, null for untracked pages (which must
@@ -177,7 +179,7 @@ private:
     // The LSN up to which all data can be safely recovered. All WAL for any
     // transaction, that has not been rolled back and includes logs from this
     // or any previous LSN, has been persisted to stable storage.
-    uint64_t m_durableLsn{0};
+    uint64_t m_durableLsn = 0;
 
     // Info about WAL pages that have been persisted but with some or all of
     // their corresponding data pages still dirty. Used to pace the speed at
@@ -187,13 +189,15 @@ private:
         Dim::TimePoint time; // time page became durable
         size_t bytes; // bytes on the page
     };
-    // Durable WAL pages that are within the "checkpoint bytes" threshold
+    // Durable WAL pages that are within the "checkpoint bytes" threshold.
     std::deque<WalPageInfo> m_currentWal;
-    // Durable WAL pages older than the "checkpoint bytes" threshold
+    // Durable WAL pages older than the "checkpoint bytes" threshold, will be
+    // freed as soon as all data pages still relying on them for indirect 
+    // durability can be written to stable storage.
     std::deque<WalPageInfo> m_overflowWal;
-    // Sum of bytes in overflow WAL pages
+    // Sum of bytes in overflow WAL pages.
     size_t m_overflowWalBytes = 0;
-    // Sum of bytes in all durable WAL pages (both current and overflow)
+    // Sum of bytes in all durable WAL pages (both current and overflow).
     size_t m_durableWalBytes = 0;
 
     DbReadView m_vdata;
@@ -492,7 +496,7 @@ public:
     );
 
     // Inherited via IApplyNotify
-    void onWalApplyCommitCheckpoint(uint64_t lsn, uint64_t startLsn) override;
+    void onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) override;
     void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
     void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
 

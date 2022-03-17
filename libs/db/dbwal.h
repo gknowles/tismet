@@ -108,7 +108,7 @@ public:
         Dim::TaskQueueHandle hq = {} // defaults to compute queue
     );
 
-    size_t dataPageSize() const { return m_pageSize / 2; }
+    size_t dataPageSize() const { return m_dataPageSize; }
     size_t walPageSize() const { return m_pageSize; }
 
     Dim::FileHandle walFile() const { return m_fwal; }
@@ -122,9 +122,9 @@ private:
 
     bool loadPages(Dim::FileHandle fwal);
 
-    void walCommitCheckpoint(uint64_t startLsn);
+    void walCheckpoint(uint64_t startLsn);
     uint64_t walBeginTxn(uint16_t localTxn);
-    void walCommit(uint64_t txn);
+    void walCommitTxn(uint64_t txn);
 
     // returns LSN
     enum class TxnMode { kBegin, kContinue, kCommit };
@@ -144,15 +144,15 @@ private:
     void countCommitTxn_LK(uint64_t txn);
     void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
     void checkpointPages();
-    void checkpointDurableCommit();
-    void checkpointTruncateCommit();
+    void checkpointDurable();
+    void checkpointWalTruncated();
     void checkpointWaitForNext();
     void flushWriteBuffer();
 
     struct AnalyzeData;
     void applyAll(AnalyzeData * data, Dim::FileHandle fwal);
     void apply(AnalyzeData * data, uint64_t lsn, const Record & rec);
-    void applyCommitCheckpoint(
+    void applyCheckpoint(
         AnalyzeData * data,
         uint64_t lsn,
         uint64_t startLsn
@@ -166,30 +166,31 @@ private:
     IApplyNotify * m_data;
     IPageNotify * m_page;
     Dim::FileHandle m_fwal;
-    bool m_closing{false};
-    bool m_newFiles{false}; // did the open create new data files?
+    bool m_closing = false;
+    bool m_newFiles = false; // did the open create new data files?
     Dim::EnumFlags<DbOpenFlags> m_openFlags{};
 
     // last assigned
     Dim::UnsignedSet m_localTxns;
-    uint64_t m_lastLsn{0};
+    uint64_t m_lastLsn = 0;
 
     Dim::UnsignedSet m_freePages;
     std::deque<PageInfo> m_pages;
-    size_t m_numPages{0};
-    size_t m_pageSize{0};
+    size_t m_numPages = 0;
+    size_t m_pageSize = 0;
+    size_t m_dataPageSize = 0;
 
     size_t m_maxCheckpointData = kDefaultMaxCheckpointData;
-    size_t m_checkpointData{0};
+    size_t m_checkpointData = 0;
     Dim::Duration m_maxCheckpointInterval = kDefaultMaxCheckpointInterval;
     Dim::TimerProxy m_checkpointTimer;
     Dim::TaskProxy m_checkpointPagesTask;
-    Dim::TaskProxy m_checkpointDurableCommitTask;
-    Checkpoint m_phase{};
+    Dim::TaskProxy m_checkpointDurableTask;
+    Checkpoint m_phase = {};
 
     // Checkpoint blocks prevent checkpoints from occurring so that backups
     // can be done safely.
-    std::vector<IDbProgressNotify *> m_checkpointBlocks;
+    std::vector<IDbProgressNotify *> m_checkpointBlockers;
 
     // Last started (perhaps unfinished) checkpoint.
     Dim::TimePoint m_checkpointStart;
@@ -218,18 +219,21 @@ private:
     std::vector<Buffer> m_bufStates;
 
     // page aligned buffers
-    char * m_buffers{};
-    char * m_partialBuffers{};
+    char * m_buffers = {};
+    char * m_partialBuffers = {};
 
-    unsigned m_numBufs{};
-    unsigned m_emptyBufs{};
-    unsigned m_curBuf{};
-    size_t m_bufPos{};
+    unsigned m_numBufs = 0;
+    unsigned m_emptyBufs = 0;
+    unsigned m_curBuf = 0;
+    size_t m_bufPos = 0;
 };
 
 //===========================================================================
-inline bool operator<(const DbWal::PageInfo & a, const DbWal::PageInfo & b) {
-    return a.firstLsn < b.firstLsn;
+inline std::strong_ordering operator<=>(
+    const DbWal::PageInfo & a, 
+    const DbWal::PageInfo & b
+) {
+    return a.firstLsn <=> b.firstLsn;
 }
 
 
@@ -272,11 +276,13 @@ public:
     // the page eviction algorithm.
     virtual void onWalDurable(uint64_t lsn, size_t bytes) {}
 
-    // The durable LSN is passed in, and the first durable LSN that still has
-    // volatile (not yet persisted to stable storage) data pages associated
-    // with it is returned.
+    // The first durable LSN is passed in, and the first durable LSN that 
+    // still has dirty (not yet persisted to stable storage) data pages 
+    // associated with it is returned.
     //
-    // Upon return, all WAL prior to the returned LSN may be purged.
+    // Upon return, all WAL prior to the returned LSN may be discarded. And,
+    // as discarded pages aren't durable, this causes the value for first 
+    // durable LSN to be advanced.
     virtual uint64_t onWalCheckpointPages(uint64_t lsn) { return lsn; }
 };
 
@@ -291,7 +297,7 @@ class DbWal::IApplyNotify {
 public:
     virtual ~IApplyNotify() = default;
 
-    virtual void onWalApplyCommitCheckpoint(
+    virtual void onWalApplyCheckpoint(
         uint64_t lsn,
         uint64_t startLsn
     ) = 0;

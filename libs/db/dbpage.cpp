@@ -55,6 +55,7 @@ struct ZeroPage {
 static auto & s_perfPages = uperf("db.work pages (total)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
+static auto & s_perfOldPages = uperf("db.work pages (old)");
 static auto & s_perfAmortized = uperf("db.work pages (amortized)");
 static auto & s_perfWrites = uperf("db.work writes (total)");
 static auto & s_perfDurableBytes = uperf("db.wal durable bytes");
@@ -69,8 +70,8 @@ static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
 
 //===========================================================================
 DbPage::DbPage()
-    : m_maxDirtyAge{kDefaultMaxCheckpointInterval}
-    , m_maxDirtyData{kDefaultMaxCheckpointData}
+    : m_maxWalAge{kDefaultMaxCheckpointInterval}
+    , m_maxWalBytes{kDefaultMaxCheckpointData}
     , m_saveTimer{[&](TimePoint now) { return onSaveTimer(now); }}
 {}
 
@@ -222,8 +223,8 @@ DbConfig DbPage::configure(const DbConfig & conf) {
     assert(conf.checkpointMaxData);
 
     unique_lock lk{m_workMut};
-    m_maxDirtyAge = conf.checkpointMaxInterval;
-    m_maxDirtyData = conf.checkpointMaxData;
+    m_maxWalAge = conf.checkpointMaxInterval;
+    m_maxWalBytes = conf.checkpointMaxData;
     queueSaveWork_LK();
 
     return conf;
@@ -262,6 +263,51 @@ void DbPage::close() {
 *
 *   DbPage - save and checkpoint
 *
+*   In order to ensure consistency, interdependent changes to multiple pages
+*   are grouped togather in transactions.
+* 
+*   An incrementing log sequence number (LSN) is assigned to each record 
+*   written to the write-ahead log (WAL).
+* 
+*   Life cycle of page update (short story):
+*    1. Data page updated in memory.
+*    2. Record of update saved to WAL, update is now fully durable (will 
+*       survive a crash).
+*    3. Data page saved.
+*    4. WAL record discarded.
+* 
+*   Life cycle of page update (long story):
+*    1.  Record of update created, added to the in memory page of the 
+*        write-ahead log (WAL).
+*    2.  Update applied to in memory data page (making it dirty) by processing 
+*        the WAL record.
+*    3.  WAL page containing record is saved to stable storage, thus becoming 
+*        durable. WAL pages are written when they become full or after a short 
+*        time (500ms) of WAL inactivity.
+*    4.  Now that it's corresponding WAL record has been saved the update is
+*        durable (will survive a crash) and the in memory data page is eligible
+*        to be saved to stable storage.
+*    5.  Data page becomes most senior (smallest LSN) eligible page. 
+*    6a. If page has been updated by a newer, not yet durable, WAL record:
+*        1. Copy of page added to old pages list. 
+*        2. Data page is marked as no longer dirty and therefore no longer 
+*           eligible to be saved, promoting next eldest to most senior. But 
+*           it is not discarded.
+*        3. WAL page containing newer update becomes durable.
+*        4. Copy of page in old pages list discarded.
+*    6b. Otherwise (all changes to page are from durable WAL records):
+*        1. Page is written and discarded from memory, promoting next eldest 
+*           to new most senior.
+*    7.  Eventually the next checkpoint begins. Either enough time passed (or 
+*        WAL data written) since the last checkpoint to trigger one.
+*    8.  Checkpoint ensures that all written pages are written to stable 
+*        storage and not just to the operating system's cache.
+*    9.  Record of checkpoint created, added to in memory WAL page.
+*   10.  WAL page containing checkpoint record becomes durable.
+*   11.  The WAL is truncated, freeing all pages older than the checkpoint.
+*   12.  Update is fully incorporated into the data pages and no longer exists
+*        in the WAL.
+*
 ***/
 
 //===========================================================================
@@ -274,7 +320,10 @@ void DbPage::onWalDurable(uint64_t lsn, size_t bytes) {
         m_durableWalBytes += bytes;
     }
     m_currentWal.push_back({lsn, timeNow(), bytes});
-    while (m_durableWalBytes - m_overflowWalBytes > m_maxDirtyData) {
+
+    // If adding this new wal page caused the limit to be exceeded; then move
+    // oldest entries to overflow until it's back within the limit.
+    while (m_durableWalBytes - m_overflowWalBytes > m_maxWalBytes) {
         auto wi = m_currentWal.front();
         m_overflowWal.push_back(wi);
         m_currentWal.pop_front();
@@ -312,9 +361,9 @@ Duration DbPage::untilNextSave_LK() {
     if (m_overflowWalBytes && m_durableLsn >= front->hdr->lsn)
         return 0ms;
 
-    auto minTime = timeNow() - m_maxDirtyAge;
+    auto minTime = timeNow() - m_maxWalAge;
     auto maxWait = front->firstTime - minTime;
-    auto wait = m_maxDirtyAge / m_pageDebt;
+    auto wait = m_maxWalAge / m_pageDebt;
     if (wait > maxWait) wait = maxWait;
     if (wait < 0ms) wait = 0ms;
     return wait;
@@ -350,14 +399,14 @@ void DbPage::saveWork() {
         return;
     }
 
-    auto minTime = now - m_maxDirtyAge;
+    auto minTime = now - m_maxWalAge;
     auto minDataLsn = m_overflowWalBytes
         ? m_currentWal.front().lsn
         : 0;
     size_t minSaves = 1;
     if (!empty(lastTime)) {
         if (auto elapsed = now - lastTime; elapsed > 0ms) {
-            if (auto multiple = m_maxDirtyAge / elapsed; multiple > 0) {
+            if (auto multiple = m_maxWalAge / elapsed; multiple > 0) {
                 minSaves = m_pageDebt
                     + now.time_since_epoch().count() % multiple;
                 minSaves /= multiple;
@@ -372,13 +421,14 @@ void DbPage::saveWork() {
     uint64_t savedLsn = 0;
     unsigned saved = 0;
     while (m_dirtyPages) {
-        auto pi = m_dirtyPages.front();
         // Make sure that we've saved:
-        //  - at least one page
+        //  - at least one page.
         //  - a percentage of pages equal to the percentage of time remaining
         //      that it's been since the last save event.
-        //  - all pages older than max age
-        //  - enough pages to clear out the overflow bytes
+        //  - all pages older than max age.
+        //  - enough pages to clear out the overflow bytes.
+        auto pi = m_dirtyPages.front();
+        assert(pi->hdr);
         if (saved >= minSaves
             && pi->firstTime > minTime
             && pi->firstLsn >= minDataLsn
@@ -391,6 +441,10 @@ void DbPage::saveWork() {
         s_perfDirtyPages -= 1;
 
         if (pi->hdr->lsn > m_durableLsn) {
+            // Page needs to be saved, but has been updated by an LSN that is
+            // not yet durable. The page is copied to old pages, where it is
+            // held until the all it's updates become durable. Meanwhile, new
+            // updates continue to be made to the original copy.
             auto npi = allocWorkInfo_LK();
             m_oldPages.link(npi);
             npi->hdr = dupPage_LK(pi->hdr);
@@ -398,16 +452,25 @@ void DbPage::saveWork() {
             npi->firstLsn = pi->firstLsn;
             npi->pgno = {};
             npi->flags = pi->flags;
+            s_perfOldPages += 1;
         } else {
+            // Page needs to be saved and doesn't have an unsaved LSN.
             savedLsn = pi->firstLsn;
             auto was = pi->hdr->lsn;
+
+            // FIXME: We're just blindly hoping that the this doesn't capture 
+            // the page between the LSN and data being changed by an update 
+            // that happens to be running against this exact page. Perhaps a 
+            // thread just released the lock in onWalGetUpdatePtr, was 
+            // suspended, and we got the lock at the top of this function.
             memcpy(tmpHdr, pi->hdr, m_pageSize);
+
             lk.unlock();
             writePageWait(tmpHdr);
             lk.lock();
             assert(m_pages[pi->hdr->pgno] == pi);
             if (was == pi->hdr->lsn) {
-                // the page didn't change, free it
+                // The page didn't change, free it.
                 pi->pgno = pi->hdr->pgno;
                 freePage_LK(pi->hdr);
                 pi->hdr = nullptr;
@@ -445,6 +508,7 @@ void DbPage::saveOldPages_LK() {
             assert(m_pages[pi->hdr->pgno] != pi);
             freePage_LK(pi->hdr);
             freeWorkInfo_LK(pi);
+            s_perfOldPages -= 1;
         }
 
         removeWalPages_LK(savedLsn);
@@ -486,7 +550,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     }
 
     if (m_cleanPages) {
-        auto minTime = timeNow() - m_maxDirtyAge;
+        auto minTime = timeNow() - m_maxWalAge;
         while (auto pi = m_cleanPages.front()) {
             if (pi->firstTime > minTime)
                 break;
@@ -566,6 +630,9 @@ void * DbPage::onWalGetRedoPtr(
     uint64_t lsn,
     uint16_t localTxn
 ) {
+    // Only used during recovery, which is inherently single threaded, no 
+    // locking needed.
+
     if (pgno >= m_pages.size()) {
         m_vdata.growToFit(pgno);
         m_pages.resize(pgno + 1);
@@ -614,7 +681,7 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     auto pi = m_pages[pgno];
     if (!pi || !pi->hdr) {
-        // create new dirty page from clean page
+        // Create new dirty page from clean page
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
         if (!pi) {
             pi = allocWorkInfo_LK();
