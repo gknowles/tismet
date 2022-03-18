@@ -43,7 +43,15 @@ static size_t bitmapBitsPerPage(size_t pageSize) {
 }
 
 //===========================================================================
-static BitView bitmapView(void * hdr, size_t pageSize) {
+static BitView bitmapBits(const void * hdr, size_t pageSize) {
+    auto offset = offsetof(DbData::BitmapPage, bits);
+    auto words = (pageSize - offset) / sizeof uint64_t;
+    auto base = (uint64_t *) ((char *) hdr + offset);
+    return {base, words};
+}
+
+//===========================================================================
+static BitSpan bitmapBits(void * hdr, size_t pageSize) {
     auto offset = offsetof(DbData::BitmapPage, bits);
     auto words = (pageSize - offset) / sizeof uint64_t;
     auto base = (uint64_t *) ((char *) hdr + offset);
@@ -79,7 +87,7 @@ bool DbData::bitUpsert(
     radixFind(txn, &bpno, root, rpos);
     if (bpno) {
         auto hdr = txn.viewPage<BitmapPage>(bpno);
-        auto bits = bitmapView(const_cast<BitmapPage *>(hdr), m_pageSize);
+        auto bits = bitmapBits(hdr, m_pageSize);
         auto num = bits.count(bpos, count);
         if (value) {
             if (num == count)
@@ -121,7 +129,7 @@ static bool addBits(
     }
     auto bpp = bitmapBitsPerPage(pageSize);
     index *= (uint32_t) bpp;
-    auto bits = bitmapView(const_cast<DbPageHeader *>(hdr), pageSize);
+    auto bits = bitmapBits(hdr, pageSize);
     for (auto first = bits.find(0); first != bits.npos; ) {
         auto last = bits.findZero(first);
         if (last == bits.npos)
@@ -300,7 +308,7 @@ void DbData::onWalApplyBitInit(
     bp->hdr.type = bp->kPageType;
     bp->hdr.id = id;
     bp->base = base;
-    auto bits = bitmapView(bp, m_pageSize);
+    auto bits = bitmapBits(bp, m_pageSize);
     if (fill) 
         bits.set();
     if (bpos != numeric_limits<uint32_t>::max()) 
@@ -315,6 +323,6 @@ void DbData::onWalApplyBitUpdate(
     bool value
 ) {
     auto bp = static_cast<BitmapPage *>(ptr);
-    auto bits = bitmapView(bp, m_pageSize);
+    auto bits = bitmapBits(bp, m_pageSize);
     bits.set(firstPos, lastPos - firstPos, value);
 }
