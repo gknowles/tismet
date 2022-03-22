@@ -98,7 +98,7 @@ size_t DbData::radixPageEntries(
 
 //===========================================================================
 void DbData::radixDestructPage(DbTxn & txn, pgno_t pgno) {
-    auto rp = txn.viewPage<RadixPage>(pgno);
+    auto rp = txn.pin<RadixPage>(pgno);
     radixDestruct(txn, rp->hdr);
 }
 
@@ -154,7 +154,7 @@ bool DbData::radixInsertOrAssign(
     pgno_t value
 ) {
     assert(value);
-    auto hdr = txn.viewPage<DbPageHeader>(root);
+    auto hdr = txn.pin<DbPageHeader>(root);
     auto rd = radixData(hdr, m_pageSize);
     auto id = hdr->id;
 
@@ -177,25 +177,26 @@ bool DbData::radixInsertOrAssign(
             rd->pages + rd->numPages
         );
         txn.walRadixPromote(root, pgno);
-        hdr = txn.viewPage<DbPageHeader>(root);
+        hdr = txn.pin<DbPageHeader>(root);
         rd = radixData(hdr, m_pageSize);
     }
     int * d = digits;
     while (count) {
-        int pos = (rd->height > count) ? 0 : *d;
+        auto height = rd->height;
+        int pos = (height > count) ? 0 : *d;
         auto pgno = rd->pages[pos];
         if (!pgno) {
             pgno = allocPgno(txn);
             txn.walRadixInit(
                 pgno,
                 id,
-                rd->height - 1,
+                height - 1,
                 nullptr,
                 nullptr
             );
             txn.walRadixUpdate(hdr->pgno, pos, pgno);
         }
-        hdr = txn.viewPage<DbPageHeader>(pgno);
+        hdr = txn.pin<DbPageHeader>(pgno);
         rd = radixData(hdr, m_pageSize);
         d += 1;
         count -= 1;
@@ -217,7 +218,7 @@ bool DbData::radixFind(
     pgno_t root,
     size_t pos
 ) {
-    *hdr = txn.viewPage<DbPageHeader>(root);
+    *hdr = txn.pin<DbPageHeader>(root);
     *rd = radixData(*hdr, m_pageSize);
 
     int digits[10];
@@ -243,7 +244,7 @@ bool DbData::radixFind(
             // the end.
             return false;
         }
-        *hdr = txn.viewPage<DbPageHeader>((*rd)->pages[pos]);
+        *hdr = txn.pin<DbPageHeader>((*rd)->pages[pos]);
         *rd = radixData(*hdr, m_pageSize);
         assert((*rd)->height == height - 1);
         if (height == count) {
@@ -282,7 +283,7 @@ static bool radixVisit(
     const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn,
     size_t pageSize
 ) {
-    auto hdr = txn.viewPage<DbPageHeader>(root);
+    auto hdr = txn.pin<DbPageHeader>(root);
     auto rd = DbData::radixData(hdr, pageSize);
     uint32_t step = 1;
     for (auto i = 0; i < rd->height; ++i) 

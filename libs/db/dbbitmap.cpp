@@ -86,7 +86,7 @@ bool DbData::bitUpsert(
     auto bpno = pgno_t{};
     radixFind(txn, &bpno, root, rpos);
     if (bpno) {
-        auto hdr = txn.viewPage<BitmapPage>(bpno);
+        auto hdr = txn.pin<BitmapPage>(bpno);
         auto bits = bitmapBits(hdr, m_pageSize);
         auto num = bits.count(bpos, count);
         if (value) {
@@ -121,7 +121,7 @@ static bool addBits(
     pgno_t pgno,
     size_t pageSize
 ) {
-    auto hdr = txn.viewPage<DbPageHeader>(pgno);
+    auto hdr = txn.pin<DbPageHeader>(pgno);
     if (hdr->type != DbPageType::kBitmap) {
         logMsgError() << "Bad bitmap page #" << pgno << ", type"
             << (unsigned) hdr->type;

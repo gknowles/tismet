@@ -204,7 +204,7 @@ size_t DbData::metricNameSize(size_t pageSize) {
 
 //===========================================================================
 void DbData::metricDestructPage(DbTxn & txn, pgno_t pgno) {
-    auto mp = txn.viewPage<MetricPage>(pgno);
+    auto mp = txn.pin<MetricPage>(pgno);
     radixDestruct(txn, mp->hdr);
 
     unique_lock lk{m_mposMut};
@@ -215,7 +215,7 @@ void DbData::metricDestructPage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 bool DbData::loadMetric(DbTxn & txn, IDbDataNotify * notify, pgno_t pgno) {
-    auto mp = txn.viewPage<MetricPage>(pgno);
+    auto mp = txn.pin<MetricPage>(pgno);
     if (mp->hdr.type != DbPageType::kMetric) {
         logMsgError() << "Bad metric page #" << pgno << ", type "
             << (unsigned) mp->hdr.type;
@@ -296,7 +296,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         s_perfCount += 1;
     }
 
-    auto mp = txn.viewPage<MetricPage>(pgno);
+    auto mp = txn.pin<MetricPage>(pgno);
     MetricPosition mi = {};
     mi.infoPage = mp->hdr.pgno;
     mi.interval = mp->interval;
@@ -351,7 +351,7 @@ void DbData::onWalApplyMetricInit(
 bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
     if (mi.infoPage) {
-        *name = txn.viewPage<MetricPage>(mi.infoPage)->name;
+        *name = txn.pin<MetricPage>(mi.infoPage)->name;
         scoped_lock lk{m_mndxMut};
         radixErase(txn, m_metricStoreRoot, id, id + 1);
         return true;
@@ -371,7 +371,7 @@ void DbData::updateMetric(
     auto mi = getMetricPos(id);
     if (!mi.infoPage)
         return;
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.pin<MetricPage>(mi.infoPage);
     DbMetricInfo info = {};
     info.retention = from.retention.count() ? from.retention : mp->retention;
     info.interval = from.interval.count() ? from.interval : mp->interval;
@@ -405,16 +405,12 @@ void DbData::updateMetric(
 }
 
 //===========================================================================
-void DbData::getMetricInfo(
-    IDbDataNotify * notify,
-    const DbTxn & txn,
-    uint32_t id
-) {
+void DbData::getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id) {
     auto mi = loadMetricPos(txn, id);
     if (!mi.infoPage)
         return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
 
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.pin<MetricPage>(mi.infoPage);
     DbSeriesInfoEx info;
     info.id = id;
     info.name = mp->name;
@@ -508,17 +504,17 @@ static double getSample(const DbData::SamplePage * sp, size_t pos) {
 }
 
 //===========================================================================
-DbData::MetricPosition DbData::loadMetricPos(const DbTxn & txn, uint32_t id) {
+DbData::MetricPosition DbData::loadMetricPos(DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
 
     // Update metric info from sample page if it has no page data.
     if (mi.infoPage && mi.lastPage && empty(mi.pageFirstTime)) {
         if (mi.lastPage > kMaxPageNum) {
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+            auto mp = txn.pin<MetricPage>(mi.infoPage);
             mi.pageFirstTime = mp->lastPageFirstTime;
             mi.pageLastSample = mp->lastPageSample;
         } else {
-            auto sp = txn.viewPage<SamplePage>(mi.lastPage);
+            auto sp = txn.pin<SamplePage>(mi.lastPage);
             mi.pageFirstTime = sp->pageFirstTime;
             mi.pageLastSample = sp->pageLastSample;
         }
@@ -627,7 +623,7 @@ void DbData::updateSample(
             assert(spno);
         } else {
             // updating sample on old page
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+            auto mp = txn.pin<MetricPage>(mi.infoPage);
             auto firstSampleTime = lastSampleTime - mp->retention + mi.interval;
             if (time < firstSampleTime) {
                 // sample older than retention, ignore it
@@ -671,7 +667,7 @@ void DbData::updateSample(
             ) {
                 // converting last page
                 assert(sppos == kInvalidPos);
-                auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+                auto mp = txn.pin<MetricPage>(mi.infoPage);
                 spno = sampleMakePhysical(
                     txn,
                     id,
@@ -697,7 +693,7 @@ void DbData::updateSample(
                 );
             }
         }
-        auto sp = txn.viewPage<SamplePage>(spno);
+        auto sp = txn.pin<SamplePage>(spno);
         if (ent == kInvalidPos) {
             assert(time >= sp->pageFirstTime);
             ent = (time - sp->pageFirstTime) / mi.interval;
@@ -729,7 +725,7 @@ void DbData::updateSample(
     // If past the end of the page, check if it's also past the retention of
     // all pages.
     if (time >= endPageTime) {
-        auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+        auto mp = txn.pin<MetricPage>(mi.infoPage);
         // further in the future than the retention period? remove all samples
         // and add as new initial sample.
         if (time >= lastSampleTime + mp->retention) {
@@ -756,7 +752,7 @@ void DbData::updateSample(
                 setMetricPos(id, mi);
                 return;
             }
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+            auto mp = txn.pin<MetricPage>(mi.infoPage);
             mi.lastPage = sampleMakePhysical(
                 txn,
                 id,
@@ -767,11 +763,9 @@ void DbData::updateSample(
                 mi.lastPage
             );
         }
-        if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-            auto sp = txn.viewPage<SamplePage>(mi.lastPage);
-            assert(mi.pageFirstTime == sp->pageFirstTime);
-            assert(mi.pageLastSample == sp->pageLastSample);
-        }
+        auto sp = txn.pin<SamplePage>(mi.lastPage);
+        assert(mi.pageFirstTime == sp->pageFirstTime);
+        assert(mi.pageLastSample == sp->pageLastSample);
         if (ent == mi.pageLastSample + 1) {
             txn.walSampleUpdateTxn(mi.lastPage, ent, value, true);
             mi.pageLastSample = ent;
@@ -795,7 +789,7 @@ void DbData::updateSample(
         txn.walSampleUpdate(mi.lastPage, mi.pageLastSample + 1, spp, NAN, true);
     } else {
         if (mi.pageLastSample + 1 < spp) {
-            auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+            auto mp = txn.pin<MetricPage>(mi.infoPage);
             mi.lastPage = sampleMakePhysical(
                 txn,
                 id,
@@ -821,7 +815,7 @@ void DbData::updateSample(
 
     // delete pages between last page and the one the sample is on
     auto num = (time - endPageTime) / pageInterval;
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.pin<MetricPage>(mi.infoPage);
     auto numSamples = mp->retention / mp->interval;
     auto numPages = (numSamples - 1) / spp + 1;
     auto first = (mp->lastPagePos + 1) % numPages;
@@ -992,7 +986,7 @@ bool DbData::sampleTryMakeVirtual(
     DbData::MetricPosition & mi,
     pgno_t spno
 ) {
-    auto sp = txn.viewPage<SamplePage>(spno);
+    auto sp = txn.pin<SamplePage>(spno);
     auto value = getSample(sp, 0);
     if (isnan(value))
         return false;
@@ -1007,7 +1001,7 @@ bool DbData::sampleTryMakeVirtual(
             return false;
     }
 
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.pin<MetricPage>(mi.infoPage);
     if (spno == mi.lastPage) {
         auto sppos = mp->lastPagePos;
         radixErase(txn, mp->hdr.pgno, sppos, sppos + 1);
@@ -1090,7 +1084,7 @@ void DbData::getSamples(
     auto mi = loadMetricPos(txn, id);
     if (!mi.infoPage)
         return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
-    auto mp = txn.viewPage<MetricPage>(mi.infoPage);
+    auto mp = txn.pin<MetricPage>(mi.infoPage);
     auto name = string_view(mp->name);
     auto stype = mp->sampleType;
 
@@ -1160,7 +1154,7 @@ void DbData::getSamples(
                 value = getSample(&spno);
             } else {
                 // Physical page, get values from the page
-                sp = txn.viewPage<SamplePage>(spno);
+                sp = txn.pin<SamplePage>(spno);
                 if (sppos == mp->lastPagePos) {
                     assert(sp->pageLastSample != spp);
                     lastSample = sp->pageLastSample;

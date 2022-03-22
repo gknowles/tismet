@@ -108,10 +108,10 @@ bool DbData::openForUpdate(
     assert(m_pageSize);
     m_verbose = flags.any(fDbOpenVerbose);
 
-    auto zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+    auto zp = txn.pin<ZeroPage>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {
         txn.walZeroInit(kZeroPageNum);
-        zp = (const ZeroPage *) txn.viewPage<DbPageHeader>(kZeroPageNum);
+        zp = txn.pin<ZeroPage>(kZeroPageNum);
     }
 
     if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
@@ -200,7 +200,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
         auto pgno = (pgno_t) p;
         if (pgno >= m_numPages)
             break;
-        auto fp = txn.viewPage<DbPageHeader>(pgno);
+        auto fp = txn.pin<DbPageHeader>(pgno);
         if (!fp
             || fp->type != DbPageType::kInvalid
                 && fp->type != DbPageType::kFree
@@ -278,7 +278,7 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     }
 
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        auto fp = txn.viewPage<DbPageHeader>(pgno);
+        auto fp = txn.pin<DbPageHeader>(pgno);
         assert(fp->type == DbPageType::kInvalid 
             || fp->type == DbPageType::kFree);
     }
@@ -290,7 +290,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
 
     assert(pgno < m_numPages);
-    auto p = txn.viewPage<DbPageHeader>(pgno);
+    auto p = txn.pin<DbPageHeader>(pgno);
     auto type = p->type;
     switch (type) {
     case DbPageType::kMetric:
@@ -342,7 +342,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        auto fp = txn.viewPage<DbPageHeader>(pgno);
+        auto fp = txn.pin<DbPageHeader>(pgno);
         assert(fp->type != DbPageType::kInvalid 
             && fp->type != DbPageType::kFree);
     }

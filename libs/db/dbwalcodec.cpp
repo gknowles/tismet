@@ -180,11 +180,14 @@ void DbWal::walAndApply(uint64_t txn, Record * rec, size_t bytes) {
 
     void * ptr = nullptr;
     auto pgno = getPgno(*rec);
-    if (pgno != pgno_t::npos) {
-        auto localTxn = getLocalTxn(*rec);
-        ptr = m_page->onWalGetUpdatePtr(pgno, lsn, localTxn);
+    if (pgno == pgno_t::npos) {
+        applyUpdate(ptr, lsn, *rec);
+        return;
     }
+    auto localTxn = getLocalTxn(*rec);
+    ptr = m_page->onWalGetPtrForUpdate(pgno, lsn, localTxn);
     applyUpdate(ptr, lsn, *rec);
+    m_page->onWalUnlockPtr(pgno);
 }
 
 //===========================================================================

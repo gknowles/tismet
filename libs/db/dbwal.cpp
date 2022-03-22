@@ -821,7 +821,7 @@ void DbWal::applyUpdate(
         return;
 
     auto pgno = getPgno(rec);
-    if (auto ptr = m_page->onWalGetRedoPtr(pgno, lsn, localTxn))
+    if (auto ptr = m_page->onWalGetPtrForRedo(pgno, lsn, localTxn))
         applyUpdate(ptr, lsn, rec);
 }
 
@@ -1343,12 +1343,17 @@ DbTxn::DbTxn(DbWal & wal, DbPage & work)
 DbTxn::~DbTxn() {
     if (m_txn)
         m_wal.commit(m_txn);
+    m_page.unpin(m_pinnedPages);
 }
 
 //===========================================================================
 void DbTxn::wal(DbWal::Record * rec, size_t bytes) {
     if (!m_txn)
         m_txn = m_wal.beginTxn();
+    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
+        auto pgno = m_wal.getPgno(*rec);
+        m_pinnedPages.contains(pgno);
+    }
     m_wal.walAndApply(m_txn, rec, bytes);
 }
 

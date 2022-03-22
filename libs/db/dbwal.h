@@ -248,19 +248,23 @@ public:
     virtual ~IPageNotify() = default;
 
     // Returns content of page that will be updated in place by applying the
-    // action already recorded at the specified LSN. The pgno and lsn fields of
-    // the buffer must be set before returning.
-    virtual void * onWalGetUpdatePtr(
+    // action already recorded at the specified LSN. The returned buffer has 
+    // it's pgno and lsn fields set. Page is locked and must be unlocked via
+    // subsequent call to onWalUnlockPtr().
+    virtual void * onWalGetPtrForUpdate(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
+    // Called to release lock on ptr returned by onWalGetPtrForUpdate().
+    virtual void onWalUnlockPtr(pgno_t pgno) = 0;
 
-    // Similar to onWalGetUpdatePtr, except that if the page has already been
+    // Similar to onWalGetPtrForUpdate, except that if the page has already been
     // updated no action is taken and null is returned. A page is considered
     // to have been updated if the on page LSN is greater or equal to the LSN
-    // of the update.
-    virtual void * onWalGetRedoPtr(
+    // of the update. Does not lock page, recovery is assumed to be single 
+    // threaded.
+    virtual void * onWalGetPtrForRedo(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn

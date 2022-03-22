@@ -78,7 +78,7 @@ public:
 *
 ***/
 
-class DbPage : public DbWal::IPageNotify {
+class DbPage final : public DbWal::IPageNotify {
 public:
     DbPage();
     ~DbPage();
@@ -94,7 +94,9 @@ public:
     DbConfig configure(const DbConfig & conf);
     void growToFit(pgno_t pgno);
 
-    const void * rptr(uint64_t lsn, pgno_t pgno) const;
+    const void * rptr(uint64_t lsn, pgno_t pgno, bool withPin);
+    void unpin(const Dim::UnsignedSet & pages);
+
     size_t pageSize() const { return m_pageSize; }
     size_t viewSize() const { return m_vwork.viewSize(); }
     size_t size() const { return m_pages.size(); }
@@ -110,17 +112,22 @@ private:
     void writePageWait(DbPageHeader * hdr);
     void freePage_LK(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
-    void * dirtyPage_LK(pgno_t pgno, uint64_t lsn);
+    WorkPageInfo * dirtyPage_LK(pgno_t pgno, uint64_t lsn);
     WorkPageInfo * allocWorkInfo_LK();
     void freeWorkInfo_LK(WorkPageInfo * pi);
 
     // Inherited by DbWal::IPageNotify
-    void * onWalGetUpdatePtr(
+    void * onWalGetPtrForUpdate(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t txn
     ) override;
-    void * onWalGetRedoPtr(pgno_t pgno, uint64_t lsn, uint16_t txn) override;
+    void onWalUnlockPtr(pgno_t pgno) override;
+    void * onWalGetPtrForRedo(
+        pgno_t pgno, 
+        uint64_t lsn, 
+        uint16_t txn
+    ) override;
     void onWalDurable(uint64_t lsn, size_t bytes) override;
     uint64_t onWalCheckpointPages(uint64_t lsn) override;
 
@@ -145,6 +152,7 @@ private:
 
 
     mutable std::mutex m_workMut;
+    std::condition_variable m_workCv;
 
     bool m_saveInProgress = false; // is saveWork() task running?
 
@@ -156,6 +164,8 @@ private:
         uint64_t firstLsn; // LSN at which page became dirty
         pgno_t pgno;
         Dim::EnumFlags<DbPageFlags> flags;
+        int pins;
+        bool updates;
     };
     // List of all dirty pages in order of when they became dirty as measured
     // by LSN (and therefore also time).
@@ -170,7 +180,12 @@ private:
     // Number of pages, dirty or clean, that haven't had their cleaning cost
     // fully repaid.
     size_t m_pageDebt = 0;
+    // Unused page info structs waiting to be recycled.
     Dim::List<WorkPageInfo> m_freeInfos;
+    // Info about pages from the data file that are unchanged and have not 
+    // been copied to work pages. Used to track pins (that block modification)
+    // on pages that are being referenced.
+    Dim::List<WorkPageInfo> m_referencePages;
 
     // One entry for every data page, null for untracked pages (which must
     // therefore also be unmodified pages).
@@ -226,9 +241,9 @@ public:
     DbTxn(DbWal & wal, DbPage & page);
     ~DbTxn();
 
-    template<typename T> const T * viewPage(pgno_t pgno) const;
     size_t pageSize() const { return m_page.pageSize(); }
     size_t numPages() const { return m_page.size(); }
+    template<typename T> const T * pin(pgno_t pgno);
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
 
     void walZeroInit(pgno_t pgno);
@@ -258,7 +273,7 @@ public:
     void walRadixPromote(pgno_t pgno, pgno_t refPage);
     void walRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
     void walBitInit(
-        pgno_t, 
+        pgno_t pgno, 
         uint32_t id, 
         uint32_t base, 
         bool fill, 
@@ -336,20 +351,23 @@ private:
 
     DbWal & m_wal;
     DbPage & m_page;
-    uint64_t m_txn{0};
+    uint64_t m_txn = 0;
     std::string m_buffer;
+    mutable Dim::UnsignedSet m_pinnedPages;
 };
 
 //===========================================================================
 template<typename T>
-const T * DbTxn::viewPage(pgno_t pgno) const {
+const T * DbTxn::pin(pgno_t pgno) {
     auto lsn = DbWal::getLsn(m_txn);
-    auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno));
+    auto withPin = m_pinnedPages.insert(pgno);
+    auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno, withPin));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
-        // Must start with and be layout compatible with DbPageHeader
+        // Must start with and be layout compatible with DbPageHeader.
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
         assert(intptr_t(ptr) == intptr_t(&ptr->hdr));
-        assert(ptr->hdr.type == ptr->kPageType);
+        assert(ptr->hdr.type == ptr->kPageType
+            || ptr->hdr.type == DbPageType::kInvalid);
     }
     return ptr;
 }
@@ -373,7 +391,7 @@ std::pair<T *, size_t> DbTxn::alloc(
 *
 ***/
 
-class DbPageHeap : public Dim::IPageHeap {
+class DbPageHeap final : public Dim::IPageHeap {
 public:
     DbPageHeap(DbTxn & txn, DbData & data);
 
@@ -404,7 +422,7 @@ private:
 *
 ***/
 
-class DbData : public DbWal::IApplyNotify, public Dim::HandleContent {
+class DbData final : public DbWal::IApplyNotify, public Dim::HandleContent {
 public:
     struct ZeroPage;
     struct FreePage;
@@ -474,11 +492,7 @@ public:
         uint32_t id,
         const DbMetricInfo & info
     );
-    void getMetricInfo(
-        IDbDataNotify * notify,
-        const DbTxn & txn,
-        uint32_t id
-    );
+    void getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id);
 
     void updateSample(
         DbTxn & txn,
@@ -671,7 +685,7 @@ private:
 
     MetricPosition getMetricPos(uint32_t id) const;
     void setMetricPos(uint32_t id, const MetricPosition & mi);
-    MetricPosition loadMetricPos(const DbTxn & txn, uint32_t id);
+    MetricPosition loadMetricPos(DbTxn & txn, uint32_t id);
     MetricPosition loadMetricPos(
         DbTxn & txn,
         uint32_t id,

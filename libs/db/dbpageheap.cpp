@@ -71,7 +71,7 @@ uint8_t * DbPageHeap::wptr(size_t pgno) {
 //===========================================================================
 const uint8_t * DbPageHeap::ptr(size_t pgno) const {
     commitIfPending();
-    auto page = m_txn.viewPage<DbPageHeader>((pgno_t) pgno);
+    auto page = m_txn.pin<DbPageHeader>((pgno_t) pgno);
     return reinterpret_cast<const uint8_t *>(page);
 }
 

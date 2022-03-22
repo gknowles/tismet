@@ -53,6 +53,7 @@ struct ZeroPage {
 ***/
 
 static auto & s_perfPages = uperf("db.work pages (total)");
+static auto & s_perfPinnedPages = uperf("db.work pages (pinned)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
 static auto & s_perfOldPages = uperf("db.work pages (old)");
@@ -238,6 +239,7 @@ void DbPage::close() {
     m_cleanPages.clear();
     m_pageDebt = 0;
     m_freeInfos.clear();
+    m_referencePages.clear();
     m_currentWal.clear();
     m_overflowWal.clear();
     m_durableWalBytes = 0;
@@ -440,6 +442,9 @@ void DbPage::saveWork() {
         pi->flags.reset(fDbPageDirty);
         s_perfDirtyPages -= 1;
 
+        while (pi->updates)
+            m_workCv.wait(lk);
+
         if (pi->hdr->lsn > m_durableLsn) {
             // Page needs to be saved, but has been updated by an LSN that is
             // not yet durable. The page is copied to old pages, where it is
@@ -450,26 +455,19 @@ void DbPage::saveWork() {
             npi->hdr = dupPage_LK(pi->hdr);
             npi->firstTime = pi->firstTime;
             npi->firstLsn = pi->firstLsn;
-            npi->pgno = {};
             npi->flags = pi->flags;
             s_perfOldPages += 1;
         } else {
             // Page needs to be saved and doesn't have an unsaved LSN.
             savedLsn = pi->firstLsn;
             auto was = pi->hdr->lsn;
-
-            // FIXME: We're just blindly hoping that the this doesn't capture 
-            // the page between the LSN and data being changed by an update 
-            // that happens to be running against this exact page. Perhaps a 
-            // thread just released the lock in onWalGetUpdatePtr, was 
-            // suspended, and we got the lock at the top of this function.
             memcpy(tmpHdr, pi->hdr, m_pageSize);
 
             lk.unlock();
             writePageWait(tmpHdr);
             lk.lock();
             assert(m_pages[pi->hdr->pgno] == pi);
-            if (was == pi->hdr->lsn) {
+            if (!pi->pins && was == pi->hdr->lsn) {
                 // The page didn't change, free it.
                 pi->pgno = pi->hdr->pgno;
                 freePage_LK(pi->hdr);
@@ -596,26 +594,65 @@ void DbPage::growToFit(pgno_t pgno) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(uint64_t lsn, pgno_t pgno) const {
+const void * DbPage::rptr(uint64_t lsn, pgno_t pgno, bool withPin) {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
-    if (pi && pi->hdr)
-        return pi->hdr;
+    if (!pi) {
+        assert(withPin);
+        pi = allocWorkInfo_LK();
+        m_pages[pgno] = pi;
+        m_referencePages.link(pi);
+        pi->pgno = pgno;
+    }
+    if (withPin) {
+        while (pi->updates)
+            m_workCv.wait(lk);
+        if (!pi->pins)
+            s_perfPinnedPages += 1;
+        pi->pins += 1;
+    } else {
+        assert(pi->pins);
+    }
+    return pi->hdr
+        ? pi->hdr
+        : m_vdata.rptr(pgno);
+}
 
-    return m_vdata.rptr(pgno);
+//===========================================================================
+void DbPage::unpin(const UnsignedSet & pages) {
+    unique_lock lk{m_workMut};
+    bool notify = false;
+    for (auto&& pgno : pages) {
+        auto pi = m_pages[pgno];
+        assert(pi);
+        if (!--pi->pins) {
+            s_perfPinnedPages -= 1;
+            if (!pi->hdr) {
+                // Don't track reference only pages that are no longer pinned.
+                freeWorkInfo_LK(pi);
+                m_pages[pgno] = nullptr;
+            }
+            notify = true;
+        }
+    }
+    lk.unlock();
+    if (notify)
+        m_workCv.notify_all();
 }
 
 //===========================================================================
 DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
     auto pi = m_freeInfos.back();
-    if (!pi)
+    if (!pi) 
         pi = new WorkPageInfo;
     pi->hdr = nullptr;
     pi->firstTime = {};
     pi->firstLsn = 0;
     pi->flags = {};
     pi->pgno = {};
+    pi->pins = 0;
+    pi->updates = 0;
     return pi;
 }
 
@@ -625,12 +662,12 @@ void DbPage::freeWorkInfo_LK(WorkPageInfo * pi) {
 }
 
 //===========================================================================
-void * DbPage::onWalGetRedoPtr(
+void * DbPage::onWalGetPtrForRedo(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
 ) {
-    // Only used during recovery, which is inherently single threaded, no 
+    // Only used during recovery, which is inherently single threaded, so no 
     // locking needed.
 
     if (pgno >= m_pages.size()) {
@@ -646,11 +683,12 @@ void * DbPage::onWalGetRedoPtr(
     } else if (lsn <= pi->hdr->lsn) {
         return nullptr;
     }
-    return dirtyPage_LK(pgno, lsn);
+    pi = dirtyPage_LK(pgno, lsn);
+    return pi->hdr;
 }
 
 //===========================================================================
-void * DbPage::onWalGetUpdatePtr(
+void * DbPage::onWalGetPtrForUpdate(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
@@ -658,7 +696,24 @@ void * DbPage::onWalGetUpdatePtr(
     assert(lsn);
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
-    return dirtyPage_LK(pgno, lsn);
+    auto pi = m_pages[pgno];
+    while (pi && (pi->pins > 1 || pi->updates)) 
+        m_workCv.wait(lk);
+    assert(pi->pins == 1);
+    pi = dirtyPage_LK(pgno, lsn);
+    pi->updates = true;
+    return pi->hdr;
+}
+
+//===========================================================================
+void DbPage::onWalUnlockPtr(pgno_t pgno) {
+    unique_lock lk{m_workMut};
+    assert(pgno < m_pages.size());
+    auto pi = m_pages[pgno];
+    assert(pi->updates);
+    pi->updates = false;
+    lk.unlock();
+    m_workCv.notify_all();
 }
 
 //===========================================================================
@@ -678,21 +733,27 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
+DbPage::WorkPageInfo * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     auto pi = m_pages[pgno];
-    if (!pi || !pi->hdr) {
-        // Create new dirty page from clean page
+    if (!pi) {
+        // Page was untracked, create page info for it.
+        pi = allocWorkInfo_LK();
+        m_pages[pgno] = pi;
+    }
+    if (!pi->hdr) {
+        // Create new dirty page from clean or referrence page.
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
-        if (!pi) {
-            pi = allocWorkInfo_LK();
-            m_pages[pgno] = pi;
+        pi->hdr = dupPage_LK(src);
+        pi->pgno = {};
+        if (!pi->firstLsn) {
+            // If dirtying reference or untracked page, add to page debt.
             m_pageDebt += 1;
             s_perfAmortized += 1;
         }
-        pi->hdr = dupPage_LK(src);
-        pi->pgno = {};
     }
     assert(pi->hdr && !pi->pgno);
+    pi->hdr->pgno = pgno;
+    pi->hdr->lsn = lsn;
     if (pi->flags.none(fDbPageDirty)) {
         pi->firstTime = timeNow();
         pi->firstLsn = lsn;
@@ -702,7 +763,5 @@ void * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
         if (m_dirtyPages.front() == pi)
             queueSaveWork_LK();
     }
-    pi->hdr->pgno = pgno;
-    pi->hdr->lsn = lsn;
-    return pi->hdr;
+    return pi;
 }

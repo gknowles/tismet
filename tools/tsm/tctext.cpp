@@ -117,12 +117,13 @@ private:
     void onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
 
     // Inherited via IPageNotify
-    void * onWalGetUpdatePtr(
+    void * onWalGetPtrForUpdate(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) override;
-    void * onWalGetRedoPtr(
+    void onWalUnlockPtr(pgno_t pgno) override;    
+    void * onWalGetPtrForRedo(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
@@ -389,7 +390,7 @@ void TextWriter::onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
 }
 
 //===========================================================================
-void * TextWriter::onWalGetUpdatePtr(
+void * TextWriter::onWalGetPtrForUpdate(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
@@ -399,7 +400,12 @@ void * TextWriter::onWalGetUpdatePtr(
 }
 
 //===========================================================================
-void * TextWriter::onWalGetRedoPtr(
+void TextWriter::onWalUnlockPtr(pgno_t pgno) {
+    assert(!"updates not supported when dumping wal");
+}
+
+//===========================================================================
+void * TextWriter::onWalGetPtrForRedo(
     pgno_t pgno,
     uint64_t lsn,
     uint16_t localTxn
