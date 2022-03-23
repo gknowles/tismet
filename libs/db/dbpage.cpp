@@ -15,7 +15,7 @@ using namespace Dim;
 *
 ***/
 
-// Must be a multiple of fileViewAlignment()
+// Must be a multiple of fileViewAlignment().
 size_t const kViewSize = 0x100'0000; // 16MiB
 size_t const kDefaultFirstViewSize = 2 * kViewSize;
 
@@ -144,7 +144,7 @@ bool DbPage::openData(string_view datafile) {
         return false;
     }
 
-    // Remove trailing blank pages from page count
+    // Remove trailing blank pages from page count.
     auto lastPage = (pgno_t) (len / m_pageSize);
     while (lastPage) {
         lastPage = pgno_t(lastPage - 1);
@@ -162,8 +162,8 @@ bool DbPage::openData(string_view datafile) {
 bool DbPage::openWork(string_view workfile) {
     auto oflags = File::fTemp | File::fReadWrite | File::fDenyWrite
         | File::fBlocking | File::fRandom;
-    // Opening the data file has already succeeded, so always create the
-    // work file (if not exist).
+    // Opening the data file has already succeeded, so always create the work
+    // file (if not exist).
     oflags |= File::fCreat;
     if (m_flags.any(fDbOpenExcl))
         oflags |= File::fExcl;
@@ -218,8 +218,8 @@ bool DbPage::openWork(string_view workfile) {
 
 //===========================================================================
 DbConfig DbPage::configure(const DbConfig & conf) {
-    // checkpoint configuration is assumed to have already been validated
-    // by DbWal.
+    // Checkpoint configuration is assumed to have already been validated by
+    // DbWal.
     assert(conf.checkpointMaxInterval.count());
     assert(conf.checkpointMaxData);
 
@@ -249,7 +249,7 @@ void DbPage::close() {
     fileClose(m_fdata);
     m_vwork.close();
 
-    // TODO: resize to number of dirty pages at start of last checkpoint
+    // TODO: Resize to number of dirty pages at start of last checkpoint.
     fileResize(m_fwork, m_pageSize);
 
     fileClose(m_fwork);
@@ -265,26 +265,26 @@ void DbPage::close() {
 *
 *   DbPage - save and checkpoint
 *
-*   In order to ensure consistency, interdependent changes to multiple pages
-*   are grouped togather in transactions.
+*   In order to ensure consistency, interdependent changes to multiple pages are
+*   grouped togather in transactions.
 * 
-*   An incrementing log sequence number (LSN) is assigned to each record 
-*   written to the write-ahead log (WAL).
+*   An incrementing log sequence number (LSN) is assigned to each record written
+*   to the write-ahead log (WAL).
 * 
 *   Life cycle of page update (short story):
 *    1. Data page updated in memory.
-*    2. Record of update saved to WAL, update is now fully durable (will 
-*       survive a crash).
+*    2. Record of update saved to WAL, update is now fully durable (will survive
+*       a crash).
 *    3. Data page saved.
 *    4. WAL record discarded.
 * 
 *   Life cycle of page update (long story):
-*    1.  Record of update created, added to the in memory page of the 
+*    1.  Record of update created, added to the in memory page of the
 *        write-ahead log (WAL).
-*    2.  Update applied to in memory data page (making it dirty) by processing 
+*    2.  Update applied to in memory data page (making it dirty) by processing
 *        the WAL record.
-*    3.  WAL page containing record is saved to stable storage, thus becoming 
-*        durable. WAL pages are written when they become full or after a short 
+*    3.  WAL page containing record is saved to stable storage, thus becoming
+*        durable. WAL pages are written when they become full or after a short
 *        time (500ms) of WAL inactivity.
 *    4.  Now that it's corresponding WAL record has been saved the update is
 *        durable (will survive a crash) and the in memory data page is eligible
@@ -292,18 +292,18 @@ void DbPage::close() {
 *    5.  Data page becomes most senior (smallest LSN) eligible page. 
 *    6a. If page has been updated by a newer, not yet durable, WAL record:
 *        1. Copy of page added to old pages list. 
-*        2. Data page is marked as no longer dirty and therefore no longer 
-*           eligible to be saved, promoting next eldest to most senior. But 
-*           it is not discarded.
+*        2. Data page is marked as no longer dirty and therefore no longer
+*           eligible to be saved, promoting next eldest to most senior. But it
+*           is not discarded.
 *        3. WAL page containing newer update becomes durable.
 *        4. Copy of page in old pages list discarded.
 *    6b. Otherwise (all changes to page are from durable WAL records):
-*        1. Page is written and discarded from memory, promoting next eldest 
-*           to new most senior.
-*    7.  Eventually the next checkpoint begins. Either enough time passed (or 
+*        1. Page is written and discarded from memory, promoting next eldest to
+*           new most senior.
+*    7.  Eventually the next checkpoint begins. Either enough time passed (or
 *        WAL data written) since the last checkpoint to trigger one.
-*    8.  Checkpoint ensures that all written pages are written to stable 
-*        storage and not just to the operating system's cache.
+*    8.  Checkpoint ensures that all written pages are written to stable storage
+*        and not just to the operating system's cache.
 *    9.  Record of checkpoint created, added to in memory WAL page.
 *   10.  WAL page containing checkpoint record becomes durable.
 *   11.  The WAL is truncated, freeing all pages older than the checkpoint.
@@ -522,7 +522,7 @@ void DbPage::freePage_LK(DbPageHeader * hdr) {
 }
 
 //===========================================================================
-// Remove WAL info entries that have had all their pages committed
+// Remove WAL info entries that have had all their pages committed.
 void DbPage::removeWalPages_LK(uint64_t lsn) {
     assert(lsn);
     size_t bytes = 0;
@@ -667,7 +667,7 @@ void * DbPage::onWalGetPtrForRedo(
     uint64_t lsn,
     uint16_t localTxn
 ) {
-    // Only used during recovery, which is inherently single threaded, so no 
+    // Only used during recovery, which is inherently single threaded, so no
     // locking needed.
 
     if (pgno >= m_pages.size()) {

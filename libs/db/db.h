@@ -33,7 +33,7 @@ enum DbOpenFlags : unsigned {
     fDbOpenVerbose = 0x08,
     fDbOpenReadOnly = 0x10,
 };
-// pageSize is only used if new files are being created, use 0 for the same 
+// 'pageSize' is only used if new files are being created, use 0 for the same
 // size as system memory pages.
 DbHandle dbOpen(
     std::string_view path,
@@ -190,8 +190,7 @@ struct IDbDataNotify {
         return false; 
     }
 };
-// Returns true if it completed synchronously, false if the request was
-// queued.
+// Returns true if it completed synchronously, false if the request was queued.
 bool dbGetSamples(
     IDbDataNotify * notify,
     DbHandle h,

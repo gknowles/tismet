@@ -364,8 +364,8 @@ bool DbWal::open(
         freeAligned(rawbuf);
     }
     if (m_pageSize < fps) {
-        // Page size is smaller than minimum required for aligned access.
-        // Reopen unaligned.
+        // Page size is smaller than minimum required for aligned access. Reopen
+        // unaligned.
         fileClose(m_fwal);
         m_fwal = openWalFile(fname, flags, false);
     }
@@ -551,9 +551,8 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
     if (m_pages.empty())
         return true;
 
-    // Go through wal entries looking for last committed checkpoint and the
-    // set of incomplete transactions (so we can avoid trying to redo them
-    // later).
+    // Go through wal entries looking for last committed checkpoint and the set
+    // of incomplete transactions (so we can avoid trying to redo them later).
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
@@ -715,8 +714,8 @@ void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
         bytesBefore = (int) (m_pageSize - walPos);
     }
 
-    // Initialize wal write buffers with last buffer (if partial) found
-    // during analyze.
+    // Initialize wal write buffers with last buffer (if partial) found during
+    // analyze.
     if (data->analyze && walPos < m_pageSize) {
         memcpy(m_buffers, buf, walPos);
         m_bufPos = walPos;
@@ -792,10 +791,10 @@ void DbWal::applyCommitTxn(
     if (lsn < data->checkpoint)
         return;
     if (!data->activeTxns.erase(localTxn)) {
-        // Commits for transaction ids with no preceding begin are allowed
-        // and ignored under the assumption that they are the previously
-        // played continuations of transactions that begin before the start
-        // of this recovery.
+        // Commits for transaction ids with no preceding begin are allowed and
+        // ignored under the assumption that they are the previously played
+        // continuations of transactions that begin before the start of this
+        // recovery.
         //
         // With some extra tracking, the rule that every commit of an id after
         // the first must have a matching begin could be enforced.
@@ -1006,8 +1005,8 @@ uint64_t DbWal::wal(
     // transaction actually starts on the next page, which is where we'll be
     // after logging.
     //
-    // Transaction commits are counted after logging, so it's always on the
-    // page where they finished.
+    // Transaction commits are counted after logging, so it's always on the page
+    // where they finished.
     if (m_bufPos == m_pageSize) {
         prepareBuffer_LK(rec, 0, bytes);
         if (txnMode == TxnMode::kBegin) {
@@ -1098,8 +1097,8 @@ void DbWal::flushWriteBuffer() {
     pack(rawbuf, lp, 0);
     auto offset = lp.pgno * m_pageSize;
 
-    // Write the entire page, not just the changed part, otherwise the
-    // resulting page might not match the checksum.
+    // Write the entire page, not just the changed part, otherwise the resulting
+    // page might not match the checksum.
     auto nraw = partialPtr(m_curBuf);
     memcpy(nraw, rawbuf, m_pageSize);
 
@@ -1150,8 +1149,8 @@ void DbWal::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
         }
         if (!npi.numRecs) {
             // The only page that can have no records on it is a very last page
-            // that timed out waiting for more records with just the second 
-            // half of the last wal record started on the previous page.
+            // that timed out waiting for more records with just the second half
+            // of the last wal record started on the previous page.
             assert(i + 1 == m_pages.end());
             continue;
         }
@@ -1160,7 +1159,7 @@ void DbWal::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
     if (!last)
         return;
 
-    // FIXME: It is somehow possible for this to trigger. It did once when 
+    // FIXME: It is somehow possible for this to trigger. It did once when
     // running "tst db" with last and m_durableLsn both equal to 4272.
     assert(last > m_durableLsn);
 

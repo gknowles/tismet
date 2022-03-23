@@ -671,8 +671,8 @@ void DbTxn::walSampleInit(
 }
 
 //===========================================================================
-// This one is not like the others, it represents a transaction with just
-// a single value update.
+// This one is not like the others, it represents a transaction with just a
+// single value update.
 void DbTxn::walSampleUpdateTxn(
     pgno_t pgno,
     size_t pos,

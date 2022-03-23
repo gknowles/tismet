@@ -68,7 +68,7 @@ public:
     DbWal(IApplyNotify * data, IPageNotify * page);
     ~DbWal();
 
-    // pageSize is only applied if new files are being created, 0 defaults to 
+    // pageSize is only applied if new files are being created, 0 defaults to
     // the same size as memory pages.
     bool open(
         std::string_view file, 
@@ -79,8 +79,8 @@ public:
     enum RecoverFlags : unsigned {
         // Redo incomplete transactions during recovery, since they are
         // incomplete this would normally the database in a corrupt state. Used
-        // by WAL dump tool, which completely replaces the normal database
-        // apply logic.
+        // by WAL dump tool, which completely replaces the normal database apply
+        // logic.
         fRecoverIncompleteTxns = 0x01,
 
         // Include wal records from before the last checkpoint, also only for
@@ -100,7 +100,7 @@ public:
 
     void walAndApply(uint64_t txn, Record * rec, size_t bytes);
 
-    // Queues task to be run after the indicated LSN becomes durable (is 
+    // Queues task to be run after the indicated LSN becomes durable (is
     // committed to stable storage).
     void queueTask(
         Dim::ITaskNotify * task,
@@ -188,8 +188,8 @@ private:
     Dim::TaskProxy m_checkpointDurableTask;
     Checkpoint m_phase = {};
 
-    // Checkpoint blocks prevent checkpoints from occurring so that backups
-    // can be done safely.
+    // Checkpoint blocks prevent checkpoints from occurring so that backups can
+    // be done safely.
     std::vector<IDbProgressNotify *> m_checkpointBlockers;
 
     // Last started (perhaps unfinished) checkpoint.
@@ -248,7 +248,7 @@ public:
     virtual ~IPageNotify() = default;
 
     // Returns content of page that will be updated in place by applying the
-    // action already recorded at the specified LSN. The returned buffer has 
+    // action already recorded at the specified LSN. The returned buffer has
     // it's pgno and lsn fields set. Page is locked and must be unlocked via
     // subsequent call to onWalUnlockPtr().
     virtual void * onWalGetPtrForUpdate(
@@ -260,9 +260,9 @@ public:
     virtual void onWalUnlockPtr(pgno_t pgno) = 0;
 
     // Similar to onWalGetPtrForUpdate, except that if the page has already been
-    // updated no action is taken and null is returned. A page is considered
-    // to have been updated if the on page LSN is greater or equal to the LSN
-    // of the update. Does not lock page, recovery is assumed to be single 
+    // updated no action is taken and null is returned. A page is considered to
+    // have been updated if the on page LSN is greater or equal to the LSN of
+    // the update. Does not lock page, recovery is assumed to be single
     // threaded.
     virtual void * onWalGetPtrForRedo(
         pgno_t pgno,
@@ -270,23 +270,23 @@ public:
         uint16_t localTxn
     ) = 0;
 
-    // Reports the durable LSN and the additional bytes of WAL that were 
-    // written to get there. A LSN is durable when all transactions that 
-    // include logs at or earlier than it have been either rolled back or 
-    // committed and have had all of their logs (including ones after this 
-    // LSN!) written to stable storage.
+    // Reports the durable LSN and the additional bytes of WAL that were written
+    // to get there. A LSN is durable when all transactions that include logs at
+    // or earlier than it have been either rolled back or committed and have had
+    // all of their logs (including ones after this LSN!) written to stable
+    // storage.
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.
     virtual void onWalDurable(uint64_t lsn, size_t bytes) {}
 
-    // The first durable LSN is passed in, and the first durable LSN that 
-    // still has dirty (not yet persisted to stable storage) data pages 
-    // associated with it is returned.
+    // The first durable LSN is passed in, and the first durable LSN that still
+    // has dirty (not yet persisted to stable storage) data pages associated
+    // with it is returned.
     //
-    // Upon return, all WAL prior to the returned LSN may be discarded. And,
-    // as discarded pages aren't durable, this causes the value for first 
-    // durable LSN to be advanced.
+    // Upon return, all WAL prior to the returned LSN may be discarded. And, as
+    // discarded pages aren't durable, this causes the value for first durable
+    // LSN to be advanced.
     virtual uint64_t onWalCheckpointPages(uint64_t lsn) { return lsn; }
 };
 

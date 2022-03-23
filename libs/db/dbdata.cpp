@@ -256,9 +256,9 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     if (m_freePages) {
         freed = true;
         pgno = (pgno_t) m_freePages.pop_front();
-        // Free pages are reserved in blocks that may extend beyond the end
-        // of file. Therefore, even through a pgno is from the free list it 
-        // may still be equal to m_numPages.
+        // Free pages are reserved in blocks that may extend beyond the end of
+        // file. Therefore, even through a pgno is from the free list it may
+        // still be equal to m_numPages.
     } else {
         assert(!m_numFreed);
         pgno = (pgno_t) m_numPages;

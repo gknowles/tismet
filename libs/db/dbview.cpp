@@ -37,8 +37,8 @@ bool DbFileView<Writable>::open(
     m_viewSize = viewSize;
     m_pageSize = pageSize;
 
-    // First view is the size of the entire file rounded up to segment size,
-    // and always at least two segments.
+    // First view is the size of the entire file rounded up to segment size, and
+    // always at least two segments.
     uint64_t len = 0;
     fileSize(&len, file);
     m_firstViewSize = len + viewSize - 1;

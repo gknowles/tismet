@@ -94,6 +94,8 @@ public:
     DbConfig configure(const DbConfig & conf);
     void growToFit(pgno_t pgno);
 
+    // Pinning a page prevents it from being modified or being removed from work
+    // pages if already cached there.
     const void * rptr(uint64_t lsn, pgno_t pgno, bool withPin);
     void unpin(const Dim::UnsignedSet & pages);
 
@@ -144,9 +146,9 @@ private:
     Dim::EnumFlags<DbOpenFlags> m_flags;
     bool m_newFiles = false; // did the open create new data files?
 
-    // Configuration settings, these provide a soft cap that triggers the 
-    // process (i.e. check pointing) of making wal removable and then 
-    // removing it.
+    // Configuration settings, these provide a soft cap that triggers the
+    // process (i.e. check pointing) of making wal removable and then removing
+    // it.
     Dim::Duration m_maxWalAge = {};
     size_t m_maxWalBytes = 0;
 
@@ -164,16 +166,20 @@ private:
         uint64_t firstLsn; // LSN at which page became dirty
         pgno_t pgno;
         Dim::EnumFlags<DbPageFlags> flags;
-        int pins;
-        bool updates;
+
+        // Pins are used so that a pointer to a page stays valid. They block
+        // both the page being evicted from work pages and concurrent updates to
+        // it. Conversely, updates block pins from being taken.
+        int pins; 
+        bool updates; 
     };
-    // List of all dirty pages in order of when they became dirty as measured
-    // by LSN (and therefore also time).
+    // List of all dirty pages in order of when they became dirty as measured by
+    // LSN (and therefore also time).
     Dim::List<WorkPageInfo> m_dirtyPages;
-    // Static copies of old versions of dirty pages waiting for their
-    // modifying LSNs to become durable so that they can be saved. These
-    // copies are made so pages that are updated faster than LSNs are saved
-    // can eventually be saved.
+    // Static copies of old versions of dirty pages waiting for their modifying
+    // LSNs to become durable so that they can be saved. These copies are made
+    // so pages that are updated faster than LSNs are saved can eventually be
+    // saved.
     Dim::List<WorkPageInfo> m_oldPages;
     // Clean pages that were recently dirty in the order they became clean.
     Dim::List<WorkPageInfo> m_cleanPages;
@@ -182,9 +188,9 @@ private:
     size_t m_pageDebt = 0;
     // Unused page info structs waiting to be recycled.
     Dim::List<WorkPageInfo> m_freeInfos;
-    // Info about pages from the data file that are unchanged and have not 
-    // been copied to work pages. Used to track pins (that block modification)
-    // on pages that are being referenced.
+    // Info about pages from the data file that are unchanged and have not been
+    // copied to work pages. Used to track pins (that block modification) on
+    // pages that are being referenced.
     Dim::List<WorkPageInfo> m_referencePages;
 
     // One entry for every data page, null for untracked pages (which must
@@ -192,8 +198,8 @@ private:
     std::vector<WorkPageInfo *> m_pages;
 
     // The LSN up to which all data can be safely recovered. All WAL for any
-    // transaction, that has not been rolled back and includes logs from this
-    // or any previous LSN, has been persisted to stable storage.
+    // transaction, that has not been rolled back and includes logs from this or
+    // any previous LSN, has been persisted to stable storage.
     uint64_t m_durableLsn = 0;
 
     // Info about WAL pages that have been persisted but with some or all of
@@ -207,7 +213,7 @@ private:
     // Durable WAL pages that are within the "checkpoint bytes" threshold.
     std::deque<WalPageInfo> m_currentWal;
     // Durable WAL pages older than the "checkpoint bytes" threshold, will be
-    // freed as soon as all data pages still relying on them for indirect 
+    // freed as soon as all data pages still relying on them for indirect
     // durability can be written to stable storage.
     std::deque<WalPageInfo> m_overflowWal;
     // Sum of bytes in overflow WAL pages.
@@ -251,7 +257,7 @@ public:
     void walPageFree(pgno_t pgno);
 
     std::pair<void *, size_t> allocFullPage(pgno_t pgno, size_t bytes);
-    // "bytes" must be less or equal to amount passed in to preceding 
+    // "bytes" must be less or equal to amount passed in to preceding
     // allocFullPage() call.
     void walFullPageInit(DbPageType type, uint32_t id, size_t bytes);
 
@@ -433,9 +439,9 @@ public:
     struct TriePage;
 
     struct RadixData {
-        // Distance from leaf radix pages. Therefore initialized to 0 when
-        // the root page is created, and increased by 1 each time the root 
-        // page is promoted.
+        // Distance from leaf radix pages. Therefore initialized to 0 when the
+        // root page is created, and increased by 1 each time the root page is
+        // promoted.
         uint16_t height;    
 
         uint16_t numPages;
@@ -472,11 +478,11 @@ public:
 public:
     ~DbData();
 
-    // Allows updates from DbWal to be applied, pageSize *MUST* match page
-    // size of existing data file.
+    // Allows updates from DbWal to be applied, pageSize *MUST* match page size
+    // of existing data file.
     void openForApply(size_t pageSize, Dim::EnumFlags<DbOpenFlags> flags);
 
-    // After open metrics and samples can be updated and queried
+    // Allows metrics and samples to be updated and queried.
     bool openForUpdate(
         DbTxn & txn,
         IDbDataNotify * notify,
@@ -652,7 +658,7 @@ private:
     // past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
 
-    // Calls fn for each page in index, exits immediately if an fn() call 
+    // Calls fn for each page in index, exits immediately if an fn() call
     // returns false. Returns true if no fn() calls returned false.
     bool radixVisit(
         DbTxn & txn,
@@ -709,6 +715,6 @@ private:
     size_t m_numFreed = 0;
     Dim::UnsignedSet m_deprecatedPages;
 
-    // used to manage the index at kMetricIndexPageNum
+    // Used to manage the index at kMetricIndexPageNum.
     std::mutex m_mndxMut;
 };

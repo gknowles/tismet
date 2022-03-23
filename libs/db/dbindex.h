@@ -38,9 +38,9 @@ public:
     void insert(uint32_t id, std::string_view name);
     void erase(std::string_view name);
 
-    // A branch is the string consisting of one or more segments prefixing
-    // the name of a metric name. A string is both a branch and a metric if
-    // there are additional metrics for which it is a prefix.
+    // A branch is the string consisting of one or more segments prefixing the
+    // name of a metric name. A string is both a branch and a metric if there
+    // are additional metrics for which it is a prefix.
     void insertBranches(std::string_view name);
     void eraseBranches(std::string_view name);
 
@@ -80,9 +80,9 @@ private:
     std::vector<UnsignedSetWithCount> m_lenIds;
 
     // Index of metric ids by the segments of their names. So the wildcard
-    // *.red.* could be matched by finding all the metrics whose name has
-    // "red" as the second segment (m_segIds[1]["red"]) and is three segments
-    // long (m_lenIds[3]).
+    // *.red.* could be matched by finding all the metrics whose name has "red"
+    // as the second segment (m_segIds[1]["red"]) and is three segments long
+    // (m_lenIds[3]).
     std::vector<std::unordered_map<std::string_view, const char *>> m_segNames;
     std::vector<std::map<std::string_view, UnsignedSetWithCount>> m_segIds;
 

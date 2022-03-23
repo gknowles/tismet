@@ -239,9 +239,8 @@ bool DbData::radixFind(
     while (auto height = (*rd)->height) {
         int pos = (height > count) ? 0 : *d;
         if (!(*rd)->pages[pos]) {
-            // Any zero value in a non-leaf page (since the stem pages are
-            // fully populated up to the highest pos) means that we're past
-            // the end.
+            // Any zero value in a non-leaf page (since the stem pages are fully
+            // populated up to the highest pos) means that we're past the end.
             return false;
         }
         *hdr = txn.pin<DbPageHeader>((*rd)->pages[pos]);

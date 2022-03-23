@@ -57,8 +57,8 @@ struct DbData::SamplePage {
     TimePoint pageFirstTime;
 
     // Position of last sample, samples that come after this position on the
-    // page are either in the not yet populated future or (because it's a
-    // giant discontinuous ring buffer) in the distant past.
+    // page are either in the not yet populated future or (because it's a giant
+    // discontinuous ring buffer) in the distant past.
     uint16_t pageLastSample;
     DbSampleType sampleType;
 
@@ -533,10 +533,10 @@ DbData::MetricPosition DbData::loadMetricPos(
     if (!mi.infoPage || mi.lastPage)
         return mi;
 
-    // metric has no sample pages
-    // create empty page that covers the requested time
+    // Metric has no sample pages create empty page that covers the requested
+    // time.
 
-    // round time down to metric's sampling interval
+    // Round time down to metric's sampling interval.
     time -= time.time_since_epoch() % mi.interval;
 
     auto lastSample = (uint16_t) (id % samplesPerPage(mi.sampleType));
@@ -720,10 +720,10 @@ void DbData::updateSample(
     }
 
     //-----------------------------------------------------------------------
-    // after last known sample
+    // After last known sample
 
-    // If past the end of the page, check if it's also past the retention of
-    // all pages.
+    // If past the end of the page, check if it's also past the retention of all
+    // pages.
     if (time >= endPageTime) {
         auto mp = txn.pin<MetricPage>(mi.infoPage);
         // further in the future than the retention period? remove all samples
@@ -1111,8 +1111,8 @@ void DbData::getSamples(
     auto numSamples = mp->retention / mp->interval;
     auto numPages = (numSamples - 1) / spp + 1;
 
-    // Offset, in pages, from page being processed to the very last sample
-    // page. Must be in [0, numPages - 1]
+    // Offset, in pages, from page being processed to the very last sample page.
+    // Must be in [0, numPages - 1]
     auto poff = (mi.pageFirstTime - first + pageInterval - mi.interval)
         / pageInterval;
 
@@ -1139,16 +1139,15 @@ void DbData::getSamples(
         auto fpt = mi.pageFirstTime - poff * pageInterval;
         if (!spno) {
             // Missing page, interpreted as all NANs, which means there's
-            // nothing to report and we just advance to first time on next
-            // page.
+            // nothing to report and we just advance to first time on next page.
             first = fpt + pageInterval;
         } else {
             double value = NAN;
             const SamplePage * sp = nullptr;
             auto lastSample = spp - 1;
             if (spno > kMaxPageNum) {
-                // Virtual page, get the cached value that is the same for
-                // every sample on the page.
+                // Virtual page, get the cached value that is the same for every
+                // sample on the page.
                 if (sppos == mp->lastPagePos)
                     lastSample = mp->lastPageSample;
                 value = getSample(&spno);
