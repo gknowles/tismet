@@ -764,7 +764,7 @@ void DbData::updateSample(
                 mi.lastPage
             );
         }
-        auto sp = txn.pin<SamplePage>(mi.lastPage);
+        [[maybe_unused]] auto sp = txn.pin<SamplePage>(mi.lastPage);
         assert(mi.pageFirstTime == sp->pageFirstTime);
         assert(mi.pageLastSample == sp->pageLastSample);
         if (ent == mi.pageLastSample + 1) {
