@@ -543,6 +543,7 @@ DbData::MetricPosition DbData::loadMetricPos(
     auto pageTime = time - lastSample * mi.interval;
     auto spno = allocPgno(txn);
     txn.walSampleInit(spno, id, mi.sampleType, pageTime, lastSample);
+    [[maybe_unused]] auto mp = txn.pin<MetricPage>(mi.infoPage);
     txn.walMetricUpdateSamples(mi.infoPage, 0, pageTime, (size_t) -1, spno);
 
     mi.lastPage = spno;
@@ -786,6 +787,7 @@ void DbData::updateSample(
     }
 
     if (mi.lastPage <= kMaxPageNum) {
+        [[maybe_unused]] auto sp = txn.pin<SamplePage>(mi.lastPage);
         txn.walSampleUpdate(mi.lastPage, mi.pageLastSample + 1, spp, NAN, true);
     } else {
         if (mi.pageLastSample + 1 < spp) {
@@ -836,6 +838,7 @@ void DbData::updateSample(
     if (radixFind(txn, &lastPage, mi.infoPage, last)
         && lastPage <= kMaxPageNum
     ) {
+        [[maybe_unused]] auto sp = txn.pin<SamplePage>(lastPage);
         txn.walSampleUpdateTime(lastPage, endPageTime);
     } else {
         lastPage = sampleMakePhysical(
