@@ -183,9 +183,9 @@ private:
     Dim::List<WorkPageInfo> m_oldPages;
     // Clean pages that were recently dirty in the order they became clean.
     Dim::List<WorkPageInfo> m_cleanPages;
-    // Number of pages, dirty or clean, that haven't had their cleaning cost
-    // fully repaid.
-    size_t m_pageDebt = 0;
+    // Number of pages, dirty or clean, that first became dirty within the last
+    // max WAL age. Which means that their repayment term hasn't fully matured.
+    size_t m_pageBonds = 0;
     // Unused page info structs waiting to be recycled.
     Dim::List<WorkPageInfo> m_freeInfos;
     // Info about pages from the data file that are unchanged and have not been

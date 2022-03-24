@@ -57,7 +57,7 @@ static auto & s_perfPinnedPages = uperf("db.work pages (pinned)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
 static auto & s_perfOldPages = uperf("db.work pages (old)");
-static auto & s_perfAmortized = uperf("db.work pages (amortized)");
+static auto & s_perfBonds = uperf("db.work pages (mortgaged)");
 static auto & s_perfWrites = uperf("db.work writes (total)");
 static auto & s_perfDurableBytes = uperf("db.wal durable bytes");
 static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
@@ -237,7 +237,7 @@ void DbPage::close() {
     m_dirtyPages.clear();
     m_oldPages.clear();
     m_cleanPages.clear();
-    m_pageDebt = 0;
+    m_pageBonds = 0;
     m_freeInfos.clear();
     m_referencePages.clear();
     m_currentWal.clear();
@@ -365,7 +365,7 @@ Duration DbPage::untilNextSave_LK() {
 
     auto minTime = timeNow() - m_maxWalAge;
     auto maxWait = front->firstTime - minTime;
-    auto wait = m_maxWalAge / m_pageDebt;
+    auto wait = m_maxWalAge / m_pageBonds;
     if (wait > maxWait) wait = maxWait;
     if (wait < 0ms) wait = 0ms;
     return wait;
@@ -409,7 +409,7 @@ void DbPage::saveWork() {
     if (!empty(lastTime)) {
         if (auto elapsed = now - lastTime; elapsed > 0ms) {
             if (auto multiple = m_maxWalAge / elapsed; multiple > 0) {
-                minSaves = m_pageDebt
+                minSaves = m_pageBonds
                     + now.time_since_epoch().count() % multiple;
                 minSaves /= multiple;
                 if (minSaves <= 0)
@@ -526,7 +526,7 @@ void DbPage::freePage_LK(DbPageHeader * hdr) {
 void DbPage::removeWalPages_LK(uint64_t lsn) {
     assert(lsn);
     size_t bytes = 0;
-    size_t debt = 0;
+    size_t matured = 0;
 
     while (m_overflowWal.size() > 1 && lsn >= m_overflowWal[1].lsn
         || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
@@ -552,7 +552,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         while (auto pi = m_cleanPages.front()) {
             if (pi->firstTime > minTime)
                 break;
-            debt += 1;
+            matured += 1;
             auto pgno = pi->hdr ? pi->hdr->pgno : pi->pgno;
             assert(m_pages[pgno] == pi);
             m_pages[pgno] = nullptr;
@@ -563,8 +563,8 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     s_perfDurableBytes -= (unsigned) bytes;
     m_durableWalBytes -= bytes;
     s_perfReqWalPages -= (unsigned) (bytes / m_walPageSize);
-    m_pageDebt -= debt;
-    s_perfAmortized -= (unsigned) debt;
+    m_pageBonds -= matured;
+    s_perfBonds -= (unsigned) matured;
 }
 
 //===========================================================================
@@ -746,9 +746,9 @@ DbPage::WorkPageInfo * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
         pi->hdr = dupPage_LK(src);
         pi->pgno = {};
         if (!pi->firstLsn) {
-            // If dirtying reference or untracked page, add to page debt.
-            m_pageDebt += 1;
-            s_perfAmortized += 1;
+            // If dirtying reference or untracked page, add page bond.
+            m_pageBonds += 1;
+            s_perfBonds += 1;
         }
     }
     assert(pi->hdr && !pi->pgno);
