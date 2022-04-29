@@ -364,8 +364,8 @@ bool DbWal::open(
         freeAligned(rawbuf);
     }
     if (m_pageSize < fps) {
-        // Page size is smaller than minimum required for aligned access. Reopen
-        // unaligned.
+        // Page size is smaller than minimum required for aligned access.
+        // Reopen unaligned.
         fileClose(m_fwal);
         m_fwal = openWalFile(fname, flags, false);
     }
@@ -602,7 +602,7 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
 }
 
 //===========================================================================
-// Creates array of references to last page and its contiguous predecessors
+// Creates array of references to last page and its contiguous predecessors.
 bool DbWal::loadPages(FileHandle fwal) {
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Verify transaction wal (write-ahead log)";
@@ -1005,8 +1005,8 @@ uint64_t DbWal::wal(
     // transaction actually starts on the next page, which is where we'll be
     // after logging.
     //
-    // Transaction commits are counted after logging, so it's always on the page
-    // where they finished.
+    // Transaction commits are counted after logging, so it's always on the
+    // page where they finished.
     if (m_bufPos == m_pageSize) {
         prepareBuffer_LK(rec, 0, bytes);
         if (txnMode == TxnMode::kBegin) {
@@ -1097,8 +1097,8 @@ void DbWal::flushWriteBuffer() {
     pack(rawbuf, lp, 0);
     auto offset = lp.pgno * m_pageSize;
 
-    // Write the entire page, not just the changed part, otherwise the resulting
-    // page might not match the checksum.
+    // Write the entire page, not just the changed part, otherwise the
+    // resulting page might not match the checksum.
     auto nraw = partialPtr(m_curBuf);
     memcpy(nraw, rawbuf, m_pageSize);
 
@@ -1149,8 +1149,8 @@ void DbWal::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
         }
         if (!npi.numRecs) {
             // The only page that can have no records on it is a very last page
-            // that timed out waiting for more records with just the second half
-            // of the last wal record started on the previous page.
+            // that timed out waiting for more records with just the second
+            // half of the last wal record started on the previous page.
             assert(i + 1 == m_pages.end());
             continue;
         }
@@ -1160,7 +1160,8 @@ void DbWal::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
         return;
 
     // FIXME: It is somehow possible for this to trigger. It did once when
-    // running "tst db" with last and m_durableLsn both equal to 4272.
+    // running "tst db" with last and m_durableLsn both equal to 4272. Examine
+    // m_pages next time it happens!
     assert(last > m_durableLsn);
 
     m_durableLsn = last;

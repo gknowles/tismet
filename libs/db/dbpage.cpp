@@ -56,10 +56,14 @@ static auto & s_perfPages = uperf("db.work pages (total)");
 static auto & s_perfPinnedPages = uperf("db.work pages (pinned)");
 static auto & s_perfFreePages = uperf("db.work pages (free)");
 static auto & s_perfDirtyPages = uperf("db.work pages (dirty)");
+static auto & s_perfCleanPages = uperf("db.work pages (clean)");
 static auto & s_perfOldPages = uperf("db.work pages (old)");
-static auto & s_perfBonds = uperf("db.work pages (mortgaged)");
+static auto & s_perfBonds = uperf("db.work bonds");
 static auto & s_perfWrites = uperf("db.work writes (total)");
-static auto & s_perfDurableBytes = uperf("db.wal durable bytes");
+static auto & s_perfDurableBytes = uperf(
+    "db.wal durable bytes",
+    PerfFormat::kSiUnits
+);
 static auto & s_perfReqWalPages = uperf("db.wal pages (required)");
 
 
@@ -441,6 +445,7 @@ void DbPage::saveWork() {
         m_cleanPages.link(pi);
         pi->flags.reset(fDbPageDirty);
         s_perfDirtyPages -= 1;
+        s_perfCleanPages += 1;
 
         while (pi->updates)
             m_workCv.wait(lk);
@@ -472,6 +477,7 @@ void DbPage::saveWork() {
                 pi->pgno = pi->hdr->pgno;
                 freePage_LK(pi->hdr);
                 pi->hdr = nullptr;
+                s_perfCleanPages -= 1;
             }
         }
     }
@@ -556,6 +562,10 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
             auto pgno = pi->hdr ? pi->hdr->pgno : pi->pgno;
             assert(m_pages[pgno] == pi);
             m_pages[pgno] = nullptr;
+            if (pi->hdr) {
+                freePage_LK(pi->hdr);
+                s_perfCleanPages -= 1;
+            }
             freeWorkInfo_LK(pi);
         }
     }
