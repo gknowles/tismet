@@ -120,7 +120,7 @@ MetricSource::MetricSource()
         "zero.", "one.", "two.", "three.", "four.",
         "five.", "six.", "seven.", "eight.", "nine.",
     };
-    StrFrom<unsigned> str{0};
+    ToCharsBuf<unsigned> str;
     for (unsigned i = 0; i < s_opts.metrics; ++i) {
         auto & met = m_metrics[i];
         if (!s_opts.prefix.empty())

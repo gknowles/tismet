@@ -50,8 +50,8 @@ static void addInfoElem(
     size_t value,
     size_t total
 ) {
-    StrFrom<size_t> str;
-    bld.start(name).attr("value", str.set(value).data());
+    auto str = toChars(value);
+    bld.start(name).attr("value", str.data());
     if (total != size_t(-1))
         bld.attr("total", str.set(total).data());
     bld.end();
@@ -180,8 +180,15 @@ static BackupQuery s_backQuery;
 
 //===========================================================================
 void tsBackupInitialize() {
-    httpRouteAdd(&s_backStart, "/backup", fHttpMethodPost);
-    httpRouteAdd(&s_backQuery, "/backup");
+    httpRouteAdd({
+        .notify = &s_backStart,
+        .path = "/backup",
+        .methods = fHttpMethodPost
+    });
+    httpRouteAdd({
+        .notify = &s_backQuery,
+        .path = "/backup"
+    });
 }
 
 //===========================================================================

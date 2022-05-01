@@ -283,8 +283,8 @@ void carbonWrite(
     TimePoint time,
     double value
 ) {
-    StrFrom<double> vstr(value);
-    StrFrom<time_t> tstr(timeToUnix(time));
+    auto vstr = toChars(value);
+    auto tstr = toChars<time_t>(timeToUnix(time));
     os << name << ' ' << vstr << ' ' << tstr << '\n';
 }
 
@@ -295,8 +295,8 @@ void carbonWrite(
     TimePoint time,
     double value
 ) {
-    StrFrom<double> vstr(value);
-    StrFrom<time_t> tstr(timeToUnix(time));
+    auto vstr = toChars(value);
+    auto tstr = toChars<time_t>(timeToUnix(time));
     out += name;
     out += ' ';
     out += vstr.view();

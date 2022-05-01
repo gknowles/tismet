@@ -65,12 +65,14 @@ static Test s_test;
 
 //===========================================================================
 Test::Test()
-    : ITest("query", "Query parsing tests.") 
+    : ITest("query", "Query parsing tests.")
 {}
 
 //===========================================================================
 void Test::onTestRun() {
     auto start = timeFromUnix(900'000'000);
+
+    EXPECT_PARSE("a.{b[.]c}.d", "a.{b.c}.d");
 
     EXPECT_PARSE("sum(sum(a))", "sumSeries(sumSeries(a))");
     EXPECT_PARSE("a.b{,d}", "a.b{,d}");

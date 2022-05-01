@@ -778,11 +778,15 @@ static FunctionIndex s_func;
 
 //===========================================================================
 void tsGraphiteInitialize() {
-    httpRouteAdd(&s_index, "/metrics/index.json");
-    httpRouteAdd(&s_find, "/metrics/find");
-    httpRouteAdd(&s_find, "/metrics/find/");
-    httpRouteAdd(&s_render, "/render");
-    httpRouteAdd(&s_render, "/render/");
-    httpRouteAdd(&s_render, "/render", fHttpMethodPost);
-    httpRouteAdd(&s_func, "/functions/index.json");
+    httpRouteAdd({.notify = &s_index, .path = "/metrics/index.json"});
+    httpRouteAdd({.notify = &s_find, .path = "/metrics/find"});
+    httpRouteAdd({.notify = &s_find, .path = "/metrics/find/"});
+    httpRouteAdd({.notify = &s_render, .path = "/render"});
+    httpRouteAdd({.notify = &s_render, .path = "/render/"});
+    httpRouteAdd({
+        .notify = &s_render, 
+        .path = "/render", 
+        .methods = fHttpMethodPost
+    });
+    httpRouteAdd({.notify = &s_func, .path = "/functions/index.json"});
 }

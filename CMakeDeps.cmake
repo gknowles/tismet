@@ -120,6 +120,7 @@
 # vendor/dimapp/libs/app/resource.cpp
 # vendor/dimapp/libs/app/resource.h
 # vendor/dimapp/libs/app/webadmin.cpp
+# vendor/dimapp/libs/app/webadmin.h
 # vendor/dimapp/libs/core/algo.h
 # vendor/dimapp/libs/core/appint.h
 # vendor/dimapp/libs/core/bitview.cpp
@@ -178,11 +179,14 @@
 # vendor/dimapp/libs/file/file.natvis
 # vendor/dimapp/libs/file/fileio.h
 # vendor/dimapp/libs/file/filemon.h
+# vendor/dimapp/libs/file/glob.cpp
+# vendor/dimapp/libs/file/glob.h
+# vendor/dimapp/libs/file/globast.cpp
+# vendor/dimapp/libs/file/globast.h
 # vendor/dimapp/libs/file/path.cpp
 # vendor/dimapp/libs/file/path.h
 # vendor/dimapp/libs/file/pch.cpp
 # vendor/dimapp/libs/file/pch.h
-# vendor/dimapp/libs/file/search.cpp
 # vendor/dimapp/libs/json/jbuilder.cpp
 # vendor/dimapp/libs/json/jdocument.cpp
 # vendor/dimapp/libs/json/json.abnf

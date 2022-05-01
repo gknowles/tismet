@@ -74,13 +74,13 @@ static partial_ordering operator<=> (const Node & a, const Node & b);
 
 //===========================================================================
 static partial_ordering operator<=> (
-    const List<Node> & a, 
+    const List<Node> & a,
     const List<Node> & b
 ) {
     //return lexicographical_compare_three_way(
-    //    a.begin(), 
-    //    a.end(), 
-    //    b.begin(), 
+    //    a.begin(),
+    //    a.end(),
+    //    b.begin(),
     //    b.end()
     //);
     auto a1 = a.begin();
@@ -100,7 +100,7 @@ static partial_ordering operator<=> (
 //===========================================================================
 template<size_t N>
 static strong_ordering operator<=> (
-    const bitset<N> & a, 
+    const bitset<N> & a,
     const bitset<N> & b
 ) {
     if (auto rc = memcmp(&a, &b, sizeof(a)); rc == 0) {
@@ -406,7 +406,7 @@ static void appendNode(
     for (auto && sn : node.segs) {
         segs.push_back(static_cast<const PathSeg *>(&sn));
     }
-    auto cmp = [](auto & a, auto & b) { return *a < *b; };
+    auto cmp = [](const Node * a, const Node * b) { return *a < *b; };
     sort(segs.begin(), segs.end(), cmp);
     auto it = unique(segs.begin(), segs.end(), not_fn(cmp));
     segs.erase(it, segs.end());
@@ -477,7 +477,7 @@ static void appendNode(
         break;
     case kNum:
         out->append(
-            StrFrom<double>(static_cast<const NumNode &>(node).val).view()
+            toChars<double>(static_cast<const NumNode &>(node).val).view()
         );
         break;
     case kString:
@@ -598,7 +598,7 @@ static MatchResult matchSegment(
         );
 
     default:
-        assert(!"not a path segment node type");
+        assert(!"Not a path segment node type");
         return kNoMatch;
     }
 }

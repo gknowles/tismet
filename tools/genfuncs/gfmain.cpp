@@ -228,11 +228,12 @@ static void updateFile(string_view fname, string_view content) {
     if (ocontent == ncontent) {
         cout << fname << ", no change\n";
     } else {
+        using enum File::OpenMode;
         FileHandle f;
         fileOpen(
             &f,
             fname,
-            File::fReadWrite | File::fCreat | File::fTrunc | File::fBlocking
+            fReadWrite | fCreat | fTrunc | fBlocking
         );
         fileAppendWait(nullptr, f, ncontent.data(), ncontent.size());
         fileClose(f);

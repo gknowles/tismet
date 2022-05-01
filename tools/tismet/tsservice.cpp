@@ -45,7 +45,7 @@ static CmdOpts s_opts;
 static bool execElevated(const vector<string> & rawArgs) {
     auto args = rawArgs;
     string arg1 = "--console=";
-    arg1 += StrFrom<unsigned>(envProcessId()).view();
+    arg1 += toChars<unsigned>(envProcessId()).view();
     args.insert(args.begin() + 1, arg1);
     auto argline = Cli::toCmdline(args);
     int ec;
@@ -155,6 +155,6 @@ static void installCmd(Cli & cli) {
     }
 
     logMonitorClose(consoleBasicLogger());
-    if (!success) 
+    if (!success)
         cli.fail(EX_OSERR, "Unable to create service.");
 }

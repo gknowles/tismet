@@ -126,8 +126,8 @@ private:
     ) override;
     void onWalUnlockPtr(pgno_t pgno) override;
     void * onWalGetPtrForRedo(
-        pgno_t pgno, 
-        uint64_t lsn, 
+        pgno_t pgno,
+        uint64_t lsn,
         uint16_t txn
     ) override;
     void onWalDurable(uint64_t lsn, size_t bytes) override;
@@ -170,8 +170,8 @@ private:
         // Pins are used so that a pointer to a page stays valid. They block
         // both the page being evicted from work pages and concurrent updates to
         // it. Conversely, updates block pins from being taken.
-        int pins; 
-        bool updates; 
+        int pins;
+        bool updates;
     };
     // List of all dirty pages in order of when they became dirty as measured by
     // LSN (and therefore also time).
@@ -262,9 +262,9 @@ public:
     void walFullPageInit(DbPageType type, uint32_t id, size_t bytes);
 
     void walFullPageInit(
-        pgno_t pgno, 
-        DbPageType type, 
-        uint32_t id, 
+        pgno_t pgno,
+        DbPageType type,
+        uint32_t id,
         std::span<uint8_t> data
     );
 
@@ -279,10 +279,10 @@ public:
     void walRadixPromote(pgno_t pgno, pgno_t refPage);
     void walRadixUpdate(pgno_t pgno, size_t pos, pgno_t refPage);
     void walBitInit(
-        pgno_t pgno, 
-        uint32_t id, 
-        uint32_t base, 
-        bool fill, 
+        pgno_t pgno,
+        uint32_t id,
+        uint32_t base,
+        bool fill,
         size_t pos = -1
     );
     void walBitUpdate(pgno_t, size_t firstPos, size_t lastPos, bool value);
@@ -442,7 +442,7 @@ public:
         // Distance from leaf radix pages. Therefore initialized to 0 when the
         // root page is created, and increased by 1 each time the root page is
         // promoted.
-        uint16_t height;    
+        uint16_t height;
 
         uint16_t numPages;
 
@@ -471,7 +471,7 @@ public:
 
     static RadixData * radixData(DbPageHeader * hdr, size_t pageSize);
     static const RadixData * radixData(
-        const DbPageHeader * hdr, 
+        const DbPageHeader * hdr,
         size_t pageSize
     );
 
@@ -667,10 +667,10 @@ private:
     );
 
     bool bitUpsert(
-        DbTxn & txn, 
-        pgno_t root, 
-        uint32_t id, 
-        size_t firstPos, 
+        DbTxn & txn,
+        pgno_t root,
+        uint32_t id,
+        size_t firstPos,
         size_t lastPos,
         bool value
     );

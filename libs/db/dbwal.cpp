@@ -56,10 +56,10 @@ namespace {
 
 // Guid in network byte order.
 const uint8_t kLogFileSig[] = {
-    0xb4, 0x5d, 0x8e, 0x5a, 
-    0x85, 0x1d, 
-    0x42, 0xf5, 
-    0xac, 0x31, 
+    0xb4, 0x5d, 0x8e, 0x5a,
+    0x85, 0x1d,
+    0x42, 0xf5,
+    0xac, 0x31,
     0x9c, 0xa0, 0x01, 0x58, 0x59, 0x7b
 };
 
@@ -306,20 +306,21 @@ static FileHandle openWalFile(
     EnumFlags<DbOpenFlags> flags,
     bool align
 ) {
-    EnumFlags oflags = File::fDenyWrite;
+    using enum File::OpenMode;
+    EnumFlags oflags = fDenyWrite;
     if (align)
-        oflags |= File::fAligned;
+        oflags |= fAligned;
     if (flags.any(fDbOpenReadOnly)) {
-        oflags |= File::fReadOnly;
+        oflags |= fReadOnly;
     } else {
-        oflags |= File::fReadWrite;
+        oflags |= fReadWrite;
     }
     if (flags.any(fDbOpenCreat))
-        oflags |= File::fCreat;
+        oflags |= fCreat;
     if (flags.any(fDbOpenTrunc))
-        oflags |= File::fTrunc;
+        oflags |= fTrunc;
     if (flags.any(fDbOpenExcl))
-        oflags |= File::fExcl;
+        oflags |= fExcl;
     FileHandle f;
     fileOpen(&f, fname, oflags);
     if (!f)
@@ -329,7 +330,7 @@ static FileHandle openWalFile(
 
 //===========================================================================
 bool DbWal::open(
-    string_view fname, 
+    string_view fname,
     EnumFlags<DbOpenFlags> flags,
     size_t dataPageSize
 ) {
@@ -344,7 +345,7 @@ bool DbWal::open(
     if (!m_fwal)
         return false;
     FileAlignment walAlign;
-    if (auto ec = fileAlignment(&walAlign, m_fwal); ec) 
+    if (auto ec = fileAlignment(&walAlign, m_fwal); ec)
         return false;
     auto fps = walAlign.physicalSector;
     assert(fps > sizeof ZeroPage);
@@ -533,12 +534,13 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
     m_phase = Checkpoint::kComplete;
     m_checkpointStart = timeNow();
 
+    using enum File::OpenMode;
     FileHandle fwal;
     auto walfile = filePath(m_fwal);
     auto ec = fileOpen(
         &fwal,
         walfile,
-        File::fReadOnly | File::fBlocking | File::fDenyNone | File::fSequential
+        fReadOnly | fBlocking | fDenyNone | fSequential
     );
     if (ec) {
         logMsgError() << "Open failed, " << walfile;
@@ -631,7 +633,6 @@ bool DbWal::loadPages(FileHandle fwal) {
             pack(rawbuf, lp, 0);
             checksum = hash_crc32c(rawbuf, m_pageSize);
             if (checksum != lp.checksum) {
-                
                 logMsgError() << "Invalid checksum on page #"
                     << i << " of " << filePath(fwal);
                 goto MAKE_FREE;
@@ -804,8 +805,8 @@ void DbWal::applyCommitTxn(
 
 //===========================================================================
 void DbWal::applyUpdate(
-    AnalyzeData * data, 
-    uint64_t lsn, 
+    AnalyzeData * data,
+    uint64_t lsn,
     const Record & rec
 ) {
     if (data->analyze)

@@ -116,18 +116,19 @@ bool DbPage::open(
 
 //===========================================================================
 bool DbPage::openData(string_view datafile) {
-    auto oflags = File::fReadWrite | File::fDenyWrite | File::fRandom;
+    using enum File::OpenMode;
+    auto oflags = fReadWrite | fDenyWrite | fRandom;
     if (m_flags.any(fDbOpenCreat))
-        oflags |= File::fCreat;
+        oflags |= fCreat;
     if (m_flags.any(fDbOpenTrunc))
-        oflags |= File::fTrunc;
+        oflags |= fTrunc;
     if (m_flags.any(fDbOpenExcl))
-        oflags |= File::fExcl;
+        oflags |= fExcl;
     auto ec = fileOpen(&m_fdata, datafile, oflags);
     if (!m_fdata)
         return false;
-    Finally fin([fh = m_fdata, fl = m_flags, datafile]() { 
-        fileClose(fh); 
+    Finally fin([fh = m_fdata, fl = m_flags, datafile]() {
+        fileClose(fh);
         if (fl.all(fDbOpenCreat | fDbOpenExcl))
             fileRemove(datafile);
     });
@@ -164,13 +165,13 @@ bool DbPage::openData(string_view datafile) {
 
 //===========================================================================
 bool DbPage::openWork(string_view workfile) {
-    auto oflags = File::fTemp | File::fReadWrite | File::fDenyWrite
-        | File::fBlocking | File::fRandom;
+    using enum File::OpenMode;
+    auto oflags = fTemp | fReadWrite | fDenyWrite | fBlocking | fRandom;
     // Opening the data file has already succeeded, so always create the work
     // file (if not exist).
-    oflags |= File::fCreat;
+    oflags |= fCreat;
     if (m_flags.any(fDbOpenExcl))
-        oflags |= File::fExcl;
+        oflags |= fExcl;
     auto ec = fileOpen(&m_fwork, workfile, oflags);
     if (!m_fwork)
         return false;
@@ -271,17 +272,17 @@ void DbPage::close() {
 *
 *   In order to ensure consistency, interdependent changes to multiple pages are
 *   grouped togather in transactions.
-* 
+*
 *   An incrementing log sequence number (LSN) is assigned to each record written
 *   to the write-ahead log (WAL).
-* 
+*
 *   Life cycle of page update (short story):
 *    1. Data page updated in memory.
 *    2. Record of update saved to WAL, update is now fully durable (will survive
 *       a crash).
 *    3. Data page saved.
 *    4. WAL record discarded.
-* 
+*
 *   Life cycle of page update (long story):
 *    1.  Record of update created, added to the in memory page of the
 *        write-ahead log (WAL).
@@ -293,9 +294,9 @@ void DbPage::close() {
 *    4.  Now that it's corresponding WAL record has been saved the update is
 *        durable (will survive a crash) and the in memory data page is eligible
 *        to be saved to stable storage.
-*    5.  Data page becomes most senior (smallest LSN) eligible page. 
+*    5.  Data page becomes most senior (smallest LSN) eligible page.
 *    6a. If page has been updated by a newer, not yet durable, WAL record:
-*        1. Copy of page added to old pages list. 
+*        1. Copy of page added to old pages list.
 *        2. Data page is marked as no longer dirty and therefore no longer
 *           eligible to be saved, promoting next eldest to most senior. But it
 *           is not discarded.
@@ -538,7 +539,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
         || m_overflowWal.size() == 1 && lsn >= m_currentWal.front().lsn
     ) {
         auto & pi = m_overflowWal.front();
-        if (auto val = pi.bytes) 
+        if (auto val = pi.bytes)
             bytes += val;
         m_overflowWal.pop_front();
     }
@@ -547,7 +548,7 @@ void DbPage::removeWalPages_LK(uint64_t lsn) {
     if (m_overflowWal.empty()) {
         while (m_currentWal.size() > 1 && lsn >= m_currentWal[1].lsn) {
             auto & pi = m_currentWal.front();
-            if (auto val = pi.bytes) 
+            if (auto val = pi.bytes)
                 bytes += val;
             m_currentWal.pop_front();
         }
@@ -654,7 +655,7 @@ void DbPage::unpin(const UnsignedSet & pages) {
 //===========================================================================
 DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
     auto pi = m_freeInfos.back();
-    if (!pi) 
+    if (!pi)
         pi = new WorkPageInfo;
     pi->hdr = nullptr;
     pi->firstTime = {};
@@ -707,7 +708,7 @@ void * DbPage::onWalGetPtrForUpdate(
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
-    while (pi && (pi->pins > 1 || pi->updates)) 
+    while (pi && (pi->pins > 1 || pi->updates))
         m_workCv.wait(lk);
     assert(pi->pins == 1);
     pi = dirtyPage_LK(pgno, lsn);

@@ -152,6 +152,7 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static void dumpCmd(Cli & cli) {
+    using enum File::OpenMode;
     tcLogStart();
 
     FileHandle fout;
@@ -164,7 +165,7 @@ static void dumpCmd(Cli & cli) {
         fileOpen(
             &fout,
             s_opts.dumpfile,
-            File::fCreat | File::fTrunc | File::fReadWrite | File::fDenyWrite
+            fCreat | fTrunc | fReadWrite | fDenyWrite
         );
     }
 

@@ -50,7 +50,7 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     bld.member("config");
     configWriteRules(&bld);
     bld.member("account");
-    envProcessAccount(&bld);
+    envProcessAccountInfo(&bld);
     bld.end();
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
@@ -69,15 +69,12 @@ static HttpRouteRedirectNotify s_redirectAdmin("/admin/");
 
 //===========================================================================
 void tsWebInitialize() {
-    httpRouteAdd(&s_jsonAbout, "/srv/about.json");
+    httpRouteAdd({.notify = &s_jsonAbout, .path = "/srv/about.json"});
 
     resLoadWebSite("/admin", {}, resWebSiteContent());
-    httpRouteAdd(&s_redirectAdmin, "/");
+    httpRouteAdd({.notify = &s_redirectAdmin, .path = "/"});
     httpRouteAddAlias(
-        "/admin",
-        fHttpMethodGet,
-        "/admin",
-        fHttpMethodGet,
-        true
+        { .path = "/admin", .recurse = true },
+        "/admin"
     );
 }
