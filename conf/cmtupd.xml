@@ -1,0 +1,70 @@
+﻿<!--
+Copyright Glen Knowles 2021.
+Distributed under the Boost Software License, Version 1.0.
+
+Auto-generated variables:
+    $CurrentYear: current year, 4-digits
+    $CommitYear: year file was last committed, 4-digits
+
+Lines matched by Match/@regex are replaced with @replace if the file's
+$CommitYear is greater than LastYear.
+
+The attributes @regex, @value, and @default are interpreted as attribute value
+templates, which means that Var's values can be embedded by surrounding the Var
+name in braces. This also means that any braces in the string must be escaped.
+Braces are escaped by doubling them up, so '{{' and '}}' are interpreted as '{'
+and '} respectively.
+-->
+<Comments>
+  <Rule name="Copyright">
+    <Var name="Owner" value="Glen Knowles"/>
+    <Match regex="{Prefix}Copyright {Owner} (\d\d\d\d)(?: - (\d\d\d\d))?\."
+        replace="{Prefix}Copyright {Owner} {FirstYear} - {$CurrentYear}.">
+      <Capture var="FirstYear"/>
+      <Capture var="LastYear" default="{FirstYear}"/>
+    </Match>
+    <Group>
+      <File regex="CMakeLists\.txt"/>
+      <File regex=".*\.cmake"/>
+      <File regex=".*\.yaml"/>
+      <File regex=".*\.yml"/>
+      <Exclude regex="CMakeDeps\.cmake"/>
+      <Var name="Prefix" value="# "/>
+    </Group>
+    <Group>
+      <File regex=".*\.cpp"/>
+      <File regex=".*\.h"/>
+      <Exclude regex="libs/carbon/carbonparse\.cpp"/>
+      <Exclude regex="libs/carbon/carbonparseint\.h"/>
+      <Exclude regex="libs/func/fnenum.h"/>
+      <Exclude regex="libs/query/qryparse\.cpp"/>
+      <Exclude regex="libs/query/qryparseint\.h"/>
+      <Exclude regex="libs/query/qryparseimplfnint\.h"/>
+      <Exclude regex="tools/tismet/resource.h"/>
+      <Exclude regex="tools/tismet/tswebcontent.cpp"/>
+      <Var name="Prefix" value="// "/>
+    </Group>
+    <Group>
+      <File regex=".*\.adoc"/>
+      <File regex=".*\.md"/>
+      <File regex=".*\.natvis"/> <!-- xml -->
+      <File regex=".*\.xml"/>
+      <File regex=".*\.xml\.sample"/>
+      <File regex=".*\.xsd"/>
+      <Var name="Prefix" value=""/>
+    </Group>
+    <Group>
+      <File regex=".*\.rst"/>
+      <Var name="Prefix" value=".. "/>
+    </Group>
+    <Group>
+      <File regex=".*\.abnf"/>
+      <Exclude regex="libs/query/queryfunc\.abnf"/>
+      <Var name="Prefix" value="; "/>
+    </Group>
+    <Group>
+      <File regex=".*\.bat"/>
+      <Var name="Prefix" value=":: "/>
+    </Group>
+  </Rule>
+</Comments>
