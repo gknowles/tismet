@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
+- Cosmetic - refactor data and wal code into metric, radix, etc sections
 
 ## tismet 1.1.0 (2018-12-05)
 Work directly from Grafana
