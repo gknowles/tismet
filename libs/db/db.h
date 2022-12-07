@@ -83,6 +83,8 @@ DbStats dbQueryStats(DbHandle h);
 *
 ***/
 
+// Metric context prevents metric ids from changing their meaning (i.e. being
+// reassigned to different metrics) during the life of the context.
 class DbContext : public Dim::NoCopy {
 public:
     DbContext() noexcept = default;
@@ -186,8 +188,8 @@ struct IDbDataNotify {
         uint32_t id,
         Dim::TimePoint time,
         double value
-    ) { 
-        return false; 
+    ) {
+        return false;
     }
 };
 // Returns true if it completed synchronously, false if the request was queued.
@@ -243,7 +245,6 @@ enum class DbPageType : int32_t {
     kInvalid = 0,
     kFree = 'F',
     kZero = 'dZ',
-    kSegment = 'S',
     kMetric = 'm',
     kRadix = 'r',
     kSample = 's',

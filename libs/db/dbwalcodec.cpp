@@ -56,7 +56,7 @@ DbWalRegisterRec::DbWalRegisterRec(const DbWalRecInfo & info) {
 
 //===========================================================================
 DbWalRegisterRec::DbWalRegisterRec(initializer_list<DbWalRecInfo> infos) {
-    for (auto && ri : infos) 
+    for (auto && ri : infos)
         (void) DbWalRegisterRec(ri);
 }
 
@@ -75,7 +75,7 @@ uint16_t DbWal::getSize(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown log record type, " << rec.type;
+    logMsgFatal() << "Unknown wal record type, " << rec.type;
     return 0;
 }
 
@@ -87,7 +87,7 @@ pgno_t DbWal::getPgno(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown log record type, " << rec.type;
+    logMsgFatal() << "Unknown wal record type, " << rec.type;
     return {};
 }
 
@@ -99,7 +99,7 @@ uint16_t DbWal::getLocalTxn(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown log record type, " << rec.type;
+    logMsgFatal() << "Unknown wal record type, " << rec.type;
     return 0;
 }
 
@@ -204,7 +204,7 @@ void DbWal::applyUpdate(void * page, uint64_t lsn, const Record & rec) {
             return fn(args);
         }
     }
-    logMsgFatal() << "Unknown log record type, " << rec.type;
+    logMsgFatal() << "Unknown wal record type, " << rec.type;
 }
 
 
