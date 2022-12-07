@@ -27,17 +27,12 @@ constexpr auto kMetricStoreRootPageNum = (pgno_t) 3;
 *
 ***/
 
-const unsigned kDataFileSig[] = {
-    0x39515728,
-    0x4873456d,
-    0xf6bfd8a1,
-    0xa33f3ba2,
-};
+const auto kDataFileSig = "66b1e542-541c-4c52-9f61-0cb805980075"_Guid;
 
 struct DbData::ZeroPage {
     static const auto kPageType = DbPageType::kZero;
     DbPageHeader hdr;
-    char signature[sizeof(kDataFileSig)];
+    Guid signature;
     unsigned pageSize;
     pgno_t freeStoreRoot;
     pgno_t deprecatedStoreRoot;
@@ -80,7 +75,7 @@ static size_t queryPageSize(FileHandle f) {
         return 0;
     if (zp.hdr.type != zp.kPageType)
         return 0;
-    if (memcmp(zp.signature, kDataFileSig, sizeof(zp.signature)) != 0)
+    if (zp.signature != kDataFileSig)
         return 0;
     return zp.pageSize;
 }
@@ -114,7 +109,7 @@ bool DbData::openForUpdate(
         zp = txn.pin<ZeroPage>(kZeroPageNum);
     }
 
-    if (memcmp(zp->signature, kDataFileSig, sizeof(zp->signature)) != 0) {
+    if (zp->signature != kDataFileSig) {
         logMsgError() << "Bad signature, " << name;
         return false;
     }
@@ -186,7 +181,7 @@ DbStats DbData::queryStats() {
 //===========================================================================
 bool DbData::loadFreePages(DbTxn & txn) {
     assert(!m_freePages);
-    if (!bitLoad(txn, &m_freePages, m_freeStoreRoot)) 
+    if (!bitLoad(txn, &m_freePages, m_freeStoreRoot))
         return false;
     if (appStopping())
         return false;
@@ -205,7 +200,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
             || fp->type != DbPageType::kInvalid
                 && fp->type != DbPageType::kFree
         ) {
-            logMsgError() << "Bad free page #" << pgno << ", type " 
+            logMsgError() << "Bad free page #" << pgno << ", type "
                 << (unsigned) fp->type;
             return false;
         }
@@ -272,14 +267,14 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     if (freed) {
         m_numFreed -= 1;
         s_perfFreePages -= 1;
-        [[maybe_unused]] bool updated = 
+        [[maybe_unused]] bool updated =
             bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
         assert(updated);
     }
 
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto fp = txn.pin<DbPageHeader>(pgno);
-        assert(fp->type == DbPageType::kInvalid 
+        assert(fp->type == DbPageType::kInvalid
             || fp->type == DbPageType::kFree);
     }
     return pgno;
@@ -303,7 +298,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     case DbPageType::kSample:
         break;
     case DbPageType::kFree:
-        logMsgFatal() << "freePage(" << (unsigned) pgno 
+        logMsgFatal() << "freePage(" << (unsigned) pgno
             << "): page already free";
     default:
         logMsgFatal() << "freePage(" << (unsigned) pgno
@@ -312,7 +307,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
     txn.walPageFree(pgno);
     assert(m_freeStoreRoot);
-    [[maybe_unused]] bool updated = 
+    [[maybe_unused]] bool updated =
         bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     auto bpp = bitsPerPage();
@@ -324,11 +319,11 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
         auto num = bpp - m_numPages % bpp;
         if (num) {
             bitUpsert(
-                txn, 
-                m_freeStoreRoot, 
-                0, 
-                m_numPages, 
-                m_numPages + num, 
+                txn,
+                m_freeStoreRoot,
+                0,
+                m_numPages,
+                m_numPages + num,
                 true
             );
             m_freePages.insert((uint32_t) m_numPages, num);
@@ -343,7 +338,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto fp = txn.pin<DbPageHeader>(pgno);
-        assert(fp->type != DbPageType::kInvalid 
+        assert(fp->type != DbPageType::kInvalid
             && fp->type != DbPageType::kFree);
     }
     assert(m_deprecatedStoreRoot);
@@ -460,7 +455,7 @@ void DbData::onWalApplyZeroInit(void * ptr) {
     zp->hdr.type = zp->kPageType;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
-    memcpy(zp->signature, kDataFileSig, sizeof(zp->signature));
+    zp->signature = kDataFileSig;
     zp->pageSize = (unsigned) m_pageSize;
     zp->freeStoreRoot = kFreeStoreRootPageNum;
     zp->deprecatedStoreRoot = kDeprecatedStoreRootPageNum;

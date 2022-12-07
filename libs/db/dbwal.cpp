@@ -54,14 +54,7 @@ struct DbWal::AnalyzeData {
 
 namespace {
 
-// Guid in network byte order.
-const uint8_t kLogFileSig[] = {
-    0xb4, 0x5d, 0x8e, 0x5a,
-    0x85, 0x1d,
-    0x42, 0xf5,
-    0xac, 0x31,
-    0x9c, 0xa0, 0x01, 0x58, 0x59, 0x7b
-};
+const Guid kLogFileSig = "b45d8e5a-851d-42f5-ac31-9ca00158597b"_Guid;
 
 enum class LogPageType {
     kInvalid = 0,
@@ -94,7 +87,7 @@ struct LogPage {
 
 struct ZeroPage {
     DbPageHeader hdr;
-    char signature[sizeof(kLogFileSig)];
+    Guid signature;
     uint32_t walPageSize;
     uint32_t dataPageSize;
 };
@@ -395,7 +388,7 @@ bool DbWal::open(
         m_newFiles = true;
 
         zp.hdr.type = (DbPageType) LogPageType::kZero;
-        memcpy(zp.signature, kLogFileSig, sizeof(zp.signature));
+        zp.signature = kLogFileSig;
         zp.walPageSize = (unsigned) m_pageSize;
         zp.dataPageSize = (unsigned) m_dataPageSize;
         zp.hdr.checksum = 0;
@@ -418,7 +411,7 @@ bool DbWal::open(
         logMsgError() << "Unknown wal file type, " << fname;
         return false;
     }
-    if (memcmp(zp.signature, kLogFileSig, sizeof(zp.signature)) != 0) {
+    if (zp.signature != kLogFileSig) {
         logMsgError() << "Bad signature, " << fname;
         return false;
     }

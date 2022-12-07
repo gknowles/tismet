@@ -28,18 +28,13 @@ size_t const kDefaultFirstViewSize = 2 * kViewSize;
 
 namespace {
 
-const unsigned kWorkFileSig[] = {
-    0xa6e6fd51,
-    0x4a443864,
-    0x8b4302ae,
-    0x84b2074b,
-};
+const Guid kWorkFileSig = "51fde6a6-6438-444a-ae02-438b4b07b284"_Guid;
 
 uint32_t const kWorkPageTypeZero = 'wZ';
 
 struct ZeroPage {
     DbPageHeader hdr;
-    char signature[sizeof(kWorkFileSig)];
+    Guid signature;
     unsigned pageSize;
 };
 
@@ -186,7 +181,7 @@ bool DbPage::openWork(string_view workfile) {
     ZeroPage zp{};
     if (!len) {
         zp.hdr.type = (DbPageType) kWorkPageTypeZero;
-        memcpy(zp.signature, kWorkFileSig, sizeof(zp.signature));
+        zp.signature = kWorkFileSig;
         zp.pageSize = (unsigned) m_pageSize;
         if (fileWriteWait(nullptr, m_fwork, 0, &zp, sizeof(zp))) {
             logMsgError() << "Open new failed, " << workfile;
@@ -200,7 +195,7 @@ bool DbPage::openWork(string_view workfile) {
         logMsgError() << "Mismatched page size, " << workfile;
         return false;
     }
-    if (memcmp(zp.signature, kWorkFileSig, sizeof(zp.signature)) != 0) {
+    if (zp.signature != kWorkFileSig) {
         logMsgError() << "Bad signature, " << workfile;
         return false;
     }
