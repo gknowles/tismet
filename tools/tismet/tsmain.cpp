@@ -140,8 +140,6 @@ static void serveCmd(Cli & cli) {
     httpRouteSetDefaultReplyHeader(kHttpServer, s_productVersion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
-    if (consoleAttached())
-        logMonitor(&s_consoleLogger);
 
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
@@ -185,12 +183,15 @@ int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
 
+    if (consoleAttached())
+        logMonitor(&s_consoleLogger);
+
     int code = appRun(
-        app, 
-        argc, 
-        argv, 
-        envExecVersion(), 
-        s_product, 
+        app,
+        argc,
+        argv,
+        envExecVersion(),
+        s_product,
         fAppServer
     );
     return code;
