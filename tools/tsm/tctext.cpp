@@ -122,7 +122,7 @@ private:
         uint64_t lsn,
         uint16_t localTxn
     ) override;
-    void onWalUnlockPtr(pgno_t pgno) override;    
+    void onWalUnlockPtr(pgno_t pgno) override;
     void * onWalGetPtrForRedo(
         pgno_t pgno,
         uint64_t lsn,
@@ -209,7 +209,7 @@ void TextWriter::onWalApplyFullPageInit(
     std::span<const uint8_t> data
 ) {
     auto & os = out(ptr);
-    os << "page/" << id << ".full " << toString(type) << ", " 
+    os << "page/" << id << ".full " << toString(type) << ", "
         << data.size() << " bytes\n";
     hexDump(os, {(char *) data.data(), data.size()});
 }
@@ -277,7 +277,7 @@ void TextWriter::onWalApplyBitUpdate(
 ) {
     auto & os = out(ptr);
     os << "bit[" << firstPos;
-    if (lastPos - firstPos > 1) 
+    if (lastPos - firstPos > 1)
         os << "," << lastPos;
     os << "] = " << (value ? 1 : 0) << '\n';
 }
@@ -449,7 +449,7 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static void textCmd(Cli & cli) {
-    if (!s_opts.tslfile) 
+    if (!s_opts.tslfile)
         return cli.badUsage("No value given for <wal file[.tsl]>");
     s_opts.tslfile.defaultExt("tsl");
 
@@ -474,11 +474,12 @@ static void textCmd(Cli & cli) {
     tcLogStart();
     TextWriter writer(*os);
     DbWal wal(&writer, &writer);
-    wal.open(s_opts.tslfile, fDbOpenReadOnly);
-    EnumFlags flags = DbWal::fRecoverIncompleteTxns;
-    if (s_opts.all)
-        flags |= DbWal::fRecoverBeforeCheckpoint;
-    wal.recover(flags);
-    wal.close();
+    if (wal.open(s_opts.tslfile, fDbOpenReadOnly)) {
+        EnumFlags flags = DbWal::fRecoverIncompleteTxns;
+        if (s_opts.all)
+            flags |= DbWal::fRecoverBeforeCheckpoint;
+        wal.recover(flags);
+        wal.close();
+    }
     tcLogShutdown(&s_progress);
 }
