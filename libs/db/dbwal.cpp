@@ -38,9 +38,9 @@ enum class DbWal::Buffer : int {
 enum class DbWal::Checkpoint : int {
     kStartRecovery,
     kComplete,
-    kWaitForPageFlush,
-    kWaitForCheckpointDurable,
-    kWaitForWalTruncated,
+    kFlushPages,
+    kFlushCheckpoint,
+    kTruncateWal,
 };
 
 struct DbWal::AnalyzeData {
@@ -402,6 +402,9 @@ bool DbWal::open(
         s_perfPages += (unsigned) m_numPages;
         m_lastLsn = 0;
         m_localTxns.clear();
+
+        // Add "previous" checkpoint to newly created WAL file. At least one
+        // checkpoint must always exist in the WAL.
         m_checkpointLsn = m_lastLsn + 1;
         walCheckpoint(m_checkpointLsn);
         return true;
@@ -457,12 +460,15 @@ void DbWal::close() {
     lk.unlock();
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
+
+    // Look for free pages at the end of the file, and if there are any
+    // resize the file to get rid of them.
     auto lastPage = (pgno_t) m_numPages - 1;
     if (auto i = m_freePages.find(lastPage)) {
         i = i.firstContiguous();
         lastPage = *i - 1;
+        fileResize(m_fwal, (lastPage + 1) * m_pageSize);
     }
-    fileResize(m_fwal, (lastPage + 1) * m_pageSize);
     fileClose(m_fwal);
     m_fwal = {};
 }
@@ -547,12 +553,16 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
         return true;
 
     // Go through wal entries looking for last committed checkpoint and the set
-    // of incomplete transactions (so we can avoid trying to redo them later).
+    // of incomplete transactions that were still uncommitted when the after
+    // the end of avail WAL (so we can avoid trying to redo them later).
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
     AnalyzeData data;
     if (flags.none(fRecoverBeforeCheckpoint)) {
+        // Analyze data to find the last committed checkpoint and the
+        // incomplete transactions that begin after it but never committed.
+        data.analyze = true;
         applyAll(&data, fwal);
         if (!data.checkpoint)
             logMsgFatal() << "Invalid .tsl file, no checkpoint found";
@@ -560,8 +570,13 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
     }
 
     if (flags.any(fRecoverIncompleteTxns)) {
+        // Since processing incomplete transactions was requested, empty the
+        // list that would be used to skip them.
         data.incompleteTxnLsns.clear();
-    } else {
+    } else if (!data.incompleteTxnLsns.empty() || !data.txns.empty()) {
+        // Add transactions that are still uncommitted at the end of WAL to the
+        // already collected list of those that were orphaned (ids reused while
+        // uncommitted).
         for (auto&& kv : data.txns) {
             data.incompleteTxnLsns.push_back(kv.second);
         }
@@ -570,16 +585,23 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
             data.incompleteTxnLsns.end(),
             [](auto & a, auto & b) { return a > b; }
         );
+        // Remove all incomplete transactions from before the checkpoint, they
+        // won't be encountered when the WAL is applied to the database -
+        // because the replay starts at the checkpoint.
         auto i = lower_bound(
             data.incompleteTxnLsns.begin(),
             data.incompleteTxnLsns.end(),
             data.checkpoint
         );
+        // FIXME: Should this be erase(i, end) instead?! It appears to be
+        // removing all but the ones from before the checkpoint that we don't
+        // care about...
         data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
     }
 
     // Go through wal entries starting with the last committed checkpoint and
-    // redo all complete transactions found.
+    // redo all transactions that begin after the checkpoint and commit before
+    // the end of the WAL.
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Recover database";
     data.analyze = false;
@@ -600,18 +622,20 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
 // Creates array of references to last page and its contiguous predecessors.
 bool DbWal::loadPages(FileHandle fwal) {
     if (m_openFlags.any(fDbOpenVerbose))
-        logMsgInfo() << "Verify transaction wal (write-ahead log)";
+        logMsgInfo() << "Verify transaction WAL (write-ahead log)";
 
     auto rawbuf = partialPtr(0);
     LogPage lp;
     PageInfo * pi;
     uint32_t checksum;
-    // load info for each page
+    // Load info for each page.
     for (auto i = (pgno_t) 1; i < m_numPages; i = pgno_t(i + 1)) {
         fileReadWait(nullptr, rawbuf, m_pageSize, fwal, i * m_pageSize);
         auto mp = (MinimumPage *) rawbuf;
         switch (mp->type) {
         case LogPageType::kInvalid:
+            // No page type, skip the rest of the file under the assumption
+            // that nothing was ever written to this and the following pages.
             i = (pgno_t) m_numPages;
             break;
         case LogPageType::kLogV1:
@@ -651,20 +675,28 @@ bool DbWal::loadPages(FileHandle fwal) {
     if (m_pages.empty())
         return true;
 
-    // Sort and remove all pages that are not contiguously connected with the
-    // last page.
+    // Find the set of pages spanned by contiguous wal records that includes
+    // the record with the single largest LSN. These pages contain the last
+    // checkpoint and following records that need to be replayed to recover the
+    // database. Free all other pages, they are indeterminate or from previous
+    // checkpoints.
+
+    // Sort pages into LSN order, largest at the end.
     auto first = m_pages.begin();
     sort(first, m_pages.end());
+    // Search from largest to smallest for first page without a contiguous LSN.
     auto rlast = adjacent_find(
         m_pages.rbegin(),
         m_pages.rend(),
         [](auto & a, auto & b){ return a.firstLsn != b.firstLsn + b.numRecs; }
     );
     if (rlast != m_pages.rend()) {
-        auto base = rlast.base() - 1;
-        for_each(first, base, [&](auto & a){ m_freePages.insert(a.pgno); });
-        s_perfFreePages += unsigned(base - first);
-        m_pages.erase(first, base);
+        // There are old pages not in the contiguous set, free them.
+        auto oldPages = ranges::subrange(first, rlast.base() - 1);
+        for (auto&& pi : oldPages)
+            m_freePages.insert(pi.pgno);
+        s_perfFreePages += (unsigned) size(oldPages);
+        m_pages.erase(oldPages.begin(), oldPages.end());
     }
     return true;
 }
@@ -672,46 +704,66 @@ bool DbWal::loadPages(FileHandle fwal) {
 //===========================================================================
 void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
     LogPage lp;
-    auto buf = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
-    auto buf2 = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
-    auto finally = Finally([&] { freeAligned(buf); freeAligned(buf2); });
+
+    // Buffers are twice the page size so that a single page sized record
+    // almost entirely on the next page can be dealt with contiguously.
+    //
+    // NOTE: WAL records may not span three pages. In other words, individual
+    //       records must be less than or equal to page size in length.
+    auto curBuf = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
+    auto nextBuf = (char *) mallocAligned(m_pageSize, 2 * m_pageSize);
+
+    auto finally = Finally([&] { freeAligned(curBuf); freeAligned(nextBuf); });
     int bytesBefore = 0;
     int walPos = 0;
     auto lsn = uint64_t{0};
     auto rec = (Record *) nullptr;
 
     for (auto&& pi : m_pages) {
-        fileReadWait(nullptr, buf2, m_pageSize, fwal, pi.pgno * m_pageSize);
-        unpack(&lp, buf2);
+        fileReadWait(nullptr, nextBuf, m_pageSize, fwal, pi.pgno * m_pageSize);
+        unpack(&lp, nextBuf);
         if (bytesBefore) {
+            // When a WAL record spans pages some bytes of that record are on
+            // the current page (bytesBefore), and some are on the next page
+            // (bytesAfter).
+            //
+            // Copy the after bytes to the end of the current buffer to form a
+            // contiguous WAL record that we then apply.
             auto bytesAfter = lp.firstPos - walHdrLen(lp.type);
             memcpy(
-                buf + m_pageSize,
-                buf2 + walHdrLen(lp.type),
+                curBuf + m_pageSize,
+                nextBuf + walHdrLen(lp.type),
                 bytesAfter
             );
-            rec = (Record *) (buf + m_pageSize - bytesBefore);
+            rec = (Record *) (curBuf + m_pageSize - bytesBefore);
             assert(getSize(*rec) == bytesBefore + bytesAfter);
             apply(data, lp.firstLsn - 1, *rec);
         }
-        swap(buf, buf2);
+        // Now that we're done with the current buffer, the next buffer becomes
+        // the new current.
+        swap(curBuf, nextBuf);
 
+        // Apply WAL records fully contained in the current buffer.
         walPos = lp.firstPos;
         lsn = lp.firstLsn;
         while (walPos < lp.lastPos) {
-            rec = (Record *) (buf + walPos);
+            rec = (Record *) (curBuf + walPos);
             apply(data, lsn, *rec);
             walPos += getSize(*rec);
             lsn += 1;
         }
         assert(walPos == lp.lastPos);
+
+        // Save size of the fragment of the record at the end of this page so
+        // it can be combined with the rest of the record at the beginning of
+        // the next page.
         bytesBefore = (int) (m_pageSize - walPos);
     }
 
-    // Initialize wal write buffers with last buffer (if partial) found during
-    // analyze.
+    // Initialize wal write buffers with the contents of the last buffer (if
+    // partial) found during analyze.
     if (data->analyze && walPos < m_pageSize) {
-        memcpy(m_buffers, buf, walPos);
+        memcpy(m_buffers, curBuf, walPos);
         m_bufPos = walPos;
         m_bufStates[m_curBuf] = Buffer::kPartialClean;
         m_emptyBufs -= 1;
@@ -734,6 +786,7 @@ void DbWal::applyCheckpoint(
         return;
     }
 
+    //-----------------------------------------------------------------------
     // redo
     if (lsn < data->checkpoint)
         return;
@@ -748,15 +801,31 @@ void DbWal::applyBeginTxn(
 ) {
     if (data->analyze) {
         auto & txnLsn = data->txns[localTxn];
-        if (txnLsn)
+        if (txnLsn) {
+            // Add beginning LSN of transactions that have had their id reused
+            // to begin a new tranaction, preventing them from ever getting
+            // associated with a commit.
+            //
+            // Uncommitted tranactions left over from an abortive shutdown are
+            // detected and skipped by recovery but then ignored. Normal
+            // operation then creates new transactions, eventually reusing the
+            // id. Which leaves this situation until the next checkpoint frees
+            // these wal records. Or for the next recovery, if it's before that
+            // checkpoint.
             data->incompleteTxnLsns.push_back(txnLsn);
+        }
         txnLsn = lsn;
         return;
     }
 
+    //-----------------------------------------------------------------------
     // redo
     if (lsn < data->checkpoint)
         return;
+
+    // The incompleteTxnLsns are in descending order and the WAL is processed in
+    // ascending order. So if the current LSN matches that last incompletes to
+    // be skipped, remove it from the list and return.
     if (!data->incompleteTxnLsns.empty()
         && lsn == data->incompleteTxnLsns.back()
     ) {
@@ -781,9 +850,11 @@ void DbWal::applyCommitTxn(
         return;
     }
 
+    //-----------------------------------------------------------------------
     // redo
     if (lsn < data->checkpoint)
         return;
+
     if (!data->activeTxns.erase(localTxn)) {
         // Commits for transaction ids with no preceding begin are allowed and
         // ignored under the assumption that they are the previously played
@@ -805,13 +876,17 @@ void DbWal::applyUpdate(
     if (data->analyze)
         return;
 
+    //-----------------------------------------------------------------------
     // redo
     if (lsn < data->checkpoint)
         return;
 
     auto localTxn = getLocalTxn(rec);
-    if (localTxn && !data->activeTxns.count(localTxn))
+    if (localTxn && !data->activeTxns.contains(localTxn)) {
+        // The id is not in the active list, so it must belong to one of
+        // the incomplete transactions that are being skipped.
         return;
+    }
 
     auto pgno = getPgno(rec);
     if (auto ptr = m_page->onWalGetPtrForRedo(pgno, lsn, localTxn))
@@ -828,12 +903,14 @@ void DbWal::applyUpdate(
 //===========================================================================
 // Checkpointing places a marker in the wal to indicate the start of entries
 // that are needed to fully recover the database. Any entries before that point
-// will subsequently be skipped and/or discarded.
+// will be skipped by recovery and eventually discarded from the WAL.
 void DbWal::checkpoint() {
     if (m_phase != Checkpoint::kComplete
         || !m_checkpointBlockers.empty()
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
+        // A checkpoint is already in progress, not allowed now (blocked), or
+        // not allowed at all (readonly database).
         return;
     }
 
@@ -841,7 +918,7 @@ void DbWal::checkpoint() {
         logMsgInfo() << "Checkpoint started";
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
-    m_phase = Checkpoint::kWaitForPageFlush;
+    m_phase = Checkpoint::kFlushPages;
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -849,36 +926,46 @@ void DbWal::checkpoint() {
 
 //===========================================================================
 void DbWal::checkpointPages() {
-    assert(m_phase == Checkpoint::kWaitForPageFlush);
-    if (auto ec = fileFlush(m_fwal))
-        logMsgFatal() << "Checkpointing failed.";
-    auto nextLsn = m_page->onWalCheckpointPages(m_checkpointLsn);
-    if (nextLsn == m_checkpointLsn) {
-        m_phase = Checkpoint::kWaitForWalTruncated;
+    assert(m_phase == Checkpoint::kFlushPages);
+    // Get oldest LSN that has dirty data pages associated (also flushes OS
+    // cache of any dirty data pages).
+    auto nextCp = m_page->onWalCheckpointPages(m_checkpointLsn);
+    if (nextCp == m_checkpointLsn) {
+        // No additional WAL pages have become discardable since the last
+        // checkpoint, so there's no need for a new checkpoint. WAL is already
+        // as truncated as possible.
+        m_phase = Checkpoint::kTruncateWal;
         checkpointWalTruncated();
         return;
     }
-    m_checkpointLsn = nextLsn;
+    m_checkpointLsn = nextCp;
+
+    // Write the checkpoint record and queue a checkpointDurable() call for
+    // when it's written.
     walCheckpoint(m_checkpointLsn);
-    m_phase = Checkpoint::kWaitForCheckpointDurable;
+    m_phase = Checkpoint::kFlushCheckpoint;
     queueTask(&m_checkpointDurableTask, m_lastLsn);
     flushWriteBuffer();
 }
 
 //===========================================================================
 void DbWal::checkpointDurable() {
-    assert(m_phase == Checkpoint::kWaitForCheckpointDurable);
+    assert(m_phase == Checkpoint::kFlushCheckpoint);
+    // Flush any metadata (timestamps, file attributes, etc) changes to WAL.
+    // The WAL pages themselves are already written with OS buffering disabled.
     if (auto ec = fileFlush(m_fwal))
         logMsgFatal() << "Checkpointing failed.";
 
-    auto lastPgno = pgno_t{0};
+    auto lastPgno = pgno_t{0}; // Page that most recently became discardable.
     {
+        // Remove discardable pages from the info list and add their pgnos to
+        // the free list.
         unique_lock lk{m_bufMut};
-        auto lastTxn = m_pages.back().firstLsn;
+        auto lastLsn = m_pages.back().firstLsn;
         auto before = m_pages.size();
         for (;;) {
             auto && pi = m_pages.front();
-            if (pi.firstLsn >= lastTxn)
+            if (pi.firstLsn == lastLsn)
                 break;
             if (pi.firstLsn + pi.numRecs > m_checkpointLsn)
                 break;
@@ -891,13 +978,21 @@ void DbWal::checkpointDurable() {
             (unsigned) (before - m_pages.size() - (bool) lastPgno);
     }
 
-    m_phase = Checkpoint::kWaitForWalTruncated;
+    m_phase = Checkpoint::kTruncateWal;
     if (!lastPgno) {
         checkpointWalTruncated();
     } else {
+        // Mark truncation in WAL file by explicitly setting the most recently
+        // discardable page to free. This is not required for correctness, but
+        // can be useful for debugging.
+        //
+        // The call to checkpointWalTruncated() is made by the onFileWrite()
+        // callback after the write.
         auto vptr = mallocAligned(m_pageSize, m_pageSize);
-        auto mp = new(vptr) MinimumPage{ LogPageType::kFree };
-        mp->pgno = lastPgno;
+        auto mp = new(vptr) MinimumPage {
+            .type = LogPageType::kFree,
+            .pgno = lastPgno
+        };
         fileWrite(
             this,
             m_fwal,
@@ -911,7 +1006,9 @@ void DbWal::checkpointDurable() {
 
 //===========================================================================
 void DbWal::checkpointWalTruncated() {
-    assert(m_phase == Checkpoint::kWaitForWalTruncated);
+    // Set checkpoint status to complete, notify things that were waiting, and
+    // maybe schedule the next checkpoint.
+    assert(m_phase == Checkpoint::kTruncateWal);
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
     m_phase = Checkpoint::kComplete;
@@ -930,11 +1027,15 @@ void DbWal::checkpointWalTruncated() {
 void DbWal::checkpointWaitForNext() {
     if (!m_closing) {
         Duration wait = 0ms;
-        auto elapsed = timeNow() - m_checkpointStart;
-        if (elapsed < m_maxCheckpointInterval)
-            wait = m_maxCheckpointInterval - elapsed;
-        if (m_checkpointData >= m_maxCheckpointData)
-            wait = 0ms;
+        if (m_checkpointData >= m_maxCheckpointData) {
+            // Do it now.
+        } else {
+            auto elapsed = timeNow() - m_checkpointStart;
+            if (elapsed < m_maxCheckpointInterval) {
+                // Wait for interval to expire.
+                wait = m_maxCheckpointInterval - elapsed;
+            }
+        }
         timerUpdate(&m_checkpointTimer, wait);
     }
 }
@@ -947,17 +1048,24 @@ void DbWal::checkpointWaitForNext() {
 ***/
 
 //===========================================================================
+// The local transaction id is given the lowest available value in the range of
+// 1 to 65534 that isn't already assigned to an active transaction.
 uint64_t DbWal::beginTxn() {
-    uint16_t localTxn = 0;
+    uint16_t localTxn = 1;
     {
         scoped_lock lk{m_bufMut};
         if (!m_localTxns) {
-            localTxn = 1;
+            // There are no txns, so go ahead and use 1.
         } else {
-            auto txns = *m_localTxns.ranges().begin();
-            localTxn = txns.first > 1 ? 1 : (uint16_t) txns.second + 1;
-            if (localTxn == numeric_limits<uint16_t>::max())
-                logMsgFatal() << "Too many concurrent transactions";
+            auto first = m_localTxns.lowerBound(1);
+            if (*first > 1) {
+                // No txns with id of 1, so go ahead and use it.
+            } else {
+                // Find the first available value greater than 1.
+                localTxn = (uint16_t) *m_localTxns.lastContiguous(first) + 1;
+                if (localTxn == numeric_limits<uint16_t>::max())
+                    logMsgFatal() << "Too many concurrent transactions";
+            }
         }
         m_localTxns.insert(localTxn);
     }

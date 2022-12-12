@@ -337,17 +337,24 @@ void DbPage::onWalDurable(uint64_t lsn, size_t bytes) {
 
 //===========================================================================
 uint64_t DbPage::onWalCheckpointPages(uint64_t lsn) {
+    // Find oldest LSN that still has dirty pages relying on it. This reflects
+    // the lag between changes written to WAL and written to the data file.
+    uint64_t oldest = 0;
     {
         scoped_lock lk{m_workMut};
         if (!m_overflowWal.empty()) {
-            if (auto first = m_overflowWal.front().lsn; first > lsn)
-                lsn = first;
+            oldest = m_overflowWal.front().lsn;
         } else if (!m_currentWal.empty()) {
-            if (auto first = m_currentWal.front().lsn; first > lsn)
-                lsn = first;
+            oldest = m_currentWal.front().lsn;
         }
     }
+    if (oldest) {
+        // If oldest is less than lsn, that means there are dirty pages relying
+        // on WAL records that may no longer exist.
+        assert(oldest >= lsn);
 
+        lsn = oldest;
+    }
     if (fileFlush(m_fdata))
         logMsgFatal() << "Checkpointing failed.";
     return lsn;

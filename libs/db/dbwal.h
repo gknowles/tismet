@@ -62,6 +62,10 @@ public:
             uint64_t,   // firstLsn of page
             unsigned    // number of txns from that page committed
         >> commitTxns;
+
+        std::strong_ordering operator<=>(const DbWal::PageInfo & other) const {
+            return firstLsn <=> other.firstLsn;
+        }
     };
 
 public:
@@ -71,16 +75,16 @@ public:
     // pageSize is only applied if new files are being created, 0 defaults to
     // the same size as memory pages.
     bool open(
-        std::string_view file, 
+        std::string_view file,
         Dim::EnumFlags<DbOpenFlags> flags,
         size_t pageSize = 0
     );
 
     enum RecoverFlags : unsigned {
         // Redo incomplete transactions during recovery, since they are
-        // incomplete this would normally the database in a corrupt state. Used
-        // by WAL dump tool, which completely replaces the normal database apply
-        // logic.
+        // incomplete this would normally leave the database in a corrupt
+        // state. Used by WAL dump tool, which completely replaces the normal
+        // database apply logic.
         fRecoverIncompleteTxns = 0x01,
 
         // Include wal records from before the last checkpoint, also only for
@@ -228,14 +232,6 @@ private:
     size_t m_bufPos = 0;
 };
 
-//===========================================================================
-inline std::strong_ordering operator<=>(
-    const DbWal::PageInfo & a, 
-    const DbWal::PageInfo & b
-) {
-    return a.firstLsn <=> b.firstLsn;
-}
-
 
 /****************************************************************************
 *
@@ -286,7 +282,9 @@ public:
     //
     // Upon return, all WAL prior to the returned LSN may be discarded. And, as
     // discarded pages aren't durable, this causes the value for first durable
-    // LSN to be advanced.
+    // LSN to be advanced. Since prior WAL is immediately discardable, this
+    // function may need to make the OS flush it's cache to meet this
+    // guarantee.
     virtual uint64_t onWalCheckpointPages(uint64_t lsn) { return lsn; }
 };
 
