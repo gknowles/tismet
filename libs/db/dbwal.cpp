@@ -591,12 +591,12 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
         auto i = lower_bound(
             data.incompleteTxnLsns.begin(),
             data.incompleteTxnLsns.end(),
-            data.checkpoint
+            data.checkpoint,
+            [](auto & a, auto & b) { return a > b; }
         );
-        // FIXME: Should this be erase(i, end) instead?! It appears to be
-        // removing all but the ones from before the checkpoint that we don't
-        // care about...
-        data.incompleteTxnLsns.erase(data.incompleteTxnLsns.begin(), i);
+        // Remove txns from before the checkpoint. The txns are in reverse LSN
+        // order, so erase from checkpoint to end of vector.
+        data.incompleteTxnLsns.erase(i, data.incompleteTxnLsns.end());
     }
 
     // Go through wal entries starting with the last committed checkpoint and
