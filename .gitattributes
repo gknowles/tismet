@@ -4,6 +4,11 @@
 * text=auto
 
 ###############################################################################
+# 3rd party web files (generally minified, compressed, etc)
+###############################################################################
+web/srv/vendor/* binary
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

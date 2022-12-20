@@ -235,6 +235,7 @@
 # vendor/dimapp/libs/net/url.h
 # vendor/dimapp/libs/system/console.cpp
 # vendor/dimapp/libs/system/console.h
+# vendor/dimapp/libs/system/debug.h
 # vendor/dimapp/libs/system/env.h
 # vendor/dimapp/libs/system/exec.h
 # vendor/dimapp/libs/system/guid.h
