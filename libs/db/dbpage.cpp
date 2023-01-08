@@ -265,49 +265,52 @@ void DbPage::close() {
 *
 *   DbPage - save and checkpoint
 *
-*   In order to ensure consistency, interdependent changes to multiple pages are
-*   grouped togather in transactions.
+*   In order to ensure consistency, interdependent changes to multiple pages
+*   are grouped togather in transactions.
 *
-*   An incrementing log sequence number (LSN) is assigned to each record written
-*   to the write-ahead log (WAL).
+*   An incrementing log sequence number (LSN) is assigned to each record
+*   written to the write-ahead log (WAL).
 *
 *   Life cycle of page update (short story):
 *    1. Data page updated in memory.
-*    2. Record of update saved to WAL, update is now fully durable (will survive
-*       a crash).
+*    2. Record of update saved to WAL, update is now fully durable (will
+*       survive a crash).
 *    3. Data page saved.
 *    4. WAL record discarded.
 *
 *   Life cycle of page update (long story):
-*    1.  Record of update created, added to the in memory page of the
-*        write-ahead log (WAL).
+*    1.  Record of update created, added to buffer of write-ahead log (WAL).
 *    2.  Update applied to in memory data page (making it dirty) by processing
 *        the WAL record.
 *    3.  WAL page containing record is saved to stable storage, thus becoming
 *        durable. WAL pages are written when they become full or after a short
 *        time (500ms) of WAL inactivity.
-*    4.  Now that it's corresponding WAL record has been saved the update is
+*    4.  If the update is part of a transaction, wait until the transaction's
+*        commit record is added to the WAL and that WAL page also becomes
+*        durable. A single transaction may involve updates to multiple data
+*        pages.
+*    5.  Now that it's corresponding WAL records have been saved the update is
 *        durable (will survive a crash) and the in memory data page is eligible
 *        to be saved to stable storage.
-*    5.  Data page becomes most senior (smallest LSN) eligible page.
-*    6a. If page has been updated by a newer, not yet durable, WAL record:
+*    6.  Data page becomes most senior (smallest LSN) eligible page.
+*    7a. If page has been updated by a newer, not yet durable, WAL record:
 *        1. Copy of page added to old pages list.
 *        2. Data page is marked as no longer dirty and therefore no longer
 *           eligible to be saved, promoting next eldest to most senior. But it
 *           is not discarded.
 *        3. WAL page containing newer update becomes durable.
-*        4. Copy of page in old pages list discarded.
-*    6b. Otherwise (all changes to page are from durable WAL records):
+*        4. Copy of page in old pages list written and discarded.
+*    7b. Otherwise (all changes to page are from durable WAL records):
 *        1. Page is written and discarded from memory, promoting next eldest to
 *           new most senior.
-*    7.  Eventually the next checkpoint begins. Either enough time passed (or
-*        WAL data written) since the last checkpoint to trigger one.
-*    8.  Checkpoint ensures that all written pages are written to stable storage
-*        and not just to the operating system's cache.
-*    9.  Record of checkpoint created, added to in memory WAL page.
-*   10.  WAL page containing checkpoint record becomes durable.
-*   11.  The WAL is truncated, freeing all pages older than the checkpoint.
-*   12.  Update is fully incorporated into the data pages and no longer exists
+*    8.  Eventually the next checkpoint begins. Either enough time passed (or
+*        WAL data written) since the last checkpoint.
+*    9.  Checkpoint ensures that all written pages are written to stable
+*        storage and not just to the OS cache.
+*   10.  Record of checkpoint created, added to in memory WAL page.
+*   11.  WAL page containing checkpoint record becomes durable.
+*   12.  The WAL is truncated, freeing all WAL pages older than the checkpoint.
+*   13.  Update is fully incorporated into the data pages and no longer exists
 *        in the WAL.
 *
 ***/

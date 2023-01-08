@@ -46,6 +46,7 @@ public:
     static uint16_t getSize(const Record & rec);
     static pgno_t getPgno(const Record & rec);
     static uint16_t getLocalTxn(const Record & rec);
+    static uint64_t getStartLsn(const Record & rec);
     static void setLocalTxn(Record * rec, uint16_t localTxn);
 
     static uint64_t getLsn(uint64_t walPos);
@@ -57,14 +58,23 @@ public:
         uint64_t firstLsn;
         uint16_t numRecs;
 
+        // Count of transactions begun on this page that have not yet been
+        // committed and fully written to WAL.
         unsigned activeTxns;
-        std::vector<std::pair<
-            uint64_t,   // firstLsn of page
-            unsigned    // number of txns from that page committed
-        >> commitTxns;
 
-        std::strong_ordering operator<=>(const DbWal::PageInfo & other) const {
-            return firstLsn <=> other.firstLsn;
+        // Counts of transactions committed on this page grouped by their
+        // beginning page. The vector is in order of newest to oldest page,
+        // starting with this page, including only those pages that began a
+        // transaction that was committed on this page.
+        struct Commits {
+            uint64_t firstLsn;  // First LSN of page with transaction begins.
+            unsigned numRecs;   // Number of LSNs on the page.
+            unsigned commits;   // Commits for the page.
+        };
+        std::vector<Commits> commits;
+
+        auto operator<=>(const uint64_t & other) const {
+            return firstLsn <=> other;
         }
     };
 
@@ -104,7 +114,7 @@ public:
 
     void walAndApply(uint64_t txn, Record * rec, size_t bytes);
 
-    // Queues task to be run after the indicated LSN becomes durable (is
+    // Queue task to be run after the indicated LSN becomes durable (is
     // committed to stable storage).
     void queueTask(
         Dim::ITaskNotify * task,
@@ -130,7 +140,7 @@ private:
     uint64_t walBeginTxn(uint16_t localTxn);
     void walCommitTxn(uint64_t txn);
 
-    // returns LSN
+    // Returns LSN.
     enum class TxnMode { kBegin, kContinue, kCommit };
     uint64_t wal(
         const Record & rec,
@@ -149,9 +159,9 @@ private:
     void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
     void checkpointPages();
     void checkpointDurable();
-    void checkpointWalTruncated();
-    void checkpointWaitForNext();
-    void flushWriteBuffer();
+    void checkpointComplete();
+    void checkpointQueueNext();
+    void flushPartialBuffer();
 
     struct AnalyzeData;
     void applyAll(AnalyzeData * data, Dim::FileHandle fwal);
@@ -174,12 +184,15 @@ private:
     bool m_newFiles = false; // did the open create new data files?
     Dim::EnumFlags<DbOpenFlags> m_openFlags{};
 
-    // last assigned
+    // Last Assigned
     Dim::UnsignedSet m_localTxns;
     uint64_t m_lastLsn = 0;
 
     Dim::UnsignedSet m_freePages;
+
+    // Information about all active pages. A page is active if it
     std::deque<PageInfo> m_pages;
+
     size_t m_numPages = 0;
     size_t m_pageSize = 0;
     size_t m_dataPageSize = 0;
@@ -208,8 +221,9 @@ private:
         uint64_t waitLsn;
         Dim::TaskQueueHandle hq;
 
-        bool operator<(const LsnTaskInfo & right) const;
-        bool operator>(const LsnTaskInfo & right) const;
+        auto operator<=>(const LsnTaskInfo & other) const {
+            return waitLsn <=> other.waitLsn;
+        }
     };
     std::priority_queue<
         LsnTaskInfo,
@@ -222,14 +236,14 @@ private:
     std::condition_variable m_bufAvailCv;
     std::vector<Buffer> m_bufStates;
 
-    // page aligned buffers
+    // Page Aligned Buffers
     char * m_buffers = {};
     char * m_partialBuffers = {};
 
     unsigned m_numBufs = 0;
     unsigned m_emptyBufs = 0;
-    unsigned m_curBuf = 0;
-    size_t m_bufPos = 0;
+    unsigned m_curBuf = 0;      // Buffer currently receiving WAL
+    size_t m_bufPos = 0;        // Write position within current buffer
 };
 
 
@@ -255,22 +269,20 @@ public:
     // Called to release lock on ptr returned by onWalGetPtrForUpdate().
     virtual void onWalUnlockPtr(pgno_t pgno) = 0;
 
-    // Similar to onWalGetPtrForUpdate, except that if the page has already been
-    // updated no action is taken and null is returned. A page is considered to
-    // have been updated if the on page LSN is greater or equal to the LSN of
-    // the update. Does not lock page, recovery is assumed to be single
-    // threaded.
+    // Similar to onWalGetPtrForUpdate, except that if the page has already
+    // been updated no action is taken and null is returned. A page is
+    // considered to have been updated if the on page LSN is greater or equal
+    // to the LSN of the update. Does not lock page, recovery is assumed to be
+    // single threaded.
     virtual void * onWalGetPtrForRedo(
         pgno_t pgno,
         uint64_t lsn,
         uint16_t localTxn
     ) = 0;
 
-    // Reports the durable LSN and the additional bytes of WAL that were written
-    // to get there. A LSN is durable when all transactions that include logs at
-    // or earlier than it have been either rolled back or committed and have had
-    // all of their logs (including ones after this LSN!) written to stable
-    // storage.
+    // Reports the durable LSN and the additional bytes of WAL that were
+    // written to get there. The durable LSN is the point at which all WAL
+    // records less or equal to it can have their updated data pages written.
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.

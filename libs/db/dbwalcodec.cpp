@@ -75,7 +75,7 @@ uint16_t DbWal::getSize(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown wal record type, " << rec.type;
+    logMsgFatal() << "Unknown WAL record type, " << rec.type;
     return 0;
 }
 
@@ -87,7 +87,7 @@ pgno_t DbWal::getPgno(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown wal record type, " << rec.type;
+    logMsgFatal() << "Unknown WAL record type, " << rec.type;
     return {};
 }
 
@@ -99,8 +99,23 @@ uint16_t DbWal::getLocalTxn(const Record & rec) {
         if (fn)
             return fn(rec);
     }
-    logMsgFatal() << "Unknown wal record type, " << rec.type;
+    logMsgFatal() << "Unknown WAL record type, " << rec.type;
     return 0;
+}
+
+//===========================================================================
+// static
+uint64_t DbWal::getStartLsn(const Record & rec) {
+    if (rec.type == kRecTypeCheckpoint)
+        return reinterpret_cast<const CheckpointRec &>(rec).startLsn;
+    logMsgFatal() << "Unknown WAL record type, " << rec.type;
+    return 0;
+}
+
+//===========================================================================
+// static
+void DbWal::setLocalTxn(DbWal::Record * rec, uint16_t localTxn) {
+    rec->localTxn = localTxn;
 }
 
 namespace {
@@ -138,12 +153,6 @@ uint64_t DbWal::getTxn(uint64_t lsn, uint16_t localTxn) {
     tmp.u.lsn = lsn;
     tmp.u.localTxn = localTxn;
     return tmp.txn;
-}
-
-//===========================================================================
-// static
-void DbWal::setLocalTxn(DbWal::Record * rec, uint16_t localTxn) {
-    rec->localTxn = localTxn;
 }
 
 //===========================================================================
@@ -204,38 +213,7 @@ void DbWal::applyUpdate(void * page, uint64_t lsn, const Record & rec) {
             return fn(args);
         }
     }
-    logMsgFatal() << "Unknown wal record type, " << rec.type;
-}
-
-
-/****************************************************************************
-*
-*   DbWal - recovery
-*
-***/
-
-//===========================================================================
-void DbWal::apply(AnalyzeData * data, uint64_t lsn, const Record & raw) {
-    switch (raw.type) {
-    case kRecTypeCheckpoint: {
-            auto & rec = reinterpret_cast<const CheckpointRec &>(raw);
-            applyCheckpoint(data, lsn, rec.startLsn);
-        }
-        break;
-    case kRecTypeTxnBegin: {
-            auto & rec = reinterpret_cast<const TransactionRec &>(raw);
-            applyBeginTxn(data, lsn, rec.localTxn);
-        }
-        break;
-    case kRecTypeTxnCommit: {
-            auto & rec = reinterpret_cast<const TransactionRec &>(raw);
-            applyCommitTxn(data, lsn, rec.localTxn);
-        }
-        break;
-    default:
-        applyUpdate(data, lsn, raw);
-        break;
-    }
+    logMsgFatal() << "Unknown WAL record type, " << rec.type;
 }
 
 
@@ -268,8 +246,10 @@ static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeTxnBegin,
         DbWalRecInfo::sizeFn<TransactionRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const TransactionRec *>(args.rec);
-            args.notify->onWalApplyBeginTxn(args.lsn, rec->localTxn);
+            args.notify->onWalApplyBeginTxn(
+                args.lsn,
+                localTxnTransaction(*args.rec)
+            );
         },
         localTxnTransaction,
         invalidPgno,
@@ -277,8 +257,10 @@ static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeTxnCommit,
         DbWalRecInfo::sizeFn<TransactionRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const TransactionRec *>(args.rec);
-            args.notify->onWalApplyCommitTxn(args.lsn, rec->localTxn);
+            args.notify->onWalApplyCommitTxn(
+                args.lsn,
+                localTxnTransaction(*args.rec)
+            );
         },
         localTxnTransaction,
         invalidPgno,
