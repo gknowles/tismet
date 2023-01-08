@@ -634,7 +634,7 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
     }
 
     auto & back = m_pages.back();
-    m_durableLsn = back.firstLsn + back.numRecs - 1;
+    m_durableLsn = back.firstLsn + back.cleanRecs - 1;
     m_lastLsn = m_durableLsn;
     m_page->onWalDurable(m_durableLsn, 0);
     return true;
@@ -667,7 +667,7 @@ bool DbWal::loadPages(FileHandle fwal) {
             pi = &m_pages.emplace_back();
             pi->pgno = wp.pgno;
             pi->firstLsn = wp.firstLsn;
-            pi->numRecs = wp.numRecs;
+            pi->cleanRecs = wp.numRecs;
             break;
         case WalPageType::kLog:
             unpack(&wp, rawbuf);
@@ -681,7 +681,7 @@ bool DbWal::loadPages(FileHandle fwal) {
             pi = &m_pages.emplace_back();
             pi->pgno = wp.pgno;
             pi->firstLsn = wp.firstLsn;
-            pi->numRecs = wp.numRecs;
+            pi->cleanRecs = wp.numRecs;
             break;
         default:
             logMsgError() << "Invalid page type(" << mp->type << ") on page #"
@@ -716,7 +716,9 @@ bool DbWal::loadPages(FileHandle fwal) {
     auto rlast = adjacent_find(
         m_pages.rbegin(),
         m_pages.rend(),
-        [](auto & a, auto & b){ return a.firstLsn != b.firstLsn + b.numRecs; }
+        [](auto & a, auto & b) {
+            return a.firstLsn != b.firstLsn + b.cleanRecs;
+        }
     );
     if (rlast != m_pages.rend()) {
         // There are old pages not in the contiguous set, free them.
@@ -1039,7 +1041,7 @@ void DbWal::checkpointDurable() {
             auto && pi = m_pages.front();
             if (pi.firstLsn == lastLsn)
                 break;
-            if (pi.firstLsn + pi.numRecs > m_checkpointLsn)
+            if (pi.firstLsn + pi.cleanRecs > m_checkpointLsn)
                 break;
             if (lastPgno)
                 m_freePages.insert(lastPgno);
@@ -1280,131 +1282,103 @@ uint64_t DbWal::wal(
 }
 
 //===========================================================================
-void DbWal::queueTask(
-    ITaskNotify * task,
-    uint64_t waitLsn,
-    TaskQueueHandle hq
+void DbWal::prepareBuffer_LK(
+    const Record & rec,
+    size_t bytesOnOldPage,
+    size_t bytesOnNewPage
 ) {
-    if (!hq)
-        hq = taskComputeQueue();
-    unique_lock lk{m_bufMut};
-    if (m_durableLsn >= waitLsn) {
-        // Required LSN is already durable, run task immediately.
-        taskPush(hq, task);
-    } else {
-        // Add task to priority queue that is ordered by LSN. It will wait
-        // there until the required LSN becomes durable.
-        auto ti = LsnTaskInfo{task, waitLsn, hq};
-        m_lsnTasks.push(ti);
+    // Find empty buffer to prepare.
+    assert(m_emptyBufs);
+    for (;;) {
+        if (++m_curBuf == m_numBufs)
+            m_curBuf = 0;
+        if (m_bufStates[m_curBuf] == Buffer::kEmpty)
+            break;
     }
-}
-
-//===========================================================================
-void DbWal::flushPartialBuffer() {
-    unique_lock lk{m_bufMut};
-    if (m_bufStates[m_curBuf] != Buffer::kPartialDirty)
-        return;
-
-    // Update buffer state and header.
     auto rawbuf = bufPtr(m_curBuf);
-    m_bufStates[m_curBuf] = Buffer::kPartialWriting;
+    m_emptyBufs -= 1;
+
+    // Initialize buffer.
     WalPage wp;
-    unpack(&wp, rawbuf);
-    wp.numRecs = (uint16_t) (m_lastLsn - wp.firstLsn + 1);
-    wp.lastPos = (uint16_t) m_bufPos;
+    wp.type = WalPageType::kLog;
+    wp.checksum = 0;
+    if (m_freePages) {
+        // Recycle free page.
+        wp.pgno = (pgno_t) m_freePages.pop_front();
+        s_perfFreePages -= 1;
+    } else {
+        // Extend WAL file and use page at its new end.
+        wp.pgno = (pgno_t) m_numPages++;
+        s_perfPages += 1;
+    }
+    auto hdrLen = walHdrLen(wp.type);
+    if (bytesOnOldPage) {
+        // Record started on previous page, so LSN and position of first record
+        // on this page will be that of the next record.
+        wp.firstLsn = m_lastLsn + 1;
+        wp.firstPos = (uint16_t) (hdrLen + bytesOnNewPage);
+    } else {
+        // Starting this record right at the beginning of this page.
+        wp.firstLsn = m_lastLsn;
+        wp.firstPos = (uint16_t) hdrLen;
+    }
+    wp.numRecs = 0;
+    wp.lastPos = 0;
     pack(rawbuf, wp, 0);
 
-    // Copy entire page to be written, not just the changed part, otherwise the
-    // resulting page might not match the checksum.
-    auto nraw = partialPtr(m_curBuf);
-    memcpy(nraw, rawbuf, m_pageSize);
+    // Add reference to page table.
+    auto & pi = m_pages.emplace_back(PageInfo{});
+    pi.pgno = wp.pgno;
+    pi.firstLsn = wp.firstLsn;
+    pi.cleanRecs = 0;
 
-    lk.unlock();
-    if (wp.type != WalPageType::kFree) {
-        assert(wp.type == WalPageType::kLog || wp.type == WalPageType::kLogV1);
-        pack(nraw, wp, hash_crc32c(nraw, m_pageSize));
-    }
-    auto offset = wp.pgno * m_pageSize;
-    fileWrite(this, m_fwal, offset, nraw, m_pageSize, walQueue());
+    // Set buffer insertion point and initial data.
+    m_bufPos = hdrLen + bytesOnNewPage;
+    memcpy(
+        rawbuf + hdrLen,
+        (const char *) &rec + bytesOnOldPage,
+        bytesOnNewPage
+    );
+
+    m_bufStates[m_curBuf] = Buffer::kPartialDirty;
+    timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
 }
 
 //===========================================================================
-// Update WAL pages info to reflected completed page write and notify
-// interested parties if durable LSN advanced. The durable LSN is the LSN at
-// which all WAL records at or earlier than it can have their updated data
-// pages written.
-//
-// A LSN becomes durable when all transactions that include WAL at or earlier
-// than it have been either rolled back, or committed and had all of their
-// WAL records (including ones after this LSN!) written to stable storage.
-void DbWal::updatePages_LK(const PageInfo & pi, bool fullPageWrite) {
-    auto i = lower_bound(m_pages.begin(), m_pages.end(), pi.firstLsn);
-    assert(i != m_pages.end() && i->firstLsn == pi.firstLsn);
-    i->numRecs = pi.numRecs;
+void DbWal::countBeginTxn_LK() {
+    m_pages.back().activeTxns += 1;
+}
 
-    // Will point to oldest page with transaction committed by this update.
-    auto base = m_pages.end();
+//===========================================================================
+void DbWal::countCommitTxn_LK(uint64_t txn) {
+    auto lsn = getLsn(txn);
+    auto & commits = m_pages.back().commits;
 
-    for (auto&& pc : i->commits) {
-        assert(pc.commits);
-        base = lower_bound(m_pages.begin(), m_pages.end(), pc.firstLsn);
-        assert(base != m_pages.end() && base->firstLsn == pc.firstLsn);
-        assert(base->activeTxns >= pc.commits);
-        base->activeTxns -= pc.commits;
-        s_perfVolatileTxns -= pc.commits;
-    }
-    i->commits.clear();
-
-    if (base != m_pages.begin() && !prev(base)->commits.empty()) {
-        // Previous page not yet written.
-        s_perfReorderedWrites += 1;
-    }
-    if (base->firstLsn > m_durableLsn + 1) {
-        // Oldest non-durable page not effected.
-        return;
-    }
-
-    // Oldest dirty page may no longer have active transactions. Advance the
-    // durable LSN through as many pages as this holds true.
-    uint64_t last = 0;
-    for (i = base; i != m_pages.end(); ++i) {
-        auto & npi = *i;
-        if (npi.activeTxns)
-            break;
-        assert(npi.commits.empty());
-        if (!npi.numRecs) {
-            // The only page that can have no records is a partial write of the
-            // very last page with just the tail of the last WAL record that
-            // was started on the previous page.
-            assert(i + 1 == m_pages.end());
-            break;
+    // Find page where txn began within list of transaction beginning pages
+    // this page already has commits for.
+    auto i = lower_bound(
+        commits.begin(),
+        commits.end(),
+        lsn,
+        [](auto & a, auto lsn) {
+            return lsn >= a.firstLsn + a.numRecs - 1;
         }
-        last = npi.firstLsn + npi.numRecs - 1;
-    }
-    if (!last) {
-        // No eligible pages found, and hence no durable LSN advancement.
+    );
+    if (i != commits.end() && i->firstLsn <= lsn) {
+        // Found commits page entry with LSN range containing transaction.
+        // Increment number of transactions committed for this page.
+        i->commits += 1;
         return;
     }
 
-    // Advance durable LSN and notify interested parties.
-
-    // FIXME: It is somehow possible for this to trigger. It did once when
-    // running "tst db" with last and m_durableLsn both equal to 4272. Examine
-    // m_pages next time it happens!
-    assert(last > m_durableLsn);
-
-    m_durableLsn = last;
-    m_page->onWalDurable(
-        m_durableLsn,
-        fullPageWrite ? m_pageSize * (i - base) : 0
-    );
-    while (!m_lsnTasks.empty()) {
-        auto & ti = m_lsnTasks.top();
-        if (m_durableLsn < ti.waitLsn)
-            break;
-        taskPush(ti.hq, ti.notify);
-        m_lsnTasks.pop();
-    }
+    // No matching page entry for tranaction's LSN already in commits,
+    // search pages for containing page.
+    auto j = upper_bound(m_pages.begin(), m_pages.end(), lsn) - 1;
+    auto firstLsn = j->firstLsn;
+    auto numRecs = next(j) == m_pages.end()
+        ? (unsigned) m_pageSize
+        : (unsigned) (next(j)->firstLsn - firstLsn + 1);
+    commits.emplace(i, firstLsn, numRecs, 1);
 }
 
 //===========================================================================
@@ -1418,7 +1392,6 @@ void DbWal::onFileWrite(const FileWriteData & data) {
     s_perfWrites += 1;
     WalPage wp;
     unpack(&wp, rawbuf);
-    PageInfo pi = { wp.pgno, wp.firstLsn, wp.numRecs };
 
     unique_lock lk{m_bufMut};
 
@@ -1441,7 +1414,7 @@ void DbWal::onFileWrite(const FileWriteData & data) {
     bool fullPageWrite = rawbuf >= m_buffers
         && rawbuf < m_buffers + m_numBufs * m_pageSize;
 
-    updatePages_LK(pi, fullPageWrite);
+    updatePages_LK(wp.firstLsn, wp.numRecs, fullPageWrite);
 
     if (fullPageWrite) {
         // Full page was written.
@@ -1496,103 +1469,140 @@ void DbWal::onFileWrite(const FileWriteData & data) {
 }
 
 //===========================================================================
-void DbWal::prepareBuffer_LK(
-    const Record & rec,
-    size_t bytesOnOldPage,
-    size_t bytesOnNewPage
+// Update WAL pages info to reflected completed page write and notify
+// interested parties if durable LSN advanced. The durable LSN is the LSN at
+// which all WAL records at or earlier than it can have their updated data
+// pages written.
+//
+// A LSN becomes durable when all transactions that include WAL at or earlier
+// than it have been either rolled back, or committed and had all of their
+// WAL records (including ones after this LSN!) written to stable storage.
+void DbWal::updatePages_LK(
+    uint64_t firstLsn,
+    uint16_t cleanRecs,
+    bool fullPageWrite
 ) {
-    // Find empty buffer to prepare.
-    assert(m_emptyBufs);
-    for (;;) {
-        if (++m_curBuf == m_numBufs)
-            m_curBuf = 0;
-        if (m_bufStates[m_curBuf] == Buffer::kEmpty)
-            break;
+    auto i = lower_bound(m_pages.begin(), m_pages.end(), firstLsn);
+    assert(i != m_pages.end() && i->firstLsn == firstLsn);
+    assert(cleanRecs >= i->cleanRecs);
+    i->cleanRecs = cleanRecs;
+    i->fullPageSaved = fullPageWrite;
+
+    // Will point to oldest page with transaction committed by this update.
+    auto base = m_pages.end();
+
+    for (auto&& pc : i->commits) {
+        assert(pc.commits);
+        base = lower_bound(m_pages.begin(), m_pages.end(), pc.firstLsn);
+        assert(base != m_pages.end() && base->firstLsn == pc.firstLsn);
+        assert(base->activeTxns >= pc.commits);
+        base->activeTxns -= pc.commits;
+        s_perfVolatileTxns -= pc.commits;
     }
-    auto rawbuf = bufPtr(m_curBuf);
-    m_emptyBufs -= 1;
+    i->commits.clear();
 
-    // Initialize buffer.
-    WalPage wp;
-    wp.type = WalPageType::kLog;
-    wp.checksum = 0;
-    if (m_freePages) {
-        // Recycle free page.
-        wp.pgno = (pgno_t) m_freePages.pop_front();
-        s_perfFreePages -= 1;
-    } else {
-        // Extend WAL file and use page at its new end.
-        wp.pgno = (pgno_t) m_numPages++;
-        s_perfPages += 1;
+    if (base != m_pages.begin() && !prev(base)->commits.empty()) {
+        // Previous page not yet written.
+        s_perfReorderedWrites += 1;
     }
-    auto hdrLen = walHdrLen(wp.type);
-    if (bytesOnOldPage) {
-        // Record started on previous page, so LSN and position of first record
-        // on this page will be that of the next record.
-        wp.firstLsn = m_lastLsn + 1;
-        wp.firstPos = (uint16_t) (hdrLen + bytesOnNewPage);
-    } else {
-        // Starting this record right at the beginning of this page.
-        wp.firstLsn = m_lastLsn;
-        wp.firstPos = (uint16_t) hdrLen;
-    }
-    wp.numRecs = 0;
-    wp.lastPos = 0;
-    pack(rawbuf, wp, 0);
-
-    // Add reference to page table.
-    auto & pi = m_pages.emplace_back(PageInfo{});
-    pi.pgno = wp.pgno;
-    pi.firstLsn = wp.firstLsn;
-    pi.numRecs = 0;
-
-    // Set buffer insertion point and initial data.
-    m_bufPos = hdrLen + bytesOnNewPage;
-    memcpy(
-        rawbuf + hdrLen,
-        (const char *) &rec + bytesOnOldPage,
-        bytesOnNewPage
-    );
-
-    m_bufStates[m_curBuf] = Buffer::kPartialDirty;
-    timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
-}
-
-//===========================================================================
-void DbWal::countBeginTxn_LK() {
-    m_pages.back().activeTxns += 1;
-}
-
-//===========================================================================
-void DbWal::countCommitTxn_LK(uint64_t txn) {
-    auto lsn = getLsn(txn);
-    auto & commits = m_pages.back().commits;
-
-    // Find page where txn began within list of transaction beginning pages
-    // this page already has commits for.
-    auto i = lower_bound(
-        commits.begin(),
-        commits.end(),
-        lsn,
-        [](auto & a, auto lsn) {
-            return lsn >= a.firstLsn + a.numRecs - 1;
-        }
-    );
-    if (i != commits.end() && i->firstLsn <= lsn) {
-        // Found commits page entry with LSN range containing transaction.
-        // Increment number of transactions committed for this page.
-        i->commits += 1;
+    if (base->firstLsn > m_durableLsn + 1) {
+        // Oldest non-durable page not effected.
         return;
     }
 
-    // No matching page entry for tranaction's LSN already in commits,
-    // search pages for containing page.
-    auto j = upper_bound(m_pages.begin(), m_pages.end(), lsn) - 1;
-    auto firstLsn = j->firstLsn;
-    auto numRecs = j + 1 == m_pages.end()
-        ? (unsigned) m_pageSize
-        : (unsigned) ((j + 1)->firstLsn - firstLsn + 1);
-    commits.emplace(i, firstLsn, numRecs, 1);
+    // Oldest dirty page may no longer have active transactions. Advance the
+    // durable LSN through as many pages as this holds true.
+    uint64_t last = 0;
+    for (i = base; i != m_pages.end(); ++i) {
+        auto & npi = *i;
+        if (npi.activeTxns)
+            break;
+        if (!npi.cleanRecs) {
+            // The only page that can have no records is a partial write of
+            // what was the very last page with just the tail of the last WAL
+            // record that was started on the previous page.
+            assert(!npi.fullPageSaved);
+            break;
+        }
+        last = npi.firstLsn + npi.cleanRecs - 1;
+        if (!npi.fullPageSaved) {
+            // The page was only written via a partial write, so when it is
+            // saved again there will be an increase in cleanRecs. Therefore
+            // the ultimate number of records is unknown, and we have to stop
+            // counting them.
+            break;
+        }
+        assert(npi.commits.empty());
+    }
+    if (!last) {
+        // No eligible pages found, and hence no durable LSN advancement.
+        return;
+    }
+
+    // Advance durable LSN and notify interested parties.
+    assert(last > m_durableLsn);
+
+    m_durableLsn = last;
+    m_page->onWalDurable(
+        m_durableLsn,
+        fullPageWrite ? m_pageSize * (i - base) : 0
+    );
+    while (!m_lsnTasks.empty()) {
+        auto & ti = m_lsnTasks.top();
+        if (m_durableLsn < ti.waitLsn)
+            break;
+        taskPush(ti.hq, ti.notify);
+        m_lsnTasks.pop();
+    }
+}
+
+//===========================================================================
+void DbWal::queueTask(
+    ITaskNotify * task,
+    uint64_t waitLsn,
+    TaskQueueHandle hq
+) {
+    if (!hq)
+        hq = taskComputeQueue();
+    unique_lock lk{m_bufMut};
+    if (m_durableLsn >= waitLsn) {
+        // Required LSN is already durable, run task immediately.
+        taskPush(hq, task);
+    } else {
+        // Add task to priority queue that is ordered by LSN. It will wait
+        // there until the required LSN becomes durable.
+        auto ti = LsnTaskInfo{task, waitLsn, hq};
+        m_lsnTasks.push(ti);
+    }
+}
+
+//===========================================================================
+void DbWal::flushPartialBuffer() {
+    unique_lock lk{m_bufMut};
+    if (m_bufStates[m_curBuf] != Buffer::kPartialDirty)
+        return;
+
+    // Update buffer state and header.
+    auto rawbuf = bufPtr(m_curBuf);
+    m_bufStates[m_curBuf] = Buffer::kPartialWriting;
+    WalPage wp;
+    unpack(&wp, rawbuf);
+    wp.numRecs = (uint16_t) (m_lastLsn - wp.firstLsn + 1);
+    wp.lastPos = (uint16_t) m_bufPos;
+    pack(rawbuf, wp, 0);
+
+    // Copy entire page to be written, not just the changed part, otherwise the
+    // resulting page might not match the checksum.
+    auto nraw = partialPtr(m_curBuf);
+    memcpy(nraw, rawbuf, m_pageSize);
+
+    lk.unlock();
+    if (wp.type != WalPageType::kFree) {
+        assert(wp.type == WalPageType::kLog || wp.type == WalPageType::kLogV1);
+        pack(nraw, wp, hash_crc32c(nraw, m_pageSize));
+    }
+    auto offset = wp.pgno * m_pageSize;
+    fileWrite(this, m_fwal, offset, nraw, m_pageSize, walQueue());
 }
 
 

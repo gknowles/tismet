@@ -56,7 +56,10 @@ public:
     struct PageInfo {
         pgno_t pgno;
         uint64_t firstLsn;
-        uint16_t numRecs;
+        uint16_t cleanRecs; // WAL records on page that have been saved.
+
+        // Page has been filled up and fully saved.
+        bool fullPageSaved;
 
         // Count of transactions begun on this page that have not yet been
         // committed and fully written to WAL.
@@ -156,7 +159,11 @@ private:
     );
     void countBeginTxn_LK();
     void countCommitTxn_LK(uint64_t txn);
-    void updatePages_LK(const PageInfo & pi, bool fullPageWrite);
+    void updatePages_LK(
+        uint64_t firstLsn,
+        uint16_t cleanRecs,
+        bool fullPageWrite
+    );
     void checkpointPages();
     void checkpointDurable();
     void checkpointComplete();
