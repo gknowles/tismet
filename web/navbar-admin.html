@@ -1,0 +1,58 @@
+<!--
+Copyright Glen Knowles 2022.
+Distributed under the Boost Software License, Version 1.0.
+
+navbar-debug.html - dim webapp
+-->
+<div class="container-fluid bg-groupType">
+  <div class="row text-nowrap px-3 pt-1 border-bottom border-secondary">
+    <div class="col">
+      <div class="row" style="font-size: smaller">
+        {{appName}};
+        Address {{server.address}};
+        Version {{server.version}};
+        Build-Age {{readableDuration(elapsedTime(server.buildTime))}}
+      </div>
+      <div class="row">
+        <a v-for="menu in navbar"
+          :class="'col-auto border py-1 '
+            + (menu.active ? 'bg-primary border-primary text-light'
+              : 'bg-light')"
+          :href="menu.renderPath"
+          :title="menu.desc"
+          >
+            {{menu.name}}
+        </a>
+      </div>
+    </div>
+    <div class="col-auto">
+      <a class="row text-nowrap" :href="updateUrl({refresh: null})">{{now}}</a>
+      <a class="row justify-content-end text-nowrap" :href="getRefreshUrl()">
+        {{
+        'Refresh ('
+          + (getParam('refresh') ? 'seconds: ' + getParam('refresh') : 'None')
+          + ')'
+        }}
+      </a>
+    </div>
+  </div>
+  <template v-if="miniNav().length > 0">
+    <div class='row mb-3 border-bottom border-primary bg-light'>
+      <template v-for='(nav, index) in miniNav()'>
+        <div v-if='nav.disabled'
+            class='col-auto border-start border-end
+              text-decoration-line-through'>
+          {{nav.name}}
+        </div>
+        <a v-else-if='nav.name == miniNavSelected'
+            class='col-auto border-start border-end fw-bolder'
+            :href='nav.href'>
+          {{nav.name}}
+        </a>
+        <a v-else
+            class='col-auto border-start border-end'
+            :href='nav.href'>{{nav.name}}</a>
+      </template>
+    </div>
+  </template>
+</div>

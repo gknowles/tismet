@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!--
+Copyright Glen Knowles 2022.
+Distributed under the Boost Software License, Version 1.0.
+
+about-computer.html - dim webapp
+-->
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1,
+    shrink-to-fit=no"/>
+<script src="initialize.js"></script>
+<script src="about-common.js"></script>
+<script src="/srv/about/computer.json?jsVar=srvdata"></script>
+<script>
+addOpts({
+  computed: {
+    sortedEnv() {
+      let arr = [];
+      for (let name in this.env)
+        arr.push({name: name, value: this.env[name]})
+      arr.sort((a, b) => {
+        return a.name.localeCompare(b.name)
+      })
+      return arr
+    },
+  },
+})
+</script>
+</head>
+<body>
+<div id="app" style="visibility: hidden">
+  <script>aboutIntro('Computer')</script>
+
+  <div class="container-fluid mt-2">
+    <div class="row">
+      <h3>Computer</h3>
+      <div class="col-auto">
+      <dl>
+        <dt>Domain</dt>
+        <dd>{{domain.name}} ({{domain.status}})</dd>
+        <dt>Addresses</dt>
+        <dd>
+          <div v-for="addr in addresses">{{ addr }}</div>
+        </dd>
+        <dt>OS Version</dt>
+        <dd>
+          <div>
+            Windows {{version.major}}.{{version.minor}}.{{version.build}}
+          </div>
+          <div v-if="version.svcPackMajor > 0">
+            {{version.svcPackName}}
+            (Version {{version.svcPackMajor}}.{{version.svcPackMinor}})
+          </div>
+        </dd>
+        <dt>DNS</dt>
+        <dd>{{fullDnsName}}</dd>
+      </dl>
+      </div>
+    </div>
+    <div class="row">
+      <h3>Environment Variables</h3>
+      <div class="col-auto">
+        <table>
+          <tr>
+            <th onclick='tableSort(this)'>Name</th>
+            <th onclick='tableSort(this)'>Value</th>
+          </tr>
+          <template v-for="val in sortedEnv">
+            <tr>
+              <td class='text-nowrap'>{{val.name}}</td>
+              <td class='text-break'>{{val.value}}</td>
+            </tr>
+          </template>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>finalize()</script>
+</body>
+</html>

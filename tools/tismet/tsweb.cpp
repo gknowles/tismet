@@ -49,8 +49,9 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     addPath(&bld, "crashDir", appCrashDir());
     bld.member("config");
     configWriteRules(&bld);
-    bld.member("account");
+    bld.member("account").object();
     envProcessAccountInfo(&bld);
+    bld.end();
     bld.end();
     res.addHeader(kHttpContentType, "application/json");
     res.addHeader(kHttp_Status, "200");
@@ -65,16 +66,18 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
 ***/
 
 static JsonAbout s_jsonAbout;
-static HttpRouteRedirectNotify s_redirectAdmin("/admin/");
+static HttpRouteRedirectNotify s_redirectAdmin(
+    "/admin/srv/about-counters.html"
+);
 
 //===========================================================================
 void tsWebInitialize() {
     httpRouteAdd({.notify = &s_jsonAbout, .path = "/srv/about.json"});
 
-    resLoadWebSite("/admin", {}, resWebSiteContent());
-    httpRouteAdd({.notify = &s_redirectAdmin, .path = "/"});
-    httpRouteAddAlias(
-        { .path = "/admin", .recurse = true },
-        "/admin"
-    );
+    //resLoadWebSite("/admin", {}, resWebSiteContent());
+    //httpRouteAdd({.notify = &s_redirectAdmin, .path = "/"});
+    //httpRouteAddAlias(
+    //    { .path = "/web", .recurse = true },
+    //    "/admin"
+    //);
 }
