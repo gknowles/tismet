@@ -103,7 +103,7 @@ static Test s_test;
 
 //===========================================================================
 Test::Test()
-    : ITest("db", "Database manipulation tests.") 
+    : ITest("db", "Database manipulation tests.")
 {
     m_cli.opt<bool>(&m_verbose, "v verbose")
         .desc("Display additional information during test");
@@ -148,6 +148,9 @@ void Test::onTestRun() {
     EXPECT(count == 1);
 
     h = dbOpen(dat);
+    EXPECT(h && "Failure to reopen database");
+    if (!h)
+        return;
     ctx.reset(h);
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
@@ -164,6 +167,9 @@ void Test::onTestRun() {
     dbClose(h);
 
     h = dbOpen(dat);
+    EXPECT(h && "Failure to reopen database");
+    if (!h)
+        return;
     ctx.reset(h);
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
@@ -231,6 +237,9 @@ void Test::onTestRun() {
     dbClose(h);
 
     h = dbOpen(dat);
+    EXPECT(h && "Failure to reopen database");
+    if (!h)
+        return;
     ctx.reset(h);
     EXPECT(h);
     dbFindMetrics(&found, h);
@@ -241,6 +250,9 @@ void Test::onTestRun() {
     dbClose(h);
 
     h = dbOpen(dat);
+    EXPECT(h && "Failure to reopen database");
+    if (!h)
+        return;
     ctx.reset(h);
     EXPECT(h);
     dbFindMetrics(&found, h);
