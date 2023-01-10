@@ -197,7 +197,9 @@ private:
 
     Dim::UnsignedSet m_freePages;
 
-    // Information about all active pages. A page is active if it
+    // Information about all active pages. A page is active if it has not been
+    // filled, has not been saved, or has active transactions. A transaction
+    // is active if it hasn't been committed or that commit has not been saved.
     std::deque<PageInfo> m_pages;
 
     size_t m_numPages = 0;
@@ -214,13 +216,14 @@ private:
 
     // Checkpoint blocks prevent checkpoints from occurring so that backups can
     // be done safely.
+    std::mutex m_blockMut;
     std::vector<IDbProgressNotify *> m_checkpointBlockers;
 
     // Last started (perhaps unfinished) checkpoint.
     Dim::TimePoint m_checkpointStart;
     uint64_t m_checkpointLsn = 0;
 
-    // Last known durably saved.
+    // Last known LSN durably saved.
     uint64_t m_durableLsn = 0;
 
     struct LsnTaskInfo {

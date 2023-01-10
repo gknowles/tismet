@@ -440,6 +440,7 @@ bool DbWal::open(
 
 //===========================================================================
 void DbWal::close() {
+    unique_lock lk{m_bufMut};
     if (!m_fwal)
         return;
 
@@ -453,10 +454,13 @@ void DbWal::close() {
     }
 
     if (m_numBufs) {
+        lk.unlock();
         checkpoint();
         flushPartialBuffer();
+        lk.lock();
     }
-    unique_lock lk{m_bufMut};
+
+    // Wait for checkpointing to finish.
     for (;;) {
         if (m_phase == Checkpoint::kComplete) {
             if (m_emptyBufs == m_numBufs)
@@ -467,7 +471,7 @@ void DbWal::close() {
         }
         m_bufAvailCv.wait(lk);
     }
-    lk.unlock();
+
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
 
@@ -514,16 +518,16 @@ DbConfig DbWal::configure(const DbConfig & conf) {
 // enables consistent backups to be taken without the risk of WAL needed by
 // a slightly older database getting purged.
 void DbWal::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
+    unique_lock lkBlock{m_blockMut};
     unique_lock lk{m_bufMut};
+    bool complete = m_phase == Checkpoint::kComplete;
+    lk.unlock();
+
     if (enable) {
         // Add the block
-        DbProgressInfo info = {};
         m_checkpointBlockers.push_back(notify);
-        lk.unlock();
-        // FIXME?: Separate blockers mutex needed so there's no stopped ->
-        // stopping race between this and checkpointComplete(). Or maybe this
-        // can only be accessed via the event thread so it's inherently safe?
-        if (m_phase == Checkpoint::kComplete) {
+        DbProgressInfo info = {};
+        if (complete) {
             notify->onDbProgress(kRunStopped, info);
         } else {
             notify->onDbProgress(kRunStopping, info);
@@ -533,8 +537,8 @@ void DbWal::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
 
     // Remove the block
     erase(m_checkpointBlockers, notify);
-    if (m_checkpointBlockers.empty() && m_phase == Checkpoint::kComplete) {
-        lk.unlock();
+    if (m_checkpointBlockers.empty() && complete) {
+        lkBlock.unlock();
         checkpointQueueNext();
     }
 }
@@ -979,8 +983,17 @@ void DbWal::applyUpdate(
 
 //===========================================================================
 void DbWal::checkpoint() {
+    {
+        unique_lock lkBlock(m_blockMut);
+        if (!m_checkpointBlockers.empty()) {
+            // Checkpoint is being blocked, presumably by a backup process
+            // of some kind.
+            return;
+        }
+    }
+
+    unique_lock lk{m_bufMut};
     if (m_phase != Checkpoint::kComplete
-        || !m_checkpointBlockers.empty()
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
         // A checkpoint is already in progress, not allowed now (blocked), or
@@ -988,11 +1001,16 @@ void DbWal::checkpoint() {
         return;
     }
 
-    if (m_openFlags.any(fDbOpenVerbose))
-        logMsgInfo() << "Checkpoint started";
+    // Start Checkpoint
+    // Reset time and data accumulated since last checkpoint and queue first
+    // phase.
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
     m_phase = Checkpoint::kFlushPages;
+    lk.unlock();
+
+    if (m_openFlags.any(fDbOpenVerbose))
+        logMsgInfo() << "Checkpoint started";
     s_perfCps += 1;
     s_perfCurCps += 1;
     taskPushCompute(&m_checkpointPagesTask);
@@ -1000,26 +1018,35 @@ void DbWal::checkpoint() {
 
 //===========================================================================
 void DbWal::checkpointPages() {
+    unique_lock lk{m_bufMut};
     assert(m_phase == Checkpoint::kFlushPages);
+    auto lsn = m_checkpointLsn;
+    lk.unlock();
     // Get oldest LSN that has dirty data pages associated (also flushes OS
     // cache of any saved data pages).
-    auto nextCp = m_page->onWalCheckpointPages(m_checkpointLsn);
-    if (nextCp == m_checkpointLsn) {
+    auto pageLsn = m_page->onWalCheckpointPages(lsn);
+    lk.lock();
+    if (pageLsn == m_checkpointLsn) {
         // No additional WAL pages have become discardable since the last
         // checkpoint, so there's no need for a new checkpoint. WAL is already
         // as truncated as possible.
         m_phase = Checkpoint::kReportComplete;
+        lk.unlock();
         checkpointComplete();
         return;
     }
-    assert(nextCp > m_checkpointLsn);
-    m_checkpointLsn = nextCp;
+    assert(pageLsn > m_checkpointLsn);
+    m_checkpointLsn = pageLsn;
 
     // Write the checkpoint record and queue a checkpointDurable() call for
     // when it's written.
-    walCheckpoint(m_checkpointLsn);
     m_phase = Checkpoint::kFlushCheckpoint;
-    queueTask(&m_checkpointDurableTask, m_lastLsn);
+    lk.unlock();
+    walCheckpoint(pageLsn);
+    lk.lock();
+    auto lastLsn = m_lastLsn;
+    lk.unlock();
+    queueTask(&m_checkpointDurableTask, lastLsn);
 }
 
 //===========================================================================
@@ -1050,9 +1077,10 @@ void DbWal::checkpointDurable() {
         }
         s_perfFreePages +=
             (unsigned) (before - m_pages.size() - (bool) lastPgno);
+
+        m_phase = Checkpoint::kReportComplete;
     }
 
-    m_phase = Checkpoint::kReportComplete;
     if (!lastPgno) {
         // No pages freed, nothing to truncate, immediately report that the
         // "truncation" is complete.
@@ -1082,40 +1110,50 @@ void DbWal::checkpointDurable() {
 
 //===========================================================================
 void DbWal::checkpointComplete() {
+    unique_lock lk(m_bufMut);
+    assert(m_phase == Checkpoint::kReportComplete);
     // Set checkpoint status to complete, notify things that are waiting, and
     // maybe schedule the next checkpoint.
-    assert(m_phase == Checkpoint::kReportComplete);
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
+
     m_phase = Checkpoint::kComplete;
     s_perfCurCps -= 1;
+    lk.unlock();
+
+    unique_lock lkBlock(m_blockMut);
     if (m_checkpointBlockers.empty()) {
+        lkBlock.unlock();
         checkpointQueueNext();
     } else {
         DbProgressInfo info = {};
         for (auto&& blocker : m_checkpointBlockers)
             blocker->onDbProgress(kRunStopped, info);
+        lkBlock.unlock();
     }
     m_bufAvailCv.notify_one();
 }
 
 //===========================================================================
 void DbWal::checkpointQueueNext() {
-    if (!m_closing) {
-        Duration wait = 0ms;
-        if (m_checkpointData >= m_maxCheckpointData) {
+    unique_lock lk{m_bufMut};
+    if (m_closing)
+        return;
+
+    Duration wait = 0ms;
+    if (m_checkpointData >= m_maxCheckpointData) {
+        // Do it now.
+    } else {
+        auto elapsed = timeNow() - m_checkpointStart;
+        if (elapsed >= m_maxCheckpointInterval) {
             // Do it now.
         } else {
-            auto elapsed = timeNow() - m_checkpointStart;
-            if (elapsed >= m_maxCheckpointInterval) {
-                // Do it now.
-            } else {
-                // Wait for interval to expire.
-                wait = m_maxCheckpointInterval - elapsed;
-            }
+            // Wait for interval to expire.
+            wait = m_maxCheckpointInterval - elapsed;
         }
-        timerUpdate(&m_checkpointTimer, wait);
     }
+    lk.unlock();
+    timerUpdate(&m_checkpointTimer, wait, true);
 }
 
 
