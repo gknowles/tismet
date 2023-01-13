@@ -156,11 +156,12 @@ uint64_t DbWal::getTxn(uint64_t lsn, uint16_t localTxn) {
 }
 
 //===========================================================================
-void DbWal::walCheckpoint(uint64_t startLsn) {
+uint64_t DbWal::walCheckpoint(uint64_t startLsn) {
     CheckpointRec rec;
     rec.type = kRecTypeCheckpoint;
     rec.startLsn = startLsn;
-    wal((Record &) rec, sizeof(rec), TxnMode::kContinue);
+    auto lsn = wal((Record &) rec, sizeof(rec), TxnMode::kContinue);
+    return lsn;
 }
 
 //===========================================================================
@@ -173,11 +174,12 @@ uint64_t DbWal::walBeginTxn(uint16_t localTxn) {
 }
 
 //===========================================================================
-void DbWal::walCommitTxn(uint64_t txn) {
+uint64_t DbWal::walCommitTxn(uint64_t txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
-    wal((Record &) rec, sizeof(rec), TxnMode::kCommit, txn);
+    auto lsn = wal((Record &) rec, sizeof(rec), TxnMode::kCommit, txn);
+    return getTxn(lsn, rec.localTxn);
 }
 
 //===========================================================================

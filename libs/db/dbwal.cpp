@@ -261,6 +261,7 @@ DbWal::DbWal(IApplyNotify * data, IPageNotify * page)
 
 //===========================================================================
 DbWal::~DbWal() {
+    assert(m_checkpointBlockers.empty());
     if (m_fwal)
         fileClose(m_fwal);
     if (m_buffers)
@@ -399,6 +400,7 @@ bool DbWal::open(
         m_newFiles = false;
 
         m_numPages = (len + m_pageSize - 1) / m_pageSize;
+        m_peakUsedPages = m_numPages;
         s_perfPages += (unsigned) m_numPages;
         return true;
     }
@@ -419,6 +421,7 @@ bool DbWal::open(
     fileWriteWait(nullptr, m_fwal, 0, nraw, m_pageSize);
     s_perfWrites += 1;
     m_numPages = 1;
+    m_peakUsedPages = m_numPages;
     s_perfPages += (unsigned) m_numPages;
 
     // Initialize the variables normally set by the recovery phase that we're
@@ -440,6 +443,9 @@ bool DbWal::open(
 
 //===========================================================================
 void DbWal::close() {
+    timerCloseWait(&m_flushTimer);
+    timerCloseWait(&m_checkpointTimer);
+
     unique_lock lk{m_bufMut};
     if (!m_fwal)
         return;
@@ -456,33 +462,24 @@ void DbWal::close() {
     if (m_numBufs) {
         lk.unlock();
         checkpoint();
-        flushPartialBuffer();
         lk.lock();
     }
 
     // Wait for checkpointing to finish.
+    while (m_phase != Checkpoint::kComplete)
+        m_bufCheckpointCv.wait(lk);
+    // Wait for buffer flush to finish.
     for (;;) {
-        if (m_phase == Checkpoint::kComplete) {
-            if (m_emptyBufs == m_numBufs)
-                break;
-            auto bst = m_bufStates[m_curBuf];
-            if (m_emptyBufs == m_numBufs - 1 && bst == Buffer::kPartialClean)
-                break;
-        }
+        if (m_emptyBufs == m_numBufs)
+            break;
+        auto bst = m_bufStates[m_curBuf];
+        if (m_emptyBufs == m_numBufs - 1 && bst == Buffer::kPartialClean)
+            break;
         m_bufAvailCv.wait(lk);
     }
 
     s_perfPages -= (unsigned) m_numPages;
     s_perfFreePages -= (unsigned) m_freePages.size();
-
-    // Look for free pages at the end of the file, and if there are any
-    // resize the file to get rid of them.
-    auto lastPage = (pgno_t) m_numPages - 1;
-    if (auto i = m_freePages.find(lastPage)) {
-        i = i.firstContiguous();
-        lastPage = *i - 1;
-        fileResize(m_fwal, (lastPage + 1) * m_pageSize);
-    }
     fileClose(m_fwal);
     m_fwal = {};
 }
@@ -632,7 +629,7 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
         logMsgInfo() << "Recover database";
     data.analyze = false;
     applyAll(&data, fwal);
-    if (flags.none(fRecoverIncompleteTxns)) {
+    if (!flags.any(fRecoverIncompleteTxns)) {
         assert(data.incompleteTxnLsns.empty());
         assert(!data.activeTxns);
     }
@@ -732,6 +729,10 @@ bool DbWal::loadPages(FileHandle fwal) {
         s_perfFreePages += (unsigned) size(oldPages);
         m_pages.erase(oldPages.begin(), oldPages.end());
     }
+    // Mark all pages but the last as fully saved.
+    for_each(m_pages.begin(), m_pages.end() - 1, [](auto & a) {
+        a.fullPageSaved = true;
+    });
     return true;
 }
 
@@ -1041,12 +1042,17 @@ void DbWal::checkpointPages() {
     // Write the checkpoint record and queue a checkpointDurable() call for
     // when it's written.
     m_phase = Checkpoint::kFlushCheckpoint;
+    auto closing = m_closing;
     lk.unlock();
-    walCheckpoint(pageLsn);
-    lk.lock();
-    auto lastLsn = m_lastLsn;
-    lk.unlock();
+    auto lastLsn = walCheckpoint(pageLsn);
     queueTask(&m_checkpointDurableTask, lastLsn);
+    if (closing) {
+        // Since we're closing we don't want to wait for the buffer inactivity
+        // timer, and even if we did wait it triggers on the event thread which
+        // is a deadlock if it's already suspended inside the call to close()
+        // which triggered this checkpoint.
+        flushPartialBuffer();
+    }
 }
 
 //===========================================================================
@@ -1057,11 +1063,18 @@ void DbWal::checkpointDurable() {
     if (auto ec = fileFlush(m_fwal))
         logMsgFatal() << "Checkpointing failed.";
 
-    auto lastPgno = pgno_t{0}; // Page that most recently became discardable.
+    auto lastDurable = pgno_t{}; // Page that most recently became discardable.
     {
+        unique_lock lk{m_bufMut};
+
+        // Update peak pages used.
+        m_peakUsedPages = max(
+            (size_t) (m_peakUsedPages * 0.9),
+            m_pages.size()
+        );
+
         // Remove discardable pages from the info list and add their pgnos to
         // the free list.
-        unique_lock lk{m_bufMut};
         auto lastLsn = m_pages.back().firstLsn;
         auto before = m_pages.size();
         for (;;) {
@@ -1070,42 +1083,63 @@ void DbWal::checkpointDurable() {
                 break;
             if (pi.firstLsn + pi.cleanRecs > m_checkpointLsn)
                 break;
-            if (lastPgno)
-                m_freePages.insert(lastPgno);
-            lastPgno = pi.pgno;
+            if (lastDurable)
+                m_freePages.insert(lastDurable);
+            lastDurable = pi.pgno;
             m_pages.pop_front();
         }
         s_perfFreePages +=
-            (unsigned) (before - m_pages.size() - (bool) lastPgno);
+            (unsigned) (before - m_pages.size() - (bool) lastDurable);
 
         m_phase = Checkpoint::kReportComplete;
+
+        // Shrink the WAL file if it is still less than 70% full right before
+        // pages are freed by checkpoint.
+        if (m_peakUsedPages < m_numPages * 0.7) {
+            // Look for free pages at the end of the file, and if there are any
+            // resize the file to get rid of them. But only up to 10% of the
+            // total pages.
+            auto lastUsed = (pgno_t) m_numPages - 1;
+            if (auto i = m_freePages.find(lastUsed)) {
+                i = i.firstContiguous();
+                m_numPages = max((size_t) *i, (size_t) (m_numPages * 0.9));
+                auto count = lastUsed - (pgno_t) m_numPages + 1;
+                m_freePages.erase((pgno_t) m_numPages, count);
+                s_perfFreePages -= count;
+                s_perfPages -= count;
+                fileResize(m_fwal, m_numPages * m_pageSize);
+            }
+            if (lastDurable >= m_numPages)
+                lastDurable = {};
+        }
     }
 
-    if (!lastPgno) {
+    if (!lastDurable) {
         // No pages freed, nothing to truncate, immediately report that the
         // "truncation" is complete.
         checkpointComplete();
-    } else {
-        // Mark truncation in WAL file by explicitly setting the most recently
-        // discardable page to free. This is not required for correctness, but
-        // can be useful for debugging.
-        //
-        // The call to checkpointComplete() is made by the onFileWrite()
-        // callback after the write.
-        auto vptr = mallocAligned(m_pageSize, m_pageSize);
-        auto mp = new(vptr) MinimumPage {
-            .type = WalPageType::kFree,
-            .pgno = lastPgno
-        };
-        fileWrite(
-            this,
-            m_fwal,
-            lastPgno * m_pageSize,
-            mp,
-            m_pageSize,
-            walQueue()
-        );
+        return;
     }
+
+    // Mark truncation in WAL file by explicitly setting the most recently
+    // discardable page to free. This is not required for correctness, but
+    // can be useful for debugging.
+    //
+    // The call to checkpointComplete() is made by the onFileWrite()
+    // callback after the write.
+    auto vptr = mallocAligned(m_pageSize, m_pageSize);
+    auto mp = new(vptr) MinimumPage {
+        .type = WalPageType::kFree,
+        .pgno = lastDurable
+    };
+    fileWrite(
+        this,
+        m_fwal,
+        lastDurable * m_pageSize,
+        mp,
+        m_pageSize,
+        walQueue()
+    );
 }
 
 //===========================================================================
@@ -1131,7 +1165,8 @@ void DbWal::checkpointComplete() {
             blocker->onDbProgress(kRunStopped, info);
         lkBlock.unlock();
     }
-    m_bufAvailCv.notify_one();
+    // Notify one
+    m_bufCheckpointCv.notify_one();
 }
 
 //===========================================================================
@@ -1526,8 +1561,9 @@ void DbWal::updatePages_LK(
     i->cleanRecs = cleanRecs;
     i->fullPageSaved = fullPageWrite;
 
-    // Will point to oldest page with transaction committed by this update.
-    auto base = m_pages.end();
+    // Will point to oldest page with transaction committed by this update. It
+    // is assumed to have committed transactions to itself.
+    auto base = i;
 
     for (auto&& pc : i->commits) {
         assert(pc.commits);

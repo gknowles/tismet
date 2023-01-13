@@ -139,9 +139,9 @@ private:
 
     bool loadPages(Dim::FileHandle fwal);
 
-    void walCheckpoint(uint64_t startLsn);
-    uint64_t walBeginTxn(uint16_t localTxn);
-    void walCommitTxn(uint64_t txn);
+    uint64_t walCheckpoint(uint64_t startLsn);  // returns LSN
+    uint64_t walBeginTxn(uint16_t localTxn);    // returns localTxn + LSN
+    uint64_t walCommitTxn(uint64_t txn);        // returns localTxn + LSN
 
     // Returns LSN.
     enum class TxnMode { kBegin, kContinue, kCommit };
@@ -196,13 +196,14 @@ private:
     uint64_t m_lastLsn = 0;
 
     Dim::UnsignedSet m_freePages;
+    size_t m_numPages = 0;
+    size_t m_peakUsedPages = 0;
 
     // Information about all active pages. A page is active if it has not been
     // filled, has not been saved, or has active transactions. A transaction
     // is active if it hasn't been committed or that commit has not been saved.
     std::deque<PageInfo> m_pages;
 
-    size_t m_numPages = 0;
     size_t m_pageSize = 0;
     size_t m_dataPageSize = 0;
 
@@ -213,6 +214,7 @@ private:
     Dim::TaskProxy m_checkpointPagesTask;
     Dim::TaskProxy m_checkpointDurableTask;
     Checkpoint m_phase = {};
+    std::condition_variable m_bufCheckpointCv;
 
     // Checkpoint blocks prevent checkpoints from occurring so that backups can
     // be done safely.
