@@ -802,8 +802,8 @@ void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
         m_bufPos = walPos;
         m_bufStates[m_curBuf] = Buffer::kPartialClean;
         m_emptyBufs -= 1;
-        auto & pi = m_pages.back();
         unpack(&wp, bufPtr(m_curBuf));
+        [[maybe_unused]] auto & pi = m_pages.back();
         assert(wp.firstLsn == pi.firstLsn);
     }
 }
