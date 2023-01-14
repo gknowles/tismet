@@ -770,7 +770,7 @@ DbPage::WorkPageInfo * DbPage::dirtyPage_LK(pgno_t pgno, uint64_t lsn) {
     assert(pi->hdr && !pi->pgno);
     pi->hdr->pgno = pgno;
     pi->hdr->lsn = lsn;
-    if (pi->flags.none(fDbPageDirty)) {
+    if (!pi->flags.any(fDbPageDirty)) {
         pi->firstTime = timeNow();
         pi->firstLsn = lsn;
         pi->flags |= fDbPageDirty;
