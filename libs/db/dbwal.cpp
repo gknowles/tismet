@@ -461,6 +461,7 @@ void DbWal::close() {
 
     if (m_numBufs) {
         lk.unlock();
+        flushPartialBuffer();
         checkpoint();
         lk.lock();
     }
@@ -1109,8 +1110,11 @@ void DbWal::checkpointDurable() {
                 s_perfPages -= count;
                 fileResize(m_fwal, m_numPages * m_pageSize);
             }
-            if (lastDurable >= m_numPages)
+            if (lastDurable >= m_numPages) {
+                // The last durable page is no longer part of the newly shrunk
+                // WAL file, so we don't want to rewrite it as a free page.
                 lastDurable = {};
+            }
         }
     }
 
@@ -1525,11 +1529,19 @@ void DbWal::onFileWrite(const FileWriteData & data) {
             lk.unlock();
             m_bufAvailCv.notify_one();
         } else {
-            // Data has been added to buffer, but it's still not full. Start
-            // flush timer.
+            // Data has been added to buffer, but it's still not full.
             m_bufStates[ibuf] = Buffer::kPartialDirty;
+            bool closing = m_closing;
             lk.unlock();
-            timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
+            if (!closing) {
+                // Start the flush timer.
+                timerUpdate(&m_flushTimer, kDirtyWriteBufferTimeout);
+            } else {
+                // Since we're closing we don't want to wait for the flush
+                // timer (and we've already closed it anyway). Immediately
+                // queue the partial write.
+                flushPartialBuffer();
+            }
         }
     } else {
         assert(m_bufStates[ibuf] == Buffer::kFullWriting);
