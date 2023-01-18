@@ -298,7 +298,7 @@ static FileHandle openWalFile(
         oflags |= fReadWrite;
     }
     if (flags.any(fDbOpenCreat))
-        oflags |= fCreat;
+        oflags |= fCreat | fRemove;
     if (flags.any(fDbOpenTrunc))
         oflags |= fTrunc;
     if (flags.any(fDbOpenExcl))
@@ -326,13 +326,34 @@ bool DbWal::open(
     m_fwal = openWalFile(fname, flags, true);
     if (!m_fwal)
         return false;
+
+    // If opened with exclusive create the file is obivously new, otherwise
+    // assume it already existed until we know better.
+    m_newFiles = m_openFlags.all(fDbOpenCreat | fDbOpenExcl);
+
+    // Auto-close file on failure of initial processing of the opened file.
+    Finally fin([&fh = m_fwal, &newf = m_newFiles]() {
+        if (newf && fileMode(fh).any(File::OpenMode::fRemove)) {
+            // File was created, but not completely. Remove the remnants.
+            fileRemoveOnClose(fh);
+        }
+        fileClose(fh);
+        fh = {};
+    });
+
+    uint64_t len;
+    if (fileSize(&len, m_fwal))
+        return false;
+    if (!len) {
+        // Newly file (created or truncated).
+        m_newFiles = true;
+    }
+
     FileAlignment walAlign;
     if (auto ec = fileAlignment(&walAlign, m_fwal); ec)
         return false;
     auto fps = walAlign.physicalSector;
     assert(fps > sizeof ZeroPage);
-    uint64_t len;
-    fileSize(&len, m_fwal);
     ZeroPage zp{};
     if (!len) {
         // New file, use requested dataPageSize and physical sector size to
@@ -368,6 +389,9 @@ bool DbWal::open(
         }
     }
 
+    // No more open failures possible.
+    fin.release();
+
     // Allocate Aligned Buffers
     m_numBufs = kWalWriteBuffers;
     m_bufStates.resize(m_numBufs, Buffer::kEmpty);
@@ -389,6 +413,7 @@ bool DbWal::open(
     // Set position within buffer to end of the buffer.
     m_bufPos = m_pageSize;
 
+    m_phase = Checkpoint::kStartRecovery;
     m_maxCheckpointData = kDefaultMaxCheckpointData;
     m_maxCheckpointInterval = kDefaultMaxCheckpointInterval;
     m_checkpointBlockers.clear();
@@ -396,9 +421,7 @@ bool DbWal::open(
 
     if (len) {
         // Existing File
-        m_phase = Checkpoint::kStartRecovery;
-        m_newFiles = false;
-
+        assert(!m_newFiles);
         m_numPages = (len + m_pageSize - 1) / m_pageSize;
         m_peakUsedPages = m_numPages;
         s_perfPages += (unsigned) m_numPages;
@@ -406,9 +429,7 @@ bool DbWal::open(
     }
 
     // New File
-    m_phase = Checkpoint::kComplete;
-    m_newFiles = true;
-
+    assert(m_newFiles);
     zp.hdr.type = (DbPageType) WalPageType::kZero;
     zp.signature = kWalFileSig;
     zp.walPageSize = (unsigned) m_pageSize;
@@ -454,6 +475,8 @@ void DbWal::close() {
     if (m_phase == Checkpoint::kStartRecovery
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
+        if (m_newFiles && m_phase == Checkpoint::kStartRecovery)
+            fileRemoveOnClose(m_fwal);
         fileClose(m_fwal);
         m_fwal = {};
         return;
@@ -555,6 +578,8 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
 
     m_phase = Checkpoint::kComplete;
     m_checkpointStart = timeNow();
+    if (m_newFiles)
+        return true;
 
     using enum File::OpenMode;
     FileHandle fwal;

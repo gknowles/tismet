@@ -18,8 +18,8 @@ using namespace Dim;
 
 #define EXPECT(...)                                                         \
     if (!bool(__VA_ARGS__)) {                                               \
-        logMsgError() << "Line " << (line ? line : __LINE__) << ": EXPECT(" \
-                      << #__VA_ARGS__ << ") failed";                        \
+        logMsgError() << "Line " << source_location::current().line()       \
+            << ": EXPECT(" << #__VA_ARGS__ << ") failed";                   \
     }
 
 
@@ -91,6 +91,10 @@ namespace {
 class Test : public ITest {
 public:
     Test();
+    void invalidFileTests();
+    void dataTests();
+
+    // Inherited via ITest
     void onTestRun() override;
 
 private:
@@ -110,9 +114,46 @@ Test::Test()
 }
 
 //===========================================================================
-void Test::onTestRun() {
-    int line = 0;
+void Test::invalidFileTests() {
+    auto invalidPrefix = Path("dir");
+    auto invalidWal = Path(invalidPrefix).setExt(".tsl");
+    auto invalidData = Path(invalidPrefix).setExt(".tsd");
+    auto invalidWork = Path(invalidPrefix).setExt(".tsw");
+    fileRemove(invalidWal, true);
+    fileRemove(invalidData, true);
+    fileRemove(invalidWork, true);
 
+    fileCreateDirs(invalidWal);
+    testLogMsgs({{kLogTypeError, "Open failed, " + invalidWal.str()}});
+    auto h = dbOpen(invalidWal, fDbOpenCreat | fDbOpenTrunc);
+    EXPECT(!h && "Open of directory as file should have failed.");
+    bool found = false;
+    EXPECT(!fileDirExists(&found, invalidWal) && found);
+    EXPECT(!fileExists(&found, invalidData) && !found);
+    EXPECT(!fileExists(&found, invalidWork) && !found);
+    fileRemove(invalidWal);
+
+    fileCreateDirs(invalidData);
+    testLogMsgs({{kLogTypeError, "Open failed, " + invalidData.str()}});
+    h = dbOpen(invalidData, fDbOpenCreat | fDbOpenTrunc);
+    EXPECT(!h && "Open of directory as file should have failed.");
+    EXPECT(!fileExists(&found, invalidWal) && !found);
+    EXPECT(!fileDirExists(&found, invalidData) && found);
+    EXPECT(!fileExists(&found, invalidWork) && !found);
+    fileRemove(invalidData);
+
+    fileCreateDirs(invalidWork);
+    testLogMsgs({{kLogTypeError, "Open failed, " + invalidWork.str()}});
+    h = dbOpen(invalidWork, fDbOpenCreat | fDbOpenTrunc);
+    EXPECT(!h && "Open of directory as file should have failed.");
+    EXPECT(!fileExists(&found, invalidWal) && !found);
+    EXPECT(!fileExists(&found, invalidData) && !found);
+    EXPECT(!fileDirExists(&found, invalidWork) && found);
+    fileRemove(invalidWork);
+}
+
+//===========================================================================
+void Test::dataTests() {
     auto start = timeFromUnix(900'000'000);
     auto name = "this.is.metric.1"s;
 
@@ -313,4 +354,10 @@ void Test::onTestRun() {
 
     ctx.reset();
     dbClose(h);
+}
+
+//===========================================================================
+void Test::onTestRun() {
+    invalidFileTests();
+    dataTests();
 }

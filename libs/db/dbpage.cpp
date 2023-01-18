@@ -96,6 +96,7 @@ bool DbPage::open(
     m_pageSize = pageSize;
     m_walPageSize = walPageSize;
     m_flags = flags;
+    m_newFiles = false;
     if (m_flags.any(fDbOpenVerbose))
         logMsgInfo() << "Open data files";
     if (!openData(datafile))
@@ -104,7 +105,8 @@ bool DbPage::open(
         close();
         return false;
     }
-    m_currentWal.push_back({0, timeNow()});
+    // There must always be at least one current WAL reference.
+    m_currentWal.push_back({.time = timeNow()});
 
     return true;
 }
@@ -114,29 +116,36 @@ bool DbPage::openData(string_view datafile) {
     using enum File::OpenMode;
     auto oflags = fReadWrite | fDenyWrite | fRandom;
     if (m_flags.any(fDbOpenCreat))
-        oflags |= fCreat;
+        oflags |= fCreat | fRemove;
     if (m_flags.any(fDbOpenTrunc))
         oflags |= fTrunc;
     if (m_flags.any(fDbOpenExcl))
         oflags |= fExcl;
     auto ec = fileOpen(&m_fdata, datafile, oflags);
-    if (!m_fdata)
+    if (!m_fdata) {
+        logMsgError() << "Open failed, " << datafile;
         return false;
-    Finally fin([fh = m_fdata, fl = m_flags, datafile]() {
+    }
+
+    // If opened with exclusive create the file is obivously new, otherwise
+    // assume it already existed until we know better.
+    m_newFiles = m_flags.all(fDbOpenCreat | fDbOpenExcl);
+
+    // Auto-close file on failure of initial processing of the opened file.
+    Finally fin([&fh = m_fdata, &newf = m_newFiles]() {
+        if (newf && fileMode(fh).any(fRemove)) {
+            // File was created, but not completely. Remove the remnants.
+            fileRemoveOnClose(fh);
+        }
         fileClose(fh);
-        if (fl.all(fDbOpenCreat | fDbOpenExcl))
-            fileRemove(datafile);
+        fh = {};
     });
 
     uint64_t len = 0;
     if (fileSize(&len, m_fdata))
         return false;
     if (!len) {
-        DbPageHeader hdr = {};
-        if (fileWriteWait(nullptr, m_fdata, 0, &hdr, sizeof(hdr))) {
-            logMsgError() << "Open new failed, " << datafile;
-            return false;
-        }
+        // Newly created file.
         m_newFiles = true;
     }
     if (!m_vdata.open(m_fdata, kViewSize, m_pageSize)) {
@@ -154,7 +163,9 @@ bool DbPage::openData(string_view datafile) {
     }
     m_pages.resize(lastPage + 1);
 
+    // Open successful, don't auto-close or auto-delete.
     fin.release();
+
     return true;
 }
 
@@ -168,12 +179,16 @@ bool DbPage::openWork(string_view workfile) {
     if (m_flags.any(fDbOpenExcl))
         oflags |= fExcl;
     auto ec = fileOpen(&m_fwork, workfile, oflags);
-    if (!m_fwork)
+    if (!m_fwork) {
+        logMsgError() << "Open failed, " << workfile;
         return false;
-    Finally fin([fh = m_fwork, fl = m_flags, workfile]() {
+    }
+
+    // Auto-close file on failure of initial processing of the opened file.
+    Finally fin([&fh = m_fwork]() {
+        // Because it's opened with fTemp, file will be auto-removed on close.
         fileClose(fh);
-        if (fl.all(fDbOpenCreat | fDbOpenExcl))
-            fileRemove(workfile);
+        fh = {};
     });
 
     uint64_t len = 0;
@@ -212,7 +227,9 @@ bool DbPage::openWork(string_view workfile) {
         return false;
     }
 
+    // Open successful, don't auto-close or auto-delete.
     fin.release();
+
     return true;
 }
 
@@ -233,6 +250,9 @@ DbConfig DbPage::configure(const DbConfig & conf) {
 
 //===========================================================================
 void DbPage::close() {
+    s_perfPages -= (unsigned) m_workPages;
+    s_perfFreePages -= (unsigned) m_freeWorkPages.size();
+
     m_pages.clear();
     m_dirtyPages.clear();
     m_oldPages.clear();
@@ -240,24 +260,33 @@ void DbPage::close() {
     m_pageBonds = 0;
     m_freeInfos.clear();
     m_referencePages.clear();
+    m_durableLsn = 0;
     m_currentWal.clear();
     m_overflowWal.clear();
-    m_durableWalBytes = 0;
     m_overflowWalBytes = 0;
-
-    m_vdata.close();
-    fileClose(m_fdata);
-    m_vwork.close();
-
-    // TODO: Resize to number of dirty pages at start of last checkpoint.
-    fileResize(m_fwork, m_pageSize);
-
-    fileClose(m_fwork);
-    s_perfPages -= (unsigned) m_workPages;
-    s_perfFreePages -= (unsigned) m_freeWorkPages.size();
-    m_freeWorkPages.clear();
-    m_pageSize = 0;
+    m_durableWalBytes = 0;
     m_workPages = 0;
+    m_freeWorkPages.clear();
+
+    // Close Data File
+    m_vdata.close();
+    if (m_newFiles
+        && !m_fwork
+        && fileMode(m_fdata).any(File::OpenMode::fRemove)
+    ) {
+        fileRemoveOnClose(m_fdata);
+    }
+    fileClose(m_fdata);
+
+    // Close Work File
+    m_vwork.close();
+    fileClose(m_fwork);
+
+    // Initialized by open.
+    m_pageSize = 0;
+    m_walPageSize = 0;
+    m_flags = {};
+    m_newFiles = false;
 }
 
 

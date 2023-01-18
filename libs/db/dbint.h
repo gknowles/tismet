@@ -173,6 +173,12 @@ private:
         int pins;
         bool updates;
     };
+    // One entry for every data page, null for untracked pages (which must
+    // therefore also be unmodified pages).
+    std::vector<WorkPageInfo *> m_pages;
+
+    // Unused page info structs waiting to be recycled.
+    Dim::List<WorkPageInfo> m_freeInfos;
     // List of all dirty pages in order of when they became dirty as measured by
     // LSN (and therefore also time).
     Dim::List<WorkPageInfo> m_dirtyPages;
@@ -186,16 +192,10 @@ private:
     // Number of pages, dirty or clean, that first became dirty within the last
     // max WAL age. Which means that their repayment term hasn't fully matured.
     size_t m_pageBonds = 0;
-    // Unused page info structs waiting to be recycled.
-    Dim::List<WorkPageInfo> m_freeInfos;
     // Info about pages from the data file that are unchanged and have not been
     // copied to work pages. Used to track pins (that block modification) on
     // pages that are being referenced.
     Dim::List<WorkPageInfo> m_referencePages;
-
-    // One entry for every data page, null for untracked pages (which must
-    // therefore also be unmodified pages).
-    std::vector<WorkPageInfo *> m_pages;
 
     // The LSN up to which all data can be safely recovered. All WAL for any
     // transaction, that has not been rolled back and includes logs from this or

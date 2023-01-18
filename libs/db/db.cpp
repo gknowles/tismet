@@ -57,7 +57,7 @@ public:
     DbBase();
 
     bool open(
-        string_view name, 
+        string_view name,
         EnumFlags<DbOpenFlags> flags,
         size_t pageSize
     );
@@ -184,7 +184,7 @@ DbBase::DbBase ()
 
 //===========================================================================
 bool DbBase::open(
-    string_view name, 
+    string_view name,
     EnumFlags<DbOpenFlags> flags,
     size_t pageSize
 ) {
@@ -196,14 +196,15 @@ bool DbBase::open(
     if (!m_wal.open(walfile, flags, pageSize))
         return false;
     if (!m_wal.newFiles())
-        flags.reset(fDbOpenCreat);
+        flags.reset(fDbOpenCreat | fDbOpenExcl);
     if (!m_page.open(
-        datafile, 
-        workfile, 
-        m_wal.dataPageSize(), 
+        datafile,
+        workfile,
+        m_wal.dataPageSize(),
         m_wal.walPageSize(),
         flags
     )) {
+        m_wal.close();
         return false;
     }
     m_data.openForApply(m_page.pageSize(), flags);
@@ -609,15 +610,13 @@ bool DbBase::getSamples(
 
 //===========================================================================
 DbHandle dbOpen(
-    string_view name, 
+    string_view name,
     EnumFlags<DbOpenFlags> flags,
     size_t pageSize
 ) {
     auto db = make_unique<DbBase>();
-    if (!db->open(name, flags, pageSize)) {
-        db->close();
+    if (!db->open(name, flags, pageSize))
         return DbHandle{};
-    }
 
     scoped_lock lk{s_mut};
     auto h = s_files.insert(db.release());
@@ -753,7 +752,7 @@ string toString(DbPageType type) {
     string out;
     auto val = to_underlying(type);
     out += (char) (val % 256);
-    while (val /= 256) 
+    while (val /= 256)
         out += (char) (val % 256);
     return out;
 }
