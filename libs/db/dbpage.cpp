@@ -153,6 +153,9 @@ bool DbPage::openData(string_view datafile) {
         return false;
     }
 
+    // Open successful, don't auto-close or auto-delete.
+    fin.release();
+
     // Remove trailing blank pages from page count.
     auto lastPage = (pgno_t) (len / m_pageSize);
     while (lastPage) {
@@ -162,9 +165,6 @@ bool DbPage::openData(string_view datafile) {
             break;
     }
     m_pages.resize(lastPage + 1);
-
-    // Open successful, don't auto-close or auto-delete.
-    fin.release();
 
     return true;
 }
@@ -219,9 +219,7 @@ bool DbPage::openWork(string_view workfile) {
         return false;
     }
     m_workPages = len / m_pageSize;
-    s_perfPages += (unsigned) m_workPages;
     m_freeWorkPages.insert(1, (unsigned) m_workPages - 1);
-    s_perfFreePages += (unsigned) m_workPages - 1;
     if (!m_vwork.open(m_fwork, kViewSize, m_pageSize)) {
         logMsgError() << "Open view failed, " << workfile;
         return false;
@@ -229,6 +227,9 @@ bool DbPage::openWork(string_view workfile) {
 
     // Open successful, don't auto-close or auto-delete.
     fin.release();
+
+    s_perfPages += (unsigned) m_workPages;
+    s_perfFreePages += (unsigned) m_workPages - 1;
 
     return true;
 }
