@@ -188,12 +188,12 @@ private:
     IPageNotify * m_page;
     Dim::FileHandle m_fwal;
     bool m_closing = false;
-    bool m_newFiles = false; // did the open create new data files?
+    bool m_newFiles = false; // Did the open create new data files?
     Dim::EnumFlags<DbOpenFlags> m_openFlags{};
 
     // Last Assigned
-    Dim::UnsignedSet m_localTxns;
-    uint64_t m_lastLsn = 0;
+    Dim::UnsignedSet m_localTxns; // Ids of active transactions.
+    uint64_t m_lastLsn = 0; // LSN assigned to most recently added record.
 
     Dim::UnsignedSet m_freePages;
     size_t m_numPages = 0;
@@ -295,6 +295,7 @@ public:
     // Reports the durable LSN and the additional bytes of WAL that were
     // written to get there. The durable LSN is the point at which all WAL
     // records less or equal to it can have their updated data pages written.
+    // The additional bytes is always a multiple of WAL page size.
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.

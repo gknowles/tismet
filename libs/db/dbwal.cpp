@@ -1479,7 +1479,7 @@ void DbWal::countCommitTxn_LK(uint64_t txn) {
     auto firstLsn = j->firstLsn;
     auto numRecs = next(j) == m_pages.end()
         ? (unsigned) m_pageSize
-        : (unsigned) (next(j)->firstLsn - firstLsn + 1);
+        : (unsigned) (next(j)->firstLsn - firstLsn);
     commits.emplace(i, firstLsn, numRecs, 1);
 }
 
