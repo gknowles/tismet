@@ -453,7 +453,7 @@ bool DbWal::open(
     m_pages.clear();
     m_durableLsn = 0;
 
-    // Add "previous" checkpoint to newly created WAL file. At least one
+    // Fabricate "previous" checkpoint to newly created WAL file. At least one
     // checkpoint must always exist in the WAL for recovery to orient itself
     // around.
     m_checkpointStart = timeNow();
@@ -1023,14 +1023,14 @@ void DbWal::checkpoint() {
     if (m_phase != Checkpoint::kComplete
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
-        // A checkpoint is already in progress, not allowed now (blocked), or
-        // not allowed at all (readonly database).
+        // A checkpoint is already in progress, or not allowed at all (readonly
+        // database).
         return;
     }
 
     // Start Checkpoint
     // Reset time and data accumulated since last checkpoint and queue first
-    // phase.
+    // phase of checkpoint.
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
     m_phase = Checkpoint::kFlushPages;
@@ -1049,8 +1049,8 @@ void DbWal::checkpointPages() {
     assert(m_phase == Checkpoint::kFlushPages);
     auto lsn = m_checkpointLsn;
     lk.unlock();
-    // Get oldest LSN that has dirty data pages associated (also flushes OS
-    // cache of any saved data pages).
+    // Get oldest LSN that has dirty data pages as dependents. Also flushes OS
+    // cache of any saved data pages.
     auto pageLsn = m_page->onWalCheckpointPages(lsn);
     lk.lock();
     if (pageLsn == m_checkpointLsn) {
@@ -1606,8 +1606,9 @@ void DbWal::updatePages_LK(
     // Will point to oldest page with transaction committed by this update. It
     // is assumed to have committed transactions to itself.
     auto base = i;
-
-    for (auto&& pc : i->commits) {
+    // Process commits in reverse order so, after the loop, base is left at the
+    // oldest.
+    for (auto&& pc : views::reverse(i->commits)) {
         assert(pc.commits);
         base = lower_bound(m_pages.begin(), m_pages.end(), pc.firstLsn);
         assert(base != m_pages.end() && base->firstLsn == pc.firstLsn);

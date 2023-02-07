@@ -147,8 +147,8 @@ private:
     bool m_newFiles = false; // did the open create new data files?
 
     // Configuration settings, these provide a soft cap that triggers the
-    // process (i.e. check pointing) of making wal removable and then removing
-    // it.
+    // process (i.e. check pointing) of making wal discardable and then
+    // discarding it.
     Dim::Duration m_maxWalAge = {};
     size_t m_maxWalBytes = 0;
 
