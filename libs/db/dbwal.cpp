@@ -1059,6 +1059,11 @@ void DbWal::checkpointPages() {
         // as truncated as possible.
         m_phase = Checkpoint::kReportComplete;
         lk.unlock();
+        // The discardable point hasn't moved, but flush the file in case of
+        // new WAL that has affected the WAL file's metadata.
+        if (auto ec = fileFlush(m_fwal))
+            logMsgFatal() << "Checkpointing failed.";
+
         checkpointComplete();
         return;
     }
