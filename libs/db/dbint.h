@@ -743,7 +743,7 @@ private:
     std::recursive_mutex m_pageMut;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
-    size_t m_numFreed = 0;
+    size_t m_numFree = 0;
     Dim::UnsignedSet m_deprecatedPages;
 
     // Used to manage the index at kMetricIndexPageNum.

@@ -84,7 +84,7 @@ static size_t queryPageSize(FileHandle f) {
 DbData::~DbData () {
     metricClearCounters();
     s_perfPages -= (unsigned) m_numPages;
-    s_perfFreePages -= (unsigned) m_numFreed;
+    s_perfFreePages -= (unsigned) m_numFree;
 }
 
 //===========================================================================
@@ -186,10 +186,10 @@ bool DbData::loadFreePages(DbTxn & txn) {
     if (appStopping())
         return false;
     auto num = (unsigned) m_freePages.count();
-    m_numFreed += num;
+    m_numFree += num;
     s_perfFreePages += num;
 
-    // validate that pages in free list are in fact free
+    // Validate that pages in free list are in fact free.
     pgno_t blank = {};
     for (auto && p : m_freePages) {
         auto pgno = (pgno_t) p;
@@ -221,7 +221,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
         logMsgInfo() << "Trimmed " << trimmed << " blank pages";
         m_numPages = blank;
         s_perfPages -= trimmed;
-        m_numFreed -= trimmed;
+        m_numFree -= trimmed;
         s_perfFreePages -= trimmed;
     }
 
@@ -247,37 +247,28 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
+    auto ptype = DbPageType::kInvalid;
     auto pgno = pgno_t{};
-    bool freed = false;
+    assert(m_numFree == m_freePages.count());
     if (m_freePages) {
-        freed = true;
+        ptype = DbPageType::kFree;
         pgno = (pgno_t) m_freePages.pop_front();
-        // Free pages are reserved in blocks that may extend beyond the end of
-        // file. Therefore, even through a pgno is from the free list it may
-        // still be equal to m_numPages.
+        m_numFree -= 1;
+        s_perfFreePages -= 1;
+        assert(pgno < m_numPages);
+        [[maybe_unused]] bool updated =
+            bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
+        assert(updated);
     } else {
-        assert(!m_numFreed);
         pgno = (pgno_t) m_numPages;
-    }
-    if (pgno >= m_numPages) {
-        assert(pgno == m_numPages);
         m_numPages += 1;
         s_perfPages += 1;
         txn.growToFit(pgno);
     }
-    if (freed) {
-        m_numFreed -= 1;
-        s_perfFreePages -= 1;
-        [[maybe_unused]] bool updated =
-            bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
-        assert(updated);
-    }
 
-    auto fp = txn.pin<DbPageHeader>(pgno);
-    if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        assert(fp->type == DbPageType::kInvalid
-            || fp->type == DbPageType::kFree);
-    }
+    // Return with the newly allocated page pinned.
+    [[maybe_unused]] auto fp = txn.pin<DbPageHeader>(pgno);
+    assert(fp->type == ptype);
     pins.keep(pgno);
     return pgno;
 }
@@ -313,27 +304,9 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     [[maybe_unused]] bool updated =
         bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
-    auto bpp = bitsPerPage();
-    bool noPages = !m_freePages;
     m_freePages.insert(pgno);
-    m_numFreed += 1;
+    m_numFree += 1;
     s_perfFreePages += 1;
-    if (noPages && pgno / bpp == m_numPages / bpp) {
-        auto num = bpp - m_numPages % bpp;
-        if (num) {
-            bitUpsert(
-                txn,
-                m_freeStoreRoot,
-                0,
-                m_numPages,
-                m_numPages + num,
-                true
-            );
-            m_freePages.insert((uint32_t) m_numPages, num);
-            m_numFreed += num;
-            s_perfFreePages += (unsigned) num;
-        }
-    }
 }
 
 //===========================================================================
@@ -455,8 +428,8 @@ void DbData::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
 void DbData::onWalApplyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(zp->hdr.type == DbPageType::kInvalid);
-    // We only initialize the zero page when making a new database, so we can forgo
-    // the normal logic to memset when initialized from free pages.
+    // We only initialize the zero page when making a new database, so we can
+    // forgo the normal logic to memset when initialized from free pages.
     zp->hdr.type = zp->kPageType;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
