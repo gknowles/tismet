@@ -273,8 +273,8 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
         assert(updated);
     }
 
+    auto fp = txn.pin<DbPageHeader>(pgno);
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        auto fp = txn.pin<DbPageHeader>(pgno);
         assert(fp->type == DbPageType::kInvalid
             || fp->type == DbPageType::kFree);
     }
