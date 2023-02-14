@@ -153,7 +153,7 @@ static auto & s_perfPartialWrites = uperf("db.wal writes (partial)");
 
 //===========================================================================
 static TaskQueueHandle walQueue() {
-    static TaskQueueHandle s_hq = taskCreateQueue("Wal IO", 2);
+    static TaskQueueHandle s_hq = taskCreateQueue("WAL IO", 2);
     return s_hq;
 }
 
@@ -184,7 +184,7 @@ static void pack(void * ptr, const WalPage & lp, uint32_t checksum) {
         v1->lastPos = lp.lastPos;
         break;
     default:
-        logMsgFatal() << "pack wal page " << lp.pgno
+        logMsgFatal() << "pack WAL page " << lp.pgno
             << ", unknown type: " << lp.type;
         break;
     }
@@ -223,7 +223,7 @@ static void unpack(WalPage * out, const void * ptr) {
         out->lastPos = v1->lastPos;
         break;
     default:
-        logMsgFatal() << "unpack wal page " << mp->pgno
+        logMsgFatal() << "unpack WAL page " << mp->pgno
             << ", unknown type: " << mp->type;
         break;
     }
@@ -327,7 +327,7 @@ bool DbWal::open(
     if (!m_fwal)
         return false;
 
-    // If opened with exclusive create the file is obivously new, otherwise
+    // If opened with exclusive create the file is obviously new, otherwise
     // assume it already existed until we know better.
     m_newFiles = m_openFlags.all(fDbOpenCreat | fDbOpenExcl);
 
@@ -601,7 +601,7 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
     if (m_pages.empty())
         return true;
 
-    // Go through wal entries looking for last committed checkpoint and the set
+    // Go through WAL entries looking for last committed checkpoint and the set
     // of incomplete transactions that were still uncommitted when the after
     // the end of avail WAL (so we can avoid trying to redo them later).
     if (m_openFlags.any(fDbOpenVerbose))
@@ -643,12 +643,12 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
             data.checkpoint,
             greater()
         );
-        // Remove txns from before the checkpoint. The txns are in reverse LSN
+        // Remove TXNs from before the checkpoint. The TXNs are in reverse LSN
         // order, so erase from checkpoint to end of vector.
         data.incompleteTxnLsns.erase(i, data.incompleteTxnLsns.end());
     }
 
-    // Go through wal entries starting with the last committed checkpoint and
+    // Go through WAL entries starting with the last committed checkpoint and
     // redo all transactions that begin after the checkpoint and commit before
     // the end of the WAL.
     if (m_openFlags.any(fDbOpenVerbose))
@@ -726,7 +726,7 @@ bool DbWal::loadPages(FileHandle fwal) {
     if (m_pages.empty())
         return true;
 
-    // Find the set of pages spanned by contiguous wal records that includes
+    // Find the set of pages spanned by contiguous WAL records that includes
     // the record with the single largest LSN. These pages contain the last
     // checkpoint record and the preceding and following records that need to
     // be replayed to recover the database. Free all other pages, they are
@@ -887,14 +887,14 @@ void DbWal::applyBeginTxn(
         auto & txnLsn = data->txns[localTxn];
         if (txnLsn) {
             // Add beginning LSN of transactions that have had their id reused
-            // to begin a new tranaction, preventing them from ever getting
+            // to begin a new transaction, preventing them from ever getting
             // associated with a commit.
             //
-            // Uncommitted tranactions left over from an abortive shutdown are
+            // Uncommitted transactions left over from an abortive shutdown are
             // detected and skipped by recovery but then ignored. Normal
             // operation then creates new transactions, eventually reusing the
             // id. Which leaves this situation until the next checkpoint frees
-            // these wal records. Or for the next recovery, if it's before that
+            // these WAL records. Or for the next recovery, if it's before that
             // checkpoint.
             data->incompleteTxnLsns.push_back(txnLsn);
         }
@@ -907,8 +907,8 @@ void DbWal::applyBeginTxn(
     if (lsn < data->checkpoint)
         return;
 
-    // The incompleteTxnLsns are in descending order and the WAL is processed in
-    // ascending order. So if the current LSN matches that last incompletes to
+    // The incompleteTxnLsns are in descending order and the WAL is processed
+    // in ascending order. So if the current LSN matches the last incomplete to
     // be skipped, remove it from the list and return.
     if (!data->incompleteTxnLsns.empty()
         && lsn == data->incompleteTxnLsns.back()
@@ -1023,8 +1023,8 @@ void DbWal::checkpoint() {
     if (m_phase != Checkpoint::kComplete
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
-        // A checkpoint is already in progress, or not allowed at all (readonly
-        // database).
+        // A checkpoint is already in progress, or not allowed at all
+        // (read-only database).
         return;
     }
 
@@ -1241,11 +1241,11 @@ uint64_t DbWal::beginTxn() {
     {
         scoped_lock lk{m_bufMut};
         if (!m_localTxns) {
-            // There are no txns in progress, so go ahead and use 1.
+            // There are no TXNs in progress, so go ahead and use 1.
         } else {
             auto first = m_localTxns.lowerBound(1);
             if (*first > 1) {
-                // No txn with id of 1, so go ahead and use it.
+                // No TXN with id of 1, so go ahead and use it.
             } else {
                 // Find the first available value greater than 1.
                 localTxn = (uint16_t) *m_localTxns.lastContiguous(first) + 1;
@@ -1290,7 +1290,7 @@ uint64_t DbWal::wal(
 
     auto lsn = ++m_lastLsn;
 
-    // Count transaction beginnings on the page their wal record started. This
+    // Count transaction beginnings on the page their WAL record started. This
     // means the current page before logging (since logging can advance to the
     // next page), UNLESS it's exactly at the end of the page. In that case the
     // transaction actually starts on the next page, which is where we'll be
@@ -1379,7 +1379,7 @@ uint64_t DbWal::wal(
     if (writeInProgress) {
         // The buffer is already being written, when that write completes its
         // onFileWrite() callback will start the full page write. This
-        // serialization pevents the partial from overwriting the full page.
+        // serialization prevents the partial from overwriting the full page.
     } else {
         pack(rawbuf, wp, hash_crc32c(rawbuf, m_pageSize));
         auto offset = wp.pgno * m_pageSize;
@@ -1461,7 +1461,7 @@ void DbWal::countCommitTxn_LK(uint64_t txn) {
     auto lsn = getLsn(txn);
     auto & commits = m_pages.back().commits;
 
-    // Find page where txn began within list of transaction beginning pages
+    // Find page where TXN began within list of transaction beginning pages
     // this page already has commits for.
     auto i = lower_bound(
         commits.begin(),
@@ -1478,7 +1478,7 @@ void DbWal::countCommitTxn_LK(uint64_t txn) {
         return;
     }
 
-    // No matching page entry for tranaction's LSN already in commits,
+    // No matching page entry for transaction's LSN already in commits,
     // search pages for containing page.
     auto j = upper_bound(m_pages.begin(), m_pages.end(), lsn) - 1;
     auto firstLsn = j->firstLsn;
@@ -1623,7 +1623,7 @@ void DbWal::updatePages_LK(
         s_perfReorderedWrites += 1;
     }
     if (base->firstLsn > m_durableLsn + 1) {
-        // Oldest non-durable page not effected.
+        // Oldest non-durable page not affected.
         return;
     }
 
@@ -1725,6 +1725,51 @@ void DbWal::flushPartialBuffer() {
 
 /****************************************************************************
 *
+*   DbTxn::PinScope
+*
+***/
+
+//===========================================================================
+DbTxn::PinScope::PinScope(DbTxn & txn)
+    : m_txn(txn)
+    , m_prevPins(m_txn.m_pinnedPages)
+    , m_active(true)
+{}
+
+//===========================================================================
+DbTxn::PinScope::~PinScope() {
+    if (m_active)
+        close();
+}
+
+//===========================================================================
+void DbTxn::PinScope::close() {
+    assert(m_active);
+    m_txn.m_pinnedPages.erase(m_prevPins);
+    m_txn.unpinAll();
+    swap(m_prevPins, m_txn.m_pinnedPages);
+    m_active = false;
+}
+
+//===========================================================================
+void DbTxn::PinScope::release() {
+    assert(m_active);
+    swap(m_prevPins, m_txn.m_pinnedPages);
+    m_prevPins.clear();
+    m_active = false;
+}
+
+//===========================================================================
+void DbTxn::PinScope::keep(pgno_t pgno) {
+    assert(m_active);
+    assert(m_txn.m_pinnedPages.contains(pgno));
+    [[maybe_unused]] auto found = m_prevPins.insert(pgno);
+    assert(found);
+}
+
+
+/****************************************************************************
+*
 *   DbTxn
 *
 ***/
@@ -1739,7 +1784,7 @@ DbTxn::DbTxn(DbWal & wal, DbPage & work)
 DbTxn::~DbTxn() {
     if (m_txn)
         m_wal.commit(m_txn);
-    m_page.unpin(m_pinnedPages);
+    unpinAll();
 }
 
 //===========================================================================
@@ -1751,6 +1796,12 @@ void DbTxn::wal(DbWal::Record * rec, size_t bytes) {
         m_pinnedPages.contains(pgno);
     }
     m_wal.walAndApply(m_txn, rec, bytes);
+}
+
+//===========================================================================
+void DbTxn::unpinAll() {
+    m_page.unpin(m_pinnedPages);
+    m_pinnedPages.clear();
 }
 
 //===========================================================================

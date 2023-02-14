@@ -94,8 +94,9 @@ public:
     DbConfig configure(const DbConfig & conf);
     void growToFit(pgno_t pgno);
 
-    // Pinning a page prevents it from being modified or being removed from work
-    // pages if already cached there.
+    // Pins page in cache (if it was already cached) with a read pin, and
+    // returns a pointer to it. Read pins prevent cached pages from being freed
+    // by saveWork().
     const void * rptr(uint64_t lsn, pgno_t pgno, bool withPin);
     void unpin(const Dim::UnsignedSet & pages);
 
@@ -136,9 +137,11 @@ private:
     Dim::Duration untilNextSave_LK();
     void queueSaveWork_LK();
     Dim::Duration onSaveTimer(Dim::TimePoint now);
-    void removeWalPages_LK(uint64_t saveLsn);
-    void saveOldPages_LK();
     void saveWork();
+    void saveOldPages_LK();
+    uint64_t saveDirtyPages_LK(Dim::TimePoint lastSave);
+    void removeWalPages_LK(uint64_t saveLsn);
+    void removeCleanPages_LK();
 
     // Variables determined at open
     size_t m_pageSize = 0;
@@ -147,7 +150,7 @@ private:
     bool m_newFiles = false; // did the open create new data files?
 
     // Configuration settings, these provide a soft cap that triggers the
-    // process (i.e. check pointing) of making wal discardable and then
+    // process (i.e. check pointing) of making WAL discardable and then
     // discarding it.
     Dim::Duration m_maxWalAge = {};
     size_t m_maxWalBytes = 0;
@@ -158,21 +161,28 @@ private:
 
     bool m_saveInProgress = false; // is saveWork() task running?
 
-    // Info about work pages that have been modified in memory but not yet
-    // written to disk.
-    struct WorkPageInfo : Dim::ListLink<> {
+    struct WorkPageInfoBase {
         DbPageHeader * hdr;
         Dim::TimePoint firstTime; // time page became dirty
         uint64_t firstLsn; // LSN at which page became dirty
         pgno_t pgno;
         Dim::EnumFlags<DbPageFlags> flags;
 
-        // Pins are used so that a pointer to a page stays valid. They block
-        // both the page being evicted from work pages and concurrent updates to
-        // it. Conversely, updates block pins from being taken.
-        int pins;
-        bool updates;
+        // Pins tell the page save algorithm when it is unsafe to save or free
+        // work pages.
+        //
+        // Page is being accessed, must not be freed, but may be saved.
+        bool readPin;
+        // Page is being updated, may be internally inconsistent, and must not
+        // be saved.
+        bool writePin;
     };
+    // Info about work pages that have been modified in memory but not yet
+    // written to disk.
+    struct WorkPageInfo
+        : Dim::ListLink<>
+        , WorkPageInfoBase
+    {};
     // One entry for every data page, null for untracked pages (which must
     // therefore also be unmodified pages).
     std::vector<WorkPageInfo *> m_pages;
@@ -187,7 +197,9 @@ private:
     // so pages that are updated faster than LSNs are saved can eventually be
     // saved.
     Dim::List<WorkPageInfo> m_oldPages;
-    // Clean pages that were recently dirty in the order they became clean.
+    // Pages that were recently dirty but might not yet be discardable, in the
+    // order they became clean. Kept either to shadow old pages that can't yet
+    // be saved, or because an active reader prevented it from being freed.
     Dim::List<WorkPageInfo> m_cleanPages;
     // Number of pages, dirty or clean, that first became dirty within the last
     // max WAL age. Which means that their repayment term hasn't fully matured.
@@ -243,6 +255,24 @@ private:
 enum DbWalRecType : int8_t;
 
 class DbTxn {
+public:
+    // Used to track and then release a set of buffer pins without requiring
+    // the transaction to end.
+    class PinScope {
+    public:
+        PinScope(DbTxn & txn);
+        ~PinScope();
+
+        void close();
+        void release();
+        void keep(pgno_t pgno);
+
+    private:
+        DbTxn & m_txn;
+        Dim::UnsignedSet m_prevPins;
+        bool m_active = true;
+    };
+
 public:
     DbTxn(DbWal & wal, DbPage & page);
     ~DbTxn();
@@ -354,6 +384,7 @@ private:
         size_t bytes
     );
     void wal(DbWal::Record * rec, size_t bytes);
+    void unpinAll();
 
     DbWal & m_wal;
     DbPage & m_page;
@@ -658,8 +689,8 @@ private:
     // past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
 
-    // Calls fn for each page in index, exits immediately if an fn() call
-    // returns false. Returns true if no fn() calls returned false.
+    // Calls the function for each page in index, exits immediately if the
+    // function returns false. Returns true if no function returned false.
     bool radixVisit(
         DbTxn & txn,
         pgno_t root,

@@ -256,7 +256,7 @@ bool DbData::loadMetric(DbTxn & txn, IDbDataNotify * notify, pgno_t pgno) {
 //===========================================================================
 bool DbData::loadMetrics(DbTxn & txn, IDbDataNotify * notify) {
     return radixVisit(
-        txn, 
+        txn,
         m_metricStoreRoot,
         [notify, this](DbTxn & txn, auto index, auto pgno) {
             return loadMetric(txn, notify, pgno);
@@ -286,6 +286,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     // update index
     {
         scoped_lock lk{m_mndxMut};
+        DbTxn::PinScope pins(txn);
         [[maybe_unused]] bool inserted = radixInsertOrAssign(
             txn,
             m_metricStoreRoot,
@@ -353,6 +354,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     if (mi.infoPage) {
         *name = txn.pin<MetricPage>(mi.infoPage)->name;
         scoped_lock lk{m_mndxMut};
+        DbTxn::PinScope pins(txn);
         radixErase(txn, m_metricStoreRoot, id, id + 1);
         return true;
     }

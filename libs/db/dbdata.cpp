@@ -245,6 +245,7 @@ bool DbData::loadDeprecatedPages(DbTxn & txn) {
 //===========================================================================
 pgno_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
 
     auto pgno = pgno_t{};
     bool freed = false;
@@ -277,12 +278,14 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
         assert(fp->type == DbPageType::kInvalid
             || fp->type == DbPageType::kFree);
     }
+    pins.keep(pgno);
     return pgno;
 }
 
 //===========================================================================
 void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
 
     assert(pgno < m_numPages);
     auto p = txn.pin<DbPageHeader>(pgno);
@@ -336,6 +339,8 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 //===========================================================================
 void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto fp = txn.pin<DbPageHeader>(pgno);
         assert(fp->type != DbPageType::kInvalid
@@ -450,8 +455,8 @@ void DbData::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
 void DbData::onWalApplyZeroInit(void * ptr) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(zp->hdr.type == DbPageType::kInvalid);
-    // We only init the zero page when making a new database, so we can forgo
-    // the normal logic to memset when init'd from free pages.
+    // We only initialize the zero page when making a new database, so we can forgo
+    // the normal logic to memset when initialized from free pages.
     zp->hdr.type = zp->kPageType;
     zp->hdr.id = 0;
     assert(zp->hdr.pgno == kZeroPageNum);
