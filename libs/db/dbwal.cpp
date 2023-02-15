@@ -1782,9 +1782,19 @@ DbTxn::DbTxn(DbWal & wal, DbPage & work)
 
 //===========================================================================
 DbTxn::~DbTxn() {
-    if (m_txn)
+    commit();
+}
+
+//===========================================================================
+UnsignedSet DbTxn::commit() {
+    UnsignedSet out;
+    if (m_txn) {
         m_wal.commit(m_txn);
+        m_txn = 0;
+    }
     unpinAll();
+    swap(out, m_freePages);
+    return out;
 }
 
 //===========================================================================

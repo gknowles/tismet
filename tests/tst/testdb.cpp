@@ -237,13 +237,13 @@ void Test::dataTests() {
     // add sample more than the retention period in the future
     dbUpdateSample(h, id, start + 20 * pgt, 1);
     stats = dbQueryStats(h);
-    EXPECT(stats.freePages == 4);
+    EXPECT(stats.freePages == 5);
     EXPECT(stats.metrics == 1);
     // erase metric
     dbEraseMetric(h, id);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 11);
-    EXPECT(stats.freePages == 6);
+    EXPECT(stats.numPages == 12);
+    EXPECT(stats.freePages == 7);
     EXPECT(stats.metrics == 0);
 
     count = 0;
@@ -256,7 +256,7 @@ void Test::dataTests() {
     }
     EXPECT("metrics inserted" && count == 29);
     stats = dbQueryStats(h);
-    EXPECT(stats.freePages == 0);
+    EXPECT(stats.freePages == 1);
 
     UnsignedSet found;
     dbFindMetrics(&found, h, "*.is.*.*5");

@@ -151,7 +151,7 @@ bool DbData::openForUpdate(
 }
 
 //===========================================================================
-DbStats DbData::queryStats() {
+DbStats DbData::queryStats() const {
     DbStats s;
     s.pageSize = (unsigned) m_pageSize;
     s.bitsPerPage = (unsigned) bitsPerPage();
@@ -304,9 +304,16 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     [[maybe_unused]] bool updated =
         bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
-    m_freePages.insert(pgno);
-    m_numFree += 1;
-    s_perfFreePages += 1;
+}
+
+//===========================================================================
+void DbData::publishFreePages(const UnsignedSet & freePages) {
+    auto num = freePages.count();
+    scoped_lock lk(m_pageMut);
+    assert(!freePages.intersects(m_freePages));
+    m_freePages.insert(freePages);
+    m_numFree += num;
+    s_perfFreePages += (unsigned) num;
 }
 
 //===========================================================================
@@ -403,6 +410,7 @@ void DbTxn::walTagRootUpdate(pgno_t pgno, pgno_t rootPage) {
 void DbTxn::walPageFree(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbWal::Record>(kRecTypePageFree, pgno);
     wal(rec, bytes);
+    m_freePages.insert(pgno);
 }
 
 

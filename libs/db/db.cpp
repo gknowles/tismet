@@ -214,6 +214,8 @@ bool DbBase::open(
     DbTxn txn{m_wal, m_page};
     if (!m_data.openForUpdate(txn, this, datafile, flags))
         return false;
+    [[maybe_unused]] auto freePages = txn.commit();
+    assert(!freePages);
     m_wal.checkpoint();
     return true;
 }
@@ -434,6 +436,9 @@ void DbBase::apply(uint32_t id, DbReq && req) {
         m_data.updateSample(txn, id, req.first, req.value);
         break;
     }
+
+    auto freePages = txn.commit();
+    m_data.publishFreePages(freePages);
 }
 
 //===========================================================================

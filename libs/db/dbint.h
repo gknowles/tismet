@@ -276,6 +276,7 @@ public:
 public:
     DbTxn(DbWal & wal, DbPage & page);
     ~DbTxn();
+    Dim::UnsignedSet commit(); // Returns pages that have been freed.
 
     size_t pageSize() const { return m_page.pageSize(); }
     size_t numPages() const { return m_page.size(); }
@@ -391,6 +392,7 @@ private:
     uint64_t m_txn = 0;
     std::string m_buffer;
     mutable Dim::UnsignedSet m_pinnedPages;
+    Dim::UnsignedSet m_freePages;
 };
 
 //===========================================================================
@@ -520,7 +522,8 @@ public:
         std::string_view name,
         Dim::EnumFlags<DbOpenFlags> flags
     );
-    DbStats queryStats();
+    DbStats queryStats() const;
+    void publishFreePages(const Dim::UnsignedSet & freePages);
 
     void insertMetric(DbTxn & txn, uint32_t id, std::string_view name);
     bool eraseMetric(std::string * outName, DbTxn & txn, uint32_t id);
@@ -740,12 +743,12 @@ private:
     std::vector<MetricPosition> m_metricPos;
     unsigned m_numMetrics = 0;
 
-    std::recursive_mutex m_pageMut;
+    mutable std::recursive_mutex m_pageMut;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
     size_t m_numFree = 0;
     Dim::UnsignedSet m_deprecatedPages;
 
     // Used to manage the index at kMetricIndexPageNum.
-    std::mutex m_mndxMut;
+    mutable std::mutex m_mndxMut;
 };
