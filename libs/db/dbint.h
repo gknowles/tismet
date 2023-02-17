@@ -282,6 +282,7 @@ public:
     size_t numPages() const { return m_page.size(); }
     template<typename T> const T * pin(pgno_t pgno);
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
+    const Dim::UnsignedSet & freePages() const { return m_freePages; }
 
     void walZeroInit(pgno_t pgno);
     void walTagRootUpdate(pgno_t pgno, pgno_t rootPage);

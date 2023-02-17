@@ -256,7 +256,7 @@ void Test::dataTests() {
     }
     EXPECT("metrics inserted" && count == 29);
     stats = dbQueryStats(h);
-    EXPECT(stats.freePages == 1);
+    EXPECT(stats.freePages == 0);
 
     UnsignedSet found;
     dbFindMetrics(&found, h, "*.is.*.*5");

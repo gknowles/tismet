@@ -247,28 +247,44 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     scoped_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
-    auto ptype = DbPageType::kInvalid;
+    auto freed = false;
+    auto grew = false;
     auto pgno = pgno_t{};
     assert(m_numFree == m_freePages.count());
     if (m_freePages) {
-        ptype = DbPageType::kFree;
+        freed = true;
         pgno = (pgno_t) m_freePages.pop_front();
         m_numFree -= 1;
         s_perfFreePages -= 1;
-        assert(pgno < m_numPages);
-        [[maybe_unused]] bool updated =
-            bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
-        assert(updated);
     } else {
         pgno = (pgno_t) m_numPages;
+    }
+    if (pgno >= m_numPages) {
+        assert(pgno == m_numPages);
+        // This is a new page at the end of the file, either previously
+        // untracked or tracked as a "free" page. See the description in
+        // freePages() for why this might be "free".
+        grew = true;
         m_numPages += 1;
         s_perfPages += 1;
         txn.growToFit(pgno);
     }
+    if (freed) {
+        // Reusing free page, remove from free page index.
+        //
+        // This bitUpsert must come after the file grow. Otherwise, if numPages
+        // isn't incremented, it's the last free page, and bitUpsert needs to
+        // allocate a page, it will take the page that we're trying to use.
+        [[maybe_unused]] bool updated =
+            bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
+        assert(updated);
+    }
 
     // Return with the newly allocated page pinned.
     [[maybe_unused]] auto fp = txn.pin<DbPageHeader>(pgno);
-    assert(fp->type == ptype);
+    assert(grew && fp->type == DbPageType::kInvalid
+        || !grew && fp->type == DbPageType::kFree
+    );
     pins.keep(pgno);
     return pgno;
 }
@@ -299,11 +315,42 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
             << "): invalid page type (" << (unsigned) type << ")";
     }
 
+    auto noPages = !m_freePages && !txn.freePages();
     txn.walPageFree(pgno);
     assert(m_freeStoreRoot);
     [[maybe_unused]] bool updated =
         bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
+    auto bpp = bitsPerPage();
+    if (noPages && pgno / bpp == m_numPages / bpp) {
+        // There were no free pages and the newly freed page is near the end of
+        // the file where it is covered by the last page of the free pages
+        // index. Fill the rest of this last page with as many entries as will
+        // fit, representing not yet existing pages past the end of the file.
+        //
+        // By having extra free pages in the free page index, churn is reduced
+        // when expanding a full file. Otherwise, when the last free page is
+        // used and it's entry is removed from the free page index, the index
+        // page is freed, which requires a new entry (and therefore a new page)
+        // to be added to the index.
+        auto num = bpp - m_numPages % bpp;
+        if (num) {
+            bitUpsert(
+                txn,
+                m_freeStoreRoot,
+                0,
+                m_numPages,
+                m_numPages + num,
+                true
+            );
+            // These pages past the end of the file were already available and
+            // not dependent on the transaction being committed, therefore they
+            // can be made immediately available for use.
+            m_freePages.insert((uint32_t) m_numPages, num);
+            m_numFree += num;
+            s_perfFreePages += (unsigned) num;
+        }
+    }
 }
 
 //===========================================================================
