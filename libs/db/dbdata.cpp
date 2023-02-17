@@ -221,8 +221,6 @@ bool DbData::loadFreePages(DbTxn & txn) {
         logMsgInfo() << "Trimmed " << trimmed << " blank pages";
         m_numPages = blank;
         s_perfPages -= trimmed;
-        m_numFree -= trimmed;
-        s_perfFreePages -= trimmed;
     }
 
     return true;
