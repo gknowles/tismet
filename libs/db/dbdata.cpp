@@ -11,23 +11,18 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   Tuning parameters
-*
-***/
-
-constexpr auto kZeroPageNum = (pgno_t) 0;
-constexpr auto kFreeStoreRootPageNum = (pgno_t) 1;
-constexpr auto kDeprecatedStoreRootPageNum = (pgno_t) 2;
-constexpr auto kMetricStoreRootPageNum = (pgno_t) 3;
-
-
-/****************************************************************************
-*
 *   Private
 *
 ***/
 
+constexpr auto kZeroPageNum = (pgno_t) 0;
+constexpr auto kDefaultFreeStoreRoot = (pgno_t) 1;
+constexpr auto kDefaultDeprecatedStoreRoot = (pgno_t) 2;
+constexpr auto kDefaultMetricStoreRoot = (pgno_t) 3;
+
 const auto kDataFileSig = "66b1e542-541c-4c52-9f61-0cb805980075"_Guid;
+
+#pragma pack(push, 1)
 
 struct DbData::ZeroPage {
     static const auto kPageType = DbPageType::kZero;
@@ -46,6 +41,8 @@ struct DbData::FreePage {
     static const auto kPageType = DbPageType::kFree;
     DbPageHeader hdr;
 };
+
+#pragma pack(pop)
 
 
 /****************************************************************************
@@ -126,13 +123,13 @@ bool DbData::openForUpdate(
 
     if (m_numPages == 1) {
         m_freeStoreRoot = allocPgno(txn);
-        assert(m_freeStoreRoot == kFreeStoreRootPageNum);
+        assert(m_freeStoreRoot == kDefaultFreeStoreRoot);
         txn.walRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
         m_deprecatedStoreRoot = allocPgno(txn);
-        assert(m_deprecatedStoreRoot == kDeprecatedStoreRootPageNum);
+        assert(m_deprecatedStoreRoot == kDefaultDeprecatedStoreRoot);
         txn.walRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
         m_metricStoreRoot = allocPgno(txn);
-        assert(m_metricStoreRoot == kMetricStoreRootPageNum);
+        assert(m_metricStoreRoot == kDefaultMetricStoreRoot);
         txn.walRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
     }
 
@@ -394,8 +391,7 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 namespace {
 
@@ -488,9 +484,9 @@ void DbData::onWalApplyZeroInit(void * ptr) {
     assert(zp->hdr.pgno == kZeroPageNum);
     zp->signature = kDataFileSig;
     zp->pageSize = (unsigned) m_pageSize;
-    zp->freeStoreRoot = kFreeStoreRootPageNum;
-    zp->deprecatedStoreRoot = kDeprecatedStoreRootPageNum;
-    zp->metricStoreRoot = kMetricStoreRootPageNum;
+    zp->freeStoreRoot = kDefaultFreeStoreRoot;
+    zp->deprecatedStoreRoot = kDefaultDeprecatedStoreRoot;
+    zp->metricStoreRoot = kDefaultMetricStoreRoot;
     zp->metricTagStoreRoot = {};
 }
 
