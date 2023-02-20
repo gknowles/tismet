@@ -15,8 +15,7 @@ using namespace Dim;
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 namespace {
 
@@ -751,7 +750,7 @@ void DbTxn::walSampleUpdate(
 
 //===========================================================================
 void DbTxn::walSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
-    auto [rec, bytes] = 
+    auto [rec, bytes] =
         alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
     rec->pageTime = pageTime;
     wal(&rec->hdr, bytes);

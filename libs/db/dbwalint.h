@@ -69,8 +69,7 @@ enum DbWalRecType : int8_t {
     kRecType_LastAvailable  = 40,
 };
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 struct DbWal::Record {
     DbWalRecType type;

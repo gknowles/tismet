@@ -91,8 +91,7 @@ void DbPageHeap::commitIfPending() const {
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 namespace {
 
@@ -157,9 +156,9 @@ void DbTxn::walFullPageInit(DbPageType type, uint32_t id, size_t extra) {
 
 //===========================================================================
 void DbTxn::walFullPageInit(
-    pgno_t pgno, 
-    DbPageType type, 
-    uint32_t id, 
+    pgno_t pgno,
+    DbPageType type,
+    uint32_t id,
     std::span<uint8_t> data
 ) {
     auto extra = data.size();

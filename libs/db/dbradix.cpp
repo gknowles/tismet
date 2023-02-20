@@ -36,7 +36,7 @@ struct DbData::RadixPage {
 //===========================================================================
 // static
 DbData::RadixData * DbData::radixData(
-    DbPageHeader * hdr, 
+    DbPageHeader * hdr,
     size_t pageSize
 ) {
     if (hdr->type == DbPageType::kMetric) {
@@ -134,7 +134,7 @@ void DbData::radixErase(
         pages.clear();
         pages.reserve(rd->numPages);
         for (auto i = rpos; i < lastPagePos; ++i) {
-            if (auto p = rd->pages[i]; p && p <= kMaxPageNum) 
+            if (auto p = rd->pages[i]; p && p <= kMaxPageNum)
                 pages.push_back(p);
         }
         if (!pages.empty()) {
@@ -285,7 +285,7 @@ static bool radixVisit(
     auto hdr = txn.pin<DbPageHeader>(root);
     auto rd = DbData::radixData(hdr, pageSize);
     uint32_t step = 1;
-    for (auto i = 0; i < rd->height; ++i) 
+    for (auto i = 0; i < rd->height; ++i)
         step *= rd->numPages;
     for (auto && pgno : *rd) {
         if (pgno) {
@@ -318,8 +318,7 @@ bool DbData::radixVisit(
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 namespace {
 
@@ -413,8 +412,8 @@ static DbWalRegisterRec s_radixRecInfo = {
         [](auto args) {
             auto rec = reinterpret_cast<const RadixUpdateRec *>(args.rec);
             args.notify->onWalApplyRadixUpdate(
-                args.page, 
-                rec->refPos, 
+                args.page,
+                rec->refPos,
                 rec->refPage
             );
         },

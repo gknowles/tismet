@@ -72,10 +72,10 @@ size_t DbData::bitsPerPage() const {
 
 //===========================================================================
 bool DbData::bitUpsert(
-    DbTxn & txn, 
-    pgno_t root, 
-    uint32_t id, 
-    size_t firstPos, 
+    DbTxn & txn,
+    pgno_t root,
+    uint32_t id,
+    size_t firstPos,
     size_t lastPos,
     bool value
 ) {
@@ -115,7 +115,7 @@ bool DbData::bitUpsert(
 
 //===========================================================================
 static bool addBits(
-    DbTxn & txn, 
+    DbTxn & txn,
     UnsignedSet * out,
     uint32_t index,
     pgno_t pgno,
@@ -143,8 +143,8 @@ static bool addBits(
 //===========================================================================
 bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
     return radixVisit(
-        txn, 
-        root, 
+        txn,
+        root,
         [out, pageSize = m_pageSize](DbTxn & txn, auto index, auto pgno) {
             return addBits(txn, out, index, pgno, pageSize);
     });
@@ -157,8 +157,7 @@ bool DbData::bitLoad(DbTxn & txn, UnsignedSet * out, pgno_t root) {
 *
 ***/
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 namespace {
 
@@ -191,10 +190,10 @@ static DbWalRegisterRec s_bitRecInfo = {
         [](auto args) {
             auto rec = reinterpret_cast<const BitInitRec *>(args.rec);
             args.notify->onWalApplyBitInit(
-                args.page, 
-                rec->id, 
-                rec->base, 
-                rec->fill, 
+                args.page,
+                rec->id,
+                rec->base,
+                rec->fill,
                 rec->pos
             );
         },
@@ -204,9 +203,9 @@ static DbWalRegisterRec s_bitRecInfo = {
         [](auto args) {
             auto rec = reinterpret_cast<const BitUpdateRec *>(args.rec);
             args.notify->onWalApplyBitUpdate(
-                args.page, 
-                rec->pos, 
-                rec->pos + 1, 
+                args.page,
+                rec->pos,
+                rec->pos + 1,
                 true
             );
         },
@@ -216,9 +215,9 @@ static DbWalRegisterRec s_bitRecInfo = {
         [](auto args) {
             auto rec = reinterpret_cast<const BitUpdateRec *>(args.rec);
             args.notify->onWalApplyBitUpdate(
-                args.page, 
-                rec->pos, 
-                rec->pos + 1, 
+                args.page,
+                rec->pos,
+                rec->pos + 1,
                 false
             );
         },
@@ -228,9 +227,9 @@ static DbWalRegisterRec s_bitRecInfo = {
         [](auto args) {
             auto rec = reinterpret_cast<const BitUpdateRangeRec *>(args.rec);
             args.notify->onWalApplyBitUpdate(
-                args.page, 
-                rec->firstPos, 
-                rec->lastPos, 
+                args.page,
+                rec->firstPos,
+                rec->lastPos,
                 rec->value
             );
         },
@@ -246,10 +245,10 @@ static DbWalRegisterRec s_bitRecInfo = {
 
 //===========================================================================
 void DbTxn::walBitInit(
-    pgno_t pgno, 
-    uint32_t id, 
-    uint32_t base, 
-    bool fill, 
+    pgno_t pgno,
+    uint32_t id,
+    uint32_t base,
+    bool fill,
     size_t bpos
 ) {
     auto [rec, bytes] = alloc<BitInitRec>(kRecTypeBitInit, pgno);
@@ -262,14 +261,14 @@ void DbTxn::walBitInit(
 
 //===========================================================================
 void DbTxn::walBitUpdate(
-    pgno_t pgno, 
-    size_t firstPos, 
-    size_t lastPos, 
+    pgno_t pgno,
+    size_t firstPos,
+    size_t lastPos,
     bool value
 ) {
     if (firstPos + 1 == lastPos) {
         auto [rec, bytes] = alloc<BitUpdateRec>(
-            value ? kRecTypeBitSet : kRecTypeBitReset, 
+            value ? kRecTypeBitSet : kRecTypeBitReset,
             pgno
         );
         rec->pos = (uint32_t) firstPos;
@@ -309,9 +308,9 @@ void DbData::onWalApplyBitInit(
     bp->hdr.id = id;
     bp->base = base;
     auto bits = bitmapBits(bp, m_pageSize);
-    if (fill) 
+    if (fill)
         bits.set();
-    if (bpos != numeric_limits<uint32_t>::max()) 
+    if (bpos != numeric_limits<uint32_t>::max())
         bits.set(bpos, !fill);
 }
 

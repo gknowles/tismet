@@ -257,6 +257,8 @@ enum DbPageFlags : uint32_t {
     fDbPageDirty = 1,
 };
 
+#pragma pack(push, 1)
+
 struct DbPageHeader {
     DbPageType type;
     pgno_t pgno;
@@ -264,3 +266,5 @@ struct DbPageHeader {
     uint32_t checksum;
     uint64_t lsn;
 };
+
+#pragma pack(pop)

@@ -85,8 +85,7 @@ struct WalPage {
     uint16_t lastPos; // Position after last WAL record ended on page.
 };
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push, 1)
 
 struct ZeroPage {
     DbPageHeader hdr;
