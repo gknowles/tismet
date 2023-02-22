@@ -122,15 +122,16 @@ bool DbData::openForUpdate(
     m_metricTagStoreRoot = zp->metricTagStoreRoot;
 
     if (m_numPages == 1) {
-        m_freeStoreRoot = allocPgno(txn);
-        assert(m_freeStoreRoot == kDefaultFreeStoreRoot);
-        txn.walRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
-        m_deprecatedStoreRoot = allocPgno(txn);
-        assert(m_deprecatedStoreRoot == kDefaultDeprecatedStoreRoot);
-        txn.walRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
-        m_metricStoreRoot = allocPgno(txn);
-        assert(m_metricStoreRoot == kDefaultMetricStoreRoot);
-        txn.walRadixInit(m_metricStoreRoot, 0, 0, nullptr, nullptr);
+        auto pgno = allocPgno(txn);
+        assert(pgno == m_freeStoreRoot);
+        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
+        pgno = allocPgno(txn);
+        assert(pgno == m_deprecatedStoreRoot);
+        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
+        pgno = allocPgno(txn);
+        assert(pgno == m_metricStoreRoot);
+        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
+        assert(!m_metricTagStoreRoot);
     }
 
     if (m_verbose)
@@ -238,7 +239,7 @@ bool DbData::loadDeprecatedPages(DbTxn & txn) {
 }
 
 //===========================================================================
-pgno_t DbData::allocPgno (DbTxn & txn) {
+pgno_t DbData::allocPgno(DbTxn & txn) {
     scoped_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
@@ -276,9 +277,9 @@ pgno_t DbData::allocPgno (DbTxn & txn) {
     }
 
     // Return with the newly allocated page pinned.
-    [[maybe_unused]] auto fp = txn.pin<DbPageHeader>(pgno);
-    assert(grew && fp->type == DbPageType::kInvalid
-        || !grew && fp->type == DbPageType::kFree
+    [[maybe_unused]] auto p = txn.pin<DbPageHeader>(pgno);
+    assert(grew && p->type == DbPageType::kInvalid
+        || !grew && p->type == DbPageType::kFree
     );
     pins.keep(pgno);
     return pgno;
@@ -364,9 +365,9 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     DbTxn::PinScope pins(txn);
 
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
-        auto fp = txn.pin<DbPageHeader>(pgno);
-        assert(fp->type != DbPageType::kInvalid
-            && fp->type != DbPageType::kFree);
+        auto p = txn.pin<DbPageHeader>(pgno);
+        assert(p->type != DbPageType::kInvalid
+            && p->type != DbPageType::kFree);
     }
     assert(m_deprecatedStoreRoot);
     [[maybe_unused]] bool updated =

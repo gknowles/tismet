@@ -317,7 +317,12 @@ public:
         bool fill,
         size_t pos = -1
     );
-    void walBitUpdate(pgno_t, size_t firstPos, size_t lastPos, bool value);
+    void walBitUpdate(
+        pgno_t pgno,
+        size_t firstPos,
+        size_t lastPos,
+        bool value
+    );
     void walMetricInit(
         pgno_t pgno,
         uint32_t id,
@@ -516,7 +521,8 @@ public:
     // of existing data file.
     void openForApply(size_t pageSize, Dim::EnumFlags<DbOpenFlags> flags);
 
-    // Allows metrics and samples to be updated and queried.
+    // Allows metrics and samples to be updated and queried. Must already be
+    // open for apply.
     bool openForUpdate(
         DbTxn & txn,
         IDbDataNotify * notify,
