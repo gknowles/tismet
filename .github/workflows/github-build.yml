@@ -20,11 +20,25 @@ jobs:
         configuration: [Debug, Release]
         toolset: [v143]
         image: [windows-2022]
+        coverage: [false]
+        include:
+          - platform: x64
+            configuration: Debug
+            toolset: v143
+            image: windows-2022
+            coverage: true
     runs-on: ${{matrix.image}}
     defaults:
       run:
         shell: cmd
     steps:
+    - name: Setup OpenCppCoverage
+      if: matrix.coverage
+      working-directory: ${{github.workspace}}
+      run: |
+        choco install OpenCppCoverage -y
+        echo "C:\Program Files\OpenCppCoverage" >> %GITHUB_PATH%
+
     - name: Checkout
       uses: actions/checkout@v3
       with:
@@ -47,6 +61,29 @@ jobs:
         cd publish
 
     - name: Test
+      if: ${{ !matrix.coverage }}
       working-directory: ${{github.workspace}}
       run: |
         bin\tst all
+
+    - name: Test Coverage
+      if: matrix.coverage
+      working-directory: ${{github.workspace}}
+      run: |
+        "C:\Program Files\OpenCppCoverage\OpenCppCoverage.exe"^
+            --export_type cobertura:merged.xml^
+            --modules ${{github.workspace}}^
+            --sources ${{github.workspace}}^
+            --excluded_sources vendor^
+            --excluded_sources tests^
+            --excluded_sources testlibs^
+            --excluded_line_regex ".* LCOV_EXCL_LINE.*"^
+            -- bin\tst all
+
+    - name: Report Coverage
+      if: matrix.coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: merged.xml
+        fail_ci_if_error: true
+
