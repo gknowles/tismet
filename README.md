@@ -1,7 +1,9 @@
 <!--
-Copyright Glen Knowles 2016 - 2022.
+Copyright Glen Knowles 2016 - 2023.
 Distributed under the Boost Software License, Version 1.0.
 -->
+
+# Tismet
 
 | MSVC 2022 | Test Coverage |
 | :-------: | :-----------: |
@@ -11,8 +13,6 @@ Distributed under the Boost Software License, Version 1.0.
 [gh-link]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml
 [cc-image]: https://img.shields.io/badge/dynamic/json?color=success&label=codecov&logo=codecov&query=%24.commit.totals.c&suffix=%25&url=https%3A%2F%2Fcodecov.io%2Fapi%2Fgh%2Fgknowles%2Ftismet%2Fbranch%2Fmaster "Codecov"
 [cc-link]: https://codecov.io/gh/gknowles/tismet
-
-# Tismet
 
 Time series metric collection
 
@@ -148,9 +148,9 @@ Run "tsm --help" for more information about using tsm.
 tsm backup <server address>
 ~~~
 
-It's not safe to just copy the data/metrics.* files while the server is running,
-the tsd must be copied before the tsl and even if you do that you can still end
-up with a corrupt copy if an internal checkpoint was in progress.
+It's not safe to just copy the data/metrics.* files while the server is
+running, the tsd must be copied before the tsl and even if you do that you can
+still end up with a corrupt copy if an internal checkpoint was in progress.
 
 
 ## Other time series database projects
