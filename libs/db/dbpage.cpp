@@ -259,7 +259,7 @@ void DbPage::close() {
 
     m_pages.clear();
     m_dirtyPages.clear();
-    m_oldPages.clear();
+    m_overduePages.clear();
     m_cleanPages.clear();
     m_pageBonds = 0;
     m_freeInfos.clear();
@@ -407,7 +407,7 @@ Duration DbPage::untilNextSave_LK() {
         // Recovery hasn't completed, save must not be scheduled.
         return kTimerInfinite;
     }
-    if (m_oldPages && m_durableLsn >= m_oldPages.front()->hdr->lsn) {
+    if (m_overduePages && m_durableLsn >= m_overduePages.front()->hdr->lsn) {
         // Pages already passed their time limit just had all their
         // dependencies become durable. Save them immediately.
         return 0ms;
@@ -463,7 +463,7 @@ void DbPage::saveWork() {
 
     auto lastTime = m_lastSaveTime;
     m_lastSaveTime = timeNow();
-    saveOldPages_LK();
+    saveOverduePages_LK();
     auto savedLsn = saveDirtyPages_LK(lastTime);
     if (savedLsn)
         removeWalPages_LK(savedLsn);
@@ -474,15 +474,15 @@ void DbPage::saveWork() {
 }
 
 //===========================================================================
-// Save (and then free) old pages whose modifying LSNs have been saved.
-void DbPage::saveOldPages_LK() {
-    if (!m_oldPages)
+// Save (and then free) overdue pages whose modifying LSNs have been saved.
+void DbPage::saveOverduePages_LK() {
+    if (!m_overduePages)
         return;
 
     // Get set of old pages whose WAL are durable.
     List<WorkPageInfo> pages;
     uint64_t savedLsn = 0;
-    while (auto pi = m_oldPages.front()) {
+    while (auto pi = m_overduePages.front()) {
         if (pi->hdr->lsn > m_durableLsn)
             break;
         savedLsn = pi->firstLsn;
@@ -588,12 +588,13 @@ uint64_t DbPage::saveDirtyPages_LK(TimePoint lastTime) {
 
         if (pi->hdr->lsn > m_durableLsn) {
             // Page needs to be saved, but has been updated by an LSN that is
-            // not yet durable. Copy the page to old pages, where it will be
-            // held until the all it's updates become durable. Meanwhile, the
-            // original copy will either get dirtied with new updates or freed
-            // by removeCleanPages after waiting for the old copy to be saved.
+            // not yet durable. Copy the page to overdue pages, where it will
+            // be held until the all it's updates become durable. Meanwhile,
+            // the original copy will either get dirtied with new updates or
+            // freed by removeCleanPages after waiting for the overdue copy to
+            // be saved.
             auto npi = allocWorkInfo_LK();
-            m_oldPages.link(npi);
+            m_overduePages.link(npi);
             npi->hdr = dupPage_LK(pi->hdr);
             npi->firstTime = pi->firstTime;
             npi->firstLsn = pi->firstLsn;
@@ -631,10 +632,10 @@ void DbPage::removeCleanPages_LK() {
     size_t freed = 0;
 
     // THe minimum time of first modification that clean pages must have in
-    // order to be kept. They must be kept until they are older than any old
-    // pages they may be shadowing.
-    auto minTime = m_oldPages
-        ? m_oldPages.front()->firstTime
+    // order to be kept. They must be kept until they are older than any
+    // overdue pages they may be shadowing.
+    auto minTime = m_overduePages
+        ? m_overduePages.front()->firstTime
         : m_lastSaveTime;
 
     auto next = m_cleanPages.front();

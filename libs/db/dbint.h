@@ -138,7 +138,7 @@ private:
     void queueSaveWork_LK();
     Dim::Duration onSaveTimer(Dim::TimePoint now);
     void saveWork();
-    void saveOldPages_LK();
+    void saveOverduePages_LK();
     uint64_t saveDirtyPages_LK(Dim::TimePoint lastSave);
     void removeWalPages_LK(uint64_t saveLsn);
     void removeCleanPages_LK();
@@ -189,17 +189,17 @@ private:
 
     // Unused page info structs waiting to be recycled.
     Dim::List<WorkPageInfo> m_freeInfos;
-    // List of all dirty pages in order of when they became dirty as measured by
-    // LSN (and therefore also time).
+    // List of all dirty pages in order of when they became dirty as measured
+    // by LSN (and therefore also time).
     Dim::List<WorkPageInfo> m_dirtyPages;
-    // Static copies of old versions of dirty pages waiting for their modifying
-    // LSNs to become durable so that they can be saved. These copies are made
-    // so pages that are updated faster than LSNs are saved can eventually be
-    // saved.
-    Dim::List<WorkPageInfo> m_oldPages;
+    // Static copies of old versions of overdue dirty pages waiting for their
+    // modifying LSNs to become durable so that they can be saved. These copies
+    // are made so pages that are updated faster than LSNs are saved can
+    // eventually be saved.
+    Dim::List<WorkPageInfo> m_overduePages;
     // Pages that were recently dirty but might not yet be discardable, in the
-    // order they became clean. Kept either to shadow old pages that can't yet
-    // be saved, or because an active reader prevented it from being freed.
+    // order they became clean. Kept either to shadow overdue pages that can't
+    // yet be saved, or because an active reader prevented it from being freed.
     Dim::List<WorkPageInfo> m_cleanPages;
     // Number of pages, dirty or clean, that first became dirty within the last
     // max WAL age. Which means that their repayment term hasn't fully matured.
