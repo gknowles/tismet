@@ -12,11 +12,11 @@ Distributed under the Boost Software License, Version 1.0.
 
 [gh-image-master]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml/badge.svg?branch=master "GitHub Actions"
 [gh-link-master]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml?query=branch%3Amaster
-[cc-image-master]: https://app.codecov.io/gh/gknowles/tismet/branch/master/graph/badge.svg?token=4INDW3Pfxf "Codecov"
+[cc-image-master]: https://app.codecov.io/gh/gknowles/tismet/branch/master/graph/badge.svg "Codecov"
 [cc-link-master]: https://app.codecov.io/gh/gknowles/tismet/branch/master
 [gh-image-dev]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml/badge.svg?branch=dev "GitHub Actions"
 [gh-link-dev]: https://github.com/gknowles/tismet/actions/workflows/github-build.yml?query=branch%3Adev
-[cc-image-dev]: https://app.codecov.io/gh/gknowles/tismet/branch/dev/graph/badge.svg?token=4INDW3Pfxf "Codecov"
+[cc-image-dev]: https://app.codecov.io/gh/gknowles/tismet/branch/dev/graph/badge.svg  "Codecov"
 [cc-link-dev]: https://app.codecov.io/gh/gknowles/tismet/branch/dev
 
 Time series metric collection
