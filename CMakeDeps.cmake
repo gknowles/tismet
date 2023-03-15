@@ -307,7 +307,7 @@
 # vendor/dimapp/libs/xml/xmlbaseparseimpl.h
 # vendor/dimapp/libs/xml/xstreamparser.cpp
 # vendor/dimapp/web/favicon.ico
-# vendor/dimapp/web/navbar.html
+# vendor/dimapp/web/initapp.js
 # vendor/dimapp/web/srv/about-account.html
 # vendor/dimapp/web/srv/about-common.html
 # vendor/dimapp/web/srv/about-common.js
@@ -323,7 +323,8 @@
 # vendor/dimapp/web/srv/groupType.css
 # vendor/dimapp/web/srv/init.css
 # vendor/dimapp/web/srv/initialize.js
-# vendor/dimapp/web/srv/navbar-debug.html
+# vendor/dimapp/web/srv/navsub.html
+# vendor/dimapp/web/srv/navtop.html
 # vendor/dimapp/web/srv/network-common.js
 # vendor/dimapp/web/srv/network-routes.html
 # vendor/dimapp/web/srv/util.js
@@ -343,6 +344,6 @@
 # web/admin-common.html
 # web/admin-common.js
 # web/favicon.ico
+# web/initapp.js
 # web/logo.png
 # web/navbar-admin.html
-# web/navbar.html
