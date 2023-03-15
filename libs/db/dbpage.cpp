@@ -589,10 +589,10 @@ uint64_t DbPage::saveDirtyPages_LK(TimePoint lastTime) {
         if (pi->hdr->lsn > m_durableLsn) {
             // Page needs to be saved, but has been updated by an LSN that is
             // not yet durable. Copy the page to overdue pages, where it will
-            // be held until the all it's updates become durable. Meanwhile,
-            // the original copy will either get dirtied with new updates or
-            // freed by removeCleanPages after waiting for the overdue copy to
-            // be saved.
+            // be held until all it's updates become durable. Meanwhile, the
+            // original copy will either get dirtied with new updates or freed
+            // by removeCleanPages after waiting for the overdue copy to be
+            // saved.
             auto npi = allocWorkInfo_LK();
             m_overduePages.link(npi);
             npi->hdr = dupPage_LK(pi->hdr);
