@@ -3,78 +3,71 @@
 Copyright Glen Knowles 2022.
 Distributed under the Boost Software License, Version 1.0.
 
-about-computer.html - dim webapp
+admin-about.html - tismet webapp
 -->
 <html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1,
     shrink-to-fit=no"/>
-<script src="initialize.js"></script>
-<script src="about-common.js"></script>
-<script src="/srv/about/computer.json?jsVar=srvdata"></script>
+<script src="srv/initialize.js"></script>
+<script src="initapp.js"></script>
+<script src="admin-common.js"></script>
+<script src="/srv/about.json?jsVar=srvdata"></script>
 <script>
 addOpts({
   computed: {
-    sortedEnv() {
-      let arr = [];
-      for (let name in this.env)
-        arr.push({name: name, value: this.env[name]})
-      arr.sort((a, b) => {
-        return a.name.localeCompare(b.name)
-      })
-      return arr
-    },
   },
 })
 </script>
 </head>
 <body>
 <div id="app" style="visibility: hidden">
-  <script>aboutIntro('Computer')</script>
+  <script>adminIntro('About')</script>
 
   <div class="container-fluid mt-2">
     <div class="row">
-      <h3>Computer</h3>
+      <h2>Execution</h2>
       <div class="col-auto">
       <dl>
-        <dt>Domain</dt>
-        <dd>{{domain.name}} ({{domain.status}})</dd>
-        <dt>Addresses</dt>
+        <dt>Product Version</dt>
+        <dd>{{server.version}}</dd>
+        <dt>Start Time</dt>
         <dd>
-          <div v-for="addr in addresses">{{ addr }}</div>
+          {{server.startTime}}
+          ({{readableDuration(elapsedTime(server.startTime))}})
         </dd>
-        <dt>OS Version</dt>
-        <dd>
-          <div>
-            Windows {{version.major}}.{{version.minor}}.{{version.build}}
-          </div>
-          <div v-if="version.svcPackMajor > 0">
-            {{version.svcPackName}}
-            (Version {{version.svcPackMajor}}.{{version.svcPackMinor}})
-          </div>
-        </dd>
-        <dt>DNS</dt>
-        <dd>{{fullDnsName}}</dd>
+        <dt>URL Path</dt>
+        <dd>{{root}}</dd>
+        <dt>System Account</dt>
+        <dd>{{account.user.name}}@{{account.user.domain}}</dd>
+        <dt>Windows Service</dt>
+        <dd>{{server.service ?? false}}</dd>
       </dl>
       </div>
     </div>
-    <div class="row">
-      <h3>Environment Variables</h3>
-      <div class="col-auto">
-        <table>
-          <tr>
-            <th onclick='tableSort(this)'>Name</th>
-            <th onclick='tableSort(this)'>Value</th>
+    <div class="row mt-2">
+      <h2>Disk Space</h2>
+      <table class="col-auto mx-3">
+        <tr>
+          <th class="sortable">Class</th>
+          <th class="sortable">Path</th>
+          <th class="sortable">Total</th>
+          <th class="sortable">Available</th>
+        </tr>
+        <template v-for="val of [
+          ['Data', dataDir, 1],
+          ['Logs', logDir, 2],
+          ['Crashes', crashDir, 3],
+        ]">
+          <tr v-if="val[1].path.length > 0">
+            <td :sort-key="val[2]" class='text-nowrap'>{{val[0]}}</td>
+            <td class='px-2'>{{val[1].path}}</td>
+            <td>{{val[1].spaceTotal.toLocaleString()}}</td>
+            <td>{{val[1].spaceAvail.toLocaleString()}}</td>
           </tr>
-          <template v-for="val in sortedEnv">
-            <tr>
-              <td class='text-nowrap'>{{val.name}}</td>
-              <td class='text-break'>{{val.value}}</td>
-            </tr>
-          </template>
-        </table>
-      </div>
+        </template>
+      </table>
     </div>
   </div>
 </div>

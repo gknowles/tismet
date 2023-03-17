@@ -17,7 +17,7 @@ using namespace Dim;
 ***/
 
 namespace {
-class JsonAbout : public IHttpRouteNotify {
+class JsonAbout : public IWebAdminNotify {
     void onHttpRequest(unsigned reqId, HttpRequest & msg) override;
 };
 } // namespace
@@ -36,25 +36,16 @@ static void addPath(IJBuilder * out, string_view name, string_view path) {
 //===========================================================================
 void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
     auto now = timeNow();
-    HttpResponse res;
-    JBuilder bld(&res.body());
-    bld.object();
-    bld.member("now", now);
-    bld.member("version", tsProductVersion());
-    bld.member("service", appFlags().any(fAppIsService));
-    bld.member("startTime", envProcessStartTime());
-    bld.member("rootDir", appRootDir());
+    auto res = HttpResponse(kHttpStatusOk);
+    auto bld = initResponse(&res, reqId, msg);
     addPath(&bld, "dataDir", tsDataPath().parentPath());
     addPath(&bld, "logDir", appLogDir());
     addPath(&bld, "crashDir", appCrashDir());
-    bld.member("config");
-    configWriteRules(&bld);
+    configWriteRules(&bld, "config");
     bld.member("account").object();
     envProcessAccountInfo(&bld);
     bld.end();
     bld.end();
-    res.addHeader(kHttpContentType, "application/json");
-    res.addHeader(kHttp_Status, "200");
     httpRouteReply(reqId, move(res));
 }
 
@@ -66,18 +57,8 @@ void JsonAbout::onHttpRequest(unsigned reqId, HttpRequest & msg) {
 ***/
 
 static JsonAbout s_jsonAbout;
-static HttpRouteRedirectNotify s_redirectAdmin(
-    "/admin/srv/about-counters.html"
-);
 
 //===========================================================================
 void tsWebInitialize() {
     httpRouteAdd({.notify = &s_jsonAbout, .path = "/srv/about.json"});
-
-    //resLoadWebSite("/admin", {}, resWebSiteContent());
-    //httpRouteAdd({.notify = &s_redirectAdmin, .path = "/"});
-    //httpRouteAddAlias(
-    //    { .path = "/web", .recurse = true },
-    //    "/admin"
-    //);
 }
