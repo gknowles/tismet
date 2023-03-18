@@ -1,5 +1,5 @@
 /*
-Copyright Glen Knowles 2022.
+Copyright Glen Knowles 2023.
 Distributed under the Boost Software License, Version 1.0.
 
 about-common.js - tismet webapp
@@ -27,7 +27,7 @@ function adminIntro(selected) {
                 return [
                     { name: 'About', href: 'admin-about.html' },
                     { name: 'Backup' },
-                    { name: 'Graphite' },
+                    { name: 'Graphite', href: 'admin-graphite.html' },
                 ]
             },
         },
