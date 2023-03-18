@@ -47,27 +47,38 @@ addOpts({
       </div>
     </div>
     <div class="row mt-2">
-      <h2>Disk Space</h2>
-      <table class="col-auto mx-3">
-        <tr>
-          <th class="sortable">Class</th>
-          <th class="sortable">Path</th>
-          <th class="sortable">Total</th>
-          <th class="sortable">Available</th>
-        </tr>
-        <template v-for="val of [
-          ['Data', dataDir, 1],
-          ['Logs', logDir, 2],
-          ['Crashes', crashDir, 3],
-        ]">
-          <tr v-if="val[1].path.length > 0">
-            <td :sort-key="val[2]" class='text-nowrap'>{{val[0]}}</td>
-            <td class='px-2'>{{val[1].path}}</td>
-            <td>{{val[1].spaceTotal.toLocaleString()}}</td>
-            <td>{{val[1].spaceAvail.toLocaleString()}}</td>
+      <div class="col">
+        <h2>Disk Space</h2>
+        <table class="w-auto">
+          <tr>
+            <th class="sortable">Class</th>
+            <th class="sortable">Path</th>
+            <th class="sortable">Total</th>
+            <th class="sortable">Available</th>
           </tr>
-        </template>
-      </table>
+          <template v-for="val of [
+            ['Data', dataDir, 1],
+            ['Logs', logDir, 2],
+            ['Crashes', crashDir, 3],
+          ]">
+            <tr v-if="val[1].path.length > 0">
+              <td :sort-key="val[2]" class='text-nowrap'>{{val[0]}}</td>
+              <td class='px-2'>{{val[1].path}}</td>
+              <td>{{val[1].spaceTotal.toLocaleString()}}</td>
+              <td :class='fullClass(val[1].spaceAvail / val[1].spaceTotal)'>
+                {{val[1].spaceAvail.toLocaleString()}}
+                ({{(100 * val[1].spaceAvail / val[1].spaceTotal).toFixed(2)}}%)
+              </td>
+            </tr>
+          </template>
+        </table>
+        <table class="w-auto">
+          <tr><td class='bg-error'>Less than 10% of space available</td></tr>
+          <tr><td>Less than 25% of space available</td></tr>
+          <tr><td class='bg-recent'>Less than 50% of space available</td></tr>
+          <tr><td class='bg-old'>More than 50% of space available</td></tr>
+        </table>
+      </div>
     </div>
   </div>
 </div>

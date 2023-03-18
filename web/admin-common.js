@@ -15,6 +15,14 @@ function adminIntro(selected) {
             },
         },
         methods: {
+            fullClass(val) {
+                if (typeof val === 'undefined') return 'bg-disabled'
+                if (isNaN(val)) return 'bg-disabled'
+                if (val < 0.10) return 'bg-error'
+                if (val < 0.25) return 'null'
+                if (val < 0.50) return 'bg-recent'
+                return 'bg-old'
+            },
             navSub() {
                 return [
                     { name: 'About', href: 'admin-about.html' },
