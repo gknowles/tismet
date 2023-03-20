@@ -77,15 +77,18 @@ addOpts({
         <div class="col">
           <h3>{{grp[0].group}}</h3>
           <div v-for="val in grp">
-            <span>{{val.name}}</span>
-            (
+            <span style="color: steelblue">{{val.name}} </span>
+            <span style="color: purple"> ( </span>
             <template v-for="(arg, index) in val.args">
               <template v-if="index > 0">, </template>
-              <span>{{arg.type}}</span> <span>{{arg.name}}</span>
-              <template v-if="arg.multiple">[]</template>
-              <template v-if="!arg.require"> = {}</template>
+              <span style="color: blue">{{arg.type}}</span>
+              <span style="color: black">&nbsp;{{arg.name}}</span>
+              <span style="color: darkred">
+                <template v-if="arg.multiple"> []</template>
+                <template v-if="!arg.require"> = {}</template>
+              </span>
             </template>
-            )
+            <span style="color: purple">)</span>
           </div>
         </div>
       </div>
