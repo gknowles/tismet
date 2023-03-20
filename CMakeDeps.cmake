@@ -342,6 +342,7 @@
 # vendor/dimcli/libs/dimcli/cli.h
 # web/admin-about.html
 # web/admin-common.js
+# web/admin-graphite.html
 # web/favicon.ico
 # web/initapp.js
 # web/logo.png

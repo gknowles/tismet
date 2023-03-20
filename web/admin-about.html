@@ -14,19 +14,13 @@ admin-about.html - tismet webapp
 <script src="initapp.js"></script>
 <script src="admin-common.js"></script>
 <script src="/srv/about.json?jsVar=srvdata"></script>
-<script>
-addOpts({
-  computed: {
-  },
-})
-</script>
 </head>
 <body>
 <div id="app" style="visibility: hidden">
   <script>adminIntro('About')</script>
 
-  <div class="container-fluid mt-2">
-    <div class="row">
+  <div class="container-fluid">
+    <div class="row mt-4">
       <h2>Execution</h2>
       <div class="col-auto">
       <dl>
@@ -46,8 +40,8 @@ addOpts({
       </dl>
       </div>
     </div>
-    <div class="row mt-2">
-      <div class="col">
+    <div class="row mt-4">
+      <div class="col-auto">
         <h2>Disk Space</h2>
         <table class="w-auto">
           <tr>

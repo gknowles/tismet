@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<!--
+Copyright Glen Knowles 2023.
+Distributed under the Boost Software License, Version 1.0.
+
+admin-graphite.html - tismet webapp
+-->
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1,
+    shrink-to-fit=no"/>
+<script src="srv/initialize.js"></script>
+<script src="initapp.js"></script>
+<script src="admin-common.js"></script>
+<script src="/srv/graphite.json?jsVar=srvdata"></script>
+<script>
+addOpts({
+  computed: {
+    sortedFuncs() {
+      let grps = {}
+      for (let fn of this.functions) {
+        if (fn.group in grps) {
+          grps[fn.group].push(fn)
+        } else {
+          grps[fn.group] = [fn]
+        }
+      }
+      let sorted = []
+      for (let grp in grps) {
+        sorted.push(grps[grp])
+        sorted[sorted.length - 1].sort((a, b) => {
+          if (a.name != b.name)
+            return (a.name < b.name) ? -1 : 1
+          return 0
+        })
+      }
+      sorted.sort((a, b) => {
+        if (a[0].group != b[0].group)
+          return (a[0].group < b[0].group) ? -1 : 1
+        return 0
+      })
+      return sorted
+    },
+  },
+})
+</script>
+</head>
+<body>
+<div id="app" style="visibility: hidden">
+  <script>adminIntro('Graphite')</script>
+
+  <div class="container-fluid">
+    <div class="row mt-4">
+      <h2>Routes</h2>
+      <div class="col-auto">
+        <table>
+          <tr>
+            <th class="sortable">Path</th>
+            <th class="sortable">Methods</th>
+            <th class="sortable">Requests</th>
+            <th>Description</th>
+          </tr>
+          <tr v-for="val in routes">
+            <td>{{val.path}}{{val.recurse ? '...' : ''}}</td>
+            <td>{{val.methods.join(', ')}}</td>
+            <td class="text-end">{{val.matched.toLocaleString()}}</td>
+            <td style="white-space:pre-wrap">{{val.desc}}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <div class="row mt-4">
+      <h2 class="mb-0">Functions</h2>
+      <span>All supported functions, grouped by category.</span>
+      <div v-for="grp in sortedFuncs" class="row mt-2">
+        <div class="col">
+          <h3>{{grp[0].group}}</h3>
+          <div v-for="val in grp">
+            <span>{{val.name}}</span>
+            (
+            <template v-for="(arg, index) in val.args">
+              <template v-if="index > 0">, </template>
+              <span>{{arg.type}}</span> <span>{{arg.name}}</span>
+              <template v-if="arg.multiple">[]</template>
+              <template v-if="!arg.require"> = {}</template>
+            </template>
+            )
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>finalize()</script>
+</body>
+</html>

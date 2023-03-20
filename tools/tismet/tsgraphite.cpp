@@ -777,16 +777,53 @@ static Render s_render;
 static FunctionIndex s_func;
 
 //===========================================================================
+static void addRoute(const HttpRouteInfo & route) {
+    auto ri = route;
+    ri.renderPath = "graphite";
+    httpRouteAdd(ri);
+}
+
+//===========================================================================
 void tsGraphiteInitialize() {
-    httpRouteAdd({.notify = &s_index, .path = "/metrics/index.json"});
-    httpRouteAdd({.notify = &s_find, .path = "/metrics/find"});
-    httpRouteAdd({.notify = &s_find, .path = "/metrics/find/"});
-    httpRouteAdd({.notify = &s_render, .path = "/render"});
-    httpRouteAdd({.notify = &s_render, .path = "/render/"});
-    httpRouteAdd({
-        .notify = &s_render, 
-        .path = "/render", 
-        .methods = fHttpMethodPost
+    addRoute({
+        .notify = &s_index,
+        .path = "/metrics/index.json",
+        .desc = "List of all metric names.",
     });
-    httpRouteAdd({.notify = &s_func, .path = "/functions/index.json"});
+    addRoute({
+        .notify = &s_find,
+        .path = "/metrics/find",
+        .desc = R"(List of metric and branch names matching wildcard name.
+    format - json, msgpack, or pickle.
+    query - Name wildcard, see docs for details.
+)"});
+    addRoute({
+        .notify = &s_find,
+        .path = "/metrics/find/",
+    });
+    addRoute({
+        .notify = &s_render,
+        .path = "/render",
+        .desc = R"(Graph plot points from graphite render query.
+    format -
+    target - Graphite render query. One or more required.
+    now -
+    from -
+    until -
+    maxDataPoints -
+)"});
+    addRoute({
+        .notify = &s_render,
+        .path = "/render/",
+    });
+    addRoute({
+        .notify = &s_render,
+        .path = "/render",
+        .methods = fHttpMethodPost,
+    });
+    addRoute({
+        .notify = &s_func,
+        .path = "/functions/index.json",
+        .desc = "List of all supported functions.",
+    });
 }
