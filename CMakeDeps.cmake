@@ -326,6 +326,7 @@
 # vendor/dimapp/web/srv/navsub.html
 # vendor/dimapp/web/srv/navtop.html
 # vendor/dimapp/web/srv/network-common.js
+# vendor/dimapp/web/srv/network-conns.html
 # vendor/dimapp/web/srv/network-routes.html
 # vendor/dimapp/web/srv/util.js
 # vendor/dimapp/web/srv/vendor/bootstrap-icons@1.8.1/bootstrap-icons.css

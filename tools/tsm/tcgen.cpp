@@ -224,7 +224,7 @@ public:
 
 public:
     // Inherited via IAppSocketNotify
-    void onSocketConnect(const AppSocketInfo & info) override;
+    void onSocketConnect(const AppSocketConnectInfo & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
@@ -257,7 +257,7 @@ void AddrConn::write() {
 }
 
 //===========================================================================
-void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+void AddrConn::onSocketConnect(const AppSocketConnectInfo & info) {
     write();
 }
 

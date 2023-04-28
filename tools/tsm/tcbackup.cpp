@@ -124,7 +124,7 @@ public:
 
 public:
     // Inherited via IAppSocketNotify
-    void onSocketConnect(const AppSocketInfo & info) override;
+    void onSocketConnect(const AppSocketConnectInfo & info) override;
     void onSocketConnectFailed() override;
     void onSocketDisconnect() override;
     bool onSocketRead(AppSocketData & data) override;
@@ -145,7 +145,7 @@ private:
 } // namespace
 
 //===========================================================================
-void AddrConn::onSocketConnect(const AppSocketInfo & info) {
+void AddrConn::onSocketConnect(const AppSocketConnectInfo & info) {
     CharBuf out;
     m_conn = httpConnect(&out);
     if (!s_opts.start) {

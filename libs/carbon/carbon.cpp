@@ -140,7 +140,7 @@ void ICarbonNotify::ackValue(unsigned reqId, unsigned completed) {
 ***/
 
 //===========================================================================
-bool ICarbonSocketNotify::onSocketAccept(const AppSocketInfo & info) {
+bool ICarbonSocketNotify::onSocketAccept(const AppSocketConnectInfo & info) {
     s_perfClients += 1;
     s_perfCurrent += 1;
     socketWrite(this, "SERVER = tismet/1.0\n");

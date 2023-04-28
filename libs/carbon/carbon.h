@@ -77,7 +77,7 @@ class ICarbonSocketNotify
 {
 private:
     // Inherited via IAppSocketNotify
-    bool onSocketAccept(const Dim::AppSocketInfo & info) override;
+    bool onSocketAccept(const Dim::AppSocketConnectInfo & info) override;
     void onSocketDisconnect() override;
     bool onSocketRead(Dim::AppSocketData & data) override;
 
@@ -92,7 +92,7 @@ class ICarbonFileNotify
 protected:
     // Inherited via IFileReadNotify
     bool onFileRead(
-        size_t * bytesUsed, 
+        size_t * bytesUsed,
         const Dim::FileReadData & data
     ) override;
 };
