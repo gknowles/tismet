@@ -25,7 +25,7 @@ class DbIndex {
 public:
     struct UnsignedSetWithCount {
         Dim::UnsignedSet uset;
-        size_t count{0};
+        size_t count = 0;
     };
 
 public:
@@ -38,9 +38,9 @@ public:
     void insert(uint32_t id, std::string_view name);
     void erase(std::string_view name);
 
-    // A branch is the string consisting of one or more segments prefixing the
-    // name of a metric name. A string is both a branch and a metric if there
-    // are additional metrics for which it is a prefix.
+    // A branch is the string consisting of one or more segments prefixing a
+    // metric name. A string matches both a branch and a metric if there are
+    // additional metrics for which it is a prefix.
     void insertBranches(std::string_view name);
     void eraseBranches(std::string_view name);
 
