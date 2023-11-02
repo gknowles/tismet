@@ -846,8 +846,7 @@ void DbWal::apply(AnalyzeData * data, Lsn lsn, const Record & rec) {
         applyCommitTxn(data, lsn, getLocalTxn(rec));
         break;
     case kRecTypeTxnGroupCommit:
-        for (auto&& txn : getLocalTxns(rec))
-            applyCommitTxn(data, lsn, txn);
+        applyGroupCommitTxn(data, lsn, getLocalTxns(rec));
         break;
     default:
         applyUpdate(data, lsn, rec);
@@ -952,6 +951,34 @@ void DbWal::applyCommitTxn(
         // the first must have a matching begin could be enforced.
     }
     m_data->onWalApplyCommitTxn(lsn, localTxn);
+}
+
+//===========================================================================
+void DbWal::applyGroupCommitTxn(
+    AnalyzeData * data,
+    Lsn lsn,
+    const vector<LocalTxn> & localTxns
+) {
+    if (data->analyze) {
+        for (auto&& localTxn : localTxns)
+            data->txns.erase(localTxn);
+        return;
+    }
+
+    //-----------------------------------------------------------------------
+    // redo
+    if (lsn < data->checkpoint)
+        return;
+
+    for (auto&& localTxn : localTxns) {
+        if (!data->activeTxns.erase(localTxn)) {
+            // Commits for transaction ids with no preceding begin are allowed
+            // and ignored under the assumption that they are the previously
+            // played continuations of transactions that begin before the start
+            // of this recovery.
+        }
+    }
+    m_data->onWalApplyGroupCommitTxn(lsn, localTxns);
 }
 
 //===========================================================================

@@ -186,6 +186,11 @@ private:
     );
     void applyBeginTxn(AnalyzeData * data, Lsn lsn, LocalTxn txn);
     void applyCommitTxn(AnalyzeData * data, Lsn lsn, LocalTxn txn);
+    void applyGroupCommitTxn(
+        AnalyzeData * data,
+        Lsn lsn,
+        const std::vector<LocalTxn> & localTxns
+    );
     void applyUpdate(AnalyzeData * data, Lsn lsn, const Record & rec);
 
     void applyUpdate(void * page, Lsn lsn, const Record & rec);
