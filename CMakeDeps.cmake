@@ -134,6 +134,8 @@
 # vendor/dimapp/libs/core/hash.cpp
 # vendor/dimapp/libs/core/hash.h
 # vendor/dimapp/libs/core/hash_crc32c.cpp
+# vendor/dimapp/libs/core/intset.cpp
+# vendor/dimapp/libs/core/intset.h
 # vendor/dimapp/libs/core/list.h
 # vendor/dimapp/libs/core/log.cpp
 # vendor/dimapp/libs/core/log.h
@@ -166,8 +168,6 @@
 # vendor/dimapp/libs/core/tokentable.h
 # vendor/dimapp/libs/core/types.cpp
 # vendor/dimapp/libs/core/types.h
-# vendor/dimapp/libs/core/uset.cpp
-# vendor/dimapp/libs/core/uset.h
 # vendor/dimapp/libs/core/util.cpp
 # vendor/dimapp/libs/core/util.h
 # vendor/dimapp/libs/cppconf/compiler/visualc.h
