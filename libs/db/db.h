@@ -241,6 +241,51 @@ void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 
 enum pgno_t : uint32_t { npos = std::numeric_limits<uint32_t>::max() };
 
+enum LocalTxn : uint16_t {};
+
+struct Lsn {
+    uint64_t val : 48;
+
+    bool operator==(const Lsn & b) const = default;
+    std::strong_ordering operator<=>(const Lsn & b) const = default;
+    explicit operator bool() const { return val; }
+    Lsn & operator+=(ptrdiff_t b) { val += b; return *this; }
+    Lsn & operator-=(ptrdiff_t b) { val -= b; return *this; }
+    Lsn & operator++() { val += 1; return *this; }
+    Lsn & operator--() { val -= 1; return *this; }
+    Lsn operator++(int) { return Lsn(val + 1); }
+    Lsn operator--(int) { return Lsn(val - 1); }
+};
+static_assert(sizeof Lsn == 8);
+inline Lsn operator+(Lsn a, ptrdiff_t b) { return a += b; }
+inline Lsn operator+(ptrdiff_t a, Lsn b) { return b += a; }
+inline Lsn operator-(Lsn a, ptrdiff_t b) { return a -= b; }
+inline ptrdiff_t operator-(const Lsn & a, const Lsn & b) {
+    return a.val - b.val;
+}
+inline std::ostream & operator<<(std::ostream & os, const Lsn & lsn) {
+    os << lsn.val;
+    return os;
+}
+
+struct Lsx {
+    uint64_t localTxn : 16;
+    uint64_t lsn : 48;
+
+    bool operator==(const Lsx & other) const = default;
+    std::strong_ordering operator<=>(const Lsx & other) const = default;
+    explicit operator bool() const { return lsn || localTxn; }
+    explicit operator Lsn() const { return Lsn(lsn); }
+};
+static_assert(sizeof Lsx == 8);
+template<> struct std::hash<Lsx> {
+    size_t operator()(const Lsx & val) const {
+        auto out = std::hash<uint64_t>()(val.localTxn);
+        Dim::hashCombine(&out, std::hash<uint64_t>()(val.lsn));
+        return out;
+    }
+};
+
 enum class DbPageType : int32_t {
     kInvalid = 0,
     kFree = 'F',
@@ -264,7 +309,7 @@ struct DbPageHeader {
     pgno_t pgno;
     uint32_t id;
     uint32_t checksum;
-    uint64_t lsn;
+    Lsn lsn;
 };
 
 #pragma pack(pop)

@@ -265,6 +265,17 @@ bool DbData::loadMetrics(DbTxn & txn, IDbDataNotify * notify) {
 }
 
 //===========================================================================
+static string trieKey(string_view name, uint32_t id) {
+    string key;
+    auto nameLen = name.size();
+    key.resize(nameLen + 1 + sizeof id);
+    memcpy(key.data(), name.data(), nameLen);
+    key[nameLen] = '\0';
+    hton32(key.data() + nameLen + 1, id);
+    return key;
+}
+
+//===========================================================================
 void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     assert(!name.empty());
     auto nameLen = metricNameSize(m_pageSize);
@@ -283,7 +294,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         kDefaultInterval
     );
 
-    // update index
+    // update id index
     {
         scoped_lock lk{m_mndxMut};
         DbTxn::PinScope pins(txn);
@@ -297,6 +308,23 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         s_perfCount += 1;
     }
 
+if constexpr (false) {
+    // update name index
+    vector<shared_ptr<DbRootVersion>> incomplete = { txn.roots().name };
+    while (!incomplete.empty()) {
+        auto pos = txn.roots().startUpdate(txn.getLsx(), incomplete);
+        auto root = incomplete[pos];
+        if (pos != incomplete.size() - 1)
+            incomplete[pos] = incomplete.back();
+        incomplete.pop_back();
+        DbPageHeap heap(&txn, this, root, true);
+        StrTrieBase trie(&heap);
+        auto key = trieKey(name, id);
+        trie.insert(key);
+    }
+}
+
+    // update in memory references
     auto mp = txn.pin<MetricPage>(pgno);
     MetricPosition mi = {};
     mi.infoPage = mp->hdr.pgno;
@@ -397,6 +425,7 @@ void DbData::updateMetric(
         info.interval
     );
 
+    // Reset in memory references
     mi.interval = info.interval;
     mi.sampleType = info.type;
     mi.lastPage = {};
@@ -474,8 +503,8 @@ static double getSample(const T * out) {
     } else if constexpr (is_floating_point_v<T>) {
         return *out;
     } else if constexpr (is_integral_v<T>) {
-        auto const maxval = numeric_limits<T>::max();
-        auto const minval = -maxval;
+        constexpr auto maxval = numeric_limits<T>::max();
+        constexpr auto minval = -maxval;
         T ival = *out;
         if (ival == minval - 1)
             return NAN;

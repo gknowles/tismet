@@ -11,83 +11,7 @@ using namespace Dim;
 
 /****************************************************************************
 *
-*   DbPageHeap
-*
-***/
-
-//===========================================================================
-DbPageHeap::DbPageHeap(DbTxn & txn, DbData & data)
-    : m_data(data)
-    , m_txn(txn)
-{}
-
-//===========================================================================
-size_t DbPageHeap::create() {
-    return m_data.allocPgno(m_txn);
-}
-
-//===========================================================================
-void DbPageHeap::destroy(size_t pgno) {
-    m_data.deprecatePage(m_txn, (pgno_t) pgno);
-}
-
-//===========================================================================
-void DbPageHeap::setRoot(size_t pgno) {
-    m_txn.walTagRootUpdate((pgno_t) 0, (pgno_t) pgno);
-}
-
-//===========================================================================
-size_t DbPageHeap::root() const {
-    return m_data.m_metricTagStoreRoot;
-}
-
-//===========================================================================
-size_t DbPageHeap::pageSize() const {
-    return m_txn.pageSize() - sizeof DbPageHeader;
-}
-
-//===========================================================================
-bool DbPageHeap::empty() const {
-    return m_data.m_metricTagStoreRoot == pgno_t::npos;
-}
-
-//===========================================================================
-bool DbPageHeap::empty(size_t pgno) const {
-    assert(!"Testing for existance of specific trie page not supported.");
-    return false;
-}
-
-//===========================================================================
-uint8_t * DbPageHeap::wptr(size_t pgno) {
-    commitIfPending();
-    auto psize = m_txn.pageSize();
-    m_updatePgno = (pgno_t) pgno;
-    auto pc = m_txn.allocFullPage(m_updatePgno, psize);
-    m_updatePtr = reinterpret_cast<uint8_t *>(pc.first);
-    auto offset = pc.second - psize + sizeof DbPageHeader;
-    return m_updatePtr + offset;
-}
-
-//===========================================================================
-const uint8_t * DbPageHeap::ptr(size_t pgno) const {
-    commitIfPending();
-    auto page = m_txn.pin<DbPageHeader>((pgno_t) pgno);
-    return reinterpret_cast<const uint8_t *>(page);
-}
-
-//===========================================================================
-void DbPageHeap::commitIfPending() const {
-    if (m_updatePtr) {
-        assert(m_updatePgno != pgno_t::npos);
-        m_txn.walFullPageInit(DbPageType::kTrie, 0, m_txn.pageSize());
-        m_updatePtr = nullptr;
-    }
-}
-
-
-/****************************************************************************
-*
-*   DbWalRecInfo
+*   Declarations
 *
 ***/
 
@@ -109,6 +33,113 @@ struct FullPageInitRec {
 
 #pragma pack(pop)
 
+
+/****************************************************************************
+*
+*   DbPageHeap
+*
+***/
+
+//===========================================================================
+DbPageHeap::DbPageHeap(
+    DbTxn * txn,
+    DbData * data,
+    shared_ptr<DbRootVersion> rootVer,
+    bool forUpdate
+)
+    : m_txn(*txn)
+    , m_data(*data)
+    , m_rootVer(rootVer)
+{
+    if (forUpdate) {
+        auto zpno = (pgno_t) 0;
+        m_txn.pin<DbPageHeader>(zpno);
+    }
+}
+
+//===========================================================================
+size_t DbPageHeap::create() {
+    return m_data.allocPgno(m_txn);
+}
+
+//===========================================================================
+void DbPageHeap::destroy(size_t pgno) {
+    m_data.deprecatePage(m_txn, (pgno_t) pgno);
+    m_rootVer->deprecatedPages.insert((unsigned) pgno);
+}
+
+//===========================================================================
+void DbPageHeap::setRoot(size_t rawPgno) {
+    auto pgno = (pgno_t) rawPgno;
+    releasePending(pgno_t::npos);
+    auto zpno = (pgno_t) 0;
+    m_txn.walTagRootUpdate(zpno, pgno);
+}
+
+//===========================================================================
+size_t DbPageHeap::root() const {
+    return m_rootVer->root;
+}
+
+//===========================================================================
+size_t DbPageHeap::pageSize() const {
+    return m_txn.pageSize() - sizeof DbPageHeader;
+}
+
+//===========================================================================
+bool DbPageHeap::empty() const {
+    return root() == pgno_t::npos;
+}
+
+//===========================================================================
+bool DbPageHeap::empty(size_t pgno) const {
+    assert(!"Testing for existance of specific trie page not supported.");
+    return false;
+}
+
+//===========================================================================
+uint8_t * DbPageHeap::wptr(size_t pgno) {
+    auto offset = offsetof(FullPageInitRec, data);
+    if (!releasePending(pgno))
+        return m_updatePtr + offset;
+
+    auto psize = pageSize();
+    m_updatePgno = (pgno_t) pgno;
+    auto pc = m_txn.allocFullPage(m_updatePgno, psize);
+    m_updatePtr = reinterpret_cast<uint8_t *>(pc.first);
+    assert(offset == pc.second - psize);
+    return m_updatePtr + offset;
+}
+
+//===========================================================================
+const uint8_t * DbPageHeap::ptr(size_t pgno) const {
+    assert(!m_updatePtr || m_updatePgno != (pgno_t) pgno);
+    auto page = m_txn.pin<DbPageHeader>((pgno_t) pgno);
+    return reinterpret_cast<const uint8_t *>(page + 1);
+}
+
+//===========================================================================
+bool DbPageHeap::releasePending(size_t pgno) {
+    if (m_updatePtr) {
+        assert(m_updatePgno != pgno_t::npos);
+        if (m_updatePgno == pgno)
+            return false;
+        m_txn.walFullPageInit(
+            DbPageType::kTrie,
+            0,
+            pageSize()
+        );
+        m_updatePtr = nullptr;
+    }
+    return true;
+}
+
+
+/****************************************************************************
+*
+*   DbWalRecInfo
+*
+***/
 
 static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeFullPage,
@@ -136,7 +167,7 @@ static DbWalRegisterRec s_dataRecInfo = {
 ***/
 
 //===========================================================================
-std::pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
+pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
     assert(extra <= pageSize());
     auto offset = offsetof(FullPageInitRec, data);
     return alloc(kRecTypeFullPage, pgno, offset + extra);

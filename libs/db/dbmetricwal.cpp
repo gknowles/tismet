@@ -586,7 +586,7 @@ void DbTxn::walMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample) {
     rec.type = kRecTypeMetricUpdateSampleTxn;
     rec.pgno = pgno;
     rec.refSample = (uint16_t) refSample;
-    m_wal.walAndApply(0, (DbWal::Record *) &rec, sizeof(rec));
+    m_wal.walAndApply({}, (DbWal::Record *) &rec, sizeof(rec));
 }
 
 //===========================================================================
@@ -727,7 +727,7 @@ void DbTxn::walSampleUpdateTxn(
             bytes = sizeof(tmp.i32);
         }
     }
-    m_wal.walAndApply(0, (DbWal::Record *) &tmp, bytes);
+    m_wal.walAndApply({}, (DbWal::Record *) &tmp, bytes);
 }
 
 //===========================================================================

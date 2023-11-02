@@ -13,6 +13,7 @@
 #include <mutex>
 #include <queue>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 
@@ -45,17 +46,18 @@ public:
     struct Record;
     static uint16_t getSize(const Record & rec);
     static pgno_t getPgno(const Record & rec);
-    static uint16_t getLocalTxn(const Record & rec);
-    static uint64_t getStartLsn(const Record & rec);
-    static void setLocalTxn(Record * rec, uint16_t localTxn);
+    static LocalTxn getLocalTxn(const Record & rec);
+    static std::vector<LocalTxn> getLocalTxns(const Record & rec);
+    static Lsn getStartLsn(const Record & rec);
+    static void setLocalTxn(Record * rec, LocalTxn localTxn);
 
-    static uint64_t getLsn(uint64_t walPos);
-    static uint16_t getLocalTxn(uint64_t walPos);
-    static uint64_t getTxn(uint64_t lsn, uint16_t localTxn);
+    static Lsn getLsn(Lsx walPos);
+    static LocalTxn getLocalTxn(Lsx walPos);
+    static Lsx getTxn(Lsn lsn, LocalTxn localTxn);
 
     struct PageInfo {
         pgno_t pgno;
-        uint64_t firstLsn;
+        Lsn firstLsn;
         uint16_t cleanRecs; // WAL records on page that have been saved.
 
         // Page has been filled up and fully saved.
@@ -70,13 +72,13 @@ public:
         // starting with this page, including only those pages that began a
         // transaction that was committed on this page.
         struct Commits {
-            uint64_t firstLsn;  // First LSN of page with transaction begins.
+            Lsn firstLsn;  // First LSN of page with transaction begins.
             unsigned numRecs;   // Number of LSNs on the page.
             unsigned commits;   // Commits for the page.
         };
         std::vector<Commits> commits;
 
-        auto operator<=>(const uint64_t & other) const {
+        auto operator<=>(const Lsn & other) const {
             return firstLsn <=> other;
         }
     };
@@ -110,18 +112,19 @@ public:
     DbConfig configure(const DbConfig & conf);
 
     // Returns transaction id (localTxn + LSN)
-    uint64_t beginTxn();
-    void commit(uint64_t txn);
+    Lsx beginTxn();
+    void commit(Lsx txn);
+    void commit(const std::unordered_set<Lsx> & txns);
     void checkpoint();
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
 
-    void walAndApply(uint64_t txn, Record * rec, size_t bytes);
+    void walAndApply(Lsx txn, Record * rec, size_t bytes);
 
     // Queue task to be run after the indicated LSN becomes durable (is
     // committed to stable storage).
     void queueTask(
         Dim::ITaskNotify * task,
-        uint64_t waitLsn,
+        Lsn waitLsn,
         Dim::TaskQueueHandle hq = {} // defaults to compute queue
     );
 
@@ -139,17 +142,19 @@ private:
 
     bool loadPages(Dim::FileHandle fwal);
 
-    uint64_t walCheckpoint(uint64_t startLsn);  // returns LSN
-    uint64_t walBeginTxn(uint16_t localTxn);    // returns localTxn + LSN
-    uint64_t walCommitTxn(uint64_t txn);        // returns localTxn + LSN
+    Lsn walCheckpoint(Lsn startLsn);
+    Lsx walBeginTxn(LocalTxn localTxn);
+    void walCommitTxn(Lsx txn);
+    void walCommitTxns(const std::unordered_set<Lsx> & txns);
 
     // Returns LSN.
     enum class TxnMode { kBegin, kContinue, kCommit };
-    uint64_t wal(
+    Lsn wal(
         const Record & rec,
         size_t bytes,
         TxnMode txnMode,
-        uint64_t txn = 0
+        Lsx txn = {},
+        const std::unordered_set<Lsx> * txns = nullptr
     );
 
     void prepareBuffer_LK(
@@ -158,9 +163,10 @@ private:
         size_t bytesOnNewPage
     );
     void countBeginTxn_LK();
-    void countCommitTxn_LK(uint64_t txn);
+    void countCommitTxns_LK(Lsx txn, const std::unordered_set<Lsx> * txns);
+    void countCommitTxn_LK(Lsx txn);
     void updatePages_LK(
-        uint64_t firstLsn,
+        Lsn firstLsn,
         uint16_t cleanRecs,
         bool fullPageWrite
     );
@@ -172,17 +178,17 @@ private:
 
     struct AnalyzeData;
     void applyAll(AnalyzeData * data, Dim::FileHandle fwal);
-    void apply(AnalyzeData * data, uint64_t lsn, const Record & rec);
+    void apply(AnalyzeData * data, Lsn lsn, const Record & rec);
     void applyCheckpoint(
         AnalyzeData * data,
-        uint64_t lsn,
-        uint64_t startLsn
+        Lsn lsn,
+        Lsn startLsn
     );
-    void applyBeginTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
-    void applyCommitTxn(AnalyzeData * data, uint64_t lsn, uint16_t txn);
-    void applyUpdate(AnalyzeData * data, uint64_t lsn, const Record & rec);
+    void applyBeginTxn(AnalyzeData * data, Lsn lsn, LocalTxn txn);
+    void applyCommitTxn(AnalyzeData * data, Lsn lsn, LocalTxn txn);
+    void applyUpdate(AnalyzeData * data, Lsn lsn, const Record & rec);
 
-    void applyUpdate(void * page, uint64_t lsn, const Record & rec);
+    void applyUpdate(void * page, Lsn lsn, const Record & rec);
 
     IApplyNotify * m_data;
     IPageNotify * m_page;
@@ -193,7 +199,7 @@ private:
 
     // Last Assigned
     Dim::UnsignedSet m_localTxns; // Ids of active transactions.
-    uint64_t m_lastLsn = 0; // LSN assigned to most recently added record.
+    Lsn m_lastLsn = {}; // LSN assigned to most recently added record.
 
     Dim::UnsignedSet m_freePages;
     size_t m_numPages = 0;
@@ -223,14 +229,14 @@ private:
 
     // Last started (perhaps unfinished) checkpoint.
     Dim::TimePoint m_checkpointStart;
-    uint64_t m_checkpointLsn = 0;
+    Lsn m_checkpointLsn = {};
 
     // Last known LSN durably saved.
-    uint64_t m_durableLsn = 0;
+    Lsn m_durableLsn = {};
 
     struct LsnTaskInfo {
         Dim::ITaskNotify * notify;
-        uint64_t waitLsn;
+        Lsn waitLsn;
         Dim::TaskQueueHandle hq;
 
         auto operator<=>(const LsnTaskInfo & other) const {
@@ -275,8 +281,8 @@ public:
     // locked, and must be unlocked via subsequent call to onWalUnlockPtr().
     virtual void * onWalGetPtrForUpdate(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t localTxn
+        Lsn lsn,
+        LocalTxn localTxn
     ) = 0;
     // Called to release lock on pointer returned by onWalGetPtrForUpdate().
     virtual void onWalUnlockPtr(pgno_t pgno) = 0;
@@ -288,8 +294,8 @@ public:
     // be single threaded.
     virtual void * onWalGetPtrForRedo(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t localTxn
+        Lsn lsn,
+        LocalTxn localTxn
     ) = 0;
 
     // Reports the durable LSN and the additional bytes of WAL that were
@@ -299,7 +305,7 @@ public:
     //
     // The byte count combined with max checkpoint bytes provides a target for
     // the page eviction algorithm.
-    virtual void onWalDurable(uint64_t lsn, size_t bytes) {}
+    virtual void onWalDurable(Lsn lsn, size_t bytes) {}
 
     // The first durable LSN is passed in, and the first durable LSN that still
     // has dirty (not yet persisted to stable storage) data pages associated
@@ -310,7 +316,7 @@ public:
     // LSN to be advanced. Since prior WAL is immediately discardable, this
     // function may need to make the OS flush it's cache to meet this
     // guarantee.
-    virtual uint64_t onWalCheckpointPages(uint64_t lsn) { return lsn; }
+    virtual Lsn onWalCheckpointPages(Lsn lsn) { return lsn; }
 };
 
 
@@ -325,11 +331,15 @@ public:
     virtual ~IApplyNotify() = default;
 
     virtual void onWalApplyCheckpoint(
-        uint64_t lsn,
-        uint64_t startLsn
+        Lsn lsn,
+        Lsn startLsn
     ) = 0;
-    virtual void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) = 0;
-    virtual void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) = 0;
+    virtual void onWalApplyBeginTxn(Lsn lsn, LocalTxn localTxn) = 0;
+    virtual void onWalApplyCommitTxn(Lsn lsn, LocalTxn localTxn) = 0;
+    virtual void onWalApplyGroupCommitTxn(
+        Lsn lsn,
+        const std::vector<LocalTxn> & localTxns
+    ) = 0;
 
     virtual void onWalApplyZeroInit(void * ptr) = 0;
     virtual void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) = 0;

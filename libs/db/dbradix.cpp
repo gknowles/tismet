@@ -44,7 +44,8 @@ DbData::RadixData * DbData::radixData(
         return radixData(mp, pageSize);
     } else {
         assert(hdr->type == DbPageType::kRadix);
-        return &reinterpret_cast<DbData::RadixPage *>(hdr)->rd;
+        auto rp = reinterpret_cast<DbData::RadixPage *>(hdr);
+        return &rp->rd;
     }
 }
 

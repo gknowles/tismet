@@ -15,6 +15,7 @@ enum DbWalRecType : int8_t {
     kRecTypeCheckpoint          = 1,  // [N/A] startLsn
     kRecTypeTxnBegin            = 2,  // [N/A]
     kRecTypeTxnCommit           = 3,  // [N/A]
+    kRecTypeTxnGroupCommit      = 40, // [N/A] numTxns, txns
 
     kRecTypeZeroInit            = 4,  // [master]
     kRecTypeTagRootUpdate       = 7,  // [master] rootPage
@@ -66,7 +67,7 @@ enum DbWalRecType : int8_t {
     kRecTypeSampleUpdateInt16LastTxn    = 29,
     kRecTypeSampleUpdateInt32LastTxn    = 31,
 
-    kRecType_LastAvailable  = 40,
+    kRecType_LastAvailable  = 41,
 };
 
 #pragma pack(push, 1)
@@ -74,7 +75,7 @@ enum DbWalRecType : int8_t {
 struct DbWal::Record {
     DbWalRecType type;
     pgno_t pgno;
-    uint16_t localTxn;
+    LocalTxn localTxn;
 };
 
 #pragma pack(pop)
@@ -83,14 +84,14 @@ struct DbWalApplyArgs {
     DbWal::IApplyNotify * notify;
     void * page;
     const DbWal::Record * rec;
-    uint64_t lsn;
+    Lsn lsn;
 };
 struct DbWalRecInfo {
     template<typename T>
     static uint16_t sizeFn(const DbWal::Record & rec) {
         return sizeof(T);
     }
-    static uint16_t defLocalTxnFn(const DbWal::Record & rec) {
+    static LocalTxn defLocalTxnFn(const DbWal::Record & rec) {
         return rec.localTxn;
     }
     static pgno_t defPgnoFn(const DbWal::Record & rec) {
@@ -100,7 +101,7 @@ struct DbWalRecInfo {
     DbWalRecType m_type;
     uint16_t (*m_size)(const DbWal::Record & rec);
     void (*m_apply)(const DbWalApplyArgs & args);
-    uint16_t (*m_localTxn)(const DbWal::Record & rec) = defLocalTxnFn;
+    LocalTxn (*m_localTxn)(const DbWal::Record & rec) = defLocalTxnFn;
     pgno_t (*m_pgno)(const DbWal::Record & rec) = defPgnoFn;
 };
 

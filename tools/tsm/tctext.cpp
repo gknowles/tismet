@@ -31,9 +31,13 @@ public:
 
 private:
     // Inherited via IApplyNotify
-    void onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) override;
-    void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
-    void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCheckpoint(Lsn lsn, Lsn startLsn) override;
+    void onWalApplyBeginTxn(Lsn lsn, LocalTxn localTxn) override;
+    void onWalApplyCommitTxn(Lsn lsn, LocalTxn localTxn) override;
+    void onWalApplyGroupCommitTxn(
+        Lsn lsn,
+        const vector<LocalTxn> & txns
+    ) override;
 
     void onWalApplyZeroInit(void * ptr) override;
     void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
@@ -119,14 +123,14 @@ private:
     // Inherited via IPageNotify
     void * onWalGetPtrForUpdate(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t localTxn
+        Lsn lsn,
+        LocalTxn localTxn
     ) override;
     void onWalUnlockPtr(pgno_t pgno) override;
     void * onWalGetPtrForRedo(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t localTxn
+        Lsn lsn,
+        LocalTxn localTxn
     ) override;
 
     ostream & out(void * ptr);
@@ -172,18 +176,29 @@ ostream & TextWriter::out(void * ptr) {
 }
 
 //===========================================================================
-void TextWriter::onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) {
+void TextWriter::onWalApplyCheckpoint(Lsn lsn, Lsn startLsn) {
     m_os << lsn << '.' << 0 << ": CHECKPOINT = " << startLsn << "\n";
 }
 
 //===========================================================================
-void TextWriter::onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) {
+void TextWriter::onWalApplyBeginTxn(Lsn lsn, LocalTxn localTxn) {
     m_os << lsn << '.' << localTxn << ": txn.begin\n";
 }
 
 //===========================================================================
-void TextWriter::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) {
+void TextWriter::onWalApplyCommitTxn(Lsn lsn, LocalTxn localTxn) {
     m_os << lsn << '.' << localTxn << ": txn.commit\n";
+}
+
+//===========================================================================
+void TextWriter::onWalApplyGroupCommitTxn(
+    Lsn lsn,
+    const vector<LocalTxn> & txns
+) {
+    m_os << lsn;
+    for (auto&& txn : txns)
+        m_os << '.' << txn;
+    m_os << ": txn.commit (group)\n";
 }
 
 //===========================================================================
@@ -392,8 +407,8 @@ void TextWriter::onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
 //===========================================================================
 void * TextWriter::onWalGetPtrForUpdate(
     pgno_t pgno,
-    uint64_t lsn,
-    uint16_t localTxn
+    Lsn lsn,
+    LocalTxn localTxn
 ) {
     assert(!"updates not supported when dumping wal");
     return nullptr;
@@ -407,8 +422,8 @@ void TextWriter::onWalUnlockPtr(pgno_t pgno) {
 //===========================================================================
 void * TextWriter::onWalGetPtrForRedo(
     pgno_t pgno,
-    uint64_t lsn,
-    uint16_t localTxn
+    Lsn lsn,
+    LocalTxn localTxn
 ) {
     m_hdr.checksum = localTxn;
     m_hdr.lsn = lsn;

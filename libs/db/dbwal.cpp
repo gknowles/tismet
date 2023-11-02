@@ -47,10 +47,10 @@ enum class DbWal::Checkpoint : int {
 };
 
 struct DbWal::AnalyzeData {
-    bool analyze{true};
-    unordered_map<uint16_t, uint64_t> txns;
-    vector<uint64_t> incompleteTxnLsns;
-    uint64_t checkpoint{0};
+    bool analyze = true;
+    unordered_map<LocalTxn, Lsn> txns;
+    vector<Lsn> incompleteTxnLsns;
+    Lsn checkpoint = {};
 
     UnsignedSet activeTxns;
 };
@@ -79,7 +79,7 @@ struct WalPage {
     WalPageType type;
     pgno_t pgno;
     uint32_t checksum;
-    uint64_t firstLsn; // LSN of first record started on page.
+    Lsn firstLsn; // LSN of first record started on page.
     uint16_t numRecs; // Number of WAL records started on page.
     uint16_t firstPos; // Position of first log started on page.
     uint16_t lastPos; // Position after last WAL record ended on page.
@@ -103,7 +103,7 @@ struct PageHeaderRawV2 {
     WalPageType type;
     pgno_t pgno;
     uint32_t checksum;
-    uint64_t firstLsn;
+    Lsn firstLsn;
     uint16_t numRecs;
     uint16_t firstPos;
     uint16_t lastPos;
@@ -113,7 +113,7 @@ struct PageHeaderRawV2 {
 struct PageHeaderRawV1 {
     WalPageType type;
     pgno_t pgno;
-    uint64_t firstLsn;
+    Lsn firstLsn;
     uint16_t numRecs;
     uint16_t firstPos;
     uint16_t lastPos;
@@ -200,7 +200,7 @@ static void unpack(WalPage * out, const void * ptr) {
     switch (mp->type) {
     case WalPageType::kFree:
         out->checksum = 0;
-        out->firstLsn = 0;
+        out->firstLsn = {};
         out->numRecs = 0;
         out->firstPos = 0;
         out->lastPos = 0;
@@ -447,10 +447,10 @@ bool DbWal::open(
     // Initialize the variables normally set by the recovery phase that we're
     // skipping.
     m_localTxns.clear();
-    m_lastLsn = 0;
+    m_lastLsn = {};
     m_freePages.clear();
     m_pages.clear();
-    m_durableLsn = 0;
+    m_durableLsn = {};
 
     // Fabricate "previous" checkpoint to newly created WAL file. At least one
     // checkpoint must always exist in the WAL for recovery to orient itself
@@ -776,7 +776,7 @@ void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
 
     int bytesBefore = 0;
     int walPos = 0;
-    auto lsn = uint64_t{0};
+    auto lsn = Lsn{};
     auto rec = (Record *) nullptr;
 
     for (auto&& pi : m_pages) {
@@ -834,7 +834,7 @@ void DbWal::applyAll(AnalyzeData * data, FileHandle fwal) {
 }
 
 //===========================================================================
-void DbWal::apply(AnalyzeData * data, uint64_t lsn, const Record & rec) {
+void DbWal::apply(AnalyzeData * data, Lsn lsn, const Record & rec) {
     switch (rec.type) {
     case kRecTypeCheckpoint:
         applyCheckpoint(data, lsn, getStartLsn(rec));
@@ -845,6 +845,10 @@ void DbWal::apply(AnalyzeData * data, uint64_t lsn, const Record & rec) {
     case kRecTypeTxnCommit:
         applyCommitTxn(data, lsn, getLocalTxn(rec));
         break;
+    case kRecTypeTxnGroupCommit:
+        for (auto&& txn : getLocalTxns(rec))
+            applyCommitTxn(data, lsn, txn);
+        break;
     default:
         applyUpdate(data, lsn, rec);
         break;
@@ -854,8 +858,8 @@ void DbWal::apply(AnalyzeData * data, uint64_t lsn, const Record & rec) {
 //===========================================================================
 void DbWal::applyCheckpoint(
     AnalyzeData * data,
-    uint64_t lsn,
-    uint64_t startLsn
+    Lsn lsn,
+    Lsn startLsn
 ) {
     if (data->analyze) {
         // Checkpoint records come after the LSN guaranteed by the checkpoint.
@@ -879,8 +883,8 @@ void DbWal::applyCheckpoint(
 //===========================================================================
 void DbWal::applyBeginTxn(
     AnalyzeData * data,
-    uint64_t lsn,
-    uint16_t localTxn
+    Lsn lsn,
+    LocalTxn localTxn
 ) {
     if (data->analyze) {
         auto & txnLsn = data->txns[localTxn];
@@ -925,8 +929,8 @@ void DbWal::applyBeginTxn(
 //===========================================================================
 void DbWal::applyCommitTxn(
     AnalyzeData * data,
-    uint64_t lsn,
-    uint16_t localTxn
+    Lsn lsn,
+    LocalTxn localTxn
 ) {
     if (data->analyze) {
         data->txns.erase(localTxn);
@@ -953,7 +957,7 @@ void DbWal::applyCommitTxn(
 //===========================================================================
 void DbWal::applyUpdate(
     AnalyzeData * data,
-    uint64_t lsn,
+    Lsn lsn,
     const Record & rec
 ) {
     if (data->analyze)
@@ -1235,8 +1239,8 @@ void DbWal::checkpointQueueNext() {
 // Write transaction begin WAL record. The transaction id used is the lowest
 // available value in the range of 1 to 65534 that isn't already assigned to
 // another active transaction.
-uint64_t DbWal::beginTxn() {
-    uint16_t localTxn = 1;
+Lsx DbWal::beginTxn() {
+    auto localTxn = LocalTxn(1);
     {
         scoped_lock lk{m_bufMut};
         if (!m_localTxns) {
@@ -1247,7 +1251,7 @@ uint64_t DbWal::beginTxn() {
                 // No TXN with id of 1, so go ahead and use it.
             } else {
                 // Find the first available value greater than 1.
-                localTxn = (uint16_t) *m_localTxns.lastContiguous(first) + 1;
+                localTxn = LocalTxn(*m_localTxns.lastContiguous(first) + 1);
                 if (localTxn == numeric_limits<uint16_t>::max())
                     logMsgFatal() << "Too many concurrent transactions";
             }
@@ -1262,22 +1266,23 @@ uint64_t DbWal::beginTxn() {
 
 //===========================================================================
 // Write transaction committed record to WAL.
-void DbWal::commit(uint64_t txn) {
+void DbWal::commit(Lsx txn) {
     walCommitTxn(txn);
-    s_perfCurTxns -= 1;
-
-    auto localTxn = getLocalTxn(txn);
-    scoped_lock lk{m_bufMut};
-    [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
-    assert(found && "Commit of unknown transaction");
 }
 
 //===========================================================================
-uint64_t DbWal::wal(
+// Write transaction committed record to WAL.
+void DbWal::commit(const std::unordered_set<Lsx> & txns) {
+    walCommitTxns(txns);
+}
+
+//===========================================================================
+Lsn DbWal::wal(
     const Record & rec,
     size_t bytes,
     TxnMode txnMode,
-    uint64_t txn
+    Lsx txn,
+    const std::unordered_set<Lsx> * txns
 ) {
     assert(bytes < m_pageSize - kMaxHdrLen);
     assert(bytes == getSize(rec));
@@ -1287,13 +1292,14 @@ uint64_t DbWal::wal(
     while (m_bufPos + bytes > m_pageSize && !m_emptyBufs)
         m_bufAvailCv.wait(lk);
 
-    auto lsn = ++m_lastLsn;
+    m_lastLsn += 1;
+    auto lsn = m_lastLsn;
 
     // Count transaction beginnings on the page their WAL record started. This
     // means the current page before logging (since logging can advance to the
     // next page), UNLESS it's exactly at the end of the page. In that case the
-    // transaction actually starts on the next page, which is where we'll be
-    // after logging.
+    // transaction actually starts on the next page which, since WAL records
+    // must be less than a page in size, is where we'll be after logging.
     //
     // Transaction commits are counted after logging, so it's always on the
     // page where they finished.
@@ -1304,10 +1310,11 @@ uint64_t DbWal::wal(
             countBeginTxn_LK();
         } else if (txnMode == TxnMode::kCommit) {
             // Transaction committed on newly prepared page.
-            countCommitTxn_LK(txn);
+            countCommitTxns_LK(txn, txns);
         }
         return lsn;
     }
+
     if (txnMode == TxnMode::kBegin) {
         // Transaction began on current page.
         countBeginTxn_LK();
@@ -1339,7 +1346,7 @@ uint64_t DbWal::wal(
         }
         if (txnMode == TxnMode::kCommit) {
             // Transaction committed on current page.
-            countCommitTxn_LK(txn);
+            countCommitTxns_LK(txn, txns);
         }
         return lsn;
     }
@@ -1371,7 +1378,7 @@ uint64_t DbWal::wal(
     if (txnMode == TxnMode::kCommit) {
         // Transaction committed on current page or, if overflow, on the newly
         // prepared page.
-        countCommitTxn_LK(txn);
+        countCommitTxns_LK(txn, txns);
     }
 
     lk.unlock();
@@ -1456,7 +1463,27 @@ void DbWal::countBeginTxn_LK() {
 }
 
 //===========================================================================
-void DbWal::countCommitTxn_LK(uint64_t txn) {
+void DbWal::countCommitTxns_LK(
+    Lsx txn,
+    const std::unordered_set<Lsx> * txns
+) {
+    if (txn) {
+        assert(!txns);
+        countCommitTxn_LK(txn);
+    } else if (txns) {
+        assert(!txn);
+        for (auto&& txn : *txns)
+            countCommitTxn_LK(txn);
+    }
+}
+
+//===========================================================================
+void DbWal::countCommitTxn_LK(Lsx txn) {
+    s_perfCurTxns -= 1;
+    auto localTxn = getLocalTxn(txn);
+    [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
+    assert(found && "Commit of unknown transaction");
+
     auto lsn = getLsn(txn);
     auto & commits = m_pages.back().commits;
 
@@ -1592,7 +1619,7 @@ void DbWal::onFileWrite(const FileWriteData & data) {
 // than it have been either rolled back, or committed and had all of their
 // WAL records (including ones after this LSN!) written to stable storage.
 void DbWal::updatePages_LK(
-    uint64_t firstLsn,
+    Lsn firstLsn,
     uint16_t cleanRecs,
     bool fullPageWrite
 ) {
@@ -1628,7 +1655,7 @@ void DbWal::updatePages_LK(
 
     // Oldest dirty page may no longer have active transactions. Advance the
     // durable LSN through as many pages as this holds true.
-    uint64_t last = 0;
+    Lsn last = {};
     for (i = base; i != m_pages.end(); ++i) {
         auto & npi = *i;
         if (npi.activeTxns)
@@ -1675,7 +1702,7 @@ void DbWal::updatePages_LK(
 //===========================================================================
 void DbWal::queueTask(
     ITaskNotify * task,
-    uint64_t waitLsn,
+    Lsn waitLsn,
     TaskQueueHandle hq
 ) {
     if (!hq)
@@ -1774,9 +1801,10 @@ void DbTxn::PinScope::keep(pgno_t pgno) {
 ***/
 
 //===========================================================================
-DbTxn::DbTxn(DbWal & wal, DbPage & work)
+DbTxn::DbTxn(DbWal & wal, DbPage & work, shared_ptr<DbRootSet> roots)
     : m_wal{wal}
     , m_page{work}
+    , m_roots{roots}
 {}
 
 //===========================================================================
@@ -1785,13 +1813,37 @@ DbTxn::~DbTxn() {
 }
 
 //===========================================================================
+DbTxn DbTxn::makeTxn() const {
+    DbTxn out(m_wal, m_page, m_roots);
+    return out;
+}
+
+//===========================================================================
+Lsx DbTxn::getLsx() const {
+    return m_txn;
+}
+
+//===========================================================================
 UnsignedSet DbTxn::commit() {
     UnsignedSet out;
     if (m_txn) {
-        m_wal.commit(m_txn);
-        m_txn = 0;
+        shared_ptr<DbRootSet> roots;
+        if (m_roots)
+            roots = m_roots->lockForCommit(m_txn);
+        if (!roots) {
+            m_wal.commit(m_txn);
+        } else if (auto txns = roots->commit(m_txn); !txns.empty()) {
+            assert(txns.contains(m_txn));
+            m_wal.commit(txns);
+
+            // Create new index version
+            roots = roots->publishNextSet(txns);
+            roots->unlock();
+        }
+        m_txn = {};
     }
     unpinAll();
+
     swap(out, m_freePages);
     return out;
 }
@@ -1825,6 +1877,6 @@ std::pair<void *, size_t> DbTxn::alloc(
     auto * lr = (DbWal::Record *) m_buffer.data();
     lr->type = type;
     lr->pgno = pgno;
-    lr->localTxn = 0;
+    lr->localTxn = {};
     return {m_buffer.data(), bytes};
 }

@@ -7,7 +7,7 @@
 
 /****************************************************************************
 *
-*   Declarations
+*   Tuning parameters
 *
 ***/
 
@@ -17,6 +17,15 @@ static_assert(kDefaultPageSize == std::bit_ceil(kDefaultPageSize));
 constexpr unsigned kMinPageSize = 128;
 static_assert(kDefaultPageSize % kMinPageSize == 0);
 
+constexpr unsigned kMaxActiveRootUpdates = 4;
+
+
+/****************************************************************************
+*
+*   Declarations
+*
+***/
+
 static_assert(std::is_same_v<std::underlying_type_t<pgno_t>, uint32_t>);
 constexpr auto kMaxPageNum = (pgno_t) 0x7fff'ffff;
 constexpr auto kFreePageMark = (pgno_t) 0xffff'ffff;
@@ -24,10 +33,14 @@ constexpr auto kFreePageMark = (pgno_t) 0xffff'ffff;
 constexpr int kMaxVirtualSample = 0x3fff'ffff;
 constexpr int kMinVirtualSample = -kMaxVirtualSample;
 
+// Forward declarations
+class DbData;
+class DbRootSet;
+
 
 /****************************************************************************
 *
-*   DbView
+*   DbFileView
 *
 ***/
 
@@ -97,7 +110,7 @@ public:
     // Pins page in cache (if it was already cached) with a read pin, and
     // returns a pointer to it. Read pins prevent cached pages from being freed
     // by saveWork().
-    const void * rptr(uint64_t lsn, pgno_t pgno, bool withPin);
+    const void * rptr(Lsn lsn, pgno_t pgno, bool withPin);
     void unpin(const Dim::UnsignedSet & pages);
 
     size_t pageSize() const { return m_pageSize; }
@@ -115,32 +128,32 @@ private:
     void writePageWait(DbPageHeader * hdr);
     void freePage_LK(DbPageHeader * hdr);
     DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
-    WorkPageInfo * dirtyPage_LK(pgno_t pgno, uint64_t lsn);
+    WorkPageInfo * dirtyPage_LK(pgno_t pgno, Lsn lsn);
     WorkPageInfo * allocWorkInfo_LK();
     void freeWorkInfo_LK(WorkPageInfo * pi);
 
     // Inherited by DbWal::IPageNotify
     void * onWalGetPtrForUpdate(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t txn
+        Lsn lsn,
+        LocalTxn txn
     ) override;
     void onWalUnlockPtr(pgno_t pgno) override;
     void * onWalGetPtrForRedo(
         pgno_t pgno,
-        uint64_t lsn,
-        uint16_t txn
+        Lsn lsn,
+        LocalTxn txn
     ) override;
-    void onWalDurable(uint64_t lsn, size_t bytes) override;
-    uint64_t onWalCheckpointPages(uint64_t lsn) override;
+    void onWalDurable(Lsn lsn, size_t bytes) override;
+    Lsn onWalCheckpointPages(Lsn lsn) override;
 
     Dim::Duration untilNextSave_LK();
     void queueSaveWork_LK();
     Dim::Duration onSaveTimer(Dim::TimePoint now);
     void saveWork();
     void saveOverduePages_LK();
-    uint64_t saveDirtyPages_LK(Dim::TimePoint lastSave);
-    void removeWalPages_LK(uint64_t saveLsn);
+    Lsn saveDirtyPages_LK(Dim::TimePoint lastSave);
+    void removeWalPages_LK(Lsn saveLsn);
     void removeCleanPages_LK();
 
     // Variables determined at open
@@ -164,7 +177,7 @@ private:
     struct WorkPageInfoBase {
         DbPageHeader * hdr;
         Dim::TimePoint firstTime; // time page became dirty
-        uint64_t firstLsn; // LSN at which page became dirty
+        Lsn firstLsn; // LSN at which page became dirty
         pgno_t pgno;
         Dim::EnumFlags<DbPageFlags> flags;
 
@@ -179,9 +192,7 @@ private:
     };
     // Info about work pages that have been modified in memory but not yet
     // written to disk.
-    struct WorkPageInfo
-        : Dim::ListLink<>
-        , WorkPageInfoBase
+    struct WorkPageInfo : Dim::ListLink<>, WorkPageInfoBase
     {};
     // One entry for every data page, null for untracked pages (which must
     // therefore also be unmodified pages).
@@ -212,13 +223,13 @@ private:
     // The LSN up to which all data can be safely recovered. All WAL for any
     // transaction, that has not been rolled back and includes logs from this or
     // any previous LSN, has been persisted to stable storage.
-    uint64_t m_durableLsn = 0;
+    Lsn m_durableLsn = {};
 
     // Info about WAL pages that have been persisted but with some or all of
     // their corresponding data pages still dirty. Used to pace the speed at
     // which dirty pages are written.
     struct WalPageInfo {
-        uint64_t lsn; // first LSN on the page
+        Lsn lsn; // first LSN on the page
         Dim::TimePoint time; // time page became durable
         size_t bytes; // bytes on the page
     };
@@ -274,9 +285,17 @@ public:
     };
 
 public:
-    DbTxn(DbWal & wal, DbPage & page);
+    DbTxn(DbWal & wal, DbPage & page, std::shared_ptr<DbRootSet> roots);
     ~DbTxn();
-    Dim::UnsignedSet commit(); // Returns pages that have been freed.
+
+    // Creates new DbTxn with same wal and page.
+    DbTxn makeTxn() const;
+
+    DbRootSet & roots() const { return *m_roots; }
+    Lsx getLsx() const;
+
+    // Returns pages that have been freed.
+    Dim::UnsignedSet commit();
 
     size_t pageSize() const { return m_page.pageSize(); }
     size_t numPages() const { return m_page.size(); }
@@ -395,10 +414,11 @@ private:
 
     DbWal & m_wal;
     DbPage & m_page;
-    uint64_t m_txn = 0;
+    Lsx m_txn = {};
     std::string m_buffer;
     mutable Dim::UnsignedSet m_pinnedPages;
     Dim::UnsignedSet m_freePages;
+    std::shared_ptr<DbRootSet> m_roots;
 };
 
 //===========================================================================
@@ -432,13 +452,116 @@ std::pair<T *, size_t> DbTxn::alloc(
 
 /****************************************************************************
 *
+*   DbRootVersion
+*
+*   Lifecycle
+*   - initial committed root loaded from database
+*   - readers access index via committed root
+*   - first updater locks mutex
+*   - last reference removed, free deprecated pages
+*
+***/
+
+enum class IndexCode : int {
+    kMetricName,
+    kMetricNameSegs,
+    kMetricTags,
+    kNumIndexCodes,
+};
+
+struct DbRootVersion {
+    // Root page of this version of the index.
+    pgno_t root = pgno_t::npos;
+
+    // Next version of this index.
+    std::shared_ptr<DbRootVersion> next;
+
+    // Transaction that owns this version.
+    Lsx lsx = {};
+
+    // Deprecated pages used by previous version that are to be freed after all
+    // transactions referencing it are committed.
+    Dim::UnsignedSet deprecatedPages;
+
+    // Transaction and data to be used when freeing the deprecated pages.
+    DbTxn txn;
+    DbData & data;
+
+    DbRootVersion(DbTxn * txn, DbData * data);
+    ~DbRootVersion();
+
+    std::shared_ptr<DbRootVersion> addNextVer(Lsx txnId);
+    bool complete() const { return root; }
+};
+
+
+/****************************************************************************
+*
+*   DbRootSet
+*
+***/
+
+class DbRootSet : public std::enable_shared_from_this<DbRootSet> {
+public:
+    std::shared_ptr<DbRootVersion> name;
+
+public:
+    DbRootSet(
+        DbData * data,
+        std::shared_ptr<std::mutex> mut,
+        std::shared_ptr<std::condition_variable> cv
+    );
+
+    std::vector<DbRootVersion *> firstRoots();
+
+    // Returns new incomplete root version to be filled in as the update is
+    // made.
+    size_t startUpdate(
+        Lsx txnId,
+        std::vector<std::shared_ptr<DbRootVersion>> roots
+    );
+
+    std::shared_ptr<DbRootSet> lockForCommit(Lsx txnId);
+
+    // Returns set of transactions to commit as a group.
+    std::unordered_set<Lsx> commit(Lsx txnId);
+
+    std::shared_ptr<DbRootSet> publishNextSet(
+        const std::unordered_set<Lsx> & txns
+    );
+
+    void unlock();
+
+private:
+    DbData & m_data;
+    std::shared_ptr<std::mutex> m_mut;
+    std::shared_ptr<std::condition_variable> m_cv;
+
+    bool m_commitInProgress = false;
+    std::shared_ptr<DbRootSet> m_next;
+
+    // Ids of transactions that have, or are waiting to, make an update.
+    std::unordered_set<Lsx> m_writeTxns;
+
+    // Ids of the active transactions that aren't committed.
+    std::unordered_set<Lsx> m_completeTxns;
+};
+
+
+/****************************************************************************
+*
 *   DbPageHeap
 *
 ***/
 
 class DbPageHeap final : public Dim::IPageHeap {
 public:
-    DbPageHeap(DbTxn & txn, DbData & data);
+    DbPageHeap(
+        DbTxn * txn,
+        DbData * data,
+        std::shared_ptr<DbRootVersion> rootVer,
+        bool forUpdate
+    );
 
     // Inherited via IPageHeap
     size_t create() override;
@@ -452,10 +575,11 @@ public:
     const uint8_t * ptr(size_t pgno) const override;
 
 private:
-    void commitIfPending() const;
+    bool releasePending(size_t pgno);
 
-    DbData & m_data;
     DbTxn & m_txn;
+    DbData & m_data;
+    std::shared_ptr<DbRootVersion> m_rootVer;
     pgno_t m_updatePgno = pgno_t::npos;
     mutable uint8_t * m_updatePtr = {};
 };
@@ -532,6 +656,8 @@ public:
     DbStats queryStats() const;
     void publishFreePages(const Dim::UnsignedSet & freePages);
 
+    std::shared_ptr<DbRootSet> metricRootsInstance();
+
     void insertMetric(DbTxn & txn, uint32_t id, std::string_view name);
     bool eraseMetric(std::string * outName, DbTxn & txn, uint32_t id);
     void updateMetric(
@@ -557,9 +683,13 @@ public:
     );
 
     // Inherited via IApplyNotify
-    void onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn) override;
-    void onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn) override;
-    void onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn) override;
+    void onWalApplyCheckpoint(Lsn lsn, Lsn startLsn) override;
+    void onWalApplyBeginTxn(Lsn lsn, LocalTxn localTxn) override;
+    void onWalApplyCommitTxn(Lsn lsn, LocalTxn localTxn) override;
+    void onWalApplyGroupCommitTxn(
+        Lsn lsn,
+        const std::vector<LocalTxn> & localTxns
+    ) override;
 
     void onWalApplyZeroInit(void * ptr) override;
     void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
@@ -647,6 +777,8 @@ public:
 
 private:
     friend DbPageHeap;
+    friend DbRootSet;
+    friend DbRootVersion;
 
     bool loadMetric(
         DbTxn & txn,
@@ -741,10 +873,11 @@ private:
 
     bool m_verbose{false};
     size_t m_pageSize = 0;
-    pgno_t m_freeStoreRoot = {};
-    pgno_t m_deprecatedStoreRoot = {};
-    pgno_t m_metricStoreRoot = {};
-    pgno_t m_metricTagStoreRoot = {};
+    pgno_t m_freeStoreRoot = pgno_t::npos;
+    pgno_t m_deprecatedStoreRoot = pgno_t::npos;
+    pgno_t m_metricStoreRoot = pgno_t::npos;
+
+    std::atomic<std::shared_ptr<DbRootSet>> m_metricRoots;
 
     mutable std::shared_mutex m_mposMut;
     std::vector<MetricPosition> m_metricPos;
@@ -756,6 +889,6 @@ private:
     size_t m_numFree = 0;
     Dim::UnsignedSet m_deprecatedPages;
 
-    // Used to manage the index at kMetricIndexPageNum.
+    // Used to manage the index at m_metricStoreRoot.
     mutable std::mutex m_mndxMut;
 };

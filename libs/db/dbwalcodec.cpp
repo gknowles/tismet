@@ -23,14 +23,21 @@ namespace {
 // Checkpoint
 struct CheckpointRec {
     DbWalRecType type;
-    uint64_t startLsn;
+    Lsn startLsn;
 };
 
 //---------------------------------------------------------------------------
 // Transaction
 struct TransactionRec {
     DbWalRecType type;
-    uint16_t localTxn;
+    LocalTxn localTxn;
+};
+struct TransactionGroupRec {
+    DbWalRecType type;
+    uint8_t numTxns;
+
+    // EXTENDS BEYOND END OF STRUCT
+    LocalTxn txns[1];
 };
 
 } // namespace
@@ -92,70 +99,71 @@ pgno_t DbWal::getPgno(const Record & rec) {
 
 //===========================================================================
 // static
-uint16_t DbWal::getLocalTxn(const Record & rec) {
+LocalTxn DbWal::getLocalTxn(const Record & rec) {
     if (rec.type && rec.type < size(s_codecs)) {
         auto fn = s_codecs[rec.type].m_localTxn;
         if (fn)
             return fn(rec);
     }
     logMsgFatal() << "Unknown WAL record type, " << rec.type;
-    return 0;
+    return {};
 }
 
 //===========================================================================
 // static
-uint64_t DbWal::getStartLsn(const Record & rec) {
-    if (rec.type == kRecTypeCheckpoint)
-        return reinterpret_cast<const CheckpointRec &>(rec).startLsn;
-    logMsgFatal() << "Unknown WAL record type, " << rec.type;
-    return 0;
+vector<LocalTxn> DbWal::getLocalTxns(const Record & raw) {
+    vector<LocalTxn> out;
+    if (raw.type != kRecTypeTxnGroupCommit) {
+        logMsgFatal() << "WAL record type doesn't have txn list, "
+            << raw.type;
+        return out;
+    }
+    auto & rec = reinterpret_cast<const TransactionGroupRec &>(raw);
+    out.resize(rec.numTxns);
+    memcpy(out.data(), rec.txns, rec.numTxns * sizeof *rec.txns);
+    return out;
 }
 
 //===========================================================================
 // static
-void DbWal::setLocalTxn(DbWal::Record * rec, uint16_t localTxn) {
+Lsn DbWal::getStartLsn(const Record & rec) {
+    if (rec.type != kRecTypeCheckpoint) {
+        logMsgFatal() << "WAL record type doesn't have start LSN, "
+            << rec.type;
+        return {};
+    }
+    return reinterpret_cast<const CheckpointRec &>(rec).startLsn;
+}
+
+//===========================================================================
+// static
+void DbWal::setLocalTxn(DbWal::Record * rec, LocalTxn localTxn) {
     rec->localTxn = localTxn;
 }
 
-namespace {
-
-union LogPos {
-    uint64_t txn;
-    struct {
-        uint64_t localTxn : 16;
-        uint64_t lsn : 48;
-    } u;
-};
-
-} // namespace
-
 //===========================================================================
 // static
-uint64_t DbWal::getLsn(uint64_t walPos) {
-    LogPos tmp;
-    tmp.txn = walPos;
-    return tmp.u.lsn;
+Lsn DbWal::getLsn(Lsx walPos) {
+    return {walPos.lsn};
 }
 
 //===========================================================================
 // static
-uint16_t DbWal::getLocalTxn(uint64_t walPos) {
-    LogPos tmp;
-    tmp.txn = walPos;
-    return tmp.u.localTxn;
+LocalTxn DbWal::getLocalTxn(Lsx walPos) {
+    return (LocalTxn) walPos.localTxn;
 }
 
 //===========================================================================
 // static
-uint64_t DbWal::getTxn(uint64_t lsn, uint16_t localTxn) {
-    LogPos tmp;
-    tmp.u.lsn = lsn;
-    tmp.u.localTxn = localTxn;
-    return tmp.txn;
+Lsx DbWal::getTxn(Lsn lsn, LocalTxn localTxn) {
+    Lsx tmp;
+    tmp.lsn = lsn.val;
+    tmp.localTxn = localTxn;
+    return tmp;
 }
 
 //===========================================================================
-uint64_t DbWal::walCheckpoint(uint64_t startLsn) {
+Lsn DbWal::walCheckpoint(Lsn startLsn) {
     CheckpointRec rec;
     rec.type = kRecTypeCheckpoint;
     rec.startLsn = startLsn;
@@ -164,7 +172,7 @@ uint64_t DbWal::walCheckpoint(uint64_t startLsn) {
 }
 
 //===========================================================================
-uint64_t DbWal::walBeginTxn(uint16_t localTxn) {
+Lsx DbWal::walBeginTxn(LocalTxn localTxn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnBegin;
     rec.localTxn = localTxn;
@@ -173,16 +181,33 @@ uint64_t DbWal::walBeginTxn(uint16_t localTxn) {
 }
 
 //===========================================================================
-uint64_t DbWal::walCommitTxn(uint64_t txn) {
+void DbWal::walCommitTxn(Lsx txn) {
     TransactionRec rec;
     rec.type = kRecTypeTxnCommit;
     rec.localTxn = getLocalTxn(txn);
-    auto lsn = wal((Record &) rec, sizeof(rec), TxnMode::kCommit, txn);
-    return getTxn(lsn, rec.localTxn);
+    wal((Record &) rec, sizeof(rec), TxnMode::kCommit, txn);
 }
 
 //===========================================================================
-void DbWal::walAndApply(uint64_t txn, Record * rec, size_t bytes) {
+void DbWal::walCommitTxns(const unordered_set<Lsx> & txns) {
+    auto num = txns.size();
+    auto extra = num * sizeof uint16_t;
+    auto offset = offsetof(TransactionGroupRec, txns);
+
+    string buf;
+    buf.resize(offset + extra);
+    auto * lr = (TransactionGroupRec *) buf.data();
+    lr->type = kRecTypeTxnGroupCommit;
+    assert(num < numeric_limits<uint8_t>::max());
+    lr->numTxns = (uint8_t) num;
+    auto ptr = lr->txns;
+    for (auto&& txn : txns)
+        *ptr++ = getLocalTxn(txn);
+    wal(*(Record *) lr, buf.size(), TxnMode::kCommit, {}, &txns);
+}
+
+//===========================================================================
+void DbWal::walAndApply(Lsx txn, Record * rec, size_t bytes) {
     assert(bytes >= sizeof(DbWal::Record));
     if (txn)
         rec->localTxn = getLocalTxn(txn);
@@ -201,7 +226,7 @@ void DbWal::walAndApply(uint64_t txn, Record * rec, size_t bytes) {
 }
 
 //===========================================================================
-void DbWal::applyUpdate(void * page, uint64_t lsn, const Record & rec) {
+void DbWal::applyUpdate(void * page, Lsn lsn, const Record & rec) {
     if (rec.type && rec.type < ::size(s_codecs)) {
         auto * fn = s_codecs[rec.type].m_apply;
         if (fn) {
@@ -225,13 +250,28 @@ void DbWal::applyUpdate(void * page, uint64_t lsn, const Record & rec) {
 ***/
 
 //===========================================================================
-static uint16_t localTxnTransaction(const DbWal::Record & raw) {
+static LocalTxn localTxnTransaction(const DbWal::Record & raw) {
     return reinterpret_cast<const TransactionRec &>(raw).localTxn;
 }
 
 //===========================================================================
 static pgno_t invalidPgno(const DbWal::Record & raw) {
     return pgno_t::npos;
+}
+
+//===========================================================================
+static uint16_t sizeGroupCommit(const DbWal::Record & raw) {
+    auto & rec = reinterpret_cast<const TransactionGroupRec &>(raw);
+    return offsetof(TransactionGroupRec, txns)
+        + rec.numTxns * sizeof *rec.txns;
+}
+
+//===========================================================================
+static void applyGroupCommit(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const TransactionGroupRec *>(args.rec);
+    vector<LocalTxn> txns(rec->numTxns);
+    memcpy(txns.data(), rec->txns, rec->numTxns * sizeof *rec->txns);
+    args.notify->onWalApplyGroupCommitTxn(args.lsn, txns);
 }
 
 static DbWalRegisterRec s_dataRecInfo = {
@@ -264,6 +304,12 @@ static DbWalRegisterRec s_dataRecInfo = {
             );
         },
         localTxnTransaction,
+        invalidPgno,
+    },
+    { kRecTypeTxnGroupCommit,
+        sizeGroupCommit,
+        applyGroupCommit,
+        nullptr,    // localTxn
         invalidPgno,
     },
 };

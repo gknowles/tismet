@@ -211,7 +211,7 @@ bool DbBase::open(
     if (!m_wal.recover())
         return false;
     m_maxNameLen = m_data.queryStats().metricNameSize - 1;
-    DbTxn txn{m_wal, m_page};
+    DbTxn txn{m_wal, m_page, m_data.metricRootsInstance()};
     if (!m_data.openForUpdate(txn, this, datafile, flags))
         return false;
     [[maybe_unused]] auto freePages = txn.commit();
@@ -395,7 +395,7 @@ void DbContext::reset(DbHandle f) {
 
 //===========================================================================
 void DbBase::apply(uint32_t id, DbReq && req) {
-    DbTxn txn{m_wal, m_page};
+    DbTxn txn{m_wal, m_page, m_data.metricRootsInstance()};
     switch (req.type) {
     case kGetMetric:
         m_data.getMetricInfo(req.notify, txn, id);
@@ -751,6 +751,22 @@ bool dbGetSamples(
 ) {
     return db(h)->getSamples(notify, id, first, last, presamples);
 }
+
+
+/****************************************************************************
+*
+*   Public API - Types
+*
+***/
+
+#if 0
+//===========================================================================
+std::strong_ordering Lsx::operator<=>(const Lsx & other) const {
+    if (auto out = lsn <=> other.lsn; out != 0)
+        return out;
+    return localTxn <=> other.localTxn;
+}
+#endif
 
 //===========================================================================
 string toString(DbPageType type) {

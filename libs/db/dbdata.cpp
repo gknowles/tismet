@@ -57,6 +57,240 @@ static auto & s_perfFreePages = uperf("db.data pages (free)");
 
 /****************************************************************************
 *
+*   DbRootVersion
+*
+***/
+
+//===========================================================================
+DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data)
+    : txn(txn->makeTxn())
+    , data(*data)
+{}
+
+//===========================================================================
+DbRootVersion::~DbRootVersion() {
+    // Remove pages that were deprecated (via replacement) when building the
+    // next version.
+    if (next) {
+        swap(next->deprecatedPages, deprecatedPages);
+        for (auto&& pgno : deprecatedPages) {
+            data.freeDeprecatedPage(txn, (pgno_t) pgno);
+        }
+    }
+}
+
+//===========================================================================
+shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
+    assert(!next);
+    next = make_shared<DbRootVersion>(&txn, &data);
+    next->lsx = id;
+    return next;
+}
+
+
+/****************************************************************************
+*
+*   DbRootSet
+*
+***/
+
+//===========================================================================
+DbRootSet::DbRootSet(
+    DbData * data,
+    shared_ptr<mutex> mut,
+    shared_ptr<condition_variable> cv
+)
+    : m_data(*data)
+    , m_mut(mut)
+    , m_cv(cv)
+{}
+
+//===========================================================================
+vector<DbRootVersion *> DbRootSet::firstRoots() {
+    return { name.get() };
+}
+
+//===========================================================================
+
+
+//===========================================================================
+size_t DbRootSet::startUpdate(
+    Lsx id,
+    vector<shared_ptr<DbRootVersion>> roots
+) {
+    unique_lock lk(*m_mut);
+
+    // Wait for available update capacity
+    for (;;) {
+        if (m_writeTxns.size() == kMaxActiveRootUpdates) {
+            if (m_writeTxns.contains(id))
+                break;
+        } else {
+            m_writeTxns.insert(id);
+            break;
+        }
+        m_cv->wait(lk);
+    }
+
+    // Wait for last update to this root to complete
+    shared_ptr<DbRootVersion> root;
+    size_t pos = 0;
+    for (;;) {
+        for (pos = 0; pos < roots.size(); ++pos) {
+            root = roots[pos];
+            while (root->next)
+                root = root->next;
+            if (root->complete())
+                goto FOUND;
+        }
+        m_cv->wait(lk);
+    }
+
+FOUND:
+    root->addNextVer(id);
+    return pos;
+}
+
+//===========================================================================
+static bool eligible(
+    unordered_set<Lsx> * path,
+    Lsx id,
+    const unordered_map<Lsx, unordered_set<Lsx>> & ref,
+    const unordered_set<Lsx> & completeTxns
+) {
+    if (path->contains(id)) {
+        // Recursive references are not blocking.
+        return true;
+    }
+    auto i = ref.find(id);
+    if (i == ref.end()) {
+        // Has no references, therefore no blocking references.
+        return true;
+    }
+    for (auto&& id : i->second) {
+        if (!completeTxns.contains(id)) {
+            // References incomplete transaction.
+            return false;
+        }
+    }
+    for (auto&& refId : i->second) {
+        path->insert(id);
+        auto okay = eligible(path, refId, ref, completeTxns);
+        path->erase(id);
+        if (!okay)
+            return false;
+    }
+    return true;
+}
+
+//===========================================================================
+shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
+    shared_ptr<DbRootSet> roots;
+    unique_lock lk(*m_mut);
+    if (m_writeTxns.contains(id)) {
+        roots = shared_from_this();
+        for (;;) {
+            while (roots->m_next)
+                roots = roots->m_next;
+            if (!roots->m_commitInProgress)
+                break;
+            m_cv->wait(lk);
+        }
+        m_commitInProgress = true;
+    }
+    return roots;
+}
+
+//===========================================================================
+unordered_set<Lsx> DbRootSet::commit(Lsx txnId) {
+    unique_lock lk(*m_mut);
+    assert(m_commitInProgress);
+
+    if (!m_writeTxns.contains(txnId))
+        return {txnId};
+    m_completeTxns.insert(txnId);
+
+    unordered_map<Lsx, unordered_set<Lsx>> ref;
+    auto roots = firstRoots();
+    for (auto && root : roots) {
+        unordered_set<Lsx> found;
+        auto ptr = root;
+        for (;;) {
+            if (!ptr || !ptr->complete()) {
+                assert(!ptr || !ptr->next);
+                break;
+            }
+            auto id = ptr->lsx;
+            ref[id].insert(found.begin(), found.end());
+            found.insert(id);
+            ptr = ptr->next.get();
+        }
+    }
+
+    // Transactions always reference themselves.
+    unordered_map<Lsx, unordered_set<Lsx>> refBy;
+    for (auto&& id : m_writeTxns) {
+        ref[id].insert(id);
+        for (auto&& bid : ref[id])
+            refBy[bid].insert(id);
+    }
+
+    unordered_set<Lsx> ready;
+    unordered_set<Lsx> path;
+    for (auto&& id : m_completeTxns) {
+        if (eligible(&path, id, refBy, m_completeTxns))
+            ready.insert(id);
+    }
+    return ready;
+}
+
+//===========================================================================
+shared_ptr<DbRootSet> DbRootSet::publishNextSet(
+    const unordered_set<Lsx> & txns
+) {
+    scoped_lock lk(*m_mut);
+    auto out = make_shared<DbRootSet>(&m_data, m_mut, m_cv);
+    out->m_commitInProgress = true;
+    out->m_writeTxns = m_writeTxns;
+    out->m_completeTxns = m_completeTxns;
+    for (auto&& id : txns) {
+        out->m_writeTxns.erase(id);
+        out->m_completeTxns.erase(id);
+    }
+
+    auto roots = firstRoots();
+    auto nexts = out->firstRoots();
+    assert(roots.size() == nexts.size());
+    auto nroot = nexts.begin();
+    for (auto i = roots.begin(); i != roots.end(); ++i, ++nroot) {
+        auto n = *i;
+        while (n && txns.contains(n->lsx))
+            n = n->next.get();
+        *nroot = n;
+    #ifndef NDEBUG
+        while (n) {
+            assert(!txns.contains(n->lsx));
+            n = n->next.get();
+        }
+    #endif
+    }
+
+    m_commitInProgress = false;
+    m_data.m_metricRoots.store(out);
+    return out;
+}
+
+//===========================================================================
+void DbRootSet::unlock() {
+    unique_lock lk(*m_mut);
+    assert(m_commitInProgress);
+    m_commitInProgress = false;
+    m_cv->notify_all();
+}
+
+
+/****************************************************************************
+*
 *   DbData
 *
 ***/
@@ -119,7 +353,15 @@ bool DbData::openForUpdate(
     m_freeStoreRoot = zp->freeStoreRoot;
     m_deprecatedStoreRoot = zp->deprecatedStoreRoot;
     m_metricStoreRoot = zp->metricStoreRoot;
-    m_metricTagStoreRoot = zp->metricTagStoreRoot;
+
+    auto nameRoot = make_shared<DbRootVersion>(&txn, this);
+    nameRoot->root = zp->metricTagStoreRoot;
+    m_metricRoots = make_shared<DbRootSet>(
+        this,
+        make_shared<mutex>(),
+        make_shared<condition_variable>()
+    );
+    m_metricRoots.load()->name = nameRoot;
 
     if (m_numPages == 1) {
         auto pgno = allocPgno(txn);
@@ -131,7 +373,7 @@ bool DbData::openForUpdate(
         pgno = allocPgno(txn);
         assert(pgno == m_metricStoreRoot);
         txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
-        assert(!m_metricTagStoreRoot);
+        assert(m_metricRoots.load()->name->root == pgno_t::npos);
     }
 
     if (m_verbose)
@@ -167,6 +409,11 @@ DbStats DbData::queryStats() const {
     s.numPages = (unsigned) m_numPages;
     s.freePages = (unsigned) m_freePages.count(0, m_numPages);
     return s;
+}
+
+//===========================================================================
+std::shared_ptr<DbRootSet> DbData::metricRootsInstance() {
+    return m_metricRoots.load();
 }
 
 
@@ -269,8 +516,14 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
         // Reusing free page, remove from free page index.
         //
         // This bitUpsert must come after the file grow. Otherwise, if numPages
-        // isn't incremented, it's the last free page, and bitUpsert needs to
-        // allocate a page, it will take the page that we're trying to use.
+        // wasn't incremented, pgno is the last free page, and bitUpsert needs
+        // to allocate a page, it will take the pgno page that we're trying to
+        // use.
+        //
+        // The reason removing an entry from the bitmap of free pages might
+        // need to allocate a page is because if we're removing the last bit of
+        // a page, the page will be freed... which means it must be added to
+        // this bitmap.
         [[maybe_unused]] bool updated =
             bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
         assert(updated);
@@ -327,8 +580,8 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
         // By having extra free pages in the free page index, churn is reduced
         // when expanding a full file. Otherwise, when the last free page is
         // used and it's entry is removed from the free page index, the index
-        // page is freed, which requires a new entry (and therefore a new page)
-        // to be added to the index.
+        // page is freed, which requires a new entry (and therefore a new index
+        // page) to be added to the index.
         auto num = bpp - m_numPages % bpp;
         if (num) {
             bitUpsert(
@@ -351,12 +604,13 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 void DbData::publishFreePages(const UnsignedSet & freePages) {
-    auto num = freePages.count();
-    scoped_lock lk(m_pageMut);
-    assert(!freePages.intersects(m_freePages));
-    m_freePages.insert(freePages);
-    m_numFree += num;
-    s_perfFreePages += (unsigned) num;
+    if (auto num = freePages.count()) {
+        scoped_lock lk(m_pageMut);
+        assert(!freePages.intersects(m_freePages));
+        m_freePages.insert(freePages);
+        m_numFree += num;
+        s_perfFreePages += (unsigned) num;
+    }
 }
 
 //===========================================================================
@@ -379,9 +633,12 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
+    [[maybe_unused]] bool updated = false;
+    updated = bitUpsert(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, false);
+    assert(updated);
     freePage(txn, pgno);
     scoped_lock lk{m_pageMut};
-    [[maybe_unused]] bool updated = m_deprecatedPages.erase(pgno);
+    updated = m_deprecatedPages.erase(pgno);
     assert(updated);
 }
 
@@ -463,15 +720,22 @@ void DbTxn::walPageFree(pgno_t pgno) {
 ***/
 
 //===========================================================================
-void DbData::onWalApplyCheckpoint(uint64_t lsn, uint64_t startLsn)
+void DbData::onWalApplyCheckpoint(Lsn lsn, Lsn startLsn)
 {}
 
 //===========================================================================
-void DbData::onWalApplyBeginTxn(uint64_t lsn, uint16_t localTxn)
+void DbData::onWalApplyBeginTxn(Lsn lsn, LocalTxn localTxn)
 {}
 
 //===========================================================================
-void DbData::onWalApplyCommitTxn(uint64_t lsn, uint16_t localTxn)
+void DbData::onWalApplyCommitTxn(Lsn lsn, LocalTxn localTxn)
+{}
+
+//===========================================================================
+void DbData::onWalApplyGroupCommitTxn(
+    Lsn lsn,
+    const std::vector<LocalTxn> & localTxns
+)
 {}
 
 //===========================================================================
@@ -488,7 +752,7 @@ void DbData::onWalApplyZeroInit(void * ptr) {
     zp->freeStoreRoot = kDefaultFreeStoreRoot;
     zp->deprecatedStoreRoot = kDefaultDeprecatedStoreRoot;
     zp->metricStoreRoot = kDefaultMetricStoreRoot;
-    zp->metricTagStoreRoot = {};
+    zp->metricTagStoreRoot = pgno_t::npos;
 }
 
 //===========================================================================
