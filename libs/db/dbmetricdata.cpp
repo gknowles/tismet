@@ -312,15 +312,21 @@ if constexpr (false) {
     // update name index
     vector<shared_ptr<DbRootVersion>> incomplete = { txn.roots().name };
     while (!incomplete.empty()) {
-        auto pos = txn.roots().startUpdate(txn.getLsx(), incomplete);
+        auto pos = txn.roots().beginUpdate(&incomplete, txn.getLsx());
         auto root = incomplete[pos];
         if (pos != incomplete.size() - 1)
             incomplete[pos] = incomplete.back();
         incomplete.pop_back();
-        DbPageHeap heap(&txn, this, root, true);
+        DbPageHeap heap(&txn, this, root->root, true);
         StrTrieBase trie(&heap);
         auto key = trieKey(name, id);
-        trie.insert(key);
+        bool found = trie.insert(key);
+        if (!found) {
+            txn.roots().rollbackUpdate(root);
+        } else {
+            root->deprecatedPages.insert(heap.destroyed());
+            txn.roots().commitUpdate(root, (pgno_t) heap.root());
+        }
     }
 }
 

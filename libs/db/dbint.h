@@ -471,6 +471,9 @@ enum class IndexCode : int {
 
 struct DbRootVersion {
     // Root page of this version of the index.
+    //  npos - there is no root
+    //  0 - new root being created
+    //  other - the root page
     pgno_t root = pgno_t::npos;
 
     // Next version of this index.
@@ -479,8 +482,8 @@ struct DbRootVersion {
     // Transaction that owns this version.
     Lsx lsx = {};
 
-    // Deprecated pages used by previous version that are to be freed after all
-    // transactions referencing it are committed.
+    // Pages used by this version that have subsequently been deprecated and
+    // will be freed when all references to this version are gone.
     Dim::UnsignedSet deprecatedPages;
 
     // Transaction and data to be used when freeing the deprecated pages.
@@ -512,14 +515,17 @@ public:
         std::shared_ptr<std::condition_variable> cv
     );
 
-    std::vector<DbRootVersion *> firstRoots();
+    std::vector<std::shared_ptr<DbRootVersion> *> firstRoots();
 
-    // Returns new incomplete root version to be filled in as the update is
-    // made.
-    size_t startUpdate(
-        Lsx txnId,
-        std::vector<std::shared_ptr<DbRootVersion>> roots
+    // Returns position in vector of the one root ready to be updated. Updates
+    // vector entry to point that current version of root and adds new
+    // incomplete root as its next.
+    size_t beginUpdate(
+        std::vector<std::shared_ptr<DbRootVersion>> * roots,
+        Lsx txnId
     );
+    void rollbackUpdate(std::shared_ptr<DbRootVersion> root);
+    void commitUpdate(std::shared_ptr<DbRootVersion> root, pgno_t pgno);
 
     std::shared_ptr<DbRootSet> lockForCommit(Lsx txnId);
 
@@ -559,9 +565,10 @@ public:
     DbPageHeap(
         DbTxn * txn,
         DbData * data,
-        std::shared_ptr<DbRootVersion> rootVer,
+        pgno_t root,
         bool forUpdate
     );
+    const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
 
     // Inherited via IPageHeap
     size_t create() override;
@@ -579,7 +586,8 @@ private:
 
     DbTxn & m_txn;
     DbData & m_data;
-    std::shared_ptr<DbRootVersion> m_rootVer;
+    pgno_t m_root;
+    Dim::UnsignedSet m_destroyed;
     pgno_t m_updatePgno = pgno_t::npos;
     mutable uint8_t * m_updatePtr = {};
 };

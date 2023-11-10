@@ -53,6 +53,7 @@ struct DbData::FreePage {
 
 static auto & s_perfPages = uperf("db.data pages (total)");
 static auto & s_perfFreePages = uperf("db.data pages (free)");
+static auto & s_perfDepPages = uperf("db.data pages (deprecated)");
 
 
 /****************************************************************************
@@ -71,18 +72,15 @@ DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data)
 DbRootVersion::~DbRootVersion() {
     // Remove pages that were deprecated (via replacement) when building the
     // next version.
-    if (next) {
-        swap(next->deprecatedPages, deprecatedPages);
-        for (auto&& pgno : deprecatedPages) {
-            data.freeDeprecatedPage(txn, (pgno_t) pgno);
-        }
-    }
+    for (auto&& pgno : deprecatedPages)
+        data.freeDeprecatedPage(txn, (pgno_t) pgno);
 }
 
 //===========================================================================
 shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
     assert(!next);
     next = make_shared<DbRootVersion>(&txn, &data);
+    next->root = (pgno_t) 0;
     next->lsx = id;
     return next;
 }
@@ -106,17 +104,14 @@ DbRootSet::DbRootSet(
 {}
 
 //===========================================================================
-vector<DbRootVersion *> DbRootSet::firstRoots() {
-    return { name.get() };
+vector<shared_ptr<DbRootVersion> *> DbRootSet::firstRoots() {
+    return { &name };
 }
 
 //===========================================================================
-
-
-//===========================================================================
-size_t DbRootSet::startUpdate(
-    Lsx id,
-    vector<shared_ptr<DbRootVersion>> roots
+size_t DbRootSet::beginUpdate(
+    vector<shared_ptr<DbRootVersion>> * roots,
+    Lsx id
 ) {
     unique_lock lk(*m_mut);
 
@@ -136,8 +131,8 @@ size_t DbRootSet::startUpdate(
     shared_ptr<DbRootVersion> root;
     size_t pos = 0;
     for (;;) {
-        for (pos = 0; pos < roots.size(); ++pos) {
-            root = roots[pos];
+        for (pos = 0; pos < roots->size(); ++pos) {
+            root = (*roots)[pos];
             while (root->next)
                 root = root->next;
             if (root->complete())
@@ -148,7 +143,28 @@ size_t DbRootSet::startUpdate(
 
 FOUND:
     root->addNextVer(id);
+    (*roots)[pos] = root;
     return pos;
+}
+
+//===========================================================================
+void DbRootSet::rollbackUpdate(shared_ptr<DbRootVersion> root) {
+    unique_lock lk(*m_mut);
+    while (root->next && root->next->complete())
+        root = root->next;
+    assert(!root->next->complete());
+    root->next.reset();
+    m_cv->notify_all();
+}
+
+//===========================================================================
+void DbRootSet::commitUpdate(shared_ptr<DbRootVersion> root, pgno_t pgno) {
+    unique_lock lk(*m_mut);
+    while (root->next)
+        root = root->next;
+    assert(!root->complete());
+    root->root = pgno;
+    m_cv->notify_all();
 }
 
 //===========================================================================
@@ -214,10 +230,14 @@ unordered_set<Lsx> DbRootSet::commit(Lsx txnId) {
     auto roots = firstRoots();
     for (auto && root : roots) {
         unordered_set<Lsx> found;
-        auto ptr = root;
+        auto ptr = root->get();
+        if (ptr)
+            ptr = ptr->next.get();
         for (;;) {
-            if (!ptr || !ptr->complete()) {
-                assert(!ptr || !ptr->next);
+            if (!ptr)
+                break;
+            if (!ptr->complete()) {
+                assert(!ptr->next);
                 break;
             }
             auto id = ptr->lsx;
@@ -227,9 +247,10 @@ unordered_set<Lsx> DbRootSet::commit(Lsx txnId) {
         }
     }
 
-    // Transactions always reference themselves.
+    // Populate reverse reference index.
     unordered_map<Lsx, unordered_set<Lsx>> refBy;
     for (auto&& id : m_writeTxns) {
+        // Transactions always reference themselves.
         ref[id].insert(id);
         for (auto&& bid : ref[id])
             refBy[bid].insert(id);
@@ -263,14 +284,30 @@ shared_ptr<DbRootSet> DbRootSet::publishNextSet(
     assert(roots.size() == nexts.size());
     auto nroot = nexts.begin();
     for (auto i = roots.begin(); i != roots.end(); ++i, ++nroot) {
-        auto n = *i;
-        while (n && txns.contains(n->lsx))
-            n = n->next.get();
-        *nroot = n;
+        auto n = **i;
+        **nroot = n;
+
+        // Search for first version after txns being published:
+        //  - Skip first, it's the previous version.
+        //  - If next isn't from our txns, keep the "previous" version, it
+        //    wasn't updated.
+        //  - Find last version from our txns, publish it.
+        //  - (Extra credit) Assert that all remaining versions aren't from any
+        //    of our txns.
+        if (!n) {
+            // Root has no versions.
+            continue;
+        }
+        assert(!txns.contains(n->lsx) && "Republishing old root");
+        n = n->next;
+        while (n && txns.contains(n->lsx)) {
+            **nroot = n;
+            n = n->next;
+        }
     #ifndef NDEBUG
         while (n) {
-            assert(!txns.contains(n->lsx));
-            n = n->next.get();
+            assert(!txns.contains(n->lsx) && "Unpublished root update");
+            n = n->next;
         }
     #endif
     }
@@ -408,6 +445,7 @@ DbStats DbData::queryStats() const {
     scoped_lock lk{m_pageMut};
     s.numPages = (unsigned) m_numPages;
     s.freePages = (unsigned) m_freePages.count(0, m_numPages);
+    s.deprecatedPages = (unsigned) m_deprecatedPages.count();
     return s;
 }
 
@@ -556,6 +594,11 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     case DbPageType::kBitmap:
     case DbPageType::kSample:
         break;
+    case DbPageType::kTrie:
+        // Trie pages aren't destroyed recursively because pages may be deleted
+        // (and replaced with another page) from the middle of a trie index,
+        // keeping the preexisting children.
+        break;
     case DbPageType::kFree:
         logMsgFatal() << "freePage(" << (unsigned) pgno
             << "): page already free";
@@ -629,6 +672,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     assert(updated);
     updated = m_deprecatedPages.insert(pgno);
     assert(updated);
+    s_perfDepPages += 1;
 }
 
 //===========================================================================
@@ -640,6 +684,7 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
     scoped_lock lk{m_pageMut};
     updated = m_deprecatedPages.erase(pgno);
     assert(updated);
+    s_perfDepPages -= 1;
 }
 
 

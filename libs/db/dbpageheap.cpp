@@ -44,12 +44,12 @@ struct FullPageInitRec {
 DbPageHeap::DbPageHeap(
     DbTxn * txn,
     DbData * data,
-    shared_ptr<DbRootVersion> rootVer,
+    pgno_t root,
     bool forUpdate
 )
     : m_txn(*txn)
     , m_data(*data)
-    , m_rootVer(rootVer)
+    , m_root(root)
 {
     if (forUpdate) {
         auto zpno = (pgno_t) 0;
@@ -65,7 +65,7 @@ size_t DbPageHeap::create() {
 //===========================================================================
 void DbPageHeap::destroy(size_t pgno) {
     m_data.deprecatePage(m_txn, (pgno_t) pgno);
-    m_rootVer->deprecatedPages.insert((unsigned) pgno);
+    m_destroyed.insert((unsigned) pgno);
 }
 
 //===========================================================================
@@ -74,11 +74,12 @@ void DbPageHeap::setRoot(size_t rawPgno) {
     releasePending(pgno_t::npos);
     auto zpno = (pgno_t) 0;
     m_txn.walTagRootUpdate(zpno, pgno);
+    m_root = pgno;
 }
 
 //===========================================================================
 size_t DbPageHeap::root() const {
-    return m_rootVer->root;
+    return m_root;
 }
 
 //===========================================================================

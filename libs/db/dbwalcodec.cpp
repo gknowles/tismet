@@ -191,9 +191,12 @@ void DbWal::walCommitTxn(Lsx txn) {
 //===========================================================================
 void DbWal::walCommitTxns(const unordered_set<Lsx> & txns) {
     auto num = txns.size();
+    if (num == 1)
+        return walCommitTxn(*txns.begin());
+
+    assert(num > 1);
     auto extra = num * sizeof uint16_t;
     auto offset = offsetof(TransactionGroupRec, txns);
-
     string buf;
     buf.resize(offset + extra);
     auto * lr = (TransactionGroupRec *) buf.data();

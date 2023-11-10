@@ -72,6 +72,7 @@ struct DbStats {
     // Changes as data is modified
     unsigned numPages;
     unsigned freePages;
+    unsigned deprecatedPages;
     unsigned metrics;
 };
 DbStats dbQueryStats(DbHandle h);
