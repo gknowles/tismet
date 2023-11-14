@@ -71,7 +71,7 @@ size_t DbData::bitsPerPage() const {
 }
 
 //===========================================================================
-bool DbData::bitUpsert(
+bool DbData::bitAssign(
     DbTxn & txn,
     pgno_t root,
     uint32_t id,

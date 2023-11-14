@@ -847,7 +847,7 @@ private:
         const std::function<bool(DbTxn&, uint32_t, pgno_t)> & fn
     );
 
-    bool bitUpsert(
+    bool bitAssign(
         DbTxn & txn,
         pgno_t root,
         uint32_t id,

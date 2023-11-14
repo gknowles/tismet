@@ -472,6 +472,7 @@ void DbData::trieApply(
     for (size_t i = 0; i < ords.size(); ++i)
         ords[i] = i;
     while (!ords.empty()) {
+        DbTxn::PinScope pins(txn);
         auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
         auto key = keys[ords[pos]];
         if (pos != ords.size() - 1)
@@ -616,8 +617,8 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
     if (freed) {
         // Reusing free page, remove from free page index.
         //
-        // This bitUpsert must come after the file grow. Otherwise, if numPages
-        // wasn't incremented, pgno is the last free page, and bitUpsert needs
+        // This bitAssign must come after the file grow. Otherwise, if numPages
+        // wasn't incremented, pgno is the last free page, and bitAssign needs
         // to allocate a page, it will take the pgno page that we're trying to
         // use.
         //
@@ -626,7 +627,7 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
         // a page, the page will be freed... which means it must be added to
         // this bitmap.
         [[maybe_unused]] bool updated =
-            bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
+            bitAssign(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
         assert(updated);
     }
 
@@ -674,7 +675,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     txn.walPageFree(pgno);
     assert(m_freeStoreRoot);
     [[maybe_unused]] bool updated =
-        bitUpsert(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
+        bitAssign(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     auto bpp = bitsPerPage();
     if (noPages && pgno / bpp == m_numPages / bpp) {
@@ -690,7 +691,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
         // page) to be added to the index.
         auto num = bpp - m_numPages % bpp;
         if (num) {
-            bitUpsert(
+            bitAssign(
                 txn,
                 m_freeStoreRoot,
                 0,
@@ -731,7 +732,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     }
     assert(m_deprecatedStoreRoot);
     [[maybe_unused]] bool updated =
-        bitUpsert(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, true);
+        bitAssign(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     updated = m_deprecatedPages.insert(pgno);
     assert(updated);
@@ -741,7 +742,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 //===========================================================================
 void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
     [[maybe_unused]] bool updated = false;
-    updated = bitUpsert(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, false);
+    updated = bitAssign(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, false);
     assert(updated);
     freePage(txn, pgno);
     scoped_lock lk{m_pageMut};
