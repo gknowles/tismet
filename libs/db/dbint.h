@@ -185,9 +185,9 @@ private:
         // work pages.
         //
         // Page is being accessed, must not be freed, but may be saved.
-        bool readPin;
-        // Page is being updated, may be internally inconsistent, and must not
-        // be saved.
+        unsigned readPins;
+        // Request to update page has been made (and granted if readPins == 1).
+        // If granted, may be internally inconsistent, and must not be saved.
         bool writePin;
     };
     // Info about work pages that have been modified in memory but not yet
@@ -520,9 +520,9 @@ public:
     // Returns position in vector of the one root ready to be updated. Updates
     // vector entry to point that current version of root and adds new
     // incomplete root as its next.
-    size_t beginUpdate(
-        std::vector<std::shared_ptr<DbRootVersion>> * roots,
-        Lsx txnId
+    std::pair<std::shared_ptr<DbRootVersion>, size_t> beginUpdate(
+        Lsx txnId,
+        const std::vector<std::shared_ptr<DbRootVersion>> & roots
     );
     void rollbackUpdate(std::shared_ptr<DbRootVersion> root);
     void commitUpdate(std::shared_ptr<DbRootVersion> root, pgno_t pgno);
@@ -857,6 +857,23 @@ private:
     );
     bool bitLoad(DbTxn & txn, Dim::UnsignedSet * out, pgno_t root);
     size_t bitsPerPage() const;
+
+    void trieApply(
+        DbTxn & txn,
+        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
+        const std::vector<std::string> & keys,
+        std::function<bool(Dim::StrTrieBase * index, const std::string & key)>
+    );
+    void trieInsert(
+        DbTxn & txn,
+        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
+        const std::vector<std::string> & keys
+    );
+    void trieErase(
+        DbTxn & txn,
+        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
+        const std::vector<std::string> & keys
+    );
 
     pgno_t sampleMakePhysical(
         DbTxn & txn,

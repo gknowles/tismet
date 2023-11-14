@@ -648,7 +648,7 @@ void DbPage::removeCleanPages_LK() {
         next = m_cleanPages.next(pi);
         if (pi->firstTime >= minTime)
             break;
-        if (pi->readPin) {
+        if (pi->readPins) {
             // Page is pinned for reading (and maybe writing if pi->writePin is
             // also true) so it can't be freed now, maybe next time.
             continue;
@@ -766,13 +766,14 @@ const void * DbPage::rptr(Lsn lsn, pgno_t pgno, bool withPin) {
         pi->pgno = pgno;
     }
     if (withPin) {
-        assert(!pi->readPin && !pi->writePin);
-        pi->readPin = true;
-        s_perfPinnedPages += 1;
+        while (pi->writePin)
+            m_workCv.wait(lk);
+        if (++pi->readPins == 1)
+            s_perfPinnedPages += 1;
     } else {
         // To be safely accessed a page must be pinned, otherwise the work
         // saver may choose to discard the page at a very inconvenient time.
-        assert(pi->readPin);
+        assert(pi->readPins);
     }
     return pi->hdr
         ? pi->hdr
@@ -786,10 +787,10 @@ void DbPage::unpin(const UnsignedSet & pages) {
     for (auto&& pgno : pages) {
         auto pi = m_pages[pgno];
         assert(pi);
-        assert(pi->readPin && !pi->writePin);
-        pi->readPin = false;
-        s_perfPinnedPages -= 1;
-        if (!pi->hdr) {
+        assert(pi->readPins && (pi->readPins > 1 || !pi->writePin));
+        if (!--pi->readPins)
+            s_perfPinnedPages -= 1;
+        if (!pi->readPins && !pi->hdr) {
             // Don't keep reference only page info that is no longer pinned.
             freeWorkInfo_LK(pi);
             m_pages[pgno] = nullptr;
@@ -856,9 +857,16 @@ void * DbPage::onWalGetPtrForUpdate(
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
-    assert(pi->readPin && !pi->writePin);
-    pi = dirtyPage_LK(pgno, lsn);
+    assert(pi->readPins);
+    while (pi->writePin) {
+        assert(pi->readPins > 1);
+        m_workCv.wait(lk);
+    }
     pi->writePin = true;
+    while (pi->readPins > 1) {
+        m_workCv.wait(lk);
+    }
+    pi = dirtyPage_LK(pgno, lsn);
     return pi->hdr;
 }
 
@@ -867,7 +875,7 @@ void DbPage::onWalUnlockPtr(pgno_t pgno) {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
-    assert(pi->readPin && pi->writePin);
+    assert(pi->readPins == 1 && pi->writePin);
     pi->writePin = false;
     lk.unlock();
 

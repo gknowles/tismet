@@ -310,24 +310,9 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
 
 if constexpr (false) {
     // update name index
-    vector<shared_ptr<DbRootVersion>> incomplete = { txn.roots().name };
-    while (!incomplete.empty()) {
-        auto pos = txn.roots().beginUpdate(&incomplete, txn.getLsx());
-        auto root = incomplete[pos];
-        if (pos != incomplete.size() - 1)
-            incomplete[pos] = incomplete.back();
-        incomplete.pop_back();
-        DbPageHeap heap(&txn, this, root->root, true);
-        StrTrieBase trie(&heap);
-        auto key = trieKey(name, id);
-        bool found = trie.insert(key);
-        if (!found) {
-            txn.roots().rollbackUpdate(root);
-        } else {
-            root->deprecatedPages.insert(heap.destroyed());
-            txn.roots().commitUpdate(root, (pgno_t) heap.root());
-        }
-    }
+    vector<shared_ptr<DbRootVersion>> roots = { txn.roots().name };
+    vector<string> keys = { trieKey(name, id) };
+    trieInsert(txn, roots, keys);
 }
 
     // update in memory references
@@ -385,14 +370,14 @@ void DbData::onWalApplyMetricInit(
 //===========================================================================
 bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     auto mi = getMetricPos(id);
-    if (mi.infoPage) {
-        *name = txn.pin<MetricPage>(mi.infoPage)->name;
-        scoped_lock lk{m_mndxMut};
-        DbTxn::PinScope pins(txn);
-        radixErase(txn, m_metricStoreRoot, id, id + 1);
-        return true;
-    }
-    return false;
+    if (!mi.infoPage)
+        return false;
+
+    *name = txn.pin<MetricPage>(mi.infoPage)->name;
+    scoped_lock lk{m_mndxMut};
+    DbTxn::PinScope pins(txn);
+    radixErase(txn, m_metricStoreRoot, id, id + 1);
+    return true;
 }
 
 //===========================================================================

@@ -109,9 +109,9 @@ vector<shared_ptr<DbRootVersion> *> DbRootSet::firstRoots() {
 }
 
 //===========================================================================
-size_t DbRootSet::beginUpdate(
-    vector<shared_ptr<DbRootVersion>> * roots,
-    Lsx id
+pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
+    Lsx id,
+    const vector<shared_ptr<DbRootVersion>> & roots
 ) {
     unique_lock lk(*m_mut);
 
@@ -131,8 +131,8 @@ size_t DbRootSet::beginUpdate(
     shared_ptr<DbRootVersion> root;
     size_t pos = 0;
     for (;;) {
-        for (pos = 0; pos < roots->size(); ++pos) {
-            root = (*roots)[pos];
+        for (pos = 0; pos < roots.size(); ++pos) {
+            root = roots[pos];
             while (root->next)
                 root = root->next;
             if (root->complete())
@@ -143,8 +143,7 @@ size_t DbRootSet::beginUpdate(
 
 FOUND:
     root->addNextVer(id);
-    (*roots)[pos] = root;
-    return pos;
+    return {root, pos};
 }
 
 //===========================================================================
@@ -452,6 +451,70 @@ DbStats DbData::queryStats() const {
 //===========================================================================
 std::shared_ptr<DbRootSet> DbData::metricRootsInstance() {
     return m_metricRoots.load();
+}
+
+
+/****************************************************************************
+*
+*   DbData Trie indexes
+*
+***/
+
+//===========================================================================
+void DbData::trieApply(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys,
+    function<bool(StrTrieBase* index, const string & key)> fn
+) {
+    assert(size(roots) == size(keys));
+    vector<size_t> ords(roots.size());
+    for (size_t i = 0; i < ords.size(); ++i)
+        ords[i] = i;
+    while (!ords.empty()) {
+        auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
+        auto key = keys[ords[pos]];
+        if (pos != ords.size() - 1)
+            ords[pos] = ords.back();
+        ords.pop_back();
+        DbPageHeap heap(&txn, this, root->root, true);
+        StrTrieBase trie(&heap);
+        bool found = trie.insert(key);
+        if (!found) {
+            txn.roots().rollbackUpdate(root);
+        } else {
+            root->deprecatedPages.insert(heap.destroyed());
+            txn.roots().commitUpdate(root, (pgno_t) heap.root());
+        }
+    }
+}
+
+//===========================================================================
+void DbData::trieInsert(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys
+) {
+    trieApply(
+        txn,
+        roots,
+        keys,
+        [](auto index, auto key) { return index->insert(key); }
+    );
+}
+
+//===========================================================================
+void DbData::trieErase(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys
+) {
+    trieApply(
+        txn,
+        roots,
+        keys,
+        [](auto index, auto key) { return index->erase(key); }
+    );
 }
 
 
