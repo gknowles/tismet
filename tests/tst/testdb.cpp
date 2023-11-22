@@ -184,7 +184,7 @@ void Test::dataTests() {
     dbUpdateSample(h, id, start, 1.0);
     ctx.reset();
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 6);
+    EXPECT(stats.numPages == 7);
     dbClose(h);
     EXPECT(count == 1);
 
@@ -201,7 +201,7 @@ void Test::dataTests() {
     // add to first of new page 2
     dbUpdateSample(h, id, start + pgt - 1min, 5.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 7);
+    EXPECT(stats.numPages == 8);
     // another on page 2
     dbUpdateSample(h, id, start + pgt, 6.0);
     ctx.reset();
@@ -215,23 +215,23 @@ void Test::dataTests() {
     count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 7);
+    EXPECT(stats.numPages == 8);
     // add to very end of page 2
     dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 7);
+    EXPECT(stats.numPages == 8);
     // add to new page 5. leaves sample pages 3, 4 unallocated
     dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 9);
+    EXPECT(stats.numPages == 10);
     // add to new historical page, and adds a radix page
     dbUpdateSample(h, id, start - 2min, 1);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 10);
+    EXPECT(stats.numPages == 11);
     // circle back onto that historical page, reassigning it's time
     dbUpdateSample(h, id, start + 6 * pgt, 6);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 10);
+    EXPECT(stats.numPages == 11);
     EXPECT(stats.freePages == 0);
     EXPECT(stats.metrics == 1);
     // add sample more than the retention period in the future
@@ -242,8 +242,8 @@ void Test::dataTests() {
     // erase metric
     dbEraseMetric(h, id);
     stats = dbQueryStats(h);
-    EXPECT(stats.numPages == 12);
-    EXPECT(stats.freePages == 7);
+    EXPECT(stats.numPages == 13);
+    EXPECT(stats.freePages == 6);
     EXPECT(stats.metrics == 0);
 
     count = 0;
@@ -282,7 +282,6 @@ void Test::dataTests() {
     if (!h)
         return;
     ctx.reset(h);
-    EXPECT(h);
     dbFindMetrics(&found, h);
     id = found.pop_front();
     dbEraseMetric(h, id);
@@ -295,7 +294,6 @@ void Test::dataTests() {
     if (!h)
         return;
     ctx.reset(h);
-    EXPECT(h);
     dbFindMetrics(&found, h);
     for (auto && id : found)
         dbEraseMetric(h, id);

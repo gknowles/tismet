@@ -308,7 +308,7 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
         s_perfCount += 1;
     }
 
-if constexpr (false) {
+if constexpr (1) {
     // update name index
     vector<shared_ptr<DbRootVersion>> roots = { txn.roots().name };
     vector<string> keys = { trieKey(name, id) };
@@ -374,9 +374,21 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
         return false;
 
     *name = txn.pin<MetricPage>(mi.infoPage)->name;
-    scoped_lock lk{m_mndxMut};
-    DbTxn::PinScope pins(txn);
-    radixErase(txn, m_metricStoreRoot, id, id + 1);
+
+    // update id index
+    {
+        scoped_lock lk{m_mndxMut};
+        DbTxn::PinScope pins(txn);
+        radixErase(txn, m_metricStoreRoot, id, id + 1);
+    }
+
+if constexpr (1) {
+    // update name index
+    vector<shared_ptr<DbRootVersion>> roots = { txn.roots().name };
+    vector<string> keys = { trieKey(*name, id) };
+    trieErase(txn, roots, keys);
+}
+
     return true;
 }
 

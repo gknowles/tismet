@@ -64,6 +64,9 @@ size_t DbPageHeap::create() {
 
 //===========================================================================
 void DbPageHeap::destroy(size_t pgno) {
+    assert(!empty());
+    if (pgno == root())
+        setRoot(pgno_t::npos);
     m_data.deprecatePage(m_txn, (pgno_t) pgno);
     m_destroyed.insert((unsigned) pgno);
 }

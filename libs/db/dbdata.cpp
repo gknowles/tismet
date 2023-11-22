@@ -113,6 +113,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
     Lsx id,
     const vector<shared_ptr<DbRootVersion>> & roots
 ) {
+    assert(id);
     unique_lock lk(*m_mut);
 
     // Wait for available update capacity
@@ -474,13 +475,15 @@ void DbData::trieApply(
     while (!ords.empty()) {
         DbTxn::PinScope pins(txn);
         auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
+        assert(root->next);
+        assert(!root->next->complete());
         auto key = keys[ords[pos]];
         if (pos != ords.size() - 1)
             ords[pos] = ords.back();
         ords.pop_back();
         DbPageHeap heap(&txn, this, root->root, true);
         StrTrieBase trie(&heap);
-        bool found = trie.insert(key);
+        bool found = fn(&trie, key);
         if (!found) {
             txn.roots().rollbackUpdate(root);
         } else {
