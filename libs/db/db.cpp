@@ -214,8 +214,8 @@ bool DbBase::open(
     DbTxn txn{m_wal, m_page, m_data.metricRootsInstance()};
     if (!m_data.openForUpdate(txn, this, datafile, flags))
         return false;
-    [[maybe_unused]] auto freePages = txn.commit();
-    assert(!freePages);
+    auto freePages = txn.commit();
+    m_data.publishFreePages(freePages);
     m_wal.checkpoint();
     return true;
 }

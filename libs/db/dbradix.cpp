@@ -148,7 +148,7 @@ void DbData::radixErase(
 }
 
 //===========================================================================
-bool DbData::radixInsertOrAssign(
+void DbData::radixInsert(
     DbTxn & txn,
     pgno_t root,
     size_t pos,
@@ -204,10 +204,38 @@ bool DbData::radixInsertOrAssign(
     }
 
     auto oval = rd->pages[*d];
-    auto inserted = !oval;
+    if (oval) {
+        // there must be no page at the position
+        logMsgFatal() << "radixInsert(" << root << ", " << pos
+            << "): already exists";
+    }
     if (oval != value)
         txn.walRadixUpdate(hdr->pgno, *d, value);
-    return inserted;
+}
+
+//===========================================================================
+pgno_t DbData::radixSwapValue(
+    DbTxn & txn,
+    pgno_t root,
+    size_t pos,
+    pgno_t value
+) {
+    const DbPageHeader * hdr;
+    const RadixData * rd;
+    size_t rpos;
+    if (!radixFind(txn, &hdr, &rd, &rpos, root, pos)) {
+        radixInsert(txn, root, pos, value);
+        return {};
+    }
+    auto out = rd->pages[rpos];
+    if (out != value) {
+        if (value == pgno_t{}) {
+            txn.walRadixErase(hdr->pgno, rpos, rpos + 1);
+        } else {
+            txn.walRadixUpdate(hdr->pgno, rpos, value);
+        }
+    }
+    return out;
 }
 
 //===========================================================================

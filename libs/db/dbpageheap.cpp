@@ -44,18 +44,14 @@ struct FullPageInitRec {
 DbPageHeap::DbPageHeap(
     DbTxn * txn,
     DbData * data,
-    pgno_t root,
-    bool forUpdate
+    unsigned id,
+    pgno_t root
 )
     : m_txn(*txn)
     , m_data(*data)
+    , m_rootId(id)
     , m_root(root)
-{
-    if (forUpdate) {
-        auto zpno = (pgno_t) 0;
-        m_txn.pin<DbPageHeader>(zpno);
-    }
-}
+{}
 
 //===========================================================================
 size_t DbPageHeap::create() {
@@ -65,8 +61,6 @@ size_t DbPageHeap::create() {
 //===========================================================================
 void DbPageHeap::destroy(size_t pgno) {
     assert(!empty());
-    if (pgno == root())
-        setRoot(pgno_t::npos);
     m_data.deprecatePage(m_txn, (pgno_t) pgno);
     m_destroyed.insert((unsigned) pgno);
 }
@@ -75,8 +69,11 @@ void DbPageHeap::destroy(size_t pgno) {
 void DbPageHeap::setRoot(size_t rawPgno) {
     auto pgno = (pgno_t) rawPgno;
     releasePending(pgno_t::npos);
-    auto zpno = (pgno_t) 0;
-    m_txn.walTagRootUpdate(zpno, pgno);
+    m_data.updateRoot(
+        m_txn,
+        m_rootId,
+        pgno == pgno_t::npos ? (pgno_t) 0 : pgno
+    );
     m_root = pgno;
 }
 
@@ -130,7 +127,7 @@ bool DbPageHeap::releasePending(size_t pgno) {
             return false;
         m_txn.walFullPageInit(
             DbPageType::kTrie,
-            0,
+            m_rootId,
             pageSize()
         );
         m_updatePtr = nullptr;

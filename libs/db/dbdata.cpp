@@ -16,9 +16,9 @@ using namespace Dim;
 ***/
 
 constexpr auto kZeroPageNum = (pgno_t) 0;
-constexpr auto kDefaultFreeStoreRoot = (pgno_t) 1;
-constexpr auto kDefaultDeprecatedStoreRoot = (pgno_t) 2;
-constexpr auto kDefaultMetricStoreRoot = (pgno_t) 3;
+constexpr auto kDefaultRootStoreRoot = (pgno_t) 1;
+constexpr auto kRootRootId = 1;
+constexpr auto kRootNameRootId = 2;
 
 const auto kDataFileSig = "66b1e542-541c-4c52-9f61-0cb805980075"_Guid;
 
@@ -29,10 +29,7 @@ struct DbData::ZeroPage {
     DbPageHeader hdr;
     Guid signature;
     unsigned pageSize;
-    pgno_t freeStoreRoot;
-    pgno_t deprecatedStoreRoot;
-    pgno_t metricStoreRoot;
-    pgno_t metricTagStoreRoot;
+    pgno_t rootStoreRoot;
 };
 static_assert(is_standard_layout_v<DbData::ZeroPage>);
 static_assert(2 * sizeof(DbData::ZeroPage) <= kMinPageSize);
@@ -63,8 +60,9 @@ static auto & s_perfDepPages = uperf("db.data pages (deprecated)");
 ***/
 
 //===========================================================================
-DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data)
-    : txn(txn->makeTxn())
+DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data, unsigned rootId)
+    : rootId(rootId)
+    , txn(txn->makeTxn())
     , data(*data)
 {}
 
@@ -77,9 +75,15 @@ DbRootVersion::~DbRootVersion() {
 }
 
 //===========================================================================
+void DbRootVersion::loadRoot() {
+    assert(root == pgno_t::npos);
+    root = data.loadRoot(txn, rootId);
+}
+
+//===========================================================================
 shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
     assert(!next);
-    next = make_shared<DbRootVersion>(&txn, &data);
+    next = make_shared<DbRootVersion>(&txn, &data, rootId);
     next->root = (pgno_t) 0;
     next->lsx = id;
     return next;
@@ -349,6 +353,20 @@ static size_t queryPageSize(FileHandle f) {
 }
 
 //===========================================================================
+DbData::DbData() {
+    using enum DbPageType;
+    const RootDef defs[] = {
+        { ":root",       kRadix, kRootRootId },
+        { ":rootName",   kTrie,  kRootNameRootId },
+        { ":free",       kRadix, {}, &m_freeStoreRoot },
+        { ":deprecated", kRadix, {}, &m_deprecatedStoreRoot },
+        { ":metric",     kRadix, {}, &m_metricStoreRoot },
+        { ":metricName", kTrie },
+    };
+    m_rootDefs.assign_range(defs);
+}
+
+//===========================================================================
 DbData::~DbData () {
     metricClearCounters();
     s_perfPages -= (unsigned) m_numPages;
@@ -370,6 +388,7 @@ bool DbData::openForUpdate(
 ) {
     assert(m_pageSize);
     m_verbose = flags.any(fDbOpenVerbose);
+    m_readOnly = flags.any(fDbOpenReadOnly);
 
     auto zp = txn.pin<ZeroPage>(kZeroPageNum);
     if (zp->hdr.type == DbPageType::kInvalid) {
@@ -387,12 +406,22 @@ bool DbData::openForUpdate(
     }
     m_numPages = txn.numPages();
     s_perfPages += (unsigned) m_numPages;
-    m_freeStoreRoot = zp->freeStoreRoot;
-    m_deprecatedStoreRoot = zp->deprecatedStoreRoot;
-    m_metricStoreRoot = zp->metricStoreRoot;
+    m_newFile = (m_numPages == 1);
 
-    auto nameRoot = make_shared<DbRootVersion>(&txn, this);
-    nameRoot->root = zp->metricTagStoreRoot;
+    if (!loadRoots(txn, zp->rootStoreRoot))
+        return false;
+    if (!loadFreePages(txn))
+        return false;
+    if (!loadDeprecatedPages(txn))
+        return false;
+
+    if (!upgradeRoots(txn))
+        return false;
+
+    // Metric root set
+    auto nameId = m_rootIdByName[":metricName"];
+    assert(nameId);
+    auto nameRoot = make_shared<DbRootVersion>(&txn, this, nameId);
     m_metricRoots = make_shared<DbRootSet>(
         this,
         make_shared<mutex>(),
@@ -400,25 +429,6 @@ bool DbData::openForUpdate(
     );
     m_metricRoots.load()->name = nameRoot;
 
-    if (m_numPages == 1) {
-        auto pgno = allocPgno(txn);
-        assert(pgno == m_freeStoreRoot);
-        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
-        pgno = allocPgno(txn);
-        assert(pgno == m_deprecatedStoreRoot);
-        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
-        pgno = allocPgno(txn);
-        assert(pgno == m_metricStoreRoot);
-        txn.walRadixInit(pgno, 0, 0, nullptr, nullptr);
-        assert(m_metricRoots.load()->name->root == pgno_t::npos);
-    }
-
-    if (m_verbose)
-        logMsgInfo() << "Load free page list";
-    if (!loadFreePages(txn))
-        return false;
-    if (!loadDeprecatedPages(txn))
-        return false;
     if (m_verbose)
         logMsgInfo() << "Build metric index";
     if (!loadMetrics(txn, notify))
@@ -449,76 +459,201 @@ DbStats DbData::queryStats() const {
     return s;
 }
 
-//===========================================================================
-std::shared_ptr<DbRootSet> DbData::metricRootsInstance() {
-    return m_metricRoots.load();
-}
-
 
 /****************************************************************************
 *
-*   DbData Trie indexes
+*   Roots
 *
 ***/
 
 //===========================================================================
-void DbData::trieApply(
-    DbTxn & txn,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys,
-    function<bool(StrTrieBase* index, const string & key)> fn
-) {
-    assert(size(roots) == size(keys));
-    vector<size_t> ords(roots.size());
-    for (size_t i = 0; i < ords.size(); ++i)
-        ords[i] = i;
-    while (!ords.empty()) {
-        DbTxn::PinScope pins(txn);
-        auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
-        assert(root->next);
-        assert(!root->next->complete());
-        auto key = keys[ords[pos]];
-        if (pos != ords.size() - 1)
-            ords[pos] = ords.back();
-        ords.pop_back();
-        DbPageHeap heap(&txn, this, root->root, true);
-        StrTrieBase trie(&heap);
-        bool found = fn(&trie, key);
-        if (!found) {
-            txn.roots().rollbackUpdate(root);
-        } else {
-            root->deprecatedPages.insert(heap.destroyed());
-            txn.roots().commitUpdate(root, (pgno_t) heap.root());
+bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
+    assert(m_rootNameById.empty());
+
+    m_rootStoreRoot = storeRoot;
+
+    if (!m_rootStoreRoot) {
+        m_rootStoreRoot = allocPgno(txn);
+        txn.walRadixInit(m_rootStoreRoot, 0, 0, nullptr, nullptr);
+        txn.walRootUpdate(kZeroPageNum, m_rootStoreRoot);
+    }
+    auto nameStoreRoot = kZeroPageNum;
+    if (!radixFind(txn, &nameStoreRoot, m_rootStoreRoot, kRootNameRootId)) {
+        if (storeRoot) {
+            logMsgError() << "Missing :rootName store";
+            return false;
+        }
+        nameStoreRoot = pgno_t::npos;
+    }
+    DbPageHeap heap(&txn, this, kRootNameRootId, nameStoreRoot);
+    StrTrieBase trie(&heap);
+    unsigned lastId = 0;
+    for (auto&& val : trie) {
+        auto&& [kview, id] = trieKeyToId(val);
+        if (id > lastId)
+            lastId = id;
+        if (!kview.size()) {
+            logMsgError() << "Invalid key (missing root name) in :rootName";
+            return false;
+        }
+        if (!id) {
+            logMsgError() << "Invalid key (missing root id) in :rootName";
+            return false;
+        }
+        auto key = string(kview);
+        if (m_rootIdByName.contains(key)) {
+            logMsgError() << "Duplicate stored root Id name: '" << key << "'";
+            return false;
+        }
+        m_rootIdByName[key] = id;
+    }
+    assert(heap.destroyed().empty());
+    m_rootNameById.resize(lastId + 1);
+    for (auto&& [key, id] : m_rootIdByName) {
+        if (!m_rootNameById[id].empty()) {
+            logMsgError() << "Duplicate stored root Id: " << id;
+            return false;
+        }
+        m_rootNameById[id] = key;
+    }
+    for (unsigned i = 1; i < m_rootNameById.size(); ++i) {
+        if (m_rootNameById[i].empty())
+            m_freeRootIds.insert(i);
+    }
+
+    for (auto&& def : m_rootDefs) {
+        if (auto i = m_rootIdByName.find(def.name); i != m_rootIdByName.end())
+            def.id = i->second;
+        if (def.root)
+            *def.root = loadRoot(txn, def.id);
+    }
+    return true;
+}
+
+//===========================================================================
+bool DbData::upgradeRoots(DbTxn & txn) {
+    assert(m_rootStoreRoot);
+
+    // Initialize radix index root pages, this is done specifically to ensure
+    // that the free and deprecated lists are initialized.
+    for (auto&& def : m_rootDefs) {
+        if (def.type == DbPageType::kRadix
+            && def.root
+            && *def.root == pgno_t::npos
+        ) {
+            def.changed = true;
+            *def.root = allocPgno(txn);
+            txn.walRadixInit(*def.root, 0, 0, nullptr, nullptr);
         }
     }
+
+    auto nameStoreRoot = loadRoot(txn, kRootNameRootId);
+    DbPageHeap heap(&txn, this, kRootNameRootId, nameStoreRoot);
+    StrTrieBase trie(&heap);
+
+    // Add default roots to root indexes if they aren't already there.
+    for (auto&& def : m_rootDefs) {
+        if (m_rootIdByName.contains(def.name)) {
+            auto id = m_rootIdByName[def.name];
+            if (def.id) {
+                if (def.id != id) {
+                    logMsgError() << "Reserved root '" << def.name << "' has "
+                        "id " << id << " (expected " << def.id << ")";
+                    return false;
+                }
+                continue;
+            }
+            def.id = id;
+            continue;
+        }
+        // Assign id (if needed), and add to name by Id index
+        if (def.id) {
+            if (def.id >= m_rootNameById.size()) {
+                m_rootNameById.resize(def.id + 1);
+            } else {
+                if (!m_rootNameById[def.id].empty()) {
+                    logMsgError() << "Reserved root Id " << def.id
+                        << " assigned to '" << m_rootNameById[def.id] << "' "
+                        << "but is reversed for '" << def.name << "'";
+                    return false;
+                }
+            }
+            m_rootNameById[def.id] = def.name;
+        } else {
+            if (def.root)
+                def.changed = true;
+            if (m_freeRootIds) {
+                def.id = m_freeRootIds.pop_front();
+                assert(m_rootNameById[def.id].empty());
+                m_rootNameById[def.id] = def.name;
+            } else {
+                def.id = (unsigned) m_rootNameById.size();
+                m_rootNameById.push_back(def.name);
+            }
+        }
+        // Add to Id by name index
+        assert(!m_rootIdByName.contains(def.name));
+        m_rootIdByName[def.name] = def.id;
+        // Add to persistent rootName index
+        trie.insert(trieKey(def.name, def.id));
+    }
+    for (auto&& pgno : heap.destroyed())
+        freeDeprecatedPage(txn, (pgno_t) pgno);
+
+    // Save radix index roots
+    for (auto&& def : m_rootDefs) {
+        if (def.changed) {
+            assert(def.id && (!def.root || *def.root != pgno_t::npos));
+            updateRoot(txn, def.id, *def.root);
+        }
+    }
+
+    return true;
 }
 
 //===========================================================================
-void DbData::trieInsert(
-    DbTxn & txn,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys
-) {
-    trieApply(
-        txn,
-        roots,
-        keys,
-        [](auto index, auto key) { return index->insert(key); }
-    );
+pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
+    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+
+    pgno_t out = pgno_t::npos;
+    if (!radixFind(txn, &out, m_rootStoreRoot, rootId))
+        out = pgno_t::npos;
+    return out;
 }
 
 //===========================================================================
-void DbData::trieErase(
-    DbTxn & txn,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys
-) {
-    trieApply(
-        txn,
-        roots,
-        keys,
-        [](auto index, auto key) { return index->erase(key); }
-    );
+pgno_t DbData::loadRoot(DbTxn & txn, const string & rootName) {
+    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+
+    pgno_t out = pgno_t::npos;
+    auto i = m_rootIdByName.find(rootName);
+    if (i != m_rootIdByName.end())
+        out = loadRoot(txn, i->second);
+    return out;
+}
+
+//===========================================================================
+void DbData::updateRoot(DbTxn & txn, unsigned rootId, pgno_t root) {
+    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+
+    radixSwapValue(txn, m_rootStoreRoot, rootId, root);
+}
+
+//===========================================================================
+void DbData::updateRoot(DbTxn & txn, const string & name, pgno_t root) {
+    scoped_lock lk{m_pageMut};
+
+    auto id = m_rootIdByName[name];
+    assert(id && "free page index not found");
+    updateRoot(txn, id, root);
+}
+
+//===========================================================================
+std::shared_ptr<DbRootSet> DbData::metricRootsInstance() {
+    return m_metricRoots.load();
 }
 
 
@@ -531,6 +666,18 @@ void DbData::trieErase(
 //===========================================================================
 bool DbData::loadFreePages(DbTxn & txn) {
     assert(!m_freePages);
+    if (m_verbose)
+        logMsgInfo() << "Load free page list";
+
+    if (m_freeStoreRoot == pgno_t::npos) {
+        if (m_readOnly) {
+            logMsgError() << "Missing free page list";
+            return false;
+        }
+        m_freeStoreRoot = allocPgno(txn);
+        txn.walRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
+    }
+
     if (!bitLoad(txn, &m_freePages, m_freeStoreRoot))
         return false;
     if (appStopping())
@@ -579,6 +726,14 @@ bool DbData::loadFreePages(DbTxn & txn) {
 //===========================================================================
 bool DbData::loadDeprecatedPages(DbTxn & txn) {
     assert(!m_deprecatedPages);
+    if (m_deprecatedStoreRoot == pgno_t::npos) {
+        if (m_readOnly) {
+            logMsgError() << "Missing deprecated page list";
+            return false;
+        }
+        m_deprecatedStoreRoot = allocPgno(txn);
+        txn.walRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
+    }
     if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedStoreRoot))
         return false;
     if (appStopping())
@@ -757,6 +912,104 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 
 /****************************************************************************
 *
+*   Trie indexes
+*
+***/
+
+//===========================================================================
+// static
+string DbData::trieKey(string_view name, uint32_t id) {
+    string key;
+    auto nameLen = name.size();
+    uint8_t buf[sizeof id];
+    auto bufPos = sizeof buf;
+    while (id > 0) {
+        buf[--bufPos] = id % 256;
+        id >>= 8;
+    }
+    key.resize(nameLen + 1 + sizeof buf - bufPos);
+    memcpy(key.data(), name.data(), nameLen);
+    key[nameLen] = '\0';
+    memcpy(key.data() + nameLen + 1, buf + bufPos, sizeof buf - bufPos);
+    return key;
+}
+
+//===========================================================================
+// static
+pair<string_view, uint32_t> DbData::trieKeyToId(string_view val) {
+    auto nameLen = val.find('\0');
+    assert(nameLen != string::npos);
+    auto ptr = val.data() + nameLen;
+    auto eptr = val.data() + val.size();
+    uint32_t id = 0;
+    for (; ptr < eptr; ++ptr)
+        id = 256 * id + (uint8_t) *ptr;
+    return {val.substr(0, nameLen), id};
+}
+
+//===========================================================================
+void DbData::trieApply(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys,
+    function<bool(StrTrieBase* index, const string & key)> fn
+) {
+    assert(size(roots) == size(keys));
+    vector<size_t> ords(roots.size());
+    for (size_t i = 0; i < ords.size(); ++i)
+        ords[i] = i;
+    while (!ords.empty()) {
+        DbTxn::PinScope pins(txn);
+        auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
+        assert(root->next);
+        assert(!root->next->complete());
+        auto key = keys[ords[pos]];
+        if (pos != ords.size() - 1)
+            ords[pos] = ords.back();
+        ords.pop_back();
+        DbPageHeap heap(&txn, this, root->rootId, root->root);
+        StrTrieBase trie(&heap);
+        bool found = fn(&trie, key);
+        if (!found) {
+            txn.roots().rollbackUpdate(root);
+        } else {
+            root->deprecatedPages.insert(heap.destroyed());
+            txn.roots().commitUpdate(root, (pgno_t) heap.root());
+        }
+    }
+}
+
+//===========================================================================
+void DbData::trieInsert(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys
+) {
+    trieApply(
+        txn,
+        roots,
+        keys,
+        [](auto index, auto key) { return index->insert(key); }
+    );
+}
+
+//===========================================================================
+void DbData::trieErase(
+    DbTxn & txn,
+    const vector<shared_ptr<DbRootVersion>> & roots,
+    const vector<string> & keys
+) {
+    trieApply(
+        txn,
+        roots,
+        keys,
+        [](auto index, auto key) { return index->erase(key); }
+    );
+}
+
+
+/****************************************************************************
+*
 *   DbWalRecInfo
 *
 ***/
@@ -765,7 +1018,7 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 
 namespace {
 
-struct TagRootUpdateRec {
+struct RootUpdateRec {
     DbWal::Record hdr;
     pgno_t rootPage;
 };
@@ -782,11 +1035,11 @@ static DbWalRegisterRec s_dataRecInfo = {
             args.notify->onWalApplyZeroInit(args.page);
         },
     },
-    { kRecTypeTagRootUpdate,
-        DbWalRecInfo::sizeFn<TagRootUpdateRec>,
+    { kRecTypeRootUpdate,
+        DbWalRecInfo::sizeFn<RootUpdateRec>,
         [](auto args) {
-            auto rec = reinterpret_cast<const TagRootUpdateRec *>(args.rec);
-            args.notify->onWalApplyTagRootUpdate(args.page, rec->rootPage);
+            auto rec = reinterpret_cast<const RootUpdateRec *>(args.rec);
+            args.notify->onWalApplyRootUpdate(args.page, rec->rootPage);
         },
     },
     { kRecTypePageFree,
@@ -811,8 +1064,8 @@ void DbTxn::walZeroInit(pgno_t pgno) {
 }
 
 //===========================================================================
-void DbTxn::walTagRootUpdate(pgno_t pgno, pgno_t rootPage) {
-    auto [rec, bytes] = alloc<TagRootUpdateRec>(kRecTypeTagRootUpdate, pgno);
+void DbTxn::walRootUpdate(pgno_t pgno, pgno_t rootPage) {
+    auto [rec, bytes] = alloc<RootUpdateRec>(kRecTypeRootUpdate, pgno);
     rec->rootPage = rootPage;
     wal(&rec->hdr, bytes);
 }
@@ -861,17 +1114,14 @@ void DbData::onWalApplyZeroInit(void * ptr) {
     assert(zp->hdr.pgno == kZeroPageNum);
     zp->signature = kDataFileSig;
     zp->pageSize = (unsigned) m_pageSize;
-    zp->freeStoreRoot = kDefaultFreeStoreRoot;
-    zp->deprecatedStoreRoot = kDefaultDeprecatedStoreRoot;
-    zp->metricStoreRoot = kDefaultMetricStoreRoot;
-    zp->metricTagStoreRoot = pgno_t::npos;
+    zp->rootStoreRoot = kZeroPageNum;
 }
 
 //===========================================================================
-void DbData::onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
+void DbData::onWalApplyRootUpdate(void * ptr, pgno_t rootPage) {
     auto zp = static_cast<ZeroPage *>(ptr);
     assert(zp->hdr.type == DbPageType::kZero);
-    zp->metricTagStoreRoot = rootPage;
+    zp->rootStoreRoot = rootPage;
 }
 
 //===========================================================================

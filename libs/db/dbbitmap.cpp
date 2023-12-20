@@ -108,7 +108,7 @@ bool DbData::bitAssign(
         txn.walBitInit(bpno, id, (uint32_t) rpos, false, bpos);
         if (count > 1)
             txn.walBitUpdate(bpno, bpos + 1, bpos + count, true);
-        radixInsertOrAssign(txn, root, rpos, bpno);
+        radixInsert(txn, root, rpos, bpno);
     }
     return true;
 }

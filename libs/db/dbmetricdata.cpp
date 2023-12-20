@@ -265,17 +265,6 @@ bool DbData::loadMetrics(DbTxn & txn, IDbDataNotify * notify) {
 }
 
 //===========================================================================
-static string trieKey(string_view name, uint32_t id) {
-    string key;
-    auto nameLen = name.size();
-    key.resize(nameLen + 1 + sizeof id);
-    memcpy(key.data(), name.data(), nameLen);
-    key[nameLen] = '\0';
-    hton32(key.data() + nameLen + 1, id);
-    return key;
-}
-
-//===========================================================================
 void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     assert(!name.empty());
     auto nameLen = metricNameSize(m_pageSize);
@@ -298,13 +287,12 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
     {
         scoped_lock lk{m_mndxMut};
         DbTxn::PinScope pins(txn);
-        [[maybe_unused]] bool inserted = radixInsertOrAssign(
+        radixInsert(
             txn,
             m_metricStoreRoot,
             id,
             pgno
         );
-        assert(inserted);
         s_perfCount += 1;
     }
 
@@ -1007,13 +995,7 @@ pgno_t DbData::sampleMakePhysical(
         lastSample,
         fill
     );
-    [[maybe_unused]] bool inserted = radixInsertOrAssign(
-        txn,
-        mi.infoPage,
-        sppos,
-        spno
-    );
-    assert(inserted == !vpage);
+    radixSwapValue(txn, mi.infoPage, sppos, spno);
     return spno;
 }
 
@@ -1041,8 +1023,8 @@ bool DbData::sampleTryMakeVirtual(
     auto mp = txn.pin<MetricPage>(mi.infoPage);
     if (spno == mi.lastPage) {
         auto sppos = mp->lastPagePos;
-        radixErase(txn, mp->hdr.pgno, sppos, sppos + 1);
-        radixInsertOrAssign(txn, mi.infoPage, sppos, vpage);
+        auto pgno = radixSwapValue(txn, mi.infoPage, sppos, vpage);
+        freePage(txn, pgno);
         txn.walMetricUpdateSamplesTxn(mi.infoPage, mi.pageLastSample);
         mi.lastPage = vpage;
     } else {
@@ -1053,8 +1035,8 @@ bool DbData::sampleTryMakeVirtual(
         auto poff = (mi.pageFirstTime - sptime + pageInterval - mi.interval)
             / pageInterval;
         auto sppos = (mp->lastPagePos + numPages - poff) % numPages;
-        radixErase(txn, mp->hdr.pgno, sppos, sppos + 1);
-        radixInsertOrAssign(txn, mi.infoPage, sppos, vpage);
+        auto pgno = radixSwapValue(txn, mi.infoPage, sppos, vpage);
+        freePage(txn, pgno);
     }
     return true;
 }

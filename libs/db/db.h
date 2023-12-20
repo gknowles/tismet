@@ -28,9 +28,7 @@ enum DbOpenFlags : unsigned {
     fDbOpenCreat = 0x01,
     fDbOpenTrunc = 0x02,
     fDbOpenExcl = 0x04,
-
-    // Log database status info messages
-    fDbOpenVerbose = 0x08,
+    fDbOpenVerbose = 0x08,  // Log database status info messages
     fDbOpenReadOnly = 0x10,
 };
 // 'pageSize' is only used if new files are being created, use 0 for the same

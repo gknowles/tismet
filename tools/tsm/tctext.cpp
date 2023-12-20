@@ -40,7 +40,7 @@ private:
     ) override;
 
     void onWalApplyZeroInit(void * ptr) override;
-    void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
+    void onWalApplyRootUpdate(void * ptr, pgno_t rootPage) override;
     void onWalApplyPageFree(void * ptr) override;
     void onWalApplyFullPageInit(
         void * ptr,
@@ -207,8 +207,8 @@ void TextWriter::onWalApplyZeroInit(void * ptr) {
 }
 
 //===========================================================================
-void TextWriter::onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) {
-    out(ptr) << "zero.tagRoot = " << rootPage << '\n';
+void TextWriter::onWalApplyRootUpdate(void * ptr, pgno_t rootPage) {
+    out(ptr) << "zero.metaRoot = " << rootPage << '\n';
 }
 
 //===========================================================================

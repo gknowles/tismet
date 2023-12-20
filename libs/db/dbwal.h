@@ -347,7 +347,7 @@ public:
     ) = 0;
 
     virtual void onWalApplyZeroInit(void * ptr) = 0;
-    virtual void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) = 0;
+    virtual void onWalApplyRootUpdate(void * ptr, pgno_t rootPage) = 0;
     virtual void onWalApplyPageFree(void * ptr) = 0;
     virtual void onWalApplyFullPageInit(
         void * ptr,

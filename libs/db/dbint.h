@@ -304,7 +304,7 @@ public:
     const Dim::UnsignedSet & freePages() const { return m_freePages; }
 
     void walZeroInit(pgno_t pgno);
-    void walTagRootUpdate(pgno_t pgno, pgno_t rootPage);
+    void walRootUpdate(pgno_t pgno, pgno_t rootPage);
     void walPageFree(pgno_t pgno);
 
     std::pair<void *, size_t> allocFullPage(pgno_t pgno, size_t bytes);
@@ -476,6 +476,8 @@ struct DbRootVersion {
     //  other - the root page
     pgno_t root = pgno_t::npos;
 
+    unsigned rootId = 0;
+
     // Next version of this index.
     std::shared_ptr<DbRootVersion> next;
 
@@ -490,9 +492,10 @@ struct DbRootVersion {
     DbTxn txn;
     DbData & data;
 
-    DbRootVersion(DbTxn * txn, DbData * data);
+    DbRootVersion(DbTxn * txn, DbData * data, unsigned id);
     ~DbRootVersion();
 
+    void loadRoot();
     std::shared_ptr<DbRootVersion> addNextVer(Lsx txnId);
     bool complete() const { return root; }
 };
@@ -565,8 +568,8 @@ public:
     DbPageHeap(
         DbTxn * txn,
         DbData * data,
-        pgno_t root,
-        bool forUpdate
+        unsigned rootId,
+        pgno_t root
     );
     const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
 
@@ -586,6 +589,7 @@ private:
 
     DbTxn & m_txn;
     DbData & m_data;
+    unsigned m_rootId;
     pgno_t m_root;
     Dim::UnsignedSet m_destroyed;
     pgno_t m_updatePgno = pgno_t::npos;
@@ -647,6 +651,7 @@ public:
     );
 
 public:
+    DbData();
     ~DbData();
 
     // Allows updates from DbWal to be applied, pageSize *MUST* match page size
@@ -700,7 +705,7 @@ public:
     ) override;
 
     void onWalApplyZeroInit(void * ptr) override;
-    void onWalApplyTagRootUpdate(void * ptr, pgno_t rootPage) override;
+    void onWalApplyRootUpdate(void * ptr, pgno_t rootPage) override;
     void onWalApplyPageFree(void * ptr) override;
     void onWalApplyFullPageInit(
         void * ptr,
@@ -788,6 +793,14 @@ private:
     friend DbRootSet;
     friend DbRootVersion;
 
+    bool loadRoots(DbTxn & txn, pgno_t storeRoot);
+    bool upgradeRoots(DbTxn & txn);
+
+    pgno_t loadRoot(DbTxn & txn, const std::string & rootName);
+    pgno_t loadRoot(DbTxn & txn, unsigned rootId);
+    void updateRoot(DbTxn & txn, unsigned rootId, pgno_t root);
+    void updateRoot(DbTxn & txn, const std::string & rootName, pgno_t root);
+
     bool loadMetric(
         DbTxn & txn,
         IDbDataNotify * notify,
@@ -812,14 +825,14 @@ private:
         size_t pos
     );
     void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
-    void radixErase(
-        DbTxn & txn,
-        pgno_t root,
-        size_t firstPos,
-        size_t lastPos
-    );
     void radixDestructPage(DbTxn & txn, pgno_t pgno);
-    bool radixInsertOrAssign(
+    void radixErase(DbTxn & txn, pgno_t root, size_t firstPos, size_t lastPos);
+    // The new value must be non-zero and the current value at the position
+    // must be unassigned (zero).
+    void radixInsert(DbTxn & txn, pgno_t root, size_t pos, pgno_t value);
+    // The position will be set to the new value and the old value is returned.
+    // No pages are freed.
+    pgno_t radixSwapValue(
         DbTxn & txn,
         pgno_t root,
         size_t pos,
@@ -858,6 +871,10 @@ private:
     bool bitLoad(DbTxn & txn, Dim::UnsignedSet * out, pgno_t root);
     size_t bitsPerPage() const;
 
+    static std::string trieKey(std::string_view name, uint32_t id);
+    static std::pair<std::string_view, uint32_t> trieKeyToId(
+        std::string_view val
+    );
     void trieApply(
         DbTxn & txn,
         const std::vector<std::shared_ptr<DbRootVersion>> & roots,
@@ -896,12 +913,27 @@ private:
         Dim::TimePoint time
     );
 
-    bool m_verbose{false};
+    bool m_verbose = false;
+    bool m_readOnly = false;
+    bool m_newFile = false;
+
     size_t m_pageSize = 0;
+    pgno_t m_rootStoreRoot = pgno_t::npos;
     pgno_t m_freeStoreRoot = pgno_t::npos;
     pgno_t m_deprecatedStoreRoot = pgno_t::npos;
     pgno_t m_metricStoreRoot = pgno_t::npos;
+    struct RootDef {
+        std::string name;
+        DbPageType type;
+        unsigned id;
+        pgno_t * root;
+        bool changed;
+    };
+    std::vector<RootDef> m_rootDefs;
 
+    Dim::UnsignedSet m_freeRootIds;
+    std::vector<std::string> m_rootNameById;
+    std::unordered_map<std::string, unsigned> m_rootIdByName;
     std::atomic<std::shared_ptr<DbRootSet>> m_metricRoots;
 
     mutable std::shared_mutex m_mposMut;

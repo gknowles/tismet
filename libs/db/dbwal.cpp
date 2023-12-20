@@ -303,9 +303,9 @@ static FileHandle openWalFile(
     if (flags.any(fDbOpenExcl))
         oflags |= fExcl;
     FileHandle f;
-    fileOpen(&f, fname, oflags);
+    auto ec = fileOpen(&f, fname, oflags);
     if (!f)
-        logMsgError() << "Open failed, " << fname;
+        logMsgError() << "Open failed (" << ec << "), " << fname;
     return f;
 }
 

@@ -18,7 +18,7 @@ enum DbWalRecType : int8_t {
     kRecTypeTxnGroupCommit      = 40, // [N/A] numTxns, txns
 
     kRecTypeZeroInit            = 4,  // [master]
-    kRecTypeTagRootUpdate       = 7,  // [master] rootPage
+    kRecTypeRootUpdate          = 7,  // [master] rootPage
     kRecTypePageFree            = 5,  // [any]
     kRecTypeFullPage            = 16, // [any] id, data
     kRecTypeBitInit             = 17, // [bitmap] pos
