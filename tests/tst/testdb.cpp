@@ -95,6 +95,7 @@ public:
     void dataTests();
     void queryTests();
     void sampleTests();
+    void readonlyTests();
 
     // Inherited via ITest
     void onTestRun() override;
@@ -403,9 +404,31 @@ void Test::sampleTests() {
 }
 
 //===========================================================================
+void Test::readonlyTests() {
+    auto start = timeFromUnix(900'000'000);
+    const char dat[] = "test";
+    UnsignedSet found;
+    DbContext ctx;
+    DbMetricInfo info;
+
+    auto h = dbOpen(dat, fDbOpenReadOnly);
+    EXPECT(h && "Failure to reopen database");
+    if (!h)
+        return;
+    ctx.reset(h);
+    auto stats = dbQueryStats(h);
+    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto pgt = spp * 1min;
+    dbFindMetrics(&found, h);
+    ctx.reset();
+    dbClose(h);
+}
+
+//===========================================================================
 void Test::onTestRun() {
     invalidFileTests();
     dataTests();
     queryTests();
     sampleTests();
+    readonlyTests();
 }
