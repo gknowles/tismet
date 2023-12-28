@@ -31,14 +31,14 @@ static List<ITest> & tests() {
 }
 
 //===========================================================================
-ITest::ITest (std::string_view name, std::string_view desc) 
+ITest::ITest (std::string_view name, std::string_view desc)
     : m_name(name)
 {
     m_cli.command(m_name)
         .desc(string(desc))
-        .action([&](Cli & cli) { 
+        .action([&](Cli & cli) {
             cout << this->name() << "...\n";
-            this->onTestRun(); 
+            this->onTestRun();
         });
 
     tests().link(this);
@@ -53,9 +53,18 @@ ITest::ITest (std::string_view name, std::string_view desc)
 
 //===========================================================================
 static void allCmd(Cli & cli) {
-    for (auto && test : tests()) {
-        cout << test.name() << "...\n";
-        test.onTestRun();
+    vector<ITest *> all;
+    for (auto&& test : tests()) {
+        all.push_back(&test);
+    }
+    sort(
+        all.begin(),
+        all.end(),
+        [](auto & a, auto & b) { return a->name() < b->name(); }
+    );
+    for (auto && test : all) {
+        cout << test->name() << "...\n";
+        test->onTestRun();
     }
     cout << endl;
 }
