@@ -358,9 +358,9 @@ DbData::DbData() {
     const RootDef defs[] = {
         { ":root",       kRadix, kRootRootId },
         { ":rootName",   kTrie,  kRootNameRootId },
-        { ":free",       kRadix, {}, &m_freeStoreRoot },
-        { ":deprecated", kRadix, {}, &m_deprecatedStoreRoot },
-        { ":metric",     kRadix, {}, &m_metricStoreRoot },
+        { ":free",       kRadix, {}, &m_freeRoot },
+        { ":deprecated", kRadix, {}, &m_deprecatedRoot },
+        { ":metric",     kRadix, {}, &m_metricRoot },
         { ":metricName", kTrie },
     };
     m_rootDefs.assign_range(defs);
@@ -470,15 +470,15 @@ DbStats DbData::queryStats() const {
 bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
     assert(m_rootNameById.empty());
 
-    m_rootStoreRoot = storeRoot;
+    m_rootRoot = storeRoot;
 
-    if (!m_rootStoreRoot) {
-        m_rootStoreRoot = allocPgno(txn);
-        txn.walRadixInit(m_rootStoreRoot, 0, 0, nullptr, nullptr);
-        txn.walRootUpdate(kZeroPageNum, m_rootStoreRoot);
+    if (!m_rootRoot) {
+        m_rootRoot = allocPgno(txn);
+        txn.walRadixInit(m_rootRoot, 0, 0, nullptr, nullptr);
+        txn.walRootUpdate(kZeroPageNum, m_rootRoot);
     }
     auto nameStoreRoot = kZeroPageNum;
-    if (!radixFind(txn, &nameStoreRoot, m_rootStoreRoot, kRootNameRootId)) {
+    if (!radixFind(txn, &nameStoreRoot, m_rootRoot, kRootNameRootId)) {
         if (storeRoot) {
             logMsgError() << "Missing :rootName store";
             return false;
@@ -532,7 +532,7 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
 
 //===========================================================================
 bool DbData::upgradeRoots(DbTxn & txn) {
-    assert(m_rootStoreRoot);
+    assert(m_rootRoot);
 
     // Initialize radix index root pages, this is done specifically to ensure
     // that the free and deprecated lists are initialized.
@@ -617,7 +617,7 @@ pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
     DbTxn::PinScope pins(txn);
 
     pgno_t out = pgno_t::npos;
-    if (!radixFind(txn, &out, m_rootStoreRoot, rootId))
+    if (!radixFind(txn, &out, m_rootRoot, rootId))
         out = pgno_t::npos;
     return out;
 }
@@ -639,7 +639,7 @@ void DbData::updateRoot(DbTxn & txn, unsigned rootId, pgno_t root) {
     scoped_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
-    radixSwapValue(txn, m_rootStoreRoot, rootId, root);
+    radixSwapValue(txn, m_rootRoot, rootId, root);
 }
 
 //===========================================================================
@@ -669,16 +669,16 @@ bool DbData::loadFreePages(DbTxn & txn) {
     if (m_verbose)
         logMsgInfo() << "Load free page list";
 
-    if (m_freeStoreRoot == pgno_t::npos) {
+    if (m_freeRoot == pgno_t::npos) {
         if (m_readOnly) {
             logMsgError() << "Missing free page list";
             return false;
         }
-        m_freeStoreRoot = allocPgno(txn);
-        txn.walRadixInit(m_freeStoreRoot, 0, 0, nullptr, nullptr);
+        m_freeRoot = allocPgno(txn);
+        txn.walRadixInit(m_freeRoot, 0, 0, nullptr, nullptr);
     }
 
-    if (!bitLoad(txn, &m_freePages, m_freeStoreRoot))
+    if (!bitLoad(txn, &m_freePages, m_freeRoot))
         return false;
     if (appStopping())
         return false;
@@ -726,15 +726,15 @@ bool DbData::loadFreePages(DbTxn & txn) {
 //===========================================================================
 bool DbData::loadDeprecatedPages(DbTxn & txn) {
     assert(!m_deprecatedPages);
-    if (m_deprecatedStoreRoot == pgno_t::npos) {
+    if (m_deprecatedRoot == pgno_t::npos) {
         if (m_readOnly) {
             logMsgError() << "Missing deprecated page list";
             return false;
         }
-        m_deprecatedStoreRoot = allocPgno(txn);
-        txn.walRadixInit(m_deprecatedStoreRoot, 0, 0, nullptr, nullptr);
+        m_deprecatedRoot = allocPgno(txn);
+        txn.walRadixInit(m_deprecatedRoot, 0, 0, nullptr, nullptr);
     }
-    if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedStoreRoot))
+    if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedRoot))
         return false;
     if (appStopping())
         return false;
@@ -785,7 +785,7 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
         // a page, the page will be freed... which means it must be added to
         // this bitmap.
         [[maybe_unused]] bool updated =
-            bitAssign(txn, m_freeStoreRoot, 0, pgno, pgno + 1, false);
+            bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, false);
         assert(updated);
     }
 
@@ -831,9 +831,9 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
     auto noPages = !m_freePages && !txn.freePages();
     txn.walPageFree(pgno);
-    assert(m_freeStoreRoot);
+    assert(m_freeRoot);
     [[maybe_unused]] bool updated =
-        bitAssign(txn, m_freeStoreRoot, 0, pgno, pgno + 1, true);
+        bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     auto bpp = bitsPerPage();
     if (noPages && pgno / bpp == m_numPages / bpp) {
@@ -851,7 +851,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
         if (num) {
             bitAssign(
                 txn,
-                m_freeStoreRoot,
+                m_freeRoot,
                 0,
                 m_numPages,
                 m_numPages + num,
@@ -888,9 +888,9 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
         assert(p->type != DbPageType::kInvalid
             && p->type != DbPageType::kFree);
     }
-    assert(m_deprecatedStoreRoot);
+    assert(m_deprecatedRoot);
     [[maybe_unused]] bool updated =
-        bitAssign(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, true);
+        bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     updated = m_deprecatedPages.insert(pgno);
     assert(updated);
@@ -900,7 +900,7 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 //===========================================================================
 void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
     [[maybe_unused]] bool updated = false;
-    updated = bitAssign(txn, m_deprecatedStoreRoot, 0, pgno, pgno + 1, false);
+    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, false);
     assert(updated);
     freePage(txn, pgno);
     scoped_lock lk{m_pageMut};

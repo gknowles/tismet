@@ -918,10 +918,10 @@ private:
     bool m_newFile = false;
 
     size_t m_pageSize = 0;
-    pgno_t m_rootStoreRoot = pgno_t::npos;
-    pgno_t m_freeStoreRoot = pgno_t::npos;
-    pgno_t m_deprecatedStoreRoot = pgno_t::npos;
-    pgno_t m_metricStoreRoot = pgno_t::npos;
+    pgno_t m_rootRoot = pgno_t::npos;
+    pgno_t m_freeRoot = pgno_t::npos;
+    pgno_t m_deprecatedRoot = pgno_t::npos;
+    pgno_t m_metricRoot = pgno_t::npos;
     struct RootDef {
         std::string name;
         DbPageType type;
