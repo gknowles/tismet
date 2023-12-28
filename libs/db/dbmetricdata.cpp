@@ -15,12 +15,12 @@ using namespace Dim;
 *
 ***/
 
-DbSampleType const kDefaultSampleType = kSampleTypeFloat32;
+const DbSampleType kDefaultSampleType = kSampleTypeFloat32;
 constexpr Duration kDefaultRetention = 7 * 24h;
 constexpr Duration kDefaultInterval = 1min;
 static_assert(kDefaultRetention >= kDefaultInterval);
 
-unsigned const kMaxMetricNameLen = 128;
+const unsigned kMaxMetricNameLen = 128;
 static_assert(kMaxMetricNameLen <= numeric_limits<unsigned char>::max());
 
 
@@ -617,7 +617,7 @@ void DbData::updateSample(
     double value
 ) {
     assert(!empty(time));
-    auto const kInvalidPos = (size_t) -1;
+    const auto kInvalidPos = (size_t) -1;
 
     // ensure all info about the last page is loaded, the expectation is that
     // almost all updates are to the last page.
@@ -902,8 +902,8 @@ static void setSample(T * out, double value) {
     } else if constexpr (is_floating_point_v<T>) {
         *out = (T) value;
     } else if constexpr (is_integral_v<T>) {
-        auto const maxval = numeric_limits<T>::max();
-        auto const minval = -maxval;
+        const auto maxval = numeric_limits<T>::max();
+        const auto minval = -maxval;
         *out = isnan(value) ? minval - 1
             : value < minval ? minval
             : value > maxval ? maxval
