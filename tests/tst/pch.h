@@ -17,6 +17,7 @@
 #include "carbon/carbon.h"
 #include "db/db.h"
 #include "db/dbindex.h"
+#include "db/dbpack.h"
 #include "eval/eval.h"
 #include "func/func.h"
 #include "query/query.h"

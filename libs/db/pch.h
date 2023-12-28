@@ -6,6 +6,7 @@
 // Public header
 #include "db/db.h"
 #include "db/dbindex.h"
+#include "db/dbpack.h"
 #include "db/dbwal.h"
 
 // External library public headers
