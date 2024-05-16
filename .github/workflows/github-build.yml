@@ -40,7 +40,7 @@ jobs:
         echo "C:\Program Files\OpenCppCoverage" >> %GITHUB_PATH%
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: true
 
@@ -82,7 +82,7 @@ jobs:
 
     - name: Report Coverage
       if: matrix.coverage
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         files: merged.xml
         fail_ci_if_error: true
