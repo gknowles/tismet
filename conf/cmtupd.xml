@@ -46,6 +46,9 @@ and '} respectively.
     </Group>
     <Group>
       <File regex=".*\.adoc"/>
+      <File regex=".*\.css"/>
+      <File regex=".*\.html"/>
+      <File regex=".*\.js"/>
       <File regex=".*\.md"/>
       <File regex=".*\.natvis"/> <!-- xml -->
       <File regex=".*\.xml"/>
