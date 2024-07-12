@@ -134,4 +134,6 @@ static JsonGraphite s_jsonGraphite;
 void tsWebInitialize() {
     httpRouteAdd({.notify = &s_jsonAbout, .path = "/srv/about.json"});
     httpRouteAdd({.notify = &s_jsonGraphite, .path = "/srv/graphite.json"});
+
+    // resLoadWebSite("/", {}, resWebSiteContent());
 }

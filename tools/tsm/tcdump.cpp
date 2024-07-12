@@ -112,7 +112,7 @@ bool DumpWriter::onDbSeriesStart(const DbSeriesInfo & info) {
 bool DumpWriter::onDbSample(uint32_t id, TimePoint time, double val) {
     s_progress.samples += 1;
     m_prevTime += m_interval;
-    for (; time != m_prevTime; m_prevTime += m_interval)
+    for (; m_prevTime < time; m_prevTime += m_interval)
         s_bld.value(nullptr);
     appendIfFull(8);
     s_bld.value(val);

@@ -41,7 +41,7 @@ private:
     ResultInfo m_result;
     UnsignedSet m_unfinishedIds;
 
-    size_t m_pos{0};
+    size_t m_pos = 0;
     TimePoint m_time;
 };
 
@@ -56,11 +56,11 @@ public:
     // it was aborted.
     bool onEvalApply(ResultInfo & info);
 
-    IEvalNotify * m_notify{};
+    IEvalNotify * m_notify = {};
     DbContext m_ctx;
     TimePoint m_first;
     TimePoint m_last;
-    Duration m_minInterval{};
+    Duration m_minInterval = {};
 };
 
 } // namespace
@@ -394,7 +394,8 @@ bool DbDataNode::onDbSeriesStart(const DbSeriesInfo & info) {
     auto last = m_context.last + info.interval;
     last -= last.time_since_epoch() % info.interval;
     auto count = (last - first) / info.interval;
-    assert(info.first == info.last || first <= info.first && last >= info.last);
+    assert(info.first == info.last
+        || first <= info.first && last >= info.last);
     if (!count)
         return true;
 

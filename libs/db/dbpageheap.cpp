@@ -67,6 +67,7 @@ void DbPageHeap::destroy(size_t pgno) {
 
 //===========================================================================
 void DbPageHeap::setRoot(size_t rawPgno) {
+    assert(m_rootId);   // 0 means the heap is readonly
     auto pgno = (pgno_t) rawPgno;
     releasePending(pgno_t::npos);
     m_data.updateRoot(
@@ -100,6 +101,7 @@ bool DbPageHeap::empty(size_t pgno) const {
 
 //===========================================================================
 uint8_t * DbPageHeap::wptr(size_t pgno) {
+    assert(m_rootId);   // 0 means the heap is readonly
     auto offset = offsetof(FullPageInitRec, data);
     if (!releasePending(pgno))
         return m_updatePtr + offset;
