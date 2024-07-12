@@ -45,10 +45,11 @@ and '} respectively.
       <Var name="Prefix" value="// "/>
     </Group>
     <Group>
-      <File regex=".*\.adoc"/>
       <File regex=".*\.css"/>
       <File regex=".*\.html"/>
       <File regex=".*\.js"/>
+      <Exclude regex="web/srv/vendor/.*"/>
+      <File regex=".*\.adoc"/>
       <File regex=".*\.md"/>
       <File regex=".*\.natvis"/> <!-- xml -->
       <File regex=".*\.xml"/>
