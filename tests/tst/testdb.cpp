@@ -255,7 +255,7 @@ void Test::dataTests() {
     count = 0;
     for (int i = 1; i < 30; ++i) {
         name = "this.is.metric.";
-        name += to_string(i);
+        name += toString(i);
         uint32_t i2;
         count += dbInsertMetric(&i2, h, name);
         dbUpdateSample(h, i2, start, (float) i);
@@ -275,7 +275,7 @@ void Test::dataTests() {
         if (stats.numPages > stats.bitsPerPage)
             break;
         name = "this.is.metric.";
-        name += to_string(i);
+        name += toString(i);
         uint32_t id;
         count += dbInsertMetric(&id, h, name);
         dbUpdateSample(h, id, start, (float) i);
