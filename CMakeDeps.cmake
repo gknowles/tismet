@@ -246,6 +246,7 @@
 # vendor/dimapp/libs/system/debug.h
 # vendor/dimapp/libs/system/env.h
 # vendor/dimapp/libs/system/exec.h
+# vendor/dimapp/libs/system/guid.cpp
 # vendor/dimapp/libs/system/guid.h
 # vendor/dimapp/libs/system/pch.cpp
 # vendor/dimapp/libs/system/pch.h
