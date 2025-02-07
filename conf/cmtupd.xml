@@ -1,6 +1,9 @@
 ﻿<!--
-Copyright Glen Knowles 2021 - 2024.
+Copyright Glen Knowles 2021 - 2025.
 Distributed under the Boost Software License, Version 1.0.
+
+cmtupd config file
+https://github.com/gknowles/dimapp/tree/master/tools/cmtupd
 
 Auto-generated variables:
     $CurrentYear: current year, 4-digits
@@ -28,6 +31,7 @@ and '} respectively.
       <File regex=".*\.cmake"/>
       <File regex=".*\.yaml"/>
       <File regex=".*\.yml"/>
+      <File regex=".*\.rb"/>
       <Exclude regex="CMakeDeps\.cmake"/>
       <Var name="Prefix" value="# "/>
     </Group>
@@ -48,13 +52,16 @@ and '} respectively.
       <File regex=".*\.css"/>
       <File regex=".*\.html"/>
       <File regex=".*\.js"/>
+      <Exclude regex=".*\.g\.js"/>
       <Exclude regex="web/srv/vendor/.*"/>
+      <Exclude regex="site/vendor/.*"/>
       <File regex=".*\.adoc"/>
       <File regex=".*\.md"/>
       <File regex=".*\.natvis"/> <!-- xml -->
       <File regex=".*\.xml"/>
       <File regex=".*\.xml\.sample"/>
       <File regex=".*\.xsd"/>
+      <Exclude regex="tools/.*/schema\.xsd"/>
       <Var name="Prefix" value=""/>
     </Group>
     <Group>
