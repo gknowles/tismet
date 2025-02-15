@@ -4,19 +4,6 @@ Distributed under the Boost Software License, Version 1.0.
 
 cmtupd config file
 https://github.com/gknowles/dimapp/tree/master/tools/cmtupd
-
-Auto-generated variables:
-    $CurrentYear: current year, 4-digits
-    $CommitYear: year file was last committed, 4-digits
-
-Lines matched by Match/@regex are replaced with @replace if the file's
-$CommitYear is greater than LastYear.
-
-The attributes @regex, @value, and @default are interpreted as attribute value
-templates, which means that Var's values can be embedded by surrounding the Var
-name in braces. This also means that any braces in the string must be escaped.
-Braces are escaped by doubling them up, so '{{' and '}}' are interpreted as '{'
-and '} respectively.
 -->
 <Comments>
   <Rule name="Copyright">
@@ -25,6 +12,11 @@ and '} respectively.
         replace="{Prefix}Copyright {Owner} {FirstYear} - {$CurrentYear}.">
       <Capture var="FirstYear"/>
       <Capture var="LastYear" default="{FirstYear}"/>
+      <Action type="skip" arg1="{LastYear}" op=">" arg2="{$CommitYear}"
+          report="NEWER" reportType="warn"/>
+      <Action type="update" arg1="{LastYear}" op="&lt;" arg2="{$CommitYear}"
+          report="UPDATED" reportType="note"
+          checkReport="obsolete" checkReportType="warn"/>
     </Match>
     <Group>
       <File regex="CMakeLists\.txt"/>
@@ -38,14 +30,16 @@ and '} respectively.
     <Group>
       <File regex=".*\.cpp"/>
       <File regex=".*\.h"/>
+      <Exclude regex=".*\.g\.cpp"/>
+      <Exclude regex=".*\.g\.h"/>
       <Exclude regex="libs/carbon/carbonparse\.cpp"/>
       <Exclude regex="libs/carbon/carbonparseint\.h"/>
-      <Exclude regex="libs/func/fnenum.h"/>
+      <Exclude regex="libs/func/fnenum\.h"/>
       <Exclude regex="libs/query/qryparse\.cpp"/>
       <Exclude regex="libs/query/qryparseint\.h"/>
       <Exclude regex="libs/query/qryparseimplfnint\.h"/>
-      <Exclude regex="tools/tismet/resource.h"/>
-      <Exclude regex="tools/tismet/tswebcontent.cpp"/>
+      <Exclude regex="tools/tismet/resource\.h"/>
+      <Exclude regex="tools/tismet/tswebcontent\.cpp"/>
       <Var name="Prefix" value="// "/>
     </Group>
     <Group>
