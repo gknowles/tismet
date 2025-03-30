@@ -80,9 +80,9 @@ struct WalPage {
     pgno_t pgno;
     uint32_t checksum;
     Lsn firstLsn; // LSN of first record started on page.
-    uint16_t numRecs; // Number of WAL records started on page.
-    uint16_t firstPos; // Position of first log started on page.
-    uint16_t lastPos; // Position after last WAL record ended on page.
+    uint16_t numRecs; // Number of records started on page.
+    uint16_t firstPos; // Position of first record started on page.
+    uint16_t lastPos; // Position after last record ended on page.
 };
 
 #pragma pack(push, 1)
@@ -162,30 +162,26 @@ static void pack(void * ptr, const WalPage & lp, uint32_t checksum) {
     auto mp = (MinimumPage *) ptr;
     mp->type = lp.type;
     mp->pgno = lp.pgno;
-    auto v1 = (PageHeaderRawV1 *) ptr;
-    auto v2 = (PageHeaderRawV2 *) ptr;
-    switch (lp.type) {
-    case WalPageType::kFree:
-        break;
-    case WalPageType::kLog:
-        assert(v2->type == lp.type);
+    if (lp.type == WalPageType::kFree) {
+        // no additional data
+    } else if (lp.type == WalPageType::kLog) {
+        auto v2 = (PageHeaderRawV2 *) ptr;
+        assert(v2->type == WalPageType::kLog);
         v2->checksum = checksum;
         v2->firstLsn = lp.firstLsn;
         v2->numRecs = lp.numRecs;
         v2->firstPos = lp.firstPos;
         v2->lastPos = lp.lastPos;
-        break;
-    case WalPageType::kLogV1:
-        assert(v1->type == lp.type);
+    } else if (lp.type == WalPageType::kLogV1) {
+        auto v1 = (PageHeaderRawV1 *) ptr;
+        assert(v1->type == WalPageType::kLogV1);
         v1->firstLsn = lp.firstLsn;
         v1->numRecs = lp.numRecs;
         v1->firstPos = lp.firstPos;
         v1->lastPos = lp.lastPos;
-        break;
-    default:
+    } else {
         logMsgFatal() << "pack WAL page " << lp.pgno
             << ", unknown type: " << lp.type;
-        break;
     }
 }
 
@@ -195,36 +191,31 @@ static void unpack(WalPage * out, const void * ptr) {
     auto mp = (const MinimumPage *) ptr;
     out->type = mp->type;
     out->pgno = mp->pgno;
-    auto v1 = (const PageHeaderRawV1 *) ptr;
-    auto v2 = (const PageHeaderRawV2 *) ptr;
-    switch (mp->type) {
-    case WalPageType::kFree:
+    if (mp->type == WalPageType::kFree) {
         out->checksum = 0;
         out->firstLsn = {};
         out->numRecs = 0;
         out->firstPos = 0;
         out->lastPos = 0;
-        break;
-    case WalPageType::kLog:
-        assert(mp->type == v2->type);
+    } else if (mp->type == WalPageType::kLog) {
+        auto v2 = (const PageHeaderRawV2 *) ptr;
+        assert(v2->type == WalPageType::kLog);
         out->checksum = v2->checksum;
         out->firstLsn = v2->firstLsn;
         out->numRecs = v2->numRecs;
         out->firstPos = v2->firstPos;
         out->lastPos = v2->lastPos;
-        break;
-    case WalPageType::kLogV1:
-        assert(mp->type == v1->type);
+    } else if (mp->type == WalPageType::kLogV1) {
+        auto v1 = (const PageHeaderRawV1 *) ptr;
+        assert(v1->type == WalPageType::kLogV1);
         out->checksum = 0;
         out->firstLsn = v1->firstLsn;
         out->numRecs = v1->numRecs;
         out->firstPos = v1->firstPos;
         out->lastPos = v1->lastPos;
-        break;
-    default:
+    } else {
         logMsgFatal() << "unpack WAL page " << mp->pgno
             << ", unknown type: " << mp->type;
-        break;
     }
 }
 
@@ -331,7 +322,9 @@ bool DbWal::open(
     m_newFiles = m_openFlags.all(fDbOpenCreat | fDbOpenExcl);
 
     // Auto-close file on failure of initial processing of the opened file.
-    Finally fin([&fh = m_fwal, &newf = m_newFiles]() {
+    Finally autoclose([&fh = m_fwal, &newf = m_newFiles]() {
+        if (!fh)
+            return;
         if (newf && fileMode(fh).any(File::OpenMode::fRemove)) {
             // File was created, but not completely. Remove the remnants.
             fileRemoveOnClose(fh);
@@ -356,14 +349,15 @@ bool DbWal::open(
     ZeroPage zp{};
     if (!len) {
         // New file, use requested dataPageSize and physical sector size to
-        // derive page size for WAL.
+        // derive page sizes.
         m_dataPageSize = dataPageSize ? dataPageSize : kDefaultPageSize;
         m_pageSize = max<size_t>(2 * m_dataPageSize, fps);
     } else {
-        // Existing file, use data and WAL page sizes written in the file.
+        // Existing file, use page sizes written in the file.
         auto rawbuf = mallocAligned(fps, fps);
         assert(rawbuf);
-        fileReadWait(nullptr, rawbuf, fps, m_fwal, 0);
+        if (auto ec = fileReadWait(nullptr, rawbuf, fps, m_fwal, 0); ec)
+            return false;
         memcpy(&zp, rawbuf, sizeof zp);
         m_dataPageSize = zp.dataPageSize;
         m_pageSize = zp.walPageSize;
@@ -371,8 +365,10 @@ bool DbWal::open(
         if (m_pageSize < fps) {
             // Page size is smaller than minimum required for aligned access.
             // Reopen unaligned.
-            fileClose(m_fwal);
+            autoclose();
             m_fwal = openWalFile(fname, flags, false);
+            if (!m_fwal)
+                return false;
         }
         if (zp.hdr.type != (DbPageType) WalPageType::kZero) {
             logMsgError() << "Unknown WAL file type, " << fname;
@@ -389,7 +385,7 @@ bool DbWal::open(
     }
 
     // No more open failures possible.
-    fin.release();
+    autoclose.release();
 
     // Allocate Aligned Buffers
     m_numBufs = kWalWriteBuffers;
@@ -452,7 +448,7 @@ bool DbWal::open(
     m_pages.clear();
     m_durableLsn = {};
 
-    // Fabricate "previous" checkpoint to newly created WAL file. At least one
+    // Fabricate "previous" checkpoint in newly created WAL file. At least one
     // checkpoint must always exist in the WAL for recovery to orient itself
     // around.
     m_checkpointStart = timeNow();
@@ -469,13 +465,16 @@ void DbWal::close() {
     unique_lock lk{m_bufMut};
     if (!m_fwal)
         return;
-
     m_closing = true;
+
     if (m_phase == Checkpoint::kStartRecovery
         || m_openFlags.any(fDbOpenReadOnly)
     ) {
-        if (m_newFiles && m_phase == Checkpoint::kStartRecovery)
+        // No changes were made to the file after it was opened.
+        if (m_newFiles && m_phase == Checkpoint::kStartRecovery) {
+            // An empty file was created, remove it as useless clutter.
             fileRemoveOnClose(m_fwal);
+        }
         fileClose(m_fwal);
         m_fwal = {};
         return;
@@ -483,7 +482,11 @@ void DbWal::close() {
 
     if (m_numBufs) {
         lk.unlock();
+        // Checkpoint normally does a buffer flush but we need to do it anyway
+        // in case checkpointing is blocked.
         flushPartialBuffer();
+        // Checkpointing is cheap and doing it at close means less WAL
+        // recovery is needed at next open.
         checkpoint();
         lk.lock();
     }
@@ -536,7 +539,7 @@ DbConfig DbWal::configure(const DbConfig & conf) {
 //===========================================================================
 // While registered, blockers prevent future checkpoints from starting. This
 // enables consistent backups to be taken without the risk of WAL needed by
-// a slightly older database getting purged.
+// a not yet fully copied database getting purged.
 void DbWal::blockCheckpoint(IDbProgressNotify * notify, bool enable) {
     unique_lock lkBlock{m_blockMut};
     unique_lock lk{m_bufMut};
@@ -601,8 +604,8 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
         return true;
 
     // Go through WAL entries looking for last committed checkpoint and the set
-    // of incomplete transactions that were still uncommitted when the after
-    // the end of avail WAL (so we can avoid trying to redo them later).
+    // of incomplete transactions that were still uncommitted after the end of
+    // avail WAL (so we can avoid trying to redo them later).
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Analyze database";
     m_checkpointLsn = m_pages.front().firstLsn;
@@ -642,8 +645,8 @@ bool DbWal::recover(EnumFlags<RecoverFlags> flags) {
             data.checkpoint,
             greater()
         );
-        // Remove TXNs from before the checkpoint. The TXNs are in reverse LSN
-        // order, so erase from checkpoint to end of vector.
+        // The TXNs are in reverse LSN order, so to erase the ones from before
+        // the checkpoint, we go from the checkpoint to end of the vector.
         data.incompleteTxnLsns.erase(i, data.incompleteTxnLsns.end());
     }
 
@@ -1021,20 +1024,21 @@ void DbWal::applyUpdate(
 *   that point will be skipped by recovery and eventually discarded from the
 *   WAL.
 *
-*   1. Find oldest LSN that has dirty pages associated, all data pages last
-*      modified by an LSN older then this have already been saved and the WAL
-*      records of their modifications are no longer needed. To be sure they've
-*      really been saved the data pages are also flushed from the OS cache.
-*   2. Write checkpoint record to WAL with this LSN. Note that since this LSN
-*      already exists it is always some distance before the checkpoint record
-*      in the WAL. So proper recovery requires a checkpoint record, all WAL
-*      records after it, and some of the records before it.
-*   3. Flush WAL pages from OS cache. Since the WAL pages are written with no
-*      buffering this may not be needed, but it does cause the OS to flush
-*      metadata about the file (last modified time, etc).
-*   4. Logically remove pages made up of no longer needed WAL records. Also, as
-*      a debugging aid, save the most recent one as a free page. May also
-*      truncate the WAL file itself if enough space is freed.
+*   1. Find LSN and Flush Data - Find oldest LSN that has dirty pages
+*      associated, all data pages last modified by an LSN older then this have
+*      already been saved and the WAL records of their modifications are no
+*      longer needed. To be sure they've really been saved the data pages are
+*      also flushed from the OS cache.
+*   2. Write Checkpoint - Write checkpoint record to WAL with this LSN. Note
+*      that since this LSN already exists it is always some distance before the
+*      checkpoint record in the WAL. So proper recovery requires a checkpoint
+*      record, all WAL records after it, and some of the records before it.
+*   3. Flush WAL - Flush WAL pages from OS cache. Since the WAL pages are
+*      written with no buffering this may not be needed, but it does cause the
+*      OS to flush metadata about the file (last modified time, etc).
+*   4. Free WAL Pages - Free pages made up of no longer needed WAL records. May
+*      also truncate the WAL file itself if enough space is freed from the end
+*      of it.
 *
 ***/
 
@@ -1043,26 +1047,29 @@ void DbWal::checkpoint() {
     {
         unique_lock lkBlock(m_blockMut);
         if (!m_checkpointBlockers.empty()) {
-            // Checkpoint is being blocked, presumably by a backup process
-            // of some kind.
+            // Checkpoint blocked, presumably by a backup process of some kind.
             return;
         }
     }
 
     unique_lock lk{m_bufMut};
-    if (m_phase != Checkpoint::kComplete
-        || m_openFlags.any(fDbOpenReadOnly)
-    ) {
-        // A checkpoint is already in progress, or not allowed at all
-        // (read-only database).
+    if (m_phase != Checkpoint::kComplete) {
+        // A checkpoint is already in progress.
+        return;
+    }
+    if (m_openFlags.any(fDbOpenReadOnly)) {
+        // Checkpointing is not allowed.
         return;
     }
 
+    //-----------------------------------------------------------------------
     // Start Checkpoint
-    // Reset time and data accumulated since last checkpoint and queue first
-    // phase of checkpoint.
+
+    // Set start time and data accumulated to initial values for the next
+    // checkpoint.
     m_checkpointStart = timeNow();
     m_checkpointData = 0;
+
     m_phase = Checkpoint::kFlushPages;
     lk.unlock();
 
@@ -1077,6 +1084,9 @@ void DbWal::checkpoint() {
 void DbWal::checkpointPages() {
     unique_lock lk{m_bufMut};
     assert(m_phase == Checkpoint::kFlushPages);
+
+    //-----------------------------------------------------------------------
+    // 1. Find LSN and Flush Data
     auto lsn = m_checkpointLsn;
     lk.unlock();
     // Get oldest LSN that has dirty data pages as dependents. Also flushes OS
@@ -1089,8 +1099,8 @@ void DbWal::checkpointPages() {
         // as truncated as possible.
         m_phase = Checkpoint::kReportComplete;
         lk.unlock();
-        // The discardable point hasn't moved, but flush the file in case of
-        // new WAL that has affected the WAL file's metadata.
+        // The discardable point hasn't moved, but flush the file in case new
+        // WAL has affected the WAL file's metadata.
         if (auto ec = fileFlush(m_fwal))
             logMsgFatal() << "Checkpointing failed.";
 
@@ -1100,8 +1110,8 @@ void DbWal::checkpointPages() {
     assert(pageLsn > m_checkpointLsn);
     m_checkpointLsn = pageLsn;
 
-    // Write the checkpoint record and queue a checkpointDurable() call for
-    // when it's written.
+    //-----------------------------------------------------------------------
+    // 2. Write Checkpoint
     m_phase = Checkpoint::kFlushCheckpoint;
     auto closing = m_closing;
     lk.unlock();
@@ -1118,88 +1128,95 @@ void DbWal::checkpointPages() {
 
 //===========================================================================
 void DbWal::checkpointDurable() {
+    unique_lock lk{m_bufMut};
     assert(m_phase == Checkpoint::kFlushCheckpoint);
+
+    //-----------------------------------------------------------------------
+    // 3. Flush WAL
     // Flush any metadata (timestamps, file attributes, etc) changes to WAL.
     // The WAL pages themselves are already written with OS buffering disabled.
+    lk.unlock();
     if (auto ec = fileFlush(m_fwal))
         logMsgFatal() << "Checkpointing failed.";
 
-    auto lastDurable = pgno_t{}; // Page that most recently became discardable.
-    {
-        unique_lock lk{m_bufMut};
+    lk.lock();
 
-        // Update peak pages used.
-        m_peakUsedPages = max(
-            (size_t) (m_peakUsedPages * 0.9),
-            m_pages.size()
-        );
+    //-----------------------------------------------------------------------
+    // 4. Free WAL Pages
+    // Estimate pages needed until the next checkpoint to be the same as how
+    // many are in use at this checkpoint. Except that the estimate is never
+    // reduced by more than 10% to avoid grow/shrink churn.
+    m_peakUsedPages = max(
+        (size_t) (m_peakUsedPages * 0.9),
+        m_pages.size()
+    );
 
-        // Remove discardable pages from the info list and add their pgnos to
-        // the free list.
-        auto lastLsn = m_pages.back().firstLsn;
-        auto before = m_pages.size();
-        for (;;) {
-            auto && pi = m_pages.front();
-            if (pi.firstLsn == lastLsn)
-                break;
-            if (pi.firstLsn + pi.cleanRecs > m_checkpointLsn)
-                break;
-            if (lastDurable)
-                m_freePages.insert(lastDurable);
-            lastDurable = pi.pgno;
-            m_pages.pop_front();
-        }
-        s_perfFreePages +=
-            (unsigned) (before - m_pages.size() - (bool) lastDurable);
+    auto lastDiscardable = pgno_t{};
 
-        m_phase = Checkpoint::kReportComplete;
+    // Free discardable pages from the info list.
+    auto lastLsn = m_pages.back().firstLsn;
+    auto before = m_pages.size();
+    for (;;) {
+        auto && pi = m_pages.front();
+        if (pi.firstLsn == lastLsn)
+            break;
+        if (pi.firstLsn + pi.cleanRecs > m_checkpointLsn)
+            break;
+        if (lastDiscardable)
+            m_freePages.insert(lastDiscardable);
+        lastDiscardable = pi.pgno;
+        m_pages.pop_front();
+    }
+    s_perfFreePages +=
+        (unsigned) (before - m_pages.size() - (bool) lastDiscardable);
 
-        // Shrink the WAL file if it is still less than 70% full right before
-        // pages are freed by checkpoint.
-        if (m_peakUsedPages < m_numPages * 0.7) {
-            // Look for free pages at the end of the file, and if there are any
-            // resize the file to get rid of them. But only up to 10% of the
-            // total pages.
-            auto lastUsed = (pgno_t) m_numPages - 1;
-            if (auto i = m_freePages.find(lastUsed)) {
-                i = i.firstContiguous();
-                m_numPages = max((size_t) *i, (size_t) (m_numPages * 0.9));
-                auto count = lastUsed - (pgno_t) m_numPages + 1;
-                m_freePages.erase((pgno_t) m_numPages, count);
-                s_perfFreePages -= count;
-                s_perfPages -= count;
-                fileResize(m_fwal, m_numPages * m_pageSize);
-            }
-            if (lastDurable >= m_numPages) {
-                // The last durable page is no longer part of the newly shrunk
-                // WAL file, so we don't want to rewrite it as a free page.
-                lastDurable = {};
-            }
+    // Shrink the WAL file if it is still less than 70% full right before
+    // pages are freed by checkpoint.
+    if (m_peakUsedPages < m_numPages * 0.7) {
+        // Look for consecutive free pages at the end of the file, and if there
+        // are any resize the file to get rid of them. But only up to 10% of
+        // the total pages.
+        auto lastUsed = (pgno_t) m_numPages - 1;
+        if (auto i = m_freePages.find(lastUsed)) {
+            i = i.firstContiguous();
+            m_numPages = max((size_t) *i, (size_t) (m_numPages * 0.9));
+            auto count = lastUsed - (pgno_t) m_numPages + 1;
+            m_freePages.erase((pgno_t) m_numPages, count);
+            s_perfFreePages -= count;
+            s_perfPages -= count;
+            fileResize(m_fwal, m_numPages * m_pageSize);
         }
     }
+    if (lastDiscardable >= m_numPages) {
+        // There isn't actually a last discardable page because, while one was
+        // found, it doesn't exist within the bounds of the shrunken WAL file.
+        lastDiscardable = {};
+    }
 
-    if (!lastDurable) {
-        // No pages freed, nothing to truncate, immediately report that the
-        // "truncation" is complete.
+    m_phase = Checkpoint::kReportComplete;
+    lk.unlock();
+
+    if (!lastDiscardable) {
+        // No page to mark, immediately report that the checkpoint is complete.
         checkpointComplete();
         return;
     }
 
-    // Mark truncation in WAL file by explicitly setting the most recently
-    // discardable page to free. This is not required for correctness, but
-    // can be useful for debugging.
+    // Mark logical truncation in WAL file by explicitly setting the most
+    // recently discardable page to free. This is not required for correctness,
+    // but can be useful for debugging.
     //
-    // The call to checkpointComplete() is made by the onFileWrite()
-    // callback after the write.
+    // The call to checkpointComplete() is made by the onFileWrite() callback
+    // after the write.
     auto vptr = mallocAligned(m_pageSize, m_pageSize);
     auto mp = new(vptr) MinimumPage {
         .type = WalPageType::kFree,
-        .pgno = lastDurable
+        .pgno = lastDiscardable
     };
     fileWrite(
         this,
         m_fwal,
-        lastDurable * m_pageSize,
+        lastDiscardable * m_pageSize,
         mp,
         m_pageSize,
         walQueue()
@@ -1210,8 +1227,8 @@ void DbWal::checkpointDurable() {
 void DbWal::checkpointComplete() {
     unique_lock lk(m_bufMut);
     assert(m_phase == Checkpoint::kReportComplete);
-    // Set checkpoint status to complete, notify things that are waiting, and
-    // maybe schedule the next checkpoint.
+    // Set checkpoint status to complete, schedule the next checkpoint if
+    // possible, and notify things that are waiting.
     if (m_openFlags.any(fDbOpenVerbose))
         logMsgInfo() << "Checkpoint completed";
 
@@ -1229,7 +1246,6 @@ void DbWal::checkpointComplete() {
             blocker->onDbProgress(kRunStopped, info);
         lkBlock.unlock();
     }
-    // Notify one
     m_bufCheckpointCv.notify_one();
 }
 
@@ -1292,13 +1308,13 @@ Lsx DbWal::beginTxn() {
 }
 
 //===========================================================================
-// Write transaction committed record to WAL.
+// Write a transaction committed record to WAL.
 void DbWal::commit(Lsx txn) {
     walCommitTxn(txn);
 }
 
 //===========================================================================
-// Write transaction committed record to WAL.
+// Write transaction committed records to WAL.
 void DbWal::commit(const std::unordered_set<Lsx> & txns) {
     walCommitTxns(txns);
 }

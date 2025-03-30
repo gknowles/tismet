@@ -109,7 +109,7 @@ DbRootSet::DbRootSet(
 
 //===========================================================================
 vector<shared_ptr<DbRootVersion> *> DbRootSet::firstRoots() {
-    return { &name };
+    return { &info, &name };
 }
 
 //===========================================================================
@@ -140,15 +140,13 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
             root = roots[pos];
             while (root->next)
                 root = root->next;
-            if (root->complete())
-                goto FOUND;
+            if (root->complete()) {
+                root->addNextVer(id);
+                return {root, pos};
+            }
         }
         m_cv->wait(lk);
     }
-
-FOUND:
-    root->addNextVer(id);
-    return {root, pos};
 }
 
 //===========================================================================
@@ -360,7 +358,9 @@ DbData::DbData() {
         { ":rootName",   kTrie,  kRootNameRootId },
         { ":free",       kRadix, {}, &m_freeRoot },
         { ":deprecated", kRadix, {}, &m_deprecatedRoot },
-        { ":metric",     kRadix, {}, &m_metricRoot },
+        { ":metric",     kTrie },
+        { ":sample",     kRadix, {}, &m_sampleRoot },
+        { ":sampleIdx",  kRadix, {}, &m_sampleIndexRoot },
         { ":metricName", kTrie },
     };
     m_rootDefs.assign_range(defs);
@@ -419,15 +419,22 @@ bool DbData::openForUpdate(
         return false;
 
     // Metric root set
-    auto nameId = m_rootIdByName[":metricName"];
-    assert(nameId);
-    auto nameRoot = make_shared<DbRootVersion>(&txn, this, nameId);
-    m_metricRoots = make_shared<DbRootSet>(
+    auto roots = make_shared<DbRootSet>(
         this,
         make_shared<mutex>(),
         make_shared<condition_variable>()
     );
-    m_metricRoots.load()->name = nameRoot;
+    pair<const char *, shared_ptr<DbRootVersion>*> indexes[] = {
+        { ":metric", &roots->info },
+        { ":metricName", &roots->name },
+    };
+    for (auto&& index : indexes) {
+        auto id = m_rootIdByName[index.first];
+        assert(id);
+        auto root = make_shared<DbRootVersion>(&txn, this, id);
+        *index.second = root;
+    }
+    m_metricRoots = roots;
 
     if (m_verbose)
         logMsgInfo() << "Build metric index";
@@ -442,10 +449,6 @@ DbStats DbData::queryStats() const {
     DbStats s;
     s.pageSize = (unsigned) m_pageSize;
     s.bitsPerPage = (unsigned) bitsPerPage();
-    s.metricNameSize = (unsigned) metricNameSize(m_pageSize);
-    s.samplesPerPage[kSampleTypeInvalid] = 0;
-    for (int8_t i = 1; i < kSampleTypes; ++i)
-        s.samplesPerPage[i] = (unsigned) samplesPerPage(DbSampleType{i});
 
     {
         shared_lock lk{m_mposMut};
@@ -807,9 +810,6 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     auto p = txn.pin<DbPageHeader>(pgno);
     auto type = p->type;
     switch (type) {
-    case DbPageType::kMetric:
-        metricDestructPage(txn, pgno);
-        break;
     case DbPageType::kRadix:
         radixDestructPage(txn, pgno);
         break;
@@ -824,9 +824,11 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     case DbPageType::kFree:
         logMsgFatal() << "freePage(" << (unsigned) pgno
             << "): page already free";
+        return;
     default:
         logMsgFatal() << "freePage(" << (unsigned) pgno
             << "): invalid page type (" << (unsigned) type << ")";
+        return;
     }
 
     auto noPages = !m_freePages && !txn.freePages();
@@ -918,20 +920,36 @@ void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 // static
-string DbData::trieKey(string_view name, uint32_t id) {
-    string key;
-    auto nameLen = name.size();
-    uint8_t buf[sizeof id];
-    auto bufPos = sizeof buf;
-    while (id > 0) {
-        buf[--bufPos] = id % 256;
-        id >>= 8;
+string DbData::trieKeyMin(uint32_t id) {
+    string out;
+    switch (countl_zero(id) / 8) {
+    case 0:
+        out += (unsigned char) (id >> 24);
+        [[fallthrough]];
+    case 1:
+        out += (unsigned char) ((id >> 16) % 256);
+        [[fallthrough]];
+    case 2:
+        out += (unsigned char) ((id >> 8) % 256);
+        [[fallthrough]];
+    case 3:
+        out += (unsigned char) (id % 256);
     }
-    key.resize(nameLen + 1 + sizeof buf - bufPos);
-    memcpy(key.data(), name.data(), nameLen);
-    key[nameLen] = '\0';
-    memcpy(key.data() + nameLen + 1, buf + bufPos, sizeof buf - bufPos);
+    return out;
+}
+
+//===========================================================================
+// static
+string DbData::trieKey(uint32_t id) {
+    string key(sizeof(id), 0);
+    hton32(key.data(), byteswap(id));
     return key;
+}
+
+//===========================================================================
+// static
+string DbData::trieKey(string_view name, uint32_t id) {
+    return string(name) + '\0' + trieKeyMin(id);
 }
 
 //===========================================================================
@@ -950,11 +968,12 @@ pair<string_view, uint32_t> DbData::trieKeyToId(string_view val) {
 //===========================================================================
 void DbData::trieApply(
     DbTxn & txn,
+    const vector<DbData::TrieAction> & actions,
     const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys,
-    function<bool(StrTrieBase* index, const string & key)> fn
+    const vector<string> & keys
 ) {
-    assert(size(roots) == size(keys));
+    assert(size(actions) == size(roots));
+    assert(size(actions) == size(keys));
     vector<size_t> ords(roots.size());
     for (size_t i = 0; i < ords.size(); ++i)
         ords[i] = i;
@@ -963,13 +982,29 @@ void DbData::trieApply(
         auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
         assert(root->next);
         assert(!root->next->complete());
+        auto action = actions[ords[pos]];
         auto key = keys[ords[pos]];
         if (pos != ords.size() - 1)
             ords[pos] = ords.back();
         ords.pop_back();
         DbPageHeap heap(&txn, this, root->rootId, root->root);
         StrTrieBase trie(&heap);
-        bool found = fn(&trie, key);
+        bool found = false;
+        switch (action) {
+        case TrieAction::kClear:
+            trie.clear();
+            found = true;
+            break;
+        case TrieAction::kInsert:
+            found = trie.insert(key);
+            break;
+        case TrieAction::kErase:
+            found = trie.erase(key);
+            break;
+        default:
+            assert(!"Unknown trie action");
+            break;
+        }
         if (!found) {
             txn.roots().rollbackUpdate(root);
         } else {
@@ -980,31 +1015,33 @@ void DbData::trieApply(
 }
 
 //===========================================================================
-void DbData::trieInsert(
-    DbTxn & txn,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys
-) {
-    trieApply(
-        txn,
-        roots,
-        keys,
-        [](auto index, auto key) { return index->insert(key); }
-    );
+void DbData::trieClear(DbTxn & txn, pgno_t root) {
+    assert(root);
+    DbPageHeap heap(&txn, this, {}, root);
+    StrTrieBase trie(&heap);
+    trie.clear();
+    for (auto&& pgno : heap.destroyed())
+        freePage(txn, (pgno_t) pgno);
 }
 
 //===========================================================================
-void DbData::trieErase(
+bool DbData::trieVisitWithPrefix(
     DbTxn & txn,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys
+    pgno_t root,
+    string_view match,
+    const function<bool(DbTxn&, const string & key)> & fn
 ) {
-    trieApply(
-        txn,
-        roots,
-        keys,
-        [](auto index, auto key) { return index->erase(key); }
-    );
+    if (!root)
+        return true;
+    DbPageHeap heap(&txn, this, 0, root);
+    StrTrieBase trie(&heap);
+    for (auto i = trie.lowerBound(match); i != trie.end(); ++i) {
+        if ((*i).compare(0, match.size(), match) != 0)
+            break;
+        if (!fn(txn, *i))
+            return false;
+    }
+    return true;
 }
 
 

@@ -64,8 +64,6 @@ struct DbStats {
     // Constant for life of database
     unsigned pageSize;
     unsigned bitsPerPage;
-    unsigned metricNameSize; // includes terminating null
-    unsigned samplesPerPage[kSampleTypes];
 
     // Changes as data is modified
     unsigned numPages;
@@ -109,11 +107,7 @@ void dbFindMetrics(
 const char * dbGetMetricName(DbHandle h, uint32_t id);
 
 // Returns true if it completed synchronously.
-bool dbGetMetricInfo(
-    IDbDataNotify * notify,
-    DbHandle h,
-    uint32_t id
-);
+bool dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id);
 
 // Returns true if inserted, false if it already existed, sets out either way.
 bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
@@ -121,13 +115,14 @@ bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
 void dbEraseMetric(DbHandle h, uint32_t id);
 
 struct DbMetricInfo {
-    std::string_view name;
+    std::string name;          // readonly
+    Dim::TimePoint creation;        // readonly
+    Dim::TimePoint lastInfoWrite;   // readonly
     DbSampleType type{kSampleTypeInvalid};
-    Dim::Duration retention{};
-    Dim::Duration interval{};
-    Dim::TimePoint creation;
+    Dim::Duration retention = {};
+    Dim::Duration interval = {};
 };
-// Removes all existing data when type, retention, or interval are changed.
+// Removes all existing data when type or retention are changed.
 void dbUpdateMetric(
     DbHandle h,
     uint32_t id,
@@ -164,13 +159,14 @@ struct DbSeriesInfo {
     std::string_view name; // such as metric name or alias
     Dim::TimePoint first;
     Dim::TimePoint last; // time of first interval after the end
-    Dim::Duration interval{};
+    Dim::Duration interval = {};
 };
 // Used in callback from dbGetMetricInfo().
 struct DbSeriesInfoEx : DbSeriesInfo {
     DbSeriesInfoEx() { infoEx = true; }
-    Dim::Duration retention{};
+    Dim::Duration retention = {};
     Dim::TimePoint creation;
+    Dim::TimePoint lastInfoWrite;
 };
 struct IDbDataNotify {
     virtual ~IDbDataNotify() = default;
@@ -240,8 +236,12 @@ void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
 
 enum pgno_t : uint32_t { npos = std::numeric_limits<uint32_t>::max() };
 
+// Id used to distinguish between concurrently running transactions. Ids are
+// reused aggressively.
 enum LocalTxn : uint16_t {};
 
+// Log sequence number, position in write ahead log file, used to ensure total
+// order.
 struct Lsn {
     uint64_t val : 48;
 
@@ -267,6 +267,7 @@ inline std::ostream & operator<<(std::ostream & os, const Lsn & lsn) {
     return os;
 }
 
+// Combination of log sequence number and local transaction id.
 struct Lsx {
     uint64_t localTxn : 16;
     uint64_t lsn : 48;
@@ -289,7 +290,6 @@ enum class DbPageType : int32_t {
     kInvalid = 0,
     kFree = 'F',
     kZero = 'dZ',
-    kMetric = 'm',
     kRadix = 'r',
     kSample = 's',
     kTrie = 't',

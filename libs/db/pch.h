@@ -30,6 +30,7 @@
 #include <deque>
 #include <mutex>
 #include <queue>
+#include <ranges>
 #include <set>
 #include <span>
 #include <shared_mutex>

@@ -39,14 +39,9 @@ DbData::RadixData * DbData::radixData(
     DbPageHeader * hdr,
     size_t pageSize
 ) {
-    if (hdr->type == DbPageType::kMetric) {
-        auto mp = reinterpret_cast<DbData::MetricPage *>(hdr);
-        return radixData(mp, pageSize);
-    } else {
-        assert(hdr->type == DbPageType::kRadix);
-        auto rp = reinterpret_cast<DbData::RadixPage *>(hdr);
-        return &rp->rd;
-    }
+    assert(hdr->type == DbPageType::kRadix);
+    auto rp = reinterpret_cast<DbData::RadixPage *>(hdr);
+    return &rp->rd;
 }
 
 //===========================================================================
@@ -76,12 +71,8 @@ size_t DbData::radixPageEntries(
     int * base = out;
     size_t pents = entriesPerRadixPage(m_pageSize);
     size_t rents;
-    if (rootType == DbPageType::kMetric) {
-        rents = entriesPerMetricPage(m_pageSize);
-    } else {
-        assert(rootType == DbPageType::kRadix);
-        rents = pents;
-    }
+    assert(rootType == DbPageType::kRadix);
+    rents = pents;
 
     for (;;) {
         *out++ = (int) (pos % pents);
@@ -224,7 +215,8 @@ pgno_t DbData::radixSwapValue(
     const RadixData * rd;
     size_t rpos;
     if (!radixFind(txn, &hdr, &rd, &rpos, root, pos)) {
-        radixInsert(txn, root, pos, value);
+        if (value)
+            radixInsert(txn, root, pos, value);
         return {};
     }
     auto out = rd->pages[rpos];
@@ -308,8 +300,8 @@ static bool radixVisit(
     DbTxn & txn,
     uint32_t index,
     pgno_t root,
-    const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn,
-    size_t pageSize
+    size_t pageSize,
+    const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn
 ) {
     auto hdr = txn.pin<DbPageHeader>(root);
     auto rd = DbData::radixData(hdr, pageSize);
@@ -322,7 +314,7 @@ static bool radixVisit(
                 if (!fn(txn, index, pgno))
                     return false;
             } else {
-                if (!radixVisit(txn, index, pgno, fn, pageSize))
+                if (!radixVisit(txn, index, pgno, pageSize, fn))
                     return false;
             }
         }
@@ -337,7 +329,7 @@ bool DbData::radixVisit(
     pgno_t root,
     const function<bool(DbTxn&, uint32_t index, pgno_t pgno)> & fn
 ) {
-    return ::radixVisit(txn, 0, root, fn, m_pageSize);
+    return ::radixVisit(txn, 0, root, m_pageSize, fn);
 }
 
 
@@ -557,7 +549,7 @@ void DbData::onWalApplyRadixErase(
     size_t lastPos
 ) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    assert(hdr->type == DbPageType::kMetric || hdr->type == DbPageType::kRadix);
+    assert(hdr->type == DbPageType::kRadix);
     auto rd = radixData(hdr, m_pageSize);
     assert(firstPos < lastPos);
     assert(lastPos <= rd->numPages);
@@ -567,7 +559,7 @@ void DbData::onWalApplyRadixErase(
 //===========================================================================
 void DbData::onWalApplyRadixPromote(void * ptr, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    assert(hdr->type == DbPageType::kMetric || hdr->type == DbPageType::kRadix);
+    assert(hdr->type == DbPageType::kRadix);
     auto rd = radixData(hdr, m_pageSize);
     rd->height += 1;
     rd->pages[0] = refPage;
@@ -577,9 +569,8 @@ void DbData::onWalApplyRadixPromote(void * ptr, pgno_t refPage) {
 //===========================================================================
 void DbData::onWalApplyRadixUpdate(void * ptr, size_t pos, pgno_t refPage) {
     auto hdr = static_cast<DbPageHeader *>(ptr);
-    assert(hdr->type == DbPageType::kMetric || hdr->type == DbPageType::kRadix);
+    assert(hdr->type == DbPageType::kRadix);
     auto rd = radixData(hdr, m_pageSize);
     assert(pos < rd->numPages);
     rd->pages[pos] = refPage;
 }
-

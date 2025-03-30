@@ -41,16 +41,15 @@ enum DbWalRecType : int8_t {
     // [metric] page, refSample (non-standard layout)
     kRecTypeMetricUpdateSampleTxn = 36,
 
-    kRecTypeSampleInit          = 18, // [sample] id, stype, pageTime, lastPos
-    kRecTypeSampleInitFill      = 37, // [sample] id, stype, pageTime, lastPos,
-                                      //    value
+    kRecTypeSampleInit          = 18, // [sample] id, stype, time, value
     kRecTypeSampleUpdate        = 19, // [sample] first, last, value
                                       //    [first, last) = NANs, last = value
     kRecTypeSampleUpdateLast    = 20, // [sample] first, last, value
                                       //    [first, last) = NANs, last = value
                                       //    lastPos = last
-    kRecTypeSampleUpdateTime    = 21, // [sample] pageTime
-                                      //    pos = 0, samples[0] = NAN
+    kRecTypeSampleUpdateTime    = 21,   // [sample] firstTime, lastTime
+    kRecTypeSampleUpdateFirstTime = 37, // [sample] pageTime
+    kRecTypeSampleUpdateLastTime = 41,  // [sample] pageTime
 
     // [sample] page, pos, value (non-standard layout)
     kRecTypeSampleUpdateFloat32Txn      = 22,
@@ -67,7 +66,7 @@ enum DbWalRecType : int8_t {
     kRecTypeSampleUpdateInt16LastTxn    = 29,
     kRecTypeSampleUpdateInt32LastTxn    = 31,
 
-    kRecType_LastAvailable  = 41,
+    kRecType_LastAvailable  = 42,
 };
 
 #pragma pack(push, 1)

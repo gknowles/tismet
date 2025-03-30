@@ -79,37 +79,12 @@ private:
         uint32_t lastPos,
         bool value
     ) override;
-    void onWalApplyMetricInit(
-        void * ptr,
-        uint32_t id,
-        string_view name,
-        TimePoint creation,
-        DbSampleType sampleType,
-        Duration retention,
-        Duration interval
-    ) override;
-    void onWalApplyMetricUpdate(
-        void * ptr,
-        TimePoint creation,
-        DbSampleType sampleType,
-        Duration retention,
-        Duration interval
-    ) override;
-    void onWalApplyMetricClearSamples(void * ptr) override;
-    void onWalApplyMetricUpdateSamples(
-        void * ptr,
-        size_t pos,
-        TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
-    ) override;
     void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
-        DbSampleType sampleType,
-        TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        DbSampleType type,
+        TimePoint time,
+        double value
     ) override;
     void onWalApplySampleUpdate(
         void * ptr,
@@ -118,7 +93,11 @@ private:
         double value,
         bool updateLast
     ) override;
-    void onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) override;
+    void onWalApplySampleUpdateTime(
+        void * ptr,
+        TimePoint firstTime,
+        TimePoint lastTime
+    ) override;
 
     // Inherited via IPageNotify
     void * onWalGetPtrForUpdate(
@@ -298,78 +277,16 @@ void TextWriter::onWalApplyBitUpdate(
 }
 
 //===========================================================================
-void TextWriter::onWalApplyMetricInit(
-    void * ptr,
-    uint32_t id,
-    string_view name,
-    TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
-) {
-    out(ptr) << name << "/" << id << ".init = "
-        << creation << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << toString(retention, DurationFormat::kTwoPart) << ", "
-        << toString(interval, DurationFormat::kTwoPart) << '\n';
-}
-
-//===========================================================================
-void TextWriter::onWalApplyMetricUpdate(
-    void * ptr,
-    TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
-) {
-    out(ptr) << "metric = "
-        << creation << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << toString(retention, DurationFormat::kTwoPart) << ", "
-        << toString(interval, DurationFormat::kTwoPart) << '\n';
-}
-
-//===========================================================================
-void TextWriter::onWalApplyMetricClearSamples(void * ptr) {
-    out(ptr) << "metric.samples.clear\n";
-}
-
-//===========================================================================
-void TextWriter::onWalApplyMetricUpdateSamples(
-    void * ptr,
-    size_t pos,
-    TimePoint refTime,
-    size_t refSample,
-    pgno_t refPage
-) {
-    auto & os = out(ptr);
-    if (refPage)
-        os << "metric.samples[" << pos << "] = @" << refPage << "; ";
-    os << "metric.samples.last = ";
-    if (!empty(refTime))
-        os << pos << " / ";
-    if (refPage)
-        os << "@" << refPage;
-    if (refSample != (size_t) -1)
-        os << '.' << refSample;
-    if (!empty(refTime))
-        os << " / " << refTime;
-    os << '\n';
-}
-
-//===========================================================================
 void TextWriter::onWalApplySampleInit(
     void * ptr,
     uint32_t id,
-    DbSampleType sampleType,
-    TimePoint pageTime,
-    size_t lastSample,
-    double fill
+    DbSampleType type,
+    TimePoint time,
+    double value
 ) {
-    out(ptr) << "samples/" << id << ".init = " << fill << ", "
-        << toString(sampleType, "UNKNOWN_TYPE") << ", "
-        << pageTime << ", "
-        << lastSample << "\n";
+    out(ptr) << "samples/" << id << ".init = " << value << ", "
+        << time << ", " << toString(type, "UNKNOWN_TYPE")
+        << "\n";
 }
 
 //===========================================================================
@@ -400,8 +317,12 @@ void TextWriter::onWalApplySampleUpdate(
 }
 
 //===========================================================================
-void TextWriter::onWalApplySampleUpdateTime(void * ptr, TimePoint pageTime) {
-    out(ptr) << "samples.time = " << pageTime << '\n';
+void TextWriter::onWalApplySampleUpdateTime(
+    void * ptr,
+    TimePoint firstTime,
+    TimePoint lastTime
+) {
+    out(ptr) << "samples.time = " << firstTime << ", " << lastTime << '\n';
 }
 
 //===========================================================================

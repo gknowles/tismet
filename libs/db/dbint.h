@@ -30,9 +30,6 @@ static_assert(std::is_same_v<std::underlying_type_t<pgno_t>, uint32_t>);
 constexpr auto kMaxPageNum = (pgno_t) 0x7fff'ffff;
 constexpr auto kFreePageMark = (pgno_t) 0xffff'ffff;
 
-constexpr int kMaxVirtualSample = 0x3fff'ffff;
-constexpr int kMinVirtualSample = -kMaxVirtualSample;
-
 // Forward declarations
 class DbData;
 class DbRootSet;
@@ -285,6 +282,7 @@ public:
     };
 
 public:
+    DbTxn(const DbTxn & from) = default;
     DbTxn(DbWal & wal, DbPage & page, std::shared_ptr<DbRootSet> roots);
     ~DbTxn();
 
@@ -342,45 +340,20 @@ public:
         size_t lastPos,
         bool value
     );
-    void walMetricInit(
+    void walSampleInit(
         pgno_t pgno,
         uint32_t id,
-        std::string_view name,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    );
-    void walMetricUpdate(
-        pgno_t pgno,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    );
-    void walMetricClearSamples(pgno_t pgno);
-    void walMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample);
-    void walMetricUpdateSamples(
-        pgno_t pgno,
-        size_t refPos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
+        DbSampleType type,
+        Dim::TimePoint time,
+        double value
     );
     void walSampleInit(
         pgno_t pgno,
         uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample
-    );
-    void walSampleInit(
-        pgno_t pgno,
-        uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        DbSampleType type,
+        Dim::TimePoint firstTime,
+        uint16_t lastBitPos,
+        std::span<uint8_t> data
     );
     void walSampleUpdateTxn(
         pgno_t pgno,
@@ -395,7 +368,6 @@ public:
         double value,
         bool updateLast
     );
-    void walSampleUpdateTime(pgno_t pgno, Dim::TimePoint pageTime);
 
 private:
     template<typename T>
@@ -509,6 +481,7 @@ struct DbRootVersion {
 
 class DbRootSet : public std::enable_shared_from_this<DbRootSet> {
 public:
+    std::shared_ptr<DbRootVersion> info;
     std::shared_ptr<DbRootVersion> name;
 
 public:
@@ -568,7 +541,7 @@ public:
     DbPageHeap(
         DbTxn * txn,
         DbData * data,
-        unsigned rootId,
+        unsigned rootId,    // 0 for readonly
         pgno_t root
     );
     const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
@@ -609,7 +582,6 @@ public:
     struct FreePage;
     struct RadixPage;
     struct BitmapPage;
-    struct MetricPage;
     struct SamplePage;
     struct TriePage;
 
@@ -628,26 +600,21 @@ public:
         const pgno_t * end() const { return pages + numPages; }
     };
 
-    struct MetricPosition {
-        Dim::Duration interval;
-        Dim::TimePoint pageFirstTime; // time of first sample on last page
-        pgno_t infoPage;
-        pgno_t lastPage; // page with most recent samples
-        uint16_t pageLastSample; // position of last sample on last page
-        DbSampleType sampleType;
-    };
-
 public:
-    static uint16_t entriesPerMetricPage(size_t pageSize);
-    static size_t metricNameSize(size_t pageSize);
-    static RadixData * radixData(MetricPage * mp, size_t pageSize);
-
     static uint16_t entriesPerRadixPage(size_t pageSize);
 
     static RadixData * radixData(DbPageHeader * hdr, size_t pageSize);
     static const RadixData * radixData(
         const DbPageHeader * hdr,
         size_t pageSize
+    );
+
+    static std::string trieKeyMin(uint32_t id);
+
+    static std::string trieKey(uint32_t id);
+    static std::string trieKey(std::string_view name, uint32_t id);
+    static std::pair<std::string_view, uint32_t> trieKeyToId(
+        std::string_view val
     );
 
 public:
@@ -680,6 +647,7 @@ public:
     );
     void getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id);
 
+    void eraseSamples(DbTxn & txn, uint32_t id);
     void updateSample(
         DbTxn & txn,
         uint32_t id,
@@ -687,8 +655,8 @@ public:
         double value
     );
     void getSamples(
-        DbTxn & txn,
         IDbDataNotify * notify,
+        DbTxn & txn,
         uint32_t id,
         Dim::TimePoint first,
         Dim::TimePoint last,
@@ -744,37 +712,12 @@ public:
         uint32_t lastPos,
         bool value
     ) override;
-    void onWalApplyMetricInit(
-        void * ptr,
-        uint32_t id,
-        std::string_view name,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    ) override;
-    void onWalApplyMetricUpdate(
-        void * ptr,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    ) override;
-    void onWalApplyMetricClearSamples(void * ptr);
-    void onWalApplyMetricUpdateSamples(
-        void * ptr,
-        size_t pos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
-    ) override;
     void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        DbSampleType type,
+        Dim::TimePoint time,
+        double value
     ) override;
     void onWalApplySampleUpdate(
         void * ptr,
@@ -785,7 +728,8 @@ public:
     ) override;
     void onWalApplySampleUpdateTime(
         void * ptr,
-        Dim::TimePoint pageTime
+        Dim::TimePoint firstTime,
+        Dim::TimePoint lastTime
     ) override;
 
 private:
@@ -804,11 +748,29 @@ private:
     bool loadMetric(
         DbTxn & txn,
         IDbDataNotify * notify,
-        pgno_t pgno
+        const std::string & val
     );
     bool loadMetrics(DbTxn & txn, IDbDataNotify * notify);
-    void metricDestructPage(DbTxn & txn, pgno_t pgno);
     void metricClearCounters();
+    DbMetricInfo getMetricInfo(DbTxn & txn, uint32_t id);
+
+    bool findSamplePage(
+        DbTxn & txn,
+        pgno_t * sipno,  // pgno of root of metric's sample index
+        pgno_t * spno,  // pgno that should contain sample
+        uint32_t id,
+        Dim::TimePoint time
+    );
+    // New page created if no samples exist and type is not kSampleTypeInvalid.
+    bool findLastSamplePage(
+        DbTxn & txn,
+        pgno_t * spno,
+        uint32_t id,
+        DbSampleType type = {},
+        Dim::TimePoint time = {},
+        double value = {}
+    );
+    void eraseSampleIndex(DbTxn & txn, uint32_t id);
 
     bool loadFreePages(DbTxn & txn);
     bool loadDeprecatedPages(DbTxn & txn);
@@ -848,12 +810,12 @@ private:
         pgno_t root,
         size_t pos
     );
-    // Returns false if no value was found at the position, including if it's
-    // past the end of the index.
+    // Returns false and sets *out to 0 if no value was found at the position,
+    // or if it's past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
-
     // Calls the function for each page in index, exits immediately if the
-    // function returns false. Returns true if no function returned false.
+    // function returns false. Returns true if function never returned false
+    // for any page.
     bool radixVisit(
         DbTxn & txn,
         pgno_t root,
@@ -871,46 +833,32 @@ private:
     bool bitLoad(DbTxn & txn, Dim::UnsignedSet * out, pgno_t root);
     size_t bitsPerPage() const;
 
-    static std::string trieKey(std::string_view name, uint32_t id);
-    static std::pair<std::string_view, uint32_t> trieKeyToId(
+    static std::string trieKey(uint32_t id, const DbMetricInfo & info);
+    static bool parseTrieKey(
+        uint32_t * id,
+        DbMetricInfo * out,
         std::string_view val
     );
+
+    enum TrieAction {
+        kUnknown,
+        kClear,
+        kInsert,
+        kErase,
+        kErasePrefix,
+    };
     void trieApply(
         DbTxn & txn,
-        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
-        const std::vector<std::string> & keys,
-        std::function<bool(Dim::StrTrieBase * index, const std::string & key)>
-    );
-    void trieInsert(
-        DbTxn & txn,
+        const std::vector<TrieAction> & actions,
         const std::vector<std::shared_ptr<DbRootVersion>> & roots,
         const std::vector<std::string> & keys
     );
-    void trieErase(
+    void trieClear(DbTxn & txn, pgno_t root);
+    bool trieVisitWithPrefix(
         DbTxn & txn,
-        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
-        const std::vector<std::string> & keys
-    );
-
-    pgno_t sampleMakePhysical(
-        DbTxn & txn,
-        uint32_t id,
-        DbData::MetricPosition & mi,
-        size_t sppos,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        pgno_t vpage = {}
-    );
-    bool sampleTryMakeVirtual(DbTxn & txn, MetricPosition & mi, pgno_t spno);
-    size_t samplesPerPage(DbSampleType type) const;
-
-    MetricPosition getMetricPos(uint32_t id) const;
-    void setMetricPos(uint32_t id, const MetricPosition & mi);
-    MetricPosition loadMetricPos(DbTxn & txn, uint32_t id);
-    MetricPosition loadMetricPos(
-        DbTxn & txn,
-        uint32_t id,
-        Dim::TimePoint time
+        pgno_t root,
+        std::string_view match,
+        const std::function<bool(DbTxn&, const std::string & key)> & fn
     );
 
     bool m_verbose = false;
@@ -921,7 +869,8 @@ private:
     pgno_t m_rootRoot = pgno_t::npos;
     pgno_t m_freeRoot = pgno_t::npos;
     pgno_t m_deprecatedRoot = pgno_t::npos;
-    pgno_t m_metricRoot = pgno_t::npos;
+    pgno_t m_sampleRoot = pgno_t::npos;
+    pgno_t m_sampleIndexRoot = pgno_t::npos;
     struct RootDef {
         std::string name;
         DbPageType type;
@@ -937,7 +886,6 @@ private:
     std::atomic<std::shared_ptr<DbRootSet>> m_metricRoots;
 
     mutable std::shared_mutex m_mposMut;
-    std::vector<MetricPosition> m_metricPos;
     unsigned m_numMetrics = 0;
 
     mutable std::recursive_mutex m_pageMut;

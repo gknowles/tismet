@@ -134,7 +134,6 @@ private:
     // Persistent data
     DbPage m_page;
     DbData m_data;
-    unsigned m_maxNameLen{};
     DbWal m_wal; // MUST be last! (and destroyed first)
 };
 
@@ -210,7 +209,6 @@ bool DbBase::open(
     m_data.openForApply(m_page.pageSize(), flags);
     if (!m_wal.recover())
         return false;
-    m_maxNameLen = m_data.queryStats().metricNameSize - 1;
     DbTxn txn{m_wal, m_page, m_data.metricRootsInstance()};
     if (!m_data.openForUpdate(txn, this, datafile, flags))
         return false;
@@ -402,8 +400,8 @@ void DbBase::apply(uint32_t id, DbReq && req) {
         break;
     case kGetSamples:
         m_data.getSamples(
-            txn,
             req.notify,
+            txn,
             id,
             req.first,
             req.last,
@@ -427,7 +425,6 @@ void DbBase::apply(uint32_t id, DbReq && req) {
             DbMetricInfo info;
             info.type = req.sampleType;
             info.retention = req.retention;
-            info.interval = req.interval;
             info.creation = req.first;
             m_data.updateMetric(txn, id, info);
         }
@@ -482,11 +479,6 @@ void DbBase::releaseInstanceRef(uint64_t instance) {
 
 //===========================================================================
 bool DbBase::insertMetric(uint32_t * out, string_view name) {
-    if (name.size() > m_maxNameLen) {
-        name = name.substr(0, m_maxNameLen);
-        s_perfTrunc += 1;
-    }
-
     {
         shared_lock lk{m_indexMut};
         if (m_leaf.find(out, name))
@@ -527,7 +519,6 @@ void DbBase::updateMetric(uint32_t id, const DbMetricInfo & info) {
     req.type = kUpdateMetric;
     req.sampleType = info.type;
     req.retention = info.retention;
-    req.interval = info.interval;
     req.first = info.creation;
     transact(id, move(req));
 }
@@ -549,8 +540,6 @@ bool DbBase::getMetricInfo(IDbDataNotify * notify, uint32_t id) const {
 
 //===========================================================================
 bool DbBase::findMetric(uint32_t * out, string_view name) const {
-    if (name.size() > m_maxNameLen)
-        name = name.substr(0, m_maxNameLen);
     shared_lock lk{m_indexMut};
     return m_leaf.find(out, name);
 }

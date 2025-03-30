@@ -20,71 +20,12 @@ using namespace Dim;
 namespace {
 
 //---------------------------------------------------------------------------
-// Metric
-struct MetricInitRec {
-    DbWal::Record hdr;
-    uint32_t id;
-    DbSampleType sampleType;
-    Duration retention;
-    Duration interval;
-    TimePoint creation;
-
-    // EXTENDS BEYOND END OF STRUCT
-    char name[1]; // has terminating null
-};
-struct MetricUpdateRec {
-    DbWal::Record hdr;
-    TimePoint creation;
-    DbSampleType sampleType;
-    Duration retention;
-    Duration interval;
-};
-struct MetricUpdatePosRec {
-    DbWal::Record hdr;
-    uint16_t refPos;
-    TimePoint refTime;
-};
-struct MetricUpdatePosAndIndexRec {
-    DbWal::Record hdr;
-    uint16_t refPos;
-    TimePoint refTime;
-    pgno_t refPage;
-};
-
-// Also an implicit transaction, non-standard format
-struct MetricUpdateSampleTxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t refSample;
-};
-
-struct MetricUpdateSampleRec {
-    DbWal::Record hdr;
-    uint16_t refSample;
-};
-struct MetricUpdateSampleAndIndexRec {
-    DbWal::Record hdr;
-    uint16_t refPos;
-    TimePoint refTime;
-    uint16_t refSample;
-    pgno_t refPage;
-};
-
-//---------------------------------------------------------------------------
 // Sample
 struct SampleInitRec {
     DbWal::Record hdr;
     uint32_t id;
-    DbSampleType sampleType;
-    TimePoint pageTime;
-    uint16_t lastSample;
-};
-struct SampleInitFillRec {
-    DbWal::Record hdr;
-    uint32_t id;
-    DbSampleType sampleType;
-    TimePoint pageTime;
-    uint16_t lastSample;
+    DbSampleType type;
+    TimePoint time;
     double value;
 };
 struct SampleUpdateRec {
@@ -96,6 +37,11 @@ struct SampleUpdateRec {
 struct SampleUpdateTimeRec {
     DbWal::Record hdr;
     TimePoint pageTime;
+};
+struct SampleUpdateTime2Rec {
+    DbWal::Record hdr;
+    TimePoint firstTime;
+    TimePoint lastTime;
 };
 
 // Update (with or without last) is also an implicit transaction
@@ -137,146 +83,6 @@ struct SampleUpdateInt8TxnRec {
 
 /****************************************************************************
 *
-*   DbWalRecInfo - Metric
-*
-***/
-
-//===========================================================================
-static uint16_t sizeMetricInit(const DbWal::Record & raw) {
-    auto & rec = reinterpret_cast<const MetricInitRec &>(raw);
-    return offsetof(MetricInitRec, name)
-        + (uint16_t) strlen(rec.name) + 1;
-}
-
-//===========================================================================
-static void applyMetricInit(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricInitRec *>(args.rec);
-    args.notify->onWalApplyMetricInit(
-        args.page,
-        rec->id,
-        rec->name,
-        rec->creation,
-        rec->sampleType,
-        rec->retention,
-        rec->interval
-    );
-}
-
-//===========================================================================
-static void applyMetricUpdate(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdate(
-        args.page,
-        rec->creation,
-        rec->sampleType,
-        rec->retention,
-        rec->interval
-    );
-}
-
-//===========================================================================
-static void applyMetricClearSamples(const DbWalApplyArgs & args) {
-    args.notify->onWalApplyMetricClearSamples(args.page);
-}
-
-//===========================================================================
-static void applyMetricUpdatePos(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdatePosRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdateSamples(
-        args.page,
-        rec->refPos,
-        rec->refTime,
-        (size_t) -1,
-        {}
-    );
-}
-
-//===========================================================================
-static void applyMetricUpdatePosAndIndex(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdatePosAndIndexRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdateSamples(
-        args.page,
-        rec->refPos,
-        rec->refTime,
-        (size_t) -1,
-        rec->refPage
-    );
-}
-
-//===========================================================================
-static void applyMetricUpdateSampleTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleTxnRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdateSamples(
-        args.page,
-        (size_t) -1,
-        {},
-        rec->refSample,
-        {}
-    );
-}
-
-//===========================================================================
-static void applyMetricUpdateSample(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdateSamples(
-        args.page,
-        (size_t) -1,
-        {},
-        rec->refSample,
-        {}
-    );
-}
-
-//===========================================================================
-static void applyMetricUpdateSampleAndIndex(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const MetricUpdateSampleAndIndexRec *>(args.rec);
-    args.notify->onWalApplyMetricUpdateSamples(
-        args.page,
-        rec->refPos,
-        rec->refTime,
-        rec->refSample,
-        rec->refPage
-    );
-}
-
-static DbWalRegisterRec s_metricRecInfo {
-    { kRecTypeMetricInit,
-        sizeMetricInit,
-        applyMetricInit,
-    },
-    { kRecTypeMetricUpdate,
-        DbWalRecInfo::sizeFn<MetricUpdateRec>,
-        applyMetricUpdate,
-    },
-    { kRecTypeMetricClearSamples,
-        DbWalRecInfo::sizeFn<DbWal::Record>,
-        applyMetricClearSamples,
-    },
-    { kRecTypeMetricUpdatePos,
-        DbWalRecInfo::sizeFn<MetricUpdatePosRec>,
-        applyMetricUpdatePos,
-    },
-    { kRecTypeMetricUpdatePosAndIndex,
-        DbWalRecInfo::sizeFn<MetricUpdatePosAndIndexRec>,
-        applyMetricUpdatePosAndIndex,
-    },
-    { kRecTypeMetricUpdateSampleTxn,
-        DbWalRecInfo::sizeFn<MetricUpdateSampleTxnRec>,
-        applyMetricUpdateSampleTxn,
-    },
-    { kRecTypeMetricUpdateSample,
-        DbWalRecInfo::sizeFn<MetricUpdateSampleRec>,
-        applyMetricUpdateSample,
-    },
-    { kRecTypeMetricUpdateSampleAndIndex,
-        DbWalRecInfo::sizeFn<MetricUpdateSampleAndIndexRec>,
-        applyMetricUpdateSampleAndIndex,
-    },
-};
-
-
-/****************************************************************************
-*
 *   DbWalRecInfo - Sample
 *
 ***/
@@ -287,22 +93,8 @@ static void applySampleInit(const DbWalApplyArgs & args) {
     args.notify->onWalApplySampleInit(
         args.page,
         rec->id,
-        rec->sampleType,
-        rec->pageTime,
-        rec->lastSample,
-        NAN
-    );
-}
-
-//===========================================================================
-static void applySampleInitFill(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleInitFillRec *>(args.rec);
-    args.notify->onWalApplySampleInit(
-        args.page,
-        rec->id,
-        rec->sampleType,
-        rec->pageTime,
-        rec->lastSample,
+        rec->type,
+        rec->time,
         rec->value
     );
 }
@@ -332,9 +124,33 @@ static void applySampleUpdateLast(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
-static void applySampleUpdateTime(const DbWalApplyArgs & args) {
+static void applySampleUpdateTimes(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateTime2Rec *>(args.rec);
+    args.notify->onWalApplySampleUpdateTime(
+        args.page,
+        rec->firstTime,
+        rec->lastTime
+    );
+}
+
+//===========================================================================
+static void applySampleUpdateFirstTime(const DbWalApplyArgs & args) {
     auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.rec);
-    args.notify->onWalApplySampleUpdateTime(args.page, rec->pageTime);
+    args.notify->onWalApplySampleUpdateTime(
+        args.page,
+        rec->pageTime,
+        {}
+    );
+}
+
+//===========================================================================
+static void applySampleUpdateLastTime(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.rec);
+    args.notify->onWalApplySampleUpdateTime(
+        args.page,
+        {},
+        rec->pageTime
+    );
 }
 
 //===========================================================================
@@ -463,10 +279,6 @@ static DbWalRegisterRec s_sampleRecInfo{
         DbWalRecInfo::sizeFn<SampleInitRec>,
         applySampleInit,
     },
-    { kRecTypeSampleInitFill,
-        DbWalRecInfo::sizeFn<SampleInitFillRec>,
-        applySampleInitFill,
-    },
     { kRecTypeSampleUpdate,
         DbWalRecInfo::sizeFn<SampleUpdateRec>,
         applySampleUpdate,
@@ -476,8 +288,16 @@ static DbWalRegisterRec s_sampleRecInfo{
         applySampleUpdateLast,
     },
     { kRecTypeSampleUpdateTime,
+        DbWalRecInfo::sizeFn<SampleUpdateTime2Rec>,
+        applySampleUpdateTimes,
+    },
+    { kRecTypeSampleUpdateFirstTime,
         DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
-        applySampleUpdateTime,
+        applySampleUpdateFirstTime,
+    },
+    { kRecTypeSampleUpdateLastTime,
+        DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
+        applySampleUpdateLastTime,
     },
     { kRecTypeSampleUpdateFloat32Txn,
         DbWalRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
@@ -529,143 +349,18 @@ static DbWalRegisterRec s_sampleRecInfo{
 ***/
 
 //===========================================================================
-void DbTxn::walMetricInit(
-    pgno_t pgno,
-    uint32_t id,
-    string_view name,
-    TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
-) {
-    auto extra = name.size() + 1;
-    auto offset = offsetof(MetricInitRec, name);
-    auto [rec, bytes] = alloc<MetricInitRec>(
-        kRecTypeMetricInit,
-        pgno,
-        offset + extra
-    );
-    rec->id = id;
-    rec->sampleType = sampleType;
-    rec->retention = retention;
-    rec->interval = interval;
-    rec->creation = creation;
-    memcpy(rec->name, name.data(), extra - 1);
-    rec->name[extra] = 0;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::walMetricUpdate(
-    pgno_t pgno,
-    TimePoint creation,
-    DbSampleType sampleType,
-    Duration retention,
-    Duration interval
-) {
-    auto [rec, bytes] = alloc<MetricUpdateRec>(kRecTypeMetricUpdate, pgno);
-    rec->creation = creation;
-    rec->sampleType = sampleType;
-    rec->retention = retention;
-    rec->interval = interval;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::walMetricClearSamples(pgno_t pgno) {
-    auto [rec, bytes] = alloc<DbWal::Record>(kRecTypeMetricClearSamples, pgno);
-    wal(rec, bytes);
-}
-
-//===========================================================================
-void DbTxn::walMetricUpdateSamplesTxn(pgno_t pgno, size_t refSample) {
-    if (m_txn)
-        return walMetricUpdateSamples(pgno, (size_t) -1, {}, refSample, {});
-
-    MetricUpdateSampleTxnRec rec;
-    rec.type = kRecTypeMetricUpdateSampleTxn;
-    rec.pgno = pgno;
-    rec.refSample = (uint16_t) refSample;
-    m_wal.walAndApply({}, (DbWal::Record *) &rec, sizeof(rec));
-}
-
-//===========================================================================
-void DbTxn::walMetricUpdateSamples(
-    pgno_t pgno,
-    size_t refPos,
-    TimePoint refTime,
-    size_t refSample,
-    pgno_t refPage
-) {
-    if (empty(refTime)) {
-        assert(refPos == -1 && !refPage);
-        auto [rec, bytes] =
-            alloc<MetricUpdateSampleRec>(kRecTypeMetricUpdateSample, pgno);
-        rec->refSample = (uint16_t) refSample;
-        return wal(&rec->hdr, bytes);
-    }
-    if (refSample != -1) {
-        assert(refPos != -1);
-        auto [rec, bytes] = alloc<MetricUpdateSampleAndIndexRec>(
-            kRecTypeMetricUpdateSampleAndIndex,
-            pgno
-        );
-        rec->refPos = (uint16_t) refPos;
-        rec->refTime = refTime;
-        rec->refSample = (uint16_t) refSample;
-        rec->refPage = refPage;
-        return wal(&rec->hdr, bytes);
-    }
-    if (!refPage) {
-        assert(refPos != -1 && refSample == -1);
-        auto [rec, bytes] =
-            alloc<MetricUpdatePosRec>(kRecTypeMetricUpdatePos, pgno);
-        rec->refPos = (uint16_t) refPos;
-        rec->refTime = refTime;
-        return wal(&rec->hdr, bytes);
-    }
-    assert(refPos != -1);
-    auto [rec, bytes] = alloc<MetricUpdatePosAndIndexRec>(
-        kRecTypeMetricUpdatePosAndIndex,
-        pgno
-    );
-    rec->refPos = (uint16_t) refPos;
-    rec->refTime = refTime;
-    rec->refPage = refPage;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
 void DbTxn::walSampleInit(
     pgno_t pgno,
     uint32_t id,
-    DbSampleType sampleType,
-    TimePoint pageTime,
-    size_t lastSample
+    DbSampleType type,
+    TimePoint time,
+    double value
 ) {
     auto [rec, bytes] = alloc<SampleInitRec>(kRecTypeSampleInit, pgno);
     rec->id = id;
-    rec->sampleType = sampleType;
-    rec->pageTime = pageTime;
-    rec->lastSample = (uint16_t) lastSample;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::walSampleInit(
-    pgno_t pgno,
-    uint32_t id,
-    DbSampleType sampleType,
-    TimePoint pageTime,
-    size_t lastSample,
-    double fill
-) {
-    auto [rec, bytes] = alloc<SampleInitFillRec>(kRecTypeSampleInitFill, pgno);
-    rec->id = id;
-    rec->sampleType = sampleType;
-    rec->pageTime = pageTime;
-    rec->lastSample = (uint16_t) lastSample;
-    rec->value = fill;
+    rec->type = type;
+    rec->time = time;
+    rec->value = value;
     wal(&rec->hdr, bytes);
 }
 
@@ -745,13 +440,5 @@ void DbTxn::walSampleUpdate(
     rec->firstSample = (uint16_t) firstSample;
     rec->lastSample = (uint16_t) lastSample;
     rec->value = value;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::walSampleUpdateTime(pgno_t pgno, TimePoint pageTime) {
-    auto [rec, bytes] =
-        alloc<SampleUpdateTimeRec>(kRecTypeSampleUpdateTime, pgno);
-    rec->pageTime = pageTime;
     wal(&rec->hdr, bytes);
 }

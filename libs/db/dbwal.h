@@ -147,7 +147,7 @@ private:
     void walCommitTxn(Lsx txn);
     void walCommitTxns(const std::unordered_set<Lsx> & txns);
 
-    // Returns LSN.
+    // Returns LSN of record that was written.
     enum class TxnMode { kBegin, kContinue, kCommit };
     Lsn wal(
         const Record & rec,
@@ -208,6 +208,8 @@ private:
 
     Dim::UnsignedSet m_freePages;
     size_t m_numPages = 0;
+
+    // Estimate of pages needed before next checkpoint.
     size_t m_peakUsedPages = 0;
 
     // Information about all active pages. A page is active if it has not been
@@ -389,37 +391,12 @@ public:
         bool value
     ) = 0;
 
-    virtual void onWalApplyMetricInit(
-        void * ptr,
-        uint32_t id,
-        std::string_view name,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    ) = 0;
-    virtual void onWalApplyMetricUpdate(
-        void * ptr,
-        Dim::TimePoint creation,
-        DbSampleType sampleType,
-        Dim::Duration retention,
-        Dim::Duration interval
-    ) = 0;
-    virtual void onWalApplyMetricClearSamples(void * ptr) = 0;
-    virtual void onWalApplyMetricUpdateSamples(
-        void * ptr,
-        size_t pos,
-        Dim::TimePoint refTime,
-        size_t refSample,
-        pgno_t refPage
-    ) = 0;
     virtual void onWalApplySampleInit(
         void * ptr,
         uint32_t id,
-        DbSampleType sampleType,
-        Dim::TimePoint pageTime,
-        size_t lastSample,
-        double fill
+        DbSampleType type,
+        Dim::TimePoint time,
+        double value
     ) = 0;
     virtual void onWalApplySampleUpdate(
         void * ptr,
@@ -430,6 +407,7 @@ public:
     ) = 0;
     virtual void onWalApplySampleUpdateTime(
         void * ptr,
-        Dim::TimePoint pageTime
+        Dim::TimePoint firstTime,
+        Dim::TimePoint lastTime
     ) = 0;
 };

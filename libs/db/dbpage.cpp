@@ -188,7 +188,7 @@ bool DbPage::openWork(string_view workfile) {
     }
 
     // Auto-close file on failure of initial processing of the opened file.
-    Finally fin([&fh = m_fwork]() {
+    Finally autoclose([&fh = m_fwork]() {
         // Because it's opened with fTemp, file will be auto-removed on close.
         fileClose(fh);
         fh = {};
@@ -229,7 +229,7 @@ bool DbPage::openWork(string_view workfile) {
     }
 
     // Open successful, don't auto-close or auto-delete.
-    fin.release();
+    autoclose.release();
 
     s_perfPages += (unsigned) m_workPages;
     s_perfFreePages += (unsigned) m_workPages - 1;
@@ -342,9 +342,11 @@ void DbPage::close() {
 *        storage and not just to the OS cache.
 *   10.  Record of checkpoint created, added to in memory WAL page.
 *   11.  WAL page containing checkpoint record becomes durable.
-*   12.  The WAL is truncated, freeing all WAL pages older than the checkpoint.
-*   13.  Update is fully incorporated into the data pages and no longer exists
-*        in the WAL.
+*   12.  The WAL is truncated, freeing all WAL pages older than the checkpoint,
+*        including the page with the record of this update.
+*
+*   After these steps the update is fully incorporated into the data pages and
+*   no longer exists in the WAL.
 *
 ***/
 

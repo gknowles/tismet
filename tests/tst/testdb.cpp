@@ -174,7 +174,7 @@ void Test::dataTests() {
     EXPECT(stats.pageSize == 128);
     //EXPECT(stats.numPages == 4);
     //EXPECT(stats.freePages == 0);
-    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto spp = 100u;
     auto pgt = spp * 1min;
 
     DbContext ctx(h);
@@ -310,7 +310,7 @@ void Test::queryTests() {
         return;
     ctx.reset(h);
     auto stats = dbQueryStats(h);
-    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto spp = 100u;
     auto pgt = spp * 1min;
     dbFindMetrics(&found, h);
     for (auto && id : found)
@@ -341,7 +341,7 @@ void Test::sampleTests() {
         return;
     ctx.reset(h);
     auto stats = dbQueryStats(h);
-    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto spp = 100u;
     auto pgt = spp * 1min;
     dbFindMetrics(&found, h);
     for (auto && id : found)
@@ -417,7 +417,7 @@ void Test::readonlyTests() {
         return;
     ctx.reset(h);
     auto stats = dbQueryStats(h);
-    auto spp = stats.samplesPerPage[kSampleTypeFloat32];
+    auto spp = 100u;
     auto pgt = spp * 1min;
     dbFindMetrics(&found, h);
     ctx.reset();
