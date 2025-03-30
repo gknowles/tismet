@@ -250,31 +250,27 @@ static void updateFile(string_view fname, string_view content) {
 *
 ***/
 
+struct CmdOpts {
+    Path root;
+} s_opts;
+
 //===========================================================================
-static void app(int argc, char * argv[]) {
+static void app(Cli & cli) {
     funcInitialize();
 
-    Cli cli;
-    cli.desc("Code generation for metric function enums, abnf, and parser.");
-    cli.helpNoArgs();
-    auto & root = cli.opt<Path>("<project directory>")
-        .desc("Root directory of tismet source code.");
-    if (!cli.parse(argc, argv))
-        return appSignalUsageError();
-
-    auto sln = *root / "tismet.sln";
+    auto sln = s_opts.root / "tismet.sln";
     bool found = false;
     if (fileExists(&found, sln); !found) {
         return appSignalUsageError(
-            "'" + string(*root) + "' not tismet source root."
+            "'" + string(s_opts.root) + "' not tismet source root."
         );
     }
 
-    auto funcenum_h = *root / "libs/func/fnenum.h";
+    auto funcenum_h = s_opts.root / "libs/func/fnenum.h";
     updateFile(funcenum_h, genFuncEnum(funcenum_h));
-    auto query_h = *root / "libs/query/qryparseimplfnint.h";
+    auto query_h = s_opts.root / "libs/query/qryparseimplfnint.h";
     updateFile(query_h, genQueryFunc(query_h));
-    auto query_abnf = *root / "libs/query/queryfunc.abnf";
+    auto query_abnf = s_opts.root / "libs/query/queryfunc.abnf";
     updateFile(query_abnf, genQueryAbnf(query_abnf));
 
     appSignalShutdown();
@@ -295,6 +291,10 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int code = appRun(app, argc, argv, kVersion);
-    return code;
+    Cli cli;
+    cli.desc("Code generation for metric function enums, abnf, and parser.");
+    cli.helpNoArgs().action(app);
+    cli.opt(&s_opts.root, "<project directory>")
+        .desc("Root directory of tismet source code.");
+    return appRun(argc, argv, kVersion);
 }

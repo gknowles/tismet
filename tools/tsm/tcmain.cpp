@@ -29,22 +29,6 @@ static TimePoint s_startTime;
 
 /****************************************************************************
 *
-*   Application
-*
-***/
-
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    Cli cli;
-    cli.desc("Utility for dealing with metrics and the tismet server.");
-    cli.helpCmd().helpNoArgs();
-    cli.exec(argc, argv);
-    appSignalUsageError();
-}
-
-
-/****************************************************************************
-*
 *   main
 *
 ***/
@@ -57,7 +41,10 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    int code = appRun(app, argc, argv, kVersion);
+    Cli cli;
+    cli.desc("Utility for dealing with metrics and the tismet server.");
+    cli.helpCmd().helpNoArgs();
+    int code = appRun(argc, argv, kVersion);
     return code;
 }
 

@@ -52,6 +52,11 @@ ITest::ITest (std::string_view name, std::string_view desc)
 ***/
 
 //===========================================================================
+static void initApp(Cli & cli) {
+    funcInitialize();
+}
+
+//===========================================================================
 static void allCmd(Cli & cli) {
     vector<ITest *> all;
     for (auto&& test : tests()) {
@@ -67,18 +72,6 @@ static void allCmd(Cli & cli) {
         test->onTestRun();
     }
     cout << endl;
-}
-
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    Cli cli;
-    cli.helpCmd().helpNoArgs();
-    cli.command("all")
-        .desc("Run all tests.")
-        .action(allCmd);
-    if (!cli.exec(argc, argv))
-        return appSignalUsageError();
-    testSignalShutdown();
 }
 
 
@@ -97,7 +90,12 @@ int main(int argc, char *argv[]) {
     );
     _set_error_mode(_OUT_TO_MSGBOX);
 
-    funcInitialize();
-    int code = appRun(app, argc, argv, kVersion);
+    Cli cli;
+    cli.helpCmd().helpNoArgs();
+    cli.beforeExec(initApp);
+    cli.command("all")
+        .desc("Run all tests.")
+        .action(allCmd);
+    int code = appRun(argc, argv, kVersion);
     return code;
 }

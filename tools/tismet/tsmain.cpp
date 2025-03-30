@@ -136,6 +136,11 @@ static string s_product = "tismet";
 static string s_productVersion;
 
 //===========================================================================
+static void initApp(Cli & cli) {
+    s_productVersion = appBaseName() + "/" + toString(appVersion());
+}
+
+//===========================================================================
 static void serveCmd(Cli & cli) {
     httpRouteSetDefaultReplyHeader(kHttpServer, s_productVersion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
@@ -145,30 +150,6 @@ static void serveCmd(Cli & cli) {
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
     cli.fail(EX_PENDING, "");
-}
-
-//===========================================================================
-static void app(int argc, char * argv[]) {
-    s_productVersion = s_product + "/" + toString(appVersion());
-
-    Cli cli;
-    cli.helpCmd();
-    cli.before([](auto & cli, auto & args) {
-        if (args.size() == 1)
-            args.push_back(appFlags().any(fAppIsService) ? "serve" : "help");
-    });
-    cli.opt<unsigned>("console")
-        .show(false).desc("Attach to console of other process.")
-        .after([](auto & cli, auto & opt, auto & val) {
-            if (opt && !consoleAttach(*opt))
-                cli.fail(EX_OSERR, "Unable to attach");
-        });
-    cli.command("serve")
-        .desc("Run Tismet server and process requests.")
-        .action(serveCmd);
-
-    cli.exec(argc, argv);
-    appSignalUsageError();
 }
 
 
@@ -186,14 +167,23 @@ int main(int argc, char *argv[]) {
     if (consoleAttached())
         logMonitor(&s_consoleLogger);
 
-    int code = appRun(
-        app,
-        argc,
-        argv,
-        envExecVersion(),
-        s_product,
-        fAppServer
-    );
+    Cli cli;
+    cli.helpCmd();
+    cli.before([](auto & cli, auto & args) {
+        if (args.size() == 1)
+            args.push_back(appFlags().any(fAppIsService) ? "serve" : "help");
+        });
+    cli.beforeExec(initApp);
+    cli.opt<unsigned>("console")
+        .show(false).desc("Attach to console of other process.")
+        .after([](auto & cli, auto & opt, auto & val) {
+        if (opt && !consoleAttach(*opt))
+            cli.fail(EX_OSERR, "Unable to attach");
+            });
+    cli.command("serve")
+        .desc("Run Tismet server and process requests.")
+        .action(serveCmd);
+    int code = appRun(argc, argv, {}, s_product, fAppServer);
     return code;
 }
 
