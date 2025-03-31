@@ -3,7 +3,6 @@
 # CHANGELOG.md
 # LICENSE
 # README.md
-# appveyor.yml
 # conf/app.xml.sample
 # conf/cmtupd.xml
 # configure.bat
