@@ -699,6 +699,7 @@ void DbData::onWalApplySampleUpdate(
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
+    sp->hdr.type = sp->kPageType;
 }
 
 //===========================================================================
