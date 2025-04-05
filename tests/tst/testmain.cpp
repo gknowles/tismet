@@ -97,5 +97,7 @@ int main(int argc, char *argv[]) {
         .desc("Run all tests.")
         .action(allCmd);
     int code = appRun(argc, argv, kVersion);
+    if (!logGetMsgCount(kLogTypeError))
+        cout << "\nAll tests passed";
     return code;
 }
