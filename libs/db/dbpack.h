@@ -55,8 +55,8 @@ public:
     size_t capacity() const { return m_count; }
 
 private:
-    bool bitput(size_t nbits, uint64_t value);
-    bool bitcheck(size_t nbits);
+    bool putBits(size_t nbits, uint64_t value);
+    size_t availBits();
     bool put(Dim::TimePoint time);
     bool put(double value);
 
@@ -97,8 +97,8 @@ public:
     const DbPackState & state() const { return m_state; }
 
 private:
-    bool bitget(int64_t * out, size_t nbits);
-    bool bitget(uint64_t * out, size_t nbits);
+    bool getBits(int64_t * out, size_t nbits);
+    bool getBits(uint64_t * out, size_t nbits);
     bool getTime();
     bool getValue();
 

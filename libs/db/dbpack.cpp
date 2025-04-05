@@ -74,7 +74,7 @@ bool DbPack::put(TimePoint time) {
     if (ddt == 0) {
         // Same as previous time.
         // '0'
-        return bitput(1, 0);
+        return putBits(1, 0);
     }
     if (ddt % kExponentInfo[m_state.expBits].factor) {
         // Too small for previous exponent, record new exponent.
@@ -82,7 +82,7 @@ bool DbPack::put(TimePoint time) {
         do {
             m_state.expBits -= 1;
         } while (ddt % kExponentInfo[m_state.expBits].factor);
-        if (!bitput(7, kExponentInfo[m_state.expBits].encoded))
+        if (!putBits(7, kExponentInfo[m_state.expBits].encoded))
             return false;
     }
     ddt /= kExponentInfo[m_state.expBits].factor;
@@ -90,26 +90,26 @@ bool DbPack::put(TimePoint time) {
         if (ddt >= -64) {
             // ddt within [-64, -1]
             // '10' + ddt (7 bits)
-            return bitput(9, (0b10 << 7) | ddt & 0x7f);
+            return putBits(9, (0b10 << 7) | ddt & 0x7f);
         } else if (ddt >= -2048) {
             // ddt within [-2048, -65]
             // '110' + ddt (12 bits)
-            return bitput(15, (0b110 << 12) | ddt & 0xfff);
+            return putBits(15, (0b110 << 12) | ddt & 0xfff);
         } else {
             auto bits = kExponentInfo[m_state.expBits].bits;
             if (bits < 60) {
                 // ddt within [-2^59, -2049]
                 // '1110' + ddt (41 - 58 bits, depending on exponent)
-                return bitput(
+                return putBits(
                     4 + bits,
-                    (0b1110 << bits) | ddt & ((1 << bits) - 1)
+                    (0b1110llu << bits) | ddt & ((1 << bits) - 1)
                 );
             } else {
                 // ddt within [-2^63, -2049]
                 // '1110' + ddt (61 - 64 bits, depending on exponent)
-                return bitcheck(4 + bits)
-                    && bitput(4, 0b1110)
-                    && bitput(bits, ddt & ((1 << bits) - 1));
+                return availBits() >= 4 + bits
+                    && putBits(4, 0b1110)
+                    && putBits(bits, ddt & ((1 << bits) - 1));
             }
         }
     } else {
@@ -121,23 +121,23 @@ bool DbPack::put(TimePoint time) {
         if (ddt <= 63) {
             // ddt within [1, 64]
             // '10' + (ddt - 1) (7 bits)
-            return bitput(9, (0b10 << 7) | ddt);
+            return putBits(9, (0b10 << 7) | ddt);
         } else if (ddt <= 2047) {
             // ddt within [65, 2048]
             // '110' + (ddt - 1) (12 bits)
-            return bitput(15, (0b110 << 12) | ddt);
+            return putBits(15, (0b110 << 12) | ddt);
         } else {
             auto bits = kExponentInfo[m_state.expBits].bits;
             if (bits < 60) {
                 // ddt within [2049, 2^59]
                 // '1110' + (ddt - 1) (41 - 58 bits, depending on exponent)
-                return bitput(4 + bits, (0b1110 << bits) | ddt);
+                return putBits(4 + bits, (0b1110llu << bits) | ddt);
             } else {
                 // ddt within [2049, 2^59]
                 // '1110' + (ddt - 1) (61 - 64 bits, depending on exponent)
-                return bitcheck(4 + bits)
-                    && bitput(4, 0b1110)
-                    && bitput(bits, ddt);
+                return availBits() >= 4 + bits
+                    && putBits(4, 0b1110)
+                    && putBits(bits, ddt);
             }
         }
     }
@@ -150,7 +150,7 @@ bool DbPack::put(double value) {
     if (!dv) {
         // Same as previous value.
         // '0'
-        return bitput(1, 0);
+        return putBits(1, 0);
     }
 
     auto prefix = countl_zero(dv);
@@ -162,9 +162,9 @@ bool DbPack::put(double value) {
         // within previous range.
         // '10' + meaningful bits
         auto suffix = 64 - m_state.prefixBits - m_state.lenBits;
-        return bitcheck(2 + m_state.lenBits)
-            && bitput(2, 0b10)
-            && bitput(m_state.lenBits, dv >> suffix);
+        return availBits() >= 2 + m_state.lenBits
+            && putBits(2, 0b10)
+            && putBits(m_state.lenBits, dv >> suffix);
     }
 
     // Specify new range of meaningful bits as well as the new value.
@@ -175,16 +175,16 @@ bool DbPack::put(double value) {
     m_state.lenBits = (uint8_t) len;
     auto out = (0b11 << 11) | (m_state.prefixBits << 6) | m_state.lenBits;
     auto suffix = 64 - m_state.prefixBits - m_state.lenBits;
-    return bitcheck(13 + m_state.lenBits)
-        && bitput(13, out)
-        && bitput(m_state.lenBits, dv >> suffix);
+    return availBits() >= 13 + m_state.lenBits
+        && putBits(13, out)
+        && putBits(m_state.lenBits, dv >> suffix);
 }
 
 //===========================================================================
-bool DbPack::bitput(size_t nbits, uint64_t value) {
+bool DbPack::putBits(size_t nbits, uint64_t value) {
     assert(nbits >= 0 && nbits <= 64);
     assert(nbits == 64 || value < (1ull << nbits));
-    if (!bitcheck(nbits))
+    if (availBits() < nbits)
         return false;
 
     auto cnt = nbits;
@@ -214,9 +214,8 @@ bool DbPack::bitput(size_t nbits, uint64_t value) {
 }
 
 //===========================================================================
-bool DbPack::bitcheck(size_t nbits) {
-    auto space = 8 * (m_count - m_used) + unusedBits();
-    return nbits <= space;
+size_t DbPack::availBits() {
+    return 8 * (m_count - m_used) + unusedBits();
 }
 
 
@@ -253,36 +252,36 @@ DbUnpackIter & DbUnpackIter::operator++() {
 bool DbUnpackIter::getTime() {
     int64_t s;
     uint64_t u;
-    if (!bitget(&u, 1))
+    if (!getBits(&u, 1))
         return false;
     if (!u) {
         // '0' - delta same as previous delta
         m_state.sample.time += m_state.dt;
         return true;
     }
-    if (!bitget(&u, 1))
+    if (!getBits(&u, 1))
         return false;
     if (!u) {
         // '10' + ddt (7 bits)
-        if (!bitget(&s, 7))
+        if (!getBits(&s, 7))
             return false;
     } else {
-        if (!bitget(&u, 1))
+        if (!getBits(&u, 1))
             return false;
         if (!u) {
             // '110' + ddt (12 bits)
-            if (!bitget(&s, 12))
+            if (!getBits(&s, 12))
                 return false;
         } else {
-            if (!bitget(&u, 1))
+            if (!getBits(&u, 1))
                 return false;
             if (!u) {
                 // '1110' + ddt (n bits, depending on exponent)
-                if (!bitget(&s, kExponentInfo[m_state.expBits].bits))
+                if (!getBits(&s, kExponentInfo[m_state.expBits].bits))
                     return false;
             } else {
                 // '1111' + exponent (3 bits)
-                if (!bitget(&u, 3))
+                if (!getBits(&u, 3))
                     return false;
                 m_state.expBits = (uint8_t) u;
                 return getTime();
@@ -300,28 +299,28 @@ bool DbUnpackIter::getTime() {
 //===========================================================================
 bool DbUnpackIter::getValue() {
     uint64_t out;
-    if (!bitget(&out, 1))
+    if (!getBits(&out, 1))
         return false;
     if (!out) {
         // '0'
         return true;
     }
-    if (!bitget(&out, 1))
+    if (!getBits(&out, 1))
         return false;
     if (out) {
         // '11' + leading zeros (5 bits) + xor length (6 bits) + xor (number of
         //      bits given by length)
-        if (!bitget(&out, 5))
+        if (!getBits(&out, 5))
             return false;
         m_state.prefixBits = (uint8_t) out;
-        if (!bitget(&out, 6))
+        if (!getBits(&out, 6))
             return false;
         m_state.lenBits = (uint8_t) out;
     } else {
         // '10' + xor (use current leading zero and length values)
     }
 
-    if (!bitget(&out, m_state.lenBits))
+    if (!getBits(&out, m_state.lenBits))
         return false;
     (uint64_t &) m_state.sample.value ^=
         out << (64 - m_state.lenBits - m_state.prefixBits);
@@ -329,16 +328,16 @@ bool DbUnpackIter::getValue() {
 }
 
 //===========================================================================
-bool DbUnpackIter::bitget(int64_t * out, size_t nbits) {
-    if (!bitget((uint64_t *) out, nbits))
+bool DbUnpackIter::getBits(int64_t * out, size_t nbits) {
+    if (!getBits((uint64_t *) out, nbits))
         return false;
     if (nbits && (*out & (1ull << (nbits - 1))) && nbits < 64)
-        *out |= -1 << nbits;
+        *out |= uint64_t(-1) << nbits;
     return true;
 }
 
 //===========================================================================
-bool DbUnpackIter::bitget(uint64_t * out, size_t nbits) {
+bool DbUnpackIter::getBits(uint64_t * out, size_t nbits) {
     assert(nbits > 0 && nbits <= 64);
     auto availBits = 8 * (m_count - m_used) + m_unusedBits - m_trailingUnused;
     if (availBits < nbits)
