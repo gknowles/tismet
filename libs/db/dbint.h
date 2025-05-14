@@ -269,15 +269,27 @@ public:
     class PinScope {
     public:
         PinScope(DbTxn & txn);
+
+        // Calls close() if scope is still active.
         ~PinScope();
 
+        // Closes scope, unpinning all pins taken while scope was active.
+        // This is the default action on scope destruction.
         void close();
+
+        // Closes scope, removes pins taken while scope was active from
+        // transaction tracking without otherwise processing them.
         void release();
+
+        // Keep pgno pin after scope ends, as if it had been taken before
+        // scope was active.
         void keep(pgno_t pgno);
 
     private:
         DbTxn & m_txn;
         Dim::UnsignedSet m_prevPins;
+
+        // Scope is active from construction until close or release is called.
         bool m_active = true;
     };
 
@@ -766,9 +778,7 @@ private:
         DbTxn & txn,
         pgno_t * spno,
         uint32_t id,
-        DbSampleType type = {},
-        Dim::TimePoint time = {},
-        double value = {}
+        bool createIfNotExist = false
     );
     void eraseSampleIndex(DbTxn & txn, uint32_t id);
 
@@ -847,6 +857,12 @@ private:
         kErase,
         kErasePrefix,
     };
+    // Returns true if action taken (key already existed, wasn't found, etc).
+    bool triePerformAction(
+        DbPageHeap & heap,
+        DbData::TrieAction action,
+        const std::string & key
+    );
     void trieApply(
         DbTxn & txn,
         const std::vector<TrieAction> & actions,

@@ -966,6 +966,27 @@ pair<string_view, uint32_t> DbData::trieKeyToId(string_view val) {
 }
 
 //===========================================================================
+bool DbData::triePerformAction(
+    DbPageHeap & heap,
+    DbData::TrieAction action,
+    const string & key
+) {
+    StrTrieBase trie(&heap);
+    switch (action) {
+    case TrieAction::kClear:
+        trie.clear();
+        return true;
+    case TrieAction::kInsert:
+        return trie.insert(key);
+    case TrieAction::kErase:
+        return trie.erase(key);
+    default:
+        assert(!"Unknown trie action");
+        return false;
+    }
+}
+
+//===========================================================================
 void DbData::trieApply(
     DbTxn & txn,
     const vector<DbData::TrieAction> & actions,
@@ -987,25 +1008,9 @@ void DbData::trieApply(
         if (pos != ords.size() - 1)
             ords[pos] = ords.back();
         ords.pop_back();
+
         DbPageHeap heap(&txn, this, root->rootId, root->root);
-        StrTrieBase trie(&heap);
-        bool found = false;
-        switch (action) {
-        case TrieAction::kClear:
-            trie.clear();
-            found = true;
-            break;
-        case TrieAction::kInsert:
-            found = trie.insert(key);
-            break;
-        case TrieAction::kErase:
-            found = trie.erase(key);
-            break;
-        default:
-            assert(!"Unknown trie action");
-            break;
-        }
-        if (!found) {
+        if (!triePerformAction(heap, action, key)) {
             txn.roots().rollbackUpdate(root);
         } else {
             root->deprecatedPages.insert(heap.destroyed());
@@ -1037,7 +1042,7 @@ bool DbData::trieVisitWithPrefix(
     StrTrieBase trie(&heap);
     for (auto i = trie.lowerBound(match); i != trie.end(); ++i) {
         if ((*i).compare(0, match.size(), match) != 0)
-            break;
+            return true;
         if (!fn(txn, *i))
             return false;
     }

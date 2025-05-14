@@ -30,16 +30,6 @@ enum DbWalRecType : int8_t {
     kRecTypeRadixErase          = 10, // [metric/radix] firstPos, lastPos
     kRecTypeRadixPromote        = 11, // [radix] refPage
     kRecTypeRadixUpdate         = 12, // [radix] refPos, refPage
-    kRecTypeMetricInit          = 13, // [metric] name, id, retention, interval
-    kRecTypeMetricUpdate        = 14, // [metric] retention, interval
-    kRecTypeMetricClearSamples  = 15, // [metric] (clears index & last)
-    kRecTypeMetricUpdatePos     = 32, // [metric] refPos, refTime
-    kRecTypeMetricUpdatePosAndIndex = 33, // [metric] refPos, refTime, refPage
-    kRecTypeMetricUpdateSample  = 34, // [metric] refSample
-    kRecTypeMetricUpdateSampleAndIndex = 35, // [metric] refPos, refTime,
-                                      // refSample, refPage
-    // [metric] page, refSample (non-standard layout)
-    kRecTypeMetricUpdateSampleTxn = 36,
 
     kRecTypeSampleInit          = 18, // [sample] id, stype, time, value
     kRecTypeSampleUpdate        = 19, // [sample] first, last, value

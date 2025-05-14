@@ -1705,14 +1705,14 @@ void DbWal::updatePages_LK(
             break;
         if (!npi.cleanRecs) {
             // The only page that can have no records is a partial write of
-            // what was the very last page with just the tail of the last WAL
-            // record that was started on the previous page.
+            // what was the very last page when it contained just the tail of
+            // the last WAL record started on the previous page.
             assert(!npi.fullPageSaved);
             break;
         }
         last = npi.firstLsn + npi.cleanRecs - 1;
         if (!npi.fullPageSaved) {
-            // The page was only written via a partial write, so when it is
+            // The page was last written via a partial write, so when it is
             // saved again there will be an increase in cleanRecs. Therefore
             // the ultimate number of records is unknown, and we have to stop
             // counting them.

@@ -120,6 +120,12 @@ constexpr size_t sampleTypeSize(DbSampleType type) {
 }
 
 //===========================================================================
+constexpr size_t sampleDataPerPage(DbSampleType type, size_t pageSize) {
+    assert(pageSize > sizeof DbData::SamplePage);
+    return pageSize - offsetof(DbData::SamplePage, data);
+}
+
+//===========================================================================
 static void noSamples(
     IDbDataNotify * notify,
     uint32_t id,
@@ -441,20 +447,16 @@ bool DbData::findLastSamplePage(
     DbTxn & txn,
     pgno_t * spno,
     uint32_t id,
-    DbSampleType type,
-    TimePoint time,
-    double value
+    bool createIfNotExist
 ) {
     scoped_lock lk{m_mndxMut};
     DbTxn::PinScope pins(txn);
     if (radixFind(txn, spno, m_sampleRoot, id))
         return true;
-    if (type) {
+    if (createIfNotExist) {
         // No pages, create page and add sample to it.
         *spno = allocPgno(txn);
         radixInsert(txn, m_sampleRoot, id, *spno);
-        txn.walSampleInit(*spno, id, type, time, value);
-        s_perfAdd += 1;
     }
     return false;
 }
@@ -577,8 +579,10 @@ void DbData::updateSample(
     // Find page that should contain sample
     pgno_t spno;
     pgno_t sipno = npos;
-    if (!findLastSamplePage(txn, &spno, id, mi.type, time, value)) {
-        // No existing samples, new page was created with this sample.
+    if (!findLastSamplePage(txn, &spno, id, true)) {
+        // No existing samples, new page was allocated.
+        txn.walSampleInit(spno, id, mi.type, time, value);
+        s_perfAdd += 1;
         return;
     }
     auto sp = txn.pin<SamplePage>(spno);
@@ -619,12 +623,20 @@ void DbData::updateSample(
 #if 1
     return;
 #else
+    auto dataLen = sampleDataPerPage(sp->sampleType, m_pageSize);
+    auto used = sp->lastBitPos / 8;
+    auto unusedBits = sp->lastBitPos % 8;
+    auto in = DbUnpackIter(
+        (uint8_t *) sp->data + used,
+        dataLen - used + (unusedBits > 0),
+        unusedBits
+    );
+    for (auto&& i : in) {
+        if (in.state().sample.time < time)
+    }
+
     if (time > sp->lastTime) {
         // Sample belongs at end of page.
-        if (update delta equals last && repeat counter < max reps) {
-            // Increment repeat counter.
-            return;
-        }
         if (not room for new entry) {
             // Remove ancient entries.
         }
@@ -686,7 +698,10 @@ void DbData::onWalApplySampleInit(
     sp->lastTime = time;
     sp->sampleType = type;
 
-    // TODO: write value to sp->data[]
+    // Write value to sp->data[]
+    DbPack pack(ptr, sampleDataPerPage(type, m_pageSize));
+    pack.put(time, value);
+    sp->lastBitPos = (uint16_t) (pack.size() * CHAR_BIT - pack.unusedBits());
 }
 
 //===========================================================================
