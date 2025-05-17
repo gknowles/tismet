@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2023.
+// Copyright Glen Knowles 2023 - 2025.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // testpack.cpp - tismet test
@@ -17,11 +17,9 @@ using namespace Dim;
 
 #define EXPECT(...) \
     if (!bool(__VA_ARGS__)) { \
-        logMsgError() << "Line " << (line ? line : __LINE__) << ": EXPECT(" \
+        logMsgError() << "Line " << __LINE__ << ": EXPECT(" \
             << #__VA_ARGS__ << ") failed"; \
     }
-#define EXPECT_FIND(query, result) \
-    findTest(__LINE__, index, query, result)
 
 
 /****************************************************************************
@@ -40,8 +38,10 @@ namespace {
 
 class Test : public ITest {
 public:
-    Test() : ITest("pack", "Sample compression tests.") {}
+    Test();
     void onTestRun() override;
+private:
+    bool m_verbose = false;
 };
 
 } // namespace
@@ -49,39 +49,71 @@ public:
 static Test s_test;
 
 //===========================================================================
+Test::Test()
+    : ITest("pack", "Sample compression tests.")
+{
+    m_cli.opt<bool>(&m_verbose, "v verbose")
+        .desc("Display additional information during test");
+}
+
+//===========================================================================
 void Test::onTestRun() {
-    int line = 0;
     string buf;
-    buf.resize(20);
+    buf.resize(40);
     DbPack pack(buf.data(), buf.size());
-    EXPECT(pack.capacity() == 20);
+    EXPECT(pack.capacity() == 40);
     EXPECT(pack.size() == 0)
     EXPECT(pack.unusedBits() == 0);
     EXPECT(pack.view().size() == 0);
-    pack.put(TimePoint{1s}, 1.0);
-    pack.put(TimePoint{2s}, 2.0);
-    pack.put(TimePoint{3s}, 3.0);
-    pack.put(TimePoint{6s}, 3.0);
-    pack.put(TimePoint{8s}, 5.0);
-    pack.put(TimePoint{9s}, 7.0);
+
+    auto today = std::chrono::floor<std::chrono::days>(timeNow());
+
+    struct {
+        TimePoint time;
+        double value;
+    } vals[] = {
+        { today + 1s, 1.0 },
+        { today + 2s, 2.0 },
+        { today + 3s, 3.0 },
+        { today + 6s, 3.0 },
+        { today + 8s, 5.0 },
+        { today + 9s, 7.0 },
+    };
+    for (auto&& [t, v] : vals)
+        pack.put(t, v);
     DbUnpackIter unpack(pack.data(), pack.size(), pack.unusedBits());
-    EXPECT(unpack->time == TimePoint{1s});
-    EXPECT(unpack->value == 1.0);
-    ++unpack;
-    EXPECT(unpack->time == TimePoint{2s});
-    EXPECT(unpack->value == 2.0);
-    ++unpack;
-    EXPECT(unpack->time == TimePoint{3s});
-    EXPECT(unpack->value == 3.0);
-    ++unpack;
-    EXPECT(unpack->time == TimePoint{6s});
-    EXPECT(unpack->value == 3.0);
-    ++unpack;
-    EXPECT(unpack->time == TimePoint{8s});
-    EXPECT(unpack->value == 5.0);
-    ++unpack;
-    EXPECT(unpack->time == TimePoint{9s});
-    EXPECT(unpack->value == 7.0);
-    ++unpack;
+    for (auto&& [t, v] : vals) {
+        auto & s = *unpack;
+        EXPECT(s.time == t);
+        EXPECT(s.value == v);
+        ++unpack;
+    }
     EXPECT(!unpack);
+
+    string buf2;
+    buf2.resize(40);
+    DbPack pack2(buf2.data(), buf2.size());
+    struct {
+        TimePoint time;
+        double value;
+    } adds[] = {
+        { today + 7s, 4.0 },
+    };
+    unpack = pack;
+    for (auto&& add : adds) {
+        for (; unpack && unpack->time < add.time; ++unpack) {
+            pack2.put(unpack->time, unpack->value);
+        }
+        pack2.put(add.time, add.value);
+        if (unpack && unpack->time == add.time)
+            ++unpack;
+    }
+    for (; unpack; ++unpack)
+        pack2.put(unpack->time, unpack->value);
+
+    unpack = pack2;
+    if (m_verbose) {
+        for (; unpack; ++unpack)
+            cout << unpack->time << ", " << unpack->value << '\n';
+    }
 }

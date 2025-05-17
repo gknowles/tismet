@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2023.
+// Copyright Glen Knowles 2023 - 2025.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbpack.h - tismet db
@@ -55,7 +55,8 @@ public:
     size_t capacity() const { return m_count; }
 
 private:
-    bool putBits(size_t nbits, uint64_t value);
+    bool putInt(size_t nbits, int64_t value);
+    bool putUint(size_t nbits, uint64_t value);
     size_t availBits();
     bool put(Dim::TimePoint time);
     bool put(double value);
@@ -83,6 +84,7 @@ class DbUnpackIter {
 public:
     DbUnpackIter() {}
     DbUnpackIter(const void * src, size_t srcLen, size_t unusedBits);
+    DbUnpackIter(const DbPack & from);
     explicit operator bool() const { return m_base; }
     bool operator!=(const DbUnpackIter & right) const;
     DbUnpackIter & operator++();
@@ -97,8 +99,8 @@ public:
     const DbPackState & state() const { return m_state; }
 
 private:
-    bool getBits(int64_t * out, size_t nbits);
-    bool getBits(uint64_t * out, size_t nbits);
+    bool getInt(int64_t * out, size_t nbits);
+    bool getUint(uint64_t * out, size_t nbits);
     bool getTime();
     bool getValue();
 

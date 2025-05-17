@@ -64,7 +64,10 @@ jobs:
       if: ${{ !matrix.coverage }}
       working-directory: ${{github.workspace}}
       run: |
-        bin\tst all
+        bin\tst carbon
+        bin\tst index
+        bin\tst pack
+        bin\tst query
 
     - name: Test Coverage
       if: matrix.coverage
