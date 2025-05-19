@@ -1,4 +1,4 @@
-# Copyright Glen Knowles 2022 - 2024.
+# Copyright Glen Knowles 2022 - 2025.
 # Distributed under the Boost Software License, Version 1.0.
 #
 # github-build.yml
@@ -31,6 +31,12 @@ jobs:
     defaults:
       run:
         shell: cmd
+    env:
+        tests: |
+            carbon
+            index
+            pack
+            query
     steps:
     - name: Setup OpenCppCoverage
       if: matrix.coverage
@@ -64,24 +70,35 @@ jobs:
       if: ${{ !matrix.coverage }}
       working-directory: ${{github.workspace}}
       run: |
-        bin\tst carbon
-        bin\tst index
-        bin\tst pack
-        bin\tst query
+        for %%t in (${{env.tests}}) do (
+            %%~t
+            if errorlevel 1 goto :eof
+        )
 
     - name: Test Coverage
       if: matrix.coverage
       working-directory: ${{github.workspace}}
       run: |
-        "C:\Program Files\OpenCppCoverage\OpenCppCoverage.exe"^
-            --export_type cobertura:merged.xml^
+        set prog="C:\Program Files\OpenCppCoverage\OpenCppCoverage.exe"
+        set opts=--export_type binary:temp.cov^
             --modules ${{github.workspace}}^
             --sources ${{github.workspace}}^
             --excluded_sources vendor^
             --excluded_sources tests^
             --excluded_sources testlibs^
-            --excluded_line_regex ".* LCOV_EXCL_LINE.*"^
-            -- bin\tst all
+            --excluded_sources *.g.cpp^
+            --excluded_sources *.g.h^
+            --excluded_line_regex ".* LCOV_EXCL_LINE.*"
+        for %%t in (${{env.tests}}) do (
+            if exist merged.cov (
+                %prog% %opts% --input_coverage merged.cov -- %%~t
+            ) else (
+                %prog% %opts% -- %%~t
+            )
+            if errorlevel 1 goto :eof
+            copy temp.cov merged.cov
+        )
+        %prog% --input_coverage merged.cov --export_type cobertura:merged.xml
 
     - name: Report Coverage
       if: matrix.coverage
