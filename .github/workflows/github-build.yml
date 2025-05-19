@@ -33,10 +33,10 @@ jobs:
         shell: cmd
     env:
         tests: |
-            carbon
-            index
-            pack
-            query
+            "bin\tst carbon"
+            "bin\tst index"
+            "bin\tst pack"
+            "bin\tst query"
     steps:
     - name: Setup OpenCppCoverage
       if: matrix.coverage
