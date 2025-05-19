@@ -37,6 +37,7 @@ jobs:
             "bin\tst index"
             "bin\tst pack"
             "bin\tst query"
+
     steps:
     - name: Setup OpenCppCoverage
       if: matrix.coverage
