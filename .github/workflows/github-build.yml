@@ -32,11 +32,11 @@ jobs:
       run:
         shell: cmd
     env:
-        tests: |
-            "bin\tst carbon"
-            "bin\tst index"
-            "bin\tst pack"
-            "bin\tst query"
+      tests: |
+        "bin\tst carbon"
+        "bin\tst index"
+        "bin\tst pack"
+        "bin\tst query"
 
     steps:
     - name: Setup OpenCppCoverage
