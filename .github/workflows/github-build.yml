@@ -33,7 +33,7 @@ jobs:
         shell: cmd
     env:
       tests: |
-        "bin\tst db"
+        "bin\tst pack"
 
     steps:
     - name: Setup OpenCppCoverage
@@ -65,7 +65,7 @@ jobs:
         cd publish
 
     - name: Test
-      if: ${{ !matrix.coverage }}
+      if: !matrix.coverage
       working-directory: ${{github.workspace}}
       run: |
         for %%t in (${{env.tests}}) do (
