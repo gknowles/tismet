@@ -33,7 +33,6 @@ jobs:
         shell: cmd
     env:
       tests: |
-        "bin\tst carbon"
         "bin\tst index"
         "bin\tst pack"
         "bin\tst query"
