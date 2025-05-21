@@ -33,9 +33,7 @@ jobs:
         shell: cmd
     env:
       tests: |
-        "bin\tst index"
-        "bin\tst pack"
-        "bin\tst query"
+        "bin\tst db"
 
     steps:
     - name: Setup OpenCppCoverage
