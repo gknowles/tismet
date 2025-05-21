@@ -65,7 +65,7 @@ jobs:
         cd publish
 
     - name: Test
-      if: !matrix.coverage
+      if: ${{!matrix.coverage}}
       working-directory: ${{github.workspace}}
       run: |
         for %%t in (${{env.tests}}) do (
