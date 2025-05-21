@@ -31,14 +31,14 @@ jobs:
     defaults:
       run:
         shell: cmd
+        working-directory: ${{github.workspace}}
     env:
       tests: |
-        "bin\tst pack"
+        "bin\tst db"
 
     steps:
     - name: Setup OpenCppCoverage
       if: matrix.coverage
-      working-directory: ${{github.workspace}}
       run: |
         choco install OpenCppCoverage -y
         echo "C:\Program Files\OpenCppCoverage" >> %GITHUB_PATH%
@@ -49,7 +49,6 @@ jobs:
         submodules: true
 
     - name: Build
-      working-directory: ${{github.workspace}}
       run: |
         md build
         cd build
@@ -66,7 +65,6 @@ jobs:
 
     - name: Test
       if: ${{!matrix.coverage}}
-      working-directory: ${{github.workspace}}
       run: |
         for %%t in (${{env.tests}}) do (
             %%~t
@@ -75,7 +73,6 @@ jobs:
 
     - name: Test Coverage
       if: matrix.coverage
-      working-directory: ${{github.workspace}}
       run: |
         set prog="C:\Program Files\OpenCppCoverage\OpenCppCoverage.exe"
         set opts=--export_type binary:temp.cov^
