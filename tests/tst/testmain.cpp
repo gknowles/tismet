@@ -36,12 +36,15 @@ ITest::ITest (std::string_view name, std::string_view desc)
 {
     m_cli.command(m_name)
         .desc(string(desc))
-        .action([&](Cli & cli) {
-            cout << this->name() << "...\n";
-            this->onTestRun();
-        });
+        .action([&](Cli & cli) { run(); });
 
     tests().link(this);
+}
+
+//===========================================================================
+void ITest::run() {
+    cout << name() << "..." << endl;
+    onTestRun();
 }
 
 
@@ -68,8 +71,7 @@ static void allCmd(Cli & cli) {
         [](auto & a, auto & b) { return a->name() < b->name(); }
     );
     for (auto && test : all) {
-        cout << test->name() << "...\n";
-        test->onTestRun();
+        test->run();
     }
     cout << endl;
 }

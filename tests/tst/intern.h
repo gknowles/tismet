@@ -15,11 +15,12 @@ public:
     ITest(std::string_view name, std::string_view desc);
     virtual ~ITest() = default;
 
-    virtual void onTestRun() = 0;
+    void run();
 
     const std::string & name() const { return m_name; }
 
 protected:
+    virtual void onTestRun() = 0;
     Dim::Cli m_cli;
 
 private:
