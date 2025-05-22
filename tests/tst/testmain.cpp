@@ -43,8 +43,9 @@ ITest::ITest (std::string_view name, std::string_view desc)
 
 //===========================================================================
 void ITest::run() {
-    cout << name() << "..." << endl;
+    cout << name() << "..." << flush;
     onTestRun();
+    cout << " done." << endl;
 }
 
 
