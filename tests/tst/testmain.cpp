@@ -46,6 +46,8 @@ void ITest::run() {
     cout << name() << "..." << flush;
     onTestRun();
     cout << " done." << endl;
+    appSignalUsageError();
+    assert(appMode() == kRunStopping);
 }
 
 
