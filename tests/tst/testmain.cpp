@@ -43,10 +43,9 @@ ITest::ITest (std::string_view name, std::string_view desc)
 
 //===========================================================================
 void ITest::run() {
-    cout << name() << "..." << flush;
+    cout << name() << "..." << endl;
     onTestRun();
-    cout << " done." << endl;
-    appSignalUsageError();
+    appSignalShutdown();
     assert(appMode() == kRunStopping);
 }
 
@@ -103,6 +102,6 @@ int main(int argc, char *argv[]) {
         .action(allCmd);
     int code = appRun(argc, argv, kVersion);
     if (!logGetMsgCount(kLogTypeError))
-        cout << "\nAll tests passed";
+        cout << "\nAll tests passed\n";
     return code;
 }
