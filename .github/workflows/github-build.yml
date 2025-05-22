@@ -25,7 +25,7 @@ jobs:
           - platform: x64
             configuration: Debug
             toolset: v143
-            image: windows-2022
+            image: windows-2025
             coverage: true
     runs-on: ${{matrix.image}}
     defaults:
@@ -55,11 +55,9 @@ jobs:
       run: |
         md build
         cd build
-        if "${{matrix.toolset}}" == "v143" (
-          set gen=Visual Studio 17 2022
-        ) else (
-          set gen=Visual Studio 16 2019
-        )
+        set gen=Visual Studio 16 2019
+        if "${{matrix.toolset}}" == "v142" set gen=Visual Studio 17 2022
+        if "${{matrix.toolset}}" == "v143" set gen=Visual Studio 17 2022
         cmake .. -G "%gen%" -A ${{matrix.platform}} -T ${{matrix.toolset}}
         cmake . -DCMAKE_BUILD_TYPE=${{matrix.configuration}}^
           -DCMAKE_INSTALL_PREFIX=publish -DINSTALL_LIBS:BOOL=ON
