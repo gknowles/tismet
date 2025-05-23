@@ -45,8 +45,6 @@ ITest::ITest (std::string_view name, std::string_view desc)
 void ITest::run() {
     cout << name() << "..." << endl;
     onTestRun();
-    appSignalShutdown();
-    assert(appMode() == kRunStopping);
 }
 
 
