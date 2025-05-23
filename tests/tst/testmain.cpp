@@ -36,7 +36,10 @@ ITest::ITest (std::string_view name, std::string_view desc)
 {
     m_cli.command(m_name)
         .desc(string(desc))
-        .action([&](Cli & cli) { run(); });
+        .action([&](Cli & cli) {
+            run();
+            testSignalShutdown();
+        });
 
     tests().link(this);
 }
@@ -73,7 +76,7 @@ static void allCmd(Cli & cli) {
     for (auto && test : all) {
         test->run();
     }
-    cout << endl;
+    testSignalShutdown();
 }
 
 
@@ -99,7 +102,5 @@ int main(int argc, char *argv[]) {
         .desc("Run all tests.")
         .action(allCmd);
     int code = appRun(argc, argv, kVersion);
-    if (!logGetMsgCount(kLogTypeError))
-        cout << "\nAll tests passed\n";
     return code;
 }
