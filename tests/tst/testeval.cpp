@@ -571,7 +571,6 @@ public:
 
 private:
     vector<string> m_subtests;
-    bool m_verbose{false};
 };
 
 } // namespace
@@ -587,8 +586,6 @@ Test::Test()
     for (auto && ut : s_unitTests) {
         subs.choice(ut.name(), ut.name());
     }
-    m_cli.opt(&m_verbose, "v verbose")
-        .desc("Display test progress.");
 }
 
 //===========================================================================
@@ -614,7 +611,7 @@ void Test::onTestRun() {
                 continue;
             tests[ut.name()] = true;
         }
-        if (m_verbose)
+        if (s_verbose)
             cout << ut.name() << "...\n";
         ut.onTest(h);
     }

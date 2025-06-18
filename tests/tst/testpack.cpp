@@ -40,8 +40,6 @@ class Test : public ITest {
 public:
     Test();
     void onTestRun() override;
-private:
-    bool m_verbose = false;
 };
 
 } // namespace
@@ -51,10 +49,7 @@ static Test s_test;
 //===========================================================================
 Test::Test()
     : ITest("pack", "Sample compression tests.")
-{
-    m_cli.opt<bool>(&m_verbose, "v verbose")
-        .desc("Display additional information during test");
-}
+{}
 
 //===========================================================================
 void Test::onTestRun() {
@@ -112,7 +107,7 @@ void Test::onTestRun() {
         pack2.put(unpack->time, unpack->value);
 
     unpack = pack2;
-    if (m_verbose) {
+    if (s_verbose) {
         for (; unpack; ++unpack)
             cout << unpack->time << ", " << unpack->value << '\n';
     }

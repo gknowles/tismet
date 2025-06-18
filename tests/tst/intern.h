@@ -12,6 +12,9 @@
 
 class ITest : public Dim::ListLink<> {
 public:
+    static bool s_verbose;
+
+public:
     ITest(std::string_view name, std::string_view desc);
     virtual ~ITest() = default;
 
@@ -26,3 +29,5 @@ protected:
 private:
     std::string m_name;
 };
+
+inline bool ITest::s_verbose = false;

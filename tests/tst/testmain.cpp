@@ -98,6 +98,8 @@ int main(int argc, char *argv[]) {
     Cli cli;
     cli.helpCmd().helpNoArgs();
     cli.beforeExec(initApp);
+    cli.opt(&ITest::s_verbose, "v verbose").allCmds(true)
+        .desc("Display additional information during test.");
     cli.command("all")
         .desc("Run all tests.")
         .action(allCmd);

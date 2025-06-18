@@ -99,9 +99,6 @@ public:
 
     // Inherited via ITest
     void onTestRun() override;
-
-private:
-    bool m_verbose{false};
 };
 
 } // namespace
@@ -111,10 +108,7 @@ static Test s_test;
 //===========================================================================
 Test::Test()
     : ITest("db", "Database manipulation tests.")
-{
-    m_cli.opt<bool>(&m_verbose, "v verbose")
-        .desc("Display additional information during test");
-}
+{}
 
 //===========================================================================
 void Test::invalidFileTests() {
