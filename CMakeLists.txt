@@ -3,18 +3,18 @@
 #
 # CMakeLists.txt - general project generator
 #
-# Use this one file *unmodified* for all projects that follow the convections.
-# All the careful tweaking is for Visual Studio, but it works on linux with
-# both gcc and clang (at least well enough for CI :P).
+# Use this one script file *unmodified* for all projects that follow the 
+# convections. All the careful tweaking is for Visual Studio, but it works on 
+# linux with both gcc and clang (at least well enough for CI :P).
 #
-# Project layout:
+# Project file layout:
 #   /<project_name>
-#   /<project_name>/CMakeLists.txt - this file
-#   /<project_name>/CMakeDeps.cmake - made by this file (source controlled)
+#   /<project_name>/CMakeLists.txt - this script file
+#   /<project_name>/CMakeDeps.cmake - made by this script (source controlled)
 #   /<project_name>/*.user.props - properties included in MSVC projects
 #   /<project_name>/conf/**
 #   /<project_name>/conf/**/<basename>.sample - causes .../<basename> to be
-#       excluded from dependencies
+#       excluded from dependencies, <basename> may include an extension.
 #   /<project_name>/docs/**
 #   /<project_name>/libs/<lib_project_name>/**
 #   /<project_name>/libs/${PROJECT_NAME}/config.h - may be modified by the
@@ -120,12 +120,13 @@ set(tmp "${LINK_STATIC_RUNTIME}")   # not used by clang or gcc builds
 # 2022-04-18 - Added - /web directory in files project
 # 2023-01-21 - Changed - Only create test projects if BUILD_TESTING enabled
 # 2024-02-18 - Removed - install_archive_pdb() in favor of /Z7
-# 2024-07-19 - Added - Site project
+# 2024-07-19 - Added - file/site project
 # 2024-07-20 - Added - Changelog
 # 2025-01-09 - Changed - Use --std=c++2c with supporting GCC and Clang
 # 2025-02-24 - Added - Resource projects with arbitrary files
-# 2025-02-24 - Removed - Site project, use a resource project instead
+# 2025-02-24 - Removed - file/site project, use a resource project instead
 # 2025-05-18 - Changed - Minimum required version now 3.10
+# 2025-06-03 - Added - Include CircleCI pipeline configurations
 
 
 #############################################################################
@@ -287,12 +288,15 @@ foreach(var ${config_defines})
     add_definitions(/D${var})
 endforeach()
 
-# Setting source_group to a single space is weird and relies on Visual Studio
-# treating it as no group, you'd expect setting it to the empty string would
-# mean no group, but - just for regexes (bug?) - that causes CMake to use
+# Note 1: Setting source_group to a single space is weird and relies on Visual
+# Studio treating it as no group, you'd expect setting it to the empty string
+# would mean no group, but - just for regexes (bug?) - that causes CMake to use
 # defaults.
+# Note 2: If you have multiple source_group(REGULAR_EXPRESSION) commands
+# for the same group name, all but the last are ignored. So I fear that the
+# "ci" regex is going to get really ugly.
 source_group(" " REGULAR_EXPRESSION ".*")
-source_group("ci" REGULAR_EXPRESSION "\.github/.*\.yml")
+source_group("ci" REGULAR_EXPRESSION "\.circleci/.*|\.github/.*\.yml")
 source_group("ci" FILES appveyor.yml codecov.yml .travis.yml)
 source_group("vendor" REGULAR_EXPRESSION "web/(.*/)+vendor/.*")
 
@@ -336,6 +340,29 @@ endif()
 #
 ####
 
+function(get_last_ext out src)
+  get_filename_component(src "${src}" NAME)
+  string(FIND "${src}" "." pos REVERSE)
+  if(pos EQUAL -1)
+    set(src, "")
+  else()
+    string(SUBSTRING "${src}" ${pos} -1 src)
+  endif()
+  set(${out} "${src}" PARENT_SCOPE)
+endfunction()
+
+# Get name without directory or last extension.
+function(get_name_wle out src)
+  get_filename_component(src "${src}" NAME)
+  string(FIND "${src}" "." pos REVERSE)
+  if(pos EQUAL -1)
+    # No extension to remove, keep entire name.
+  else()
+    string(SUBSTRING "${src}" 0 ${pos} src)
+  endif()
+  set(${out} "${src}" PARENT_SCOPE)
+endfunction()
+
 # Compare the new contents with the existing file, if it exists and is the
 # same we don't want to trigger a make by changing its timestamp.
 function(update_file path content)
@@ -364,10 +391,10 @@ function(update_deps_file)
     foreach(dep ${all_rel_deps})
         # Remove files where the same file exists but with an additional
         # ".sample" extension.
-        get_filename_component(match "${dep}" LAST_EXT)
+        get_last_ext(match "${dep}")
         if(match STREQUAL ".sample")
             get_filename_component(dir "${dep}" DIRECTORY)
-            get_filename_component(name ${dep} NAME_WLE)
+            get_name_wle(name ${dep})
             if (dir)
                 set(name "${dir}/${name}")
             endif()
@@ -462,9 +489,9 @@ function(set_pch tgt)
         return()
     endif()
     foreach(var ${sources})
-        get_filename_component(ext "${var}" EXT)
+        get_last_ext(ext "${var}")
         if(ext STREQUAL ".cpp")
-            get_filename_component(basename "${var}" NAME_WLE)
+            get_name_wle(basename "${var}")
             if(basename STREQUAL "pch")
                 # Use pch.cpp to create precompiled header.
                 set_property(SOURCE "${var}"
@@ -497,7 +524,7 @@ function(add_exec_project tgt srcdir)
         # Required for #include <experimental/filesystem>.
         target_link_libraries(${tgt} "stdc++fs")
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang
-            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "9")
+            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
         target_link_libraries(${tgt} "stdc++fs")
     endif()
     write_user_file(${tgt} "debug;props;ifNotExists")
@@ -627,7 +654,7 @@ file(GLOB sources
     *.rst
     *.yml
 )
-file(GLOB_RECURSE allnames .github/*.yml)
+file(GLOB_RECURSE allnames .circleci/* .github/*.yml)
 list(APPEND sources ${allnames})
 if(sources)
     add_file_project(about files ${sources})
