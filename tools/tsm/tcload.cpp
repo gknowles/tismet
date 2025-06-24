@@ -396,7 +396,7 @@ static void loadCmd(Cli & cli) {
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
     auto h = dbOpen(s_opts.database, flags, 512);
-    if (!h) 
+    if (!h)
         return cli.fail(EX_ABORTED, "Canceled");
 
     DbConfig conf = {};
@@ -406,6 +406,4 @@ static void loadCmd(Cli & cli) {
     s_db = h;
     fileSize(&s_progress.totalBytes, s_opts.dumpfile);
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
-
-    cli.fail(EX_PENDING, "");
 }

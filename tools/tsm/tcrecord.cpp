@@ -236,6 +236,4 @@ static void recordCmd(Cli & cli) {
         (AppSocket::Family) TismetSocket::kCarbon
     );
     sockMgrSetAddresses(s_mgr, &s_opts.addr, 1);
-
-    cli.fail(EX_PENDING, "");
 }

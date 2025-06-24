@@ -176,7 +176,7 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 *
 ***/
 
-static bool analyzeCmd(Cli & cli);
+static void analyzeCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -212,12 +212,12 @@ CmdOpts::CmdOpts() {
 }
 
 //===========================================================================
-static bool analyzeCmd(Cli & cli) {
+static void analyzeCmd(Cli & cli) {
     if (s_opts.ofile.view() != "-") {
         s_file.init(10, 2, envMemoryConfig().pageSize);
         if (!s_file.open(s_opts.ofile.view(), s_opts.openMode)) {
             cli.fail(EX_DATAERR, string(s_opts.ofile) + ": open failed");
-            return true;
+            return;
         }
     }
 
@@ -230,6 +230,4 @@ static bool analyzeCmd(Cli & cli) {
     taskSetQueueThreads(taskComputeQueue(), 1);
     carbonInitialize();
     fileStreamBinary(&s_source, s_opts.reportfile, 4096);
-    cli.fail(EX_PENDING, "");
-    return true;
 }

@@ -324,7 +324,6 @@ private:
 bool AddrJob::start(Cli & cli) {
     s_mgr = sockMgrConnect<AddrConn>("Metric Out");
     addressQuery(&m_cancelId, this, s_opts.oaddr, 2003);
-    cli.fail(EX_PENDING, "");
     return true;
 }
 
@@ -332,7 +331,7 @@ bool AddrJob::start(Cli & cli) {
 void AddrJob::onSockAddrFound(const SockAddr * ptr, int count) {
     if (!count) {
         appSignalShutdown();
-    } else {
+    } else if (!appStopping()) {
         logMsgInfo() << "Writing to " << s_opts.oaddr << " (" << *ptr << ")";
         tcLogStart(&s_opts.progress);
         sockMgrSetAddresses(s_mgr, ptr, count);
@@ -393,7 +392,6 @@ bool FileJob::start(Cli & cli) {
     logMsgInfo() << "Writing to " << fname;
     tcLogStart(&s_opts.progress);
     taskPushCompute(this);
-    cli.fail(EX_PENDING, "");
     return true;
 }
 

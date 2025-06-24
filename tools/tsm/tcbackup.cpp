@@ -135,7 +135,7 @@ public:
 private:
     void start();
 
-    HttpConnHandle m_conn;
+    shared_ptr<HttpConn> m_conn;
     RunMode m_mode{kRunStopped};
     DbProgressInfo m_info;
     int m_streamId{0};
@@ -253,14 +253,13 @@ static AddrJob s_job;
 void AddrJob::start(Cli & cli) {
     s_mgr = sockMgrConnect<AddrConn>("Metric Out");
     addressQuery(&m_cancelId, this, s_opts.oaddr, 2003);
-    cli.fail(EX_PENDING, "");
 }
 
 //===========================================================================
 void AddrJob::onSockAddrFound(const SockAddr * ptr, int count) {
     if (!count) {
         appSignalShutdown();
-    } else {
+    } else if (!appStopping()) {
         logStart(s_opts.oaddr, ptr);
         sockMgrSetAddresses(s_mgr, ptr, count);
     }
