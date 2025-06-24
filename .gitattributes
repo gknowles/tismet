@@ -6,7 +6,7 @@
 ###############################################################################
 # 3rd party web files (generally minified, compressed, etc)
 ###############################################################################
-web/srv/vendor/* binary
+web/srv/vendor/** binary
 
 ###############################################################################
 # Set default behavior for command prompt diff.
