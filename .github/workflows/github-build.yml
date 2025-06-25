@@ -19,7 +19,7 @@ jobs:
         platform: [x64]
         configuration: [Debug, Release]
         toolset: [v143]
-        image: [windows-2022]
+        image: [windows-2025]
         coverage: [false]
         include:
           - platform: x64
