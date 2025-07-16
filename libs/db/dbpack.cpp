@@ -47,8 +47,10 @@ DbPack::DbPack(void * out, size_t outLen, size_t unusedBits)
 }
 
 //===========================================================================
-DbPack::DbPack(const DbUnpackIter & unpack) {
-    m_state = unpack.state();
+DbPack::DbPack(void * out, size_t outLen, size_t unusedBits, DbPackState st)
+    : DbPack(out, outLen, unusedBits)
+{
+    m_state = st;
 }
 
 //===========================================================================
@@ -57,6 +59,17 @@ void DbPack::retarget(void * out, size_t outLen, size_t unusedBits) {
     m_base = (unsigned char *) out;
     m_count = outLen;
     m_unusedBits = (uint8_t) unusedBits;
+}
+
+//===========================================================================
+void DbPack::retarget(
+    void * out,
+    size_t outLen,
+    size_t unusedBits,
+    DbPackState st
+) {
+    retarget(out, outLen, unusedBits);
+    m_state = st;
 }
 
 //===========================================================================
@@ -250,17 +263,23 @@ size_t DbPack::availBits() {
 ***/
 
 //===========================================================================
-DbUnpackIter::DbUnpackIter(const void * src, size_t srcLen, size_t unusedBits)
+DbUnpackIter::DbUnpackIter(
+    const void * src,
+    size_t srcLen,
+    size_t unusedBits,
+    DbPackState st
+)
     : m_base{(unsigned char *) src}
     , m_count{srcLen}
     , m_trailingUnused{(uint8_t) unusedBits}
+    , m_state(st)
 {
     operator++();
 }
 
 //===========================================================================
 DbUnpackIter::DbUnpackIter(const DbPack & from)
-    : DbUnpackIter(from.data(), from.size(), from.unusedBits())
+    : DbUnpackIter(from.data(), from.size(), from.unusedBits(), from.state())
 {}
 
 //===========================================================================

@@ -43,9 +43,15 @@ class DbUnpackIter;
 class DbPack {
 public:
     DbPack(void * out, size_t outLen, size_t unusedBits = 0);
-    DbPack(const DbUnpackIter & unpack);
+    DbPack(void * out, size_t outLen, size_t unusedBits, DbPackState st);
 
     void retarget(void * out, size_t outLen, size_t unusedBits = 0);
+    void retarget(
+        void * out,
+        size_t outLen,
+        size_t unusedBits,
+        DbPackState st
+    );
     bool put(Dim::TimePoint time, double value);
 
     const unsigned char * data() const { return m_base; }
@@ -53,6 +59,7 @@ public:
     std::string_view view() const { return {(char *) m_base, m_used}; }
     uint8_t unusedBits() const { return m_unusedBits; }
     size_t capacity() const { return m_count; }
+    const DbPackState & state() const { return m_state; }
 
 private:
     bool putInt(size_t nbits, int64_t value);
@@ -83,7 +90,12 @@ private:
 class DbUnpackIter {
 public:
     DbUnpackIter() {}
-    DbUnpackIter(const void * src, size_t srcLen, size_t unusedBits);
+    DbUnpackIter(
+        const void * src,
+        size_t srcLen,
+        size_t unusedBits,
+        DbPackState state = {}
+    );
     DbUnpackIter(const DbPack & from);
     explicit operator bool() const { return m_base; }
     bool operator!=(const DbUnpackIter & right) const;
@@ -95,7 +107,6 @@ public:
     size_t size() const { return m_count; }
     std::string_view view() const { return {(char *) data(), size()}; }
     uint8_t unusedBits() const { return m_unusedBits; }
-
     const DbPackState & state() const { return m_state; }
 
 private:

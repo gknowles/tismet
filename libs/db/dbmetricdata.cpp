@@ -580,7 +580,8 @@ void DbData::updateSample(
     pgno_t spno;
     pgno_t sipno = npos;
     if (!findLastSamplePage(txn, &spno, id, true)) {
-        // No existing samples, new page was allocated.
+        // No existing samples, new page was allocated. Initialize it and add
+        // this new sample.
         txn.walSampleInit(spno, id, mi.type, time, value);
         s_perfAdd += 1;
         return;
@@ -593,7 +594,7 @@ void DbData::updateSample(
         // Sample older than last page.
         auto firstSampleTime = sp->lastTime - mi.retention;
         if (time < firstSampleTime) {
-            // Sample older than retention, ignore it.
+            // Sample older than retention period, ignore it.
             s_perfAncient += 1;
             return;
         }
@@ -624,19 +625,32 @@ void DbData::updateSample(
     return;
 #else
     auto dataLen = sampleDataPerPage(sp->sampleType, m_pageSize);
-    auto used = sp->lastBitPos / 8;
     auto unusedBits = sp->lastBitPos % 8;
+    auto used = sp->lastBitPos / 8 + (unusedBits > 0);
+    DbPackState st;
+    st.sample.time = sp->firstTime;
     auto in = DbUnpackIter(
-        (uint8_t *) sp->data + used,
-        dataLen - used + (unusedBits > 0),
-        unusedBits
+        (uint8_t *) sp->data,
+        used,
+        unusedBits,
+        st
     );
+    auto buf = (uint8_t *) mallocAuto(dataLen);
+    Finally finBuf([&buf]() { freeAuto(buf); });
+    DbPack pack(buf, dataLen, 0, st);
+
     for (auto&& i : in) {
-        if (in.state().sample.time < time)
+        auto & sample = in.state().sample;
+        if (sample.time >= time)
+            break;
+        pack.put(sample.time, sample.value);
     }
 
     if (time > sp->lastTime) {
         // Sample belongs at end of page.
+        if (pack.put(time, value)) {
+            txn.walSampleAppend(
+        }
         if (not room for new entry) {
             // Remove ancient entries.
         }
