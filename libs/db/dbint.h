@@ -359,26 +359,18 @@ public:
         Dim::TimePoint time,
         double value
     );
-    void walSampleInit(
+    void walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot);
+    void walSampleUpdateTime(
         pgno_t pgno,
-        uint32_t id,
-        DbSampleType type,
         Dim::TimePoint firstTime,
-        uint16_t lastBitPos,
-        std::span<uint8_t> data
+        Dim::TimePoint lastTime
     );
-    void walSampleUpdateTxn(
+    void walSampleReplace(
         pgno_t pgno,
-        size_t pos,
-        double value,
-        bool updateLast
-    );
-    void walSampleUpdate(
-        pgno_t pgno,
-        size_t firstSample,
-        size_t lastSample,
-        double value,
-        bool updateLast
+        size_t dstPos,
+        size_t dstBits,
+        const uint8_t * src,
+        size_t srcBits
     );
 
 private:
@@ -544,46 +536,6 @@ private:
 
 /****************************************************************************
 *
-*   DbPageHeap
-*
-***/
-
-class DbPageHeap final : public Dim::IPageHeap {
-public:
-    DbPageHeap(
-        DbTxn * txn,
-        DbData * data,
-        unsigned rootId,    // 0 for readonly
-        pgno_t root
-    );
-    const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
-
-    // Inherited via IPageHeap
-    size_t create() override;
-    void destroy(size_t pgno) override;
-    void setRoot(size_t pgno) override;
-    size_t root() const override;
-    size_t pageSize() const override;
-    bool empty() const override;
-    bool empty(size_t pgno) const override;
-    uint8_t * wptr(size_t pgno) override;
-    const uint8_t * ptr(size_t pgno) const override;
-
-private:
-    bool releasePending(size_t pgno);
-
-    DbTxn & m_txn;
-    DbData & m_data;
-    unsigned m_rootId;
-    pgno_t m_root;
-    Dim::UnsignedSet m_destroyed;
-    pgno_t m_updatePgno = pgno_t::npos;
-    mutable uint8_t * m_updatePtr = {};
-};
-
-
-/****************************************************************************
-*
 *   DbData
 *
 ***/
@@ -659,6 +611,13 @@ public:
     );
     void getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id);
 
+    // Returns value of previous root.
+    pgno_t updateSampleIndexRoot(
+        DbTxn & txn,
+        pgno_t spno,
+        unsigned rootId,
+        pgno_t pgno
+    );
     void eraseSamples(DbTxn & txn, uint32_t id);
     void updateSample(
         DbTxn & txn,
@@ -745,9 +704,9 @@ public:
     ) override;
 
 private:
-    friend DbPageHeap;
-    friend DbRootSet;
-    friend DbRootVersion;
+    friend class DbPageHeap;
+    friend class DbRootSet;
+    friend struct DbRootVersion;
 
     bool loadRoots(DbTxn & txn, pgno_t storeRoot);
     bool upgradeRoots(DbTxn & txn);
@@ -768,8 +727,8 @@ private:
 
     bool findSamplePage(
         DbTxn & txn,
-        pgno_t * sipno,  // pgno of root of metric's sample index
         pgno_t * spno,  // pgno that should contain sample
+        pgno_t root,    // pgno of root of sample index of a metric
         uint32_t id,
         Dim::TimePoint time
     );
@@ -778,9 +737,16 @@ private:
         DbTxn & txn,
         pgno_t * spno,
         uint32_t id,
-        bool createIfNotExist = false
+        bool createIfNotExists = false
     );
     void eraseSampleIndex(DbTxn & txn, uint32_t id);
+    void updateSampleIndex(
+        DbTxn & txn,
+        const SamplePage * sp,
+        pgno_t spno,
+        Dim::TimePoint oldTime,
+        Dim::TimePoint newTime
+    );
 
     bool loadFreePages(DbTxn & txn);
     bool loadDeprecatedPages(DbTxn & txn);
@@ -857,7 +823,8 @@ private:
         kErase,
         kErasePrefix,
     };
-    // Returns true if action taken (key already existed, wasn't found, etc).
+    // Returns true if action taken, as opposed to key already existed, wasn't
+    // found, etc.
     bool triePerformAction(
         DbPageHeap & heap,
         DbData::TrieAction action,
@@ -882,11 +849,10 @@ private:
     bool m_newFile = false;
 
     size_t m_pageSize = 0;
-    pgno_t m_rootRoot = pgno_t::npos;
+    pgno_t m_rootRoot = npos;   // pgno_t::npos
     pgno_t m_freeRoot = pgno_t::npos;
     pgno_t m_deprecatedRoot = pgno_t::npos;
     pgno_t m_sampleRoot = pgno_t::npos;
-    pgno_t m_sampleIndexRoot = pgno_t::npos;
     struct RootDef {
         std::string name;
         DbPageType type;
@@ -912,4 +878,66 @@ private:
 
     // Used to manage the index at m_metricStoreRoot.
     mutable std::mutex m_mndxMut;
+};
+
+
+/****************************************************************************
+*
+*   DbPageHeap
+*
+***/
+
+class DbPageHeap : public Dim::IPageHeap {
+public:
+    DbPageHeap(
+        DbTxn * txn,
+        DbData * data,
+        pgno_t root,
+        unsigned rootId = 0     // 0 for readonly
+    );
+    const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
+
+    // Inherited via IPageHeap
+    size_t create() override;
+    void destroy(size_t pgno) override;
+    void setRoot(size_t pgno) override;
+    size_t root() const override;
+    size_t pageSize() const override;
+    bool empty() const override;
+    bool empty(size_t pgno) const override;
+    uint8_t * wptr(size_t pgno) override;
+    const uint8_t * ptr(size_t pgno) const override;
+
+protected:
+    virtual void onDbPageHeapSetRoot(pgno_t pgno);
+
+    DbTxn & m_txn;
+    DbData & m_data;
+    unsigned m_rootId;
+
+private:
+    bool releasePending(size_t pgno);
+
+    pgno_t m_root;
+    Dim::UnsignedSet m_destroyed;
+    pgno_t m_updatePgno = pgno_t::npos;
+    mutable uint8_t * m_updatePtr = {};
+};
+
+class DbSamplePageHeap : public DbPageHeap {
+public:
+    DbSamplePageHeap(
+        DbTxn * txn,
+        DbData * data,
+        pgno_t root,
+        unsigned rootId = 0,    // 0 for readonly
+        pgno_t rootIndex = {}
+    );
+
+protected:
+    // Inherited via DbPageHeap
+    void onDbPageHeapSetRoot(pgno_t pgno) override;
+
+private:
+    pgno_t m_rootIndex = {};
 };

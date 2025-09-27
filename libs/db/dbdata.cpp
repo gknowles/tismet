@@ -360,7 +360,6 @@ DbData::DbData() {
         { ":deprecated", kRadix, {}, &m_deprecatedRoot },
         { ":metric",     kTrie },
         { ":sample",     kRadix, {}, &m_sampleRoot },
-        { ":sampleIdx",  kRadix, {}, &m_sampleIndexRoot },
         { ":metricName", kTrie },
     };
     m_rootDefs.assign_range(defs);
@@ -488,7 +487,7 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
         }
         nameStoreRoot = pgno_t::npos;
     }
-    DbPageHeap heap(&txn, this, kRootNameRootId, nameStoreRoot);
+    DbPageHeap heap(&txn, this, nameStoreRoot, kRootNameRootId);
     StrTrieBase trie(&heap);
     unsigned lastId = 0;
     for (auto&& val : trie) {
@@ -551,7 +550,7 @@ bool DbData::upgradeRoots(DbTxn & txn) {
     }
 
     auto nameStoreRoot = loadRoot(txn, kRootNameRootId);
-    DbPageHeap heap(&txn, this, kRootNameRootId, nameStoreRoot);
+    DbPageHeap heap(&txn, this, nameStoreRoot, kRootNameRootId);
     StrTrieBase trie(&heap);
 
     // Add default roots to root indexes if they aren't already there.
@@ -1009,7 +1008,7 @@ void DbData::trieApply(
             ords[pos] = ords.back();
         ords.pop_back();
 
-        DbPageHeap heap(&txn, this, root->rootId, root->root);
+        DbPageHeap heap(&txn, this, root->root, root->rootId);
         if (!triePerformAction(heap, action, key)) {
             txn.roots().rollbackUpdate(root);
         } else {
@@ -1022,7 +1021,7 @@ void DbData::trieApply(
 //===========================================================================
 void DbData::trieClear(DbTxn & txn, pgno_t root) {
     assert(root);
-    DbPageHeap heap(&txn, this, {}, root);
+    DbPageHeap heap(&txn, this, root);
     StrTrieBase trie(&heap);
     trie.clear();
     for (auto&& pgno : heap.destroyed())
@@ -1038,7 +1037,7 @@ bool DbData::trieVisitWithPrefix(
 ) {
     if (!root)
         return true;
-    DbPageHeap heap(&txn, this, 0, root);
+    DbPageHeap heap(&txn, this, root);
     StrTrieBase trie(&heap);
     for (auto i = trie.lowerBound(match); i != trie.end(); ++i) {
         if ((*i).compare(0, match.size(), match) != 0)

@@ -365,80 +365,23 @@ void DbTxn::walSampleInit(
 }
 
 //===========================================================================
-// This one is not like the others, it represents a transaction with just a
-// single value update.
-void DbTxn::walSampleUpdateTxn(
-    pgno_t pgno,
-    size_t pos,
-    double value,
-    bool updateLast
-) {
-    if (m_txn)
-        return walSampleUpdate(pgno, pos, pos, value, updateLast);
-
-    union {
-        SampleUpdateFloat32TxnRec f32;
-        SampleUpdateFloat64TxnRec f64;
-        SampleUpdateInt8TxnRec i8;
-        SampleUpdateInt16TxnRec i16;
-        SampleUpdateInt32TxnRec i32;
-    } tmp;
-    assert(pos <= numeric_limits<decltype(tmp.i8.pos)>::max());
-    size_t bytes{0};
-    tmp.i8.pgno = pgno;
-    tmp.i8.pos = (uint16_t) pos;
-    if (auto ival = (int32_t) value; ival != value) {
-        if (auto fval = (float) value; fval == value) {
-            tmp.f32.type = updateLast
-                ? kRecTypeSampleUpdateFloat32LastTxn
-                : kRecTypeSampleUpdateFloat32Txn;
-            tmp.f32.value = fval;
-            bytes = sizeof(tmp.f32);
-        } else {
-            tmp.f64.type = updateLast
-                ? kRecTypeSampleUpdateFloat64LastTxn
-                : kRecTypeSampleUpdateFloat64Txn;
-            tmp.f64.value = value;
-            bytes = sizeof(tmp.f64);
-        }
-    } else {
-        if ((int8_t) ival == ival) {
-            tmp.i8.type = updateLast
-                ? kRecTypeSampleUpdateInt8LastTxn
-                : kRecTypeSampleUpdateInt8Txn;
-            tmp.i8.value = (int8_t) ival;
-            bytes = sizeof(tmp.i8);
-        } else if ((int16_t) ival == ival) {
-            tmp.i16.type = updateLast
-                ? kRecTypeSampleUpdateInt16LastTxn
-                : kRecTypeSampleUpdateInt16Txn;
-            tmp.i16.value = (int16_t) ival;
-            bytes = sizeof(tmp.i16);
-        } else {
-            tmp.i32.type = updateLast
-                ? kRecTypeSampleUpdateInt32LastTxn
-                : kRecTypeSampleUpdateInt32Txn;
-            tmp.i32.value = ival;
-            bytes = sizeof(tmp.i32);
-        }
-    }
-    m_wal.walAndApply({}, (DbWal::Record *) &tmp, bytes);
+void DbTxn::walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot) {
 }
 
 //===========================================================================
-void DbTxn::walSampleUpdate(
+void DbTxn::walSampleUpdateTime(
     pgno_t pgno,
-    size_t firstSample,
-    size_t lastSample,
-    double value,
-    bool updateLast
+    Dim::TimePoint firstTime,
+    Dim::TimePoint lastTime
 ) {
-    auto type = updateLast ? kRecTypeSampleUpdateLast : kRecTypeSampleUpdate;
-    auto [rec, bytes] = alloc<SampleUpdateRec>(type, pgno);
-    assert(firstSample <= lastSample);
-    assert(lastSample <= numeric_limits<decltype(rec->firstSample)>::max());
-    rec->firstSample = (uint16_t) firstSample;
-    rec->lastSample = (uint16_t) lastSample;
-    rec->value = value;
-    wal(&rec->hdr, bytes);
+}
+
+//===========================================================================
+void DbTxn::walSampleReplace(
+    pgno_t pgno,
+    size_t dstPos,
+    size_t dstBits,
+    const uint8_t * src,
+    size_t srcBits
+) {
 }

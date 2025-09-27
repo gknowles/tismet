@@ -44,8 +44,8 @@ struct FullPageInitRec {
 DbPageHeap::DbPageHeap(
     DbTxn * txn,
     DbData * data,
-    unsigned id,
-    pgno_t root
+    pgno_t root,
+    unsigned id
 )
     : m_txn(*txn)
     , m_data(*data)
@@ -70,12 +70,17 @@ void DbPageHeap::setRoot(size_t rawPgno) {
     assert(m_rootId);   // 0 means the heap is readonly
     auto pgno = (pgno_t) rawPgno;
     releasePending(pgno_t::npos);
+    onDbPageHeapSetRoot(pgno);
+    m_root = pgno;
+}
+
+//===========================================================================
+void DbPageHeap::onDbPageHeapSetRoot(pgno_t pgno) {
     m_data.updateRoot(
         m_txn,
         m_rootId,
         pgno == pgno_t::npos ? (pgno_t) 0 : pgno
     );
-    m_root = pgno;
 }
 
 //===========================================================================
@@ -135,6 +140,35 @@ bool DbPageHeap::releasePending(size_t pgno) {
         m_updatePtr = nullptr;
     }
     return true;
+}
+
+
+/****************************************************************************
+*
+*   DbSamplePageHeap
+*
+***/
+
+//===========================================================================
+DbSamplePageHeap::DbSamplePageHeap(
+    DbTxn * txn,
+    DbData * data,
+    pgno_t root,
+    unsigned rootId,
+    pgno_t rootIndex
+)
+    : DbPageHeap(txn, data, root, rootId)
+    , m_rootIndex(rootIndex)
+{}
+
+//===========================================================================
+void DbSamplePageHeap::onDbPageHeapSetRoot(pgno_t pgno) {
+    m_data.updateSampleIndexRoot(
+        m_txn,
+        m_rootIndex,
+        m_rootId,
+        pgno == pgno_t::npos ? (pgno_t) 0 : pgno
+    );
 }
 
 
