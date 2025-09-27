@@ -21,6 +21,8 @@
 struct DbSample {
     Dim::TimePoint time;
     double value;
+
+    bool operator==(const DbSample &) const = default;
 };
 
 struct DbPackState {
@@ -29,7 +31,62 @@ struct DbPackState {
     uint8_t expBits{7};
     uint8_t prefixBits{31};
     uint8_t lenBits{};
+
+    bool operator==(const DbPackState &) const = default;
 };
+
+
+/****************************************************************************
+*
+*   DbUnpackIter
+*
+***/
+
+class DbUnpackIter {
+public:
+    DbUnpackIter() {}
+    DbUnpackIter(
+        const void * src,
+        size_t srcBits,
+        size_t bitPos = 0,
+        const DbPackState & state = {}
+    );
+    explicit operator bool() const;
+    bool operator==(const DbUnpackIter & right) const;
+    DbUnpackIter & operator++();
+    DbSample & operator*() { return m_state.sample; }
+    DbSample * operator->() { return &m_state.sample; }
+
+    const unsigned char * data() const { return m_base; }
+    size_t size() const { return (m_bits + 7) / 8; }
+    std::string_view view() const { return {(char *) data(), size()}; }
+    size_t bits() const { return m_bits; }
+    const DbPackState & state() const { return m_state; }
+    size_t spos() const { return m_samplePos; }
+    size_t slen() const { return m_sampleBits; }
+
+    void seek(size_t bitPos, const DbPackState & state);
+
+private:
+    bool getInt(int64_t * out, size_t nbits);
+    bool getUint(uint64_t * out, size_t nbits);
+    bool getTime();
+    bool getValue();
+
+    // Source
+    const uint8_t * m_base{};
+    size_t m_bits{};
+
+    // Position
+    size_t m_samplePos{};
+    size_t m_sampleBits{};
+
+    // State
+    DbPackState m_state;
+};
+
+inline DbUnpackIter begin(DbUnpackIter iter) { return iter; }
+inline DbUnpackIter end(const DbUnpackIter & iter) { return {}; }
 
 
 /****************************************************************************
@@ -38,28 +95,36 @@ struct DbPackState {
 *
 ***/
 
-class DbUnpackIter;
-
 class DbPack {
 public:
-    DbPack(void * out, size_t outLen, size_t unusedBits = 0);
-    DbPack(void * out, size_t outLen, size_t unusedBits, DbPackState st);
+    DbPack(void * out, size_t outLen);
+    DbPack(
+        void * out,
+        size_t outLen,
+        size_t bitPos,
+        const DbPackState & st
+    );
 
-    void retarget(void * out, size_t outLen, size_t unusedBits = 0);
+    void retarget(void * out, size_t outLen);
     void retarget(
         void * out,
         size_t outLen,
-        size_t unusedBits,
-        DbPackState st
+        size_t bitPos,
+        const DbPackState & st
     );
     bool put(Dim::TimePoint time, double value);
+    bool put(const DbSample & s) { return put(s.time, s.value); }
 
-    const unsigned char * data() const { return m_base; }
-    size_t size() const { return m_used; }
-    std::string_view view() const { return {(char *) m_base, m_used}; }
-    uint8_t unusedBits() const { return m_unusedBits; }
+    uint8_t * data() const { return m_base; }
+    size_t size() const { return (bits() + 7) / 8; }
+    std::span<uint8_t> span() const { return {data(), size()}; }
+    size_t bits() const { return m_samplePos + m_sampleBits; }
     size_t capacity() const { return m_count; }
     const DbPackState & state() const { return m_state; }
+
+    DbUnpackIter begin() const { return find(); }
+    DbUnpackIter end() const { return {}; }
+    DbUnpackIter find(size_t bitPos = 0, const DbPackState & state = {}) const;
 
 private:
     bool putInt(size_t nbits, int64_t value);
@@ -69,64 +134,13 @@ private:
     bool put(double value);
 
     // Target
-    unsigned char * m_base{};
+    uint8_t * m_base{};
     size_t m_count{};
 
     // Position
-    size_t m_used{};
-    uint8_t m_unusedBits{0};
+    size_t m_samplePos{};
+    size_t m_sampleBits{};
 
     // State
     DbPackState m_state;
 };
-
-
-/****************************************************************************
-*
-*   DbUnpack
-*
-***/
-
-class DbUnpackIter {
-public:
-    DbUnpackIter() {}
-    DbUnpackIter(
-        const void * src,
-        size_t srcLen,
-        size_t unusedBits,
-        DbPackState state = {}
-    );
-    DbUnpackIter(const DbPack & from);
-    explicit operator bool() const { return m_base; }
-    bool operator!=(const DbUnpackIter & right) const;
-    DbUnpackIter & operator++();
-    DbSample & operator*() { return m_state.sample; }
-    DbSample * operator->() { return &m_state.sample; }
-
-    const unsigned char * data() const { return m_base; }
-    size_t size() const { return m_count; }
-    std::string_view view() const { return {(char *) data(), size()}; }
-    uint8_t unusedBits() const { return m_unusedBits; }
-    const DbPackState & state() const { return m_state; }
-
-private:
-    bool getInt(int64_t * out, size_t nbits);
-    bool getUint(uint64_t * out, size_t nbits);
-    bool getTime();
-    bool getValue();
-
-    // Source
-    const unsigned char * m_base{};
-    size_t m_count{};
-    uint8_t m_trailingUnused{};
-
-    // Position
-    size_t m_used{};
-    uint8_t m_unusedBits{0};
-
-    // State
-    DbPackState m_state;
-};
-
-inline DbUnpackIter begin(DbUnpackIter iter) { return iter; }
-inline DbUnpackIter end(const DbUnpackIter & iter) { return {}; }

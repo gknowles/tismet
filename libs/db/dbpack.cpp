@@ -38,42 +38,52 @@ constexpr struct {
 ***/
 
 //===========================================================================
-DbPack::DbPack(void * out, size_t outLen, size_t unusedBits)
-    : m_base{(unsigned char *) out}
-    , m_count{outLen}
-    , m_unusedBits{(uint8_t) unusedBits}
-{
-    assert(unusedBits <= 7);
+DbPack::DbPack(void * out, size_t outLen) {
+    retarget(out, outLen);
 }
 
 //===========================================================================
-DbPack::DbPack(void * out, size_t outLen, size_t unusedBits, DbPackState st)
-    : DbPack(out, outLen, unusedBits)
-{
-    m_state = st;
+DbPack::DbPack(
+    void * out,
+    size_t outLen,
+    size_t bitPos,
+    const DbPackState & st
+) {
+    retarget(out, outLen, bitPos, st);
 }
 
 //===========================================================================
-void DbPack::retarget(void * out, size_t outLen, size_t unusedBits) {
-    assert(unusedBits <= 7);
+DbUnpackIter DbPack::find(
+    size_t bitPos,
+    const DbPackState & state
+) const {
+    return DbUnpackIter(data(), bits(), bitPos, state);
+}
+
+//===========================================================================
+void DbPack::retarget(void * out, size_t outLen) {
     m_base = (unsigned char *) out;
     m_count = outLen;
-    m_unusedBits = (uint8_t) unusedBits;
 }
 
 //===========================================================================
 void DbPack::retarget(
     void * out,
     size_t outLen,
-    size_t unusedBits,
-    DbPackState st
+    size_t bitPos,
+    const DbPackState & st
 ) {
-    retarget(out, outLen, unusedBits);
+    assert(bitPos < outLen * 8);
+    retarget(out, outLen);
+    m_samplePos = bitPos;
+    m_sampleBits = 0;
     m_state = st;
 }
 
 //===========================================================================
 bool DbPack::put(TimePoint time, double value) {
+    m_samplePos += m_sampleBits;
+    m_sampleBits = 0;
     return put(time) && put(value);
 }
 
@@ -223,36 +233,35 @@ bool DbPack::putUint(size_t nbits, uint64_t value) {
     assert(nbits == 64 || value < (1ull << nbits));
     assert(availBits() >= nbits);
 
+    auto pos = m_samplePos + m_sampleBits;
     auto cnt = nbits;
     for (;;) {
-        if (!m_unusedBits) {
-            if (m_count == m_used)
-                return false;
-            m_base[m_used++] = 0;
-            m_unusedBits = 8;
-        }
+        auto used = pos / 8;
+        auto unusedBits = 8 - (pos % 8);
+        if (!unusedBits)
+            m_base[used] = 0;
 
-        if (m_unusedBits >= cnt) {
+        if (unusedBits >= cnt) {
             auto bits = value & ((1 << cnt) - 1);
-            bits <<= m_unusedBits - cnt;
-            m_base[m_used - 1] |= bits;
-            m_unusedBits -= (uint8_t) cnt;
-            assert(m_unusedBits <= 7);
+            bits <<= unusedBits - cnt;
+            m_base[used] |= bits;
+            pos += cnt;
             break;
         }
 
-        auto bits = value >> (cnt - m_unusedBits);
-        bits &= (1 << m_unusedBits) - 1;
-        m_base[m_used - 1] |= bits;
-        cnt -= m_unusedBits;
-        m_unusedBits = 0;
+        auto bits = value >> (cnt - unusedBits);
+        bits &= (1 << unusedBits) - 1;
+        m_base[used] |= bits;
+        cnt -= unusedBits;
+        pos += unusedBits;
     }
+    m_sampleBits = pos - m_samplePos;
     return true;
 }
 
 //===========================================================================
 size_t DbPack::availBits() {
-    return 8 * (m_count - m_used) + unusedBits();
+    return 8 * capacity() - bits();
 }
 
 
@@ -265,35 +274,48 @@ size_t DbPack::availBits() {
 //===========================================================================
 DbUnpackIter::DbUnpackIter(
     const void * src,
-    size_t srcLen,
-    size_t unusedBits,
-    DbPackState st
+    size_t srcBits,
+    size_t bitPos,
+    const DbPackState & st
 )
     : m_base{(unsigned char *) src}
-    , m_count{srcLen}
-    , m_trailingUnused{(uint8_t) unusedBits}
+    , m_bits{srcBits}
     , m_state(st)
 {
-    operator++();
+    seek(bitPos, st);
 }
 
 //===========================================================================
-DbUnpackIter::DbUnpackIter(const DbPack & from)
-    : DbUnpackIter(from.data(), from.size(), from.unusedBits(), from.state())
-{}
+DbUnpackIter::operator bool() const {
+    return bits() != m_samplePos + m_sampleBits;
+}
 
 //===========================================================================
-bool DbUnpackIter::operator!=(const DbUnpackIter & right) const {
-    return m_base == right.m_base
-        && m_used == right.m_used
-        && m_unusedBits == right.m_unusedBits;
+bool DbUnpackIter::operator==(const DbUnpackIter & right) const {
+    return !*this && !right
+        || m_base == right.m_base
+            && m_samplePos == right.m_samplePos
+            && bits() == right.bits();
 }
 
 //===========================================================================
 DbUnpackIter & DbUnpackIter::operator++() {
-    if (!getTime() || !getValue())
-        *this = {};
+    m_samplePos += m_sampleBits;
+    m_sampleBits = 0;
+    if (!getTime() || !getValue()) {
+        m_samplePos = bits();
+        m_sampleBits = 0;
+    }
     return *this;
+}
+
+//===========================================================================
+void DbUnpackIter::seek(size_t bitPos, const DbPackState & state) {
+    assert(bitPos <= bits());
+    m_samplePos = bitPos;
+    m_sampleBits = 0;
+    m_state = state;
+    operator++();
 }
 
 //===========================================================================
@@ -356,7 +378,9 @@ bool DbUnpackIter::getValue() {
     }
     if (!getUint(&out, 1))
         return false;
-    if (out) {
+    if (!out) {
+        // '10' + xor (use current leading zero and length values)
+    } else {
         // '11' + leading zeros (5 bits) + xor length (6 bits) + xor (number of
         //      bits given by length)
         if (!getUint(&out, 5))
@@ -365,8 +389,6 @@ bool DbUnpackIter::getValue() {
         if (!getUint(&out, 6))
             return false;
         m_state.lenBits = (uint8_t) out;
-    } else {
-        // '10' + xor (use current leading zero and length values)
     }
 
     if (!getUint(&out, m_state.lenBits))
@@ -392,32 +414,30 @@ bool DbUnpackIter::getInt(int64_t * out, size_t nbits) {
 //===========================================================================
 bool DbUnpackIter::getUint(uint64_t * out, size_t nbits) {
     assert(nbits > 0 && nbits <= 64);
-    auto availBits = 8 * (m_count - m_used) + m_unusedBits - m_trailingUnused;
+    auto pos = m_samplePos + m_sampleBits;
+    auto availBits = bits() - pos;
     if (availBits < nbits)
         return false;
     *out = 0;
     auto cnt = nbits;
     for (;;) {
-        if (!m_unusedBits) {
-            assert(m_count != m_used);
-            m_used += 1;
-            m_unusedBits = 8;
-        }
-        if (cnt <= m_unusedBits) {
-            auto bits = m_base[m_used - 1] >> (m_unusedBits - cnt);
+        auto used = pos / 8;
+        auto unusedBits = 8 - (pos % 8);
+        if (cnt <= unusedBits) {
+            auto bits = m_base[used] >> (unusedBits - cnt);
             bits &= ((1 << cnt) - 1);
             *out <<= cnt;
             *out |= bits;
-            m_unusedBits -= (uint8_t) cnt;
-            assert(m_unusedBits <= 7);
+            pos += cnt;
             break;
         }
 
-        auto bits = m_base[m_used - 1] & ((1 << m_unusedBits) - 1);
-        *out <<= m_unusedBits;
+        auto bits = m_base[used] & ((1 << unusedBits) - 1);
+        *out <<= unusedBits;
         *out |= bits;
-        cnt -= m_unusedBits;
-        m_unusedBits = 0;
+        cnt -= unusedBits;
+        pos += unusedBits;
     }
+    m_sampleBits = pos - m_samplePos;
     return true;
 }

@@ -15,11 +15,14 @@ using namespace Dim;
 *
 ***/
 
-#define EXPECT(...) \
+#define EXPECT_AT(sloc, ...) \
     if (!bool(__VA_ARGS__)) { \
-        logMsgError() << "Line " << __LINE__ << ": EXPECT(" \
+        logMsgError() << "Line " << sloc.line() << ": EXPECT(" \
             << #__VA_ARGS__ << ") failed"; \
     }
+
+#define EXPECT(...) \
+    EXPECT_AT(source_location::current(), __VA_ARGS__)
 
 
 /****************************************************************************
@@ -58,14 +61,15 @@ void Test::onTestRun() {
     DbPack pack(buf.data(), buf.size());
     EXPECT(pack.capacity() == 40);
     EXPECT(pack.size() == 0)
-    EXPECT(pack.unusedBits() == 0);
-    EXPECT(pack.view().size() == 0);
+    EXPECT(pack.bits() == 0);
+    EXPECT(pack.span().size() == 0);
 
     auto today = std::chrono::floor<std::chrono::days>(timeNow());
 
     struct {
         TimePoint time;
         double value;
+        source_location sloc = source_location::current();
     } vals[] = {
         { today + 1s, 1.0 },
         { today + 2s, 2.0 },
@@ -74,13 +78,13 @@ void Test::onTestRun() {
         { today + 8s, 5.0 },
         { today + 9s, 7.0 },
     };
-    for (auto&& [t, v] : vals)
-        pack.put(t, v);
-    DbUnpackIter unpack(pack.data(), pack.size(), pack.unusedBits());
-    for (auto&& [t, v] : vals) {
+    for (auto&& val : vals)
+        pack.put(val.time, val.value);
+    DbUnpackIter unpack(pack.data(), pack.bits());
+    for (auto&& val : vals) {
         auto & s = *unpack;
-        EXPECT(s.time == t);
-        EXPECT(s.value == v);
+        EXPECT_AT(val.sloc, s.time == val.time);
+        EXPECT_AT(val.sloc, s.value == val.value);
         ++unpack;
     }
     EXPECT(!unpack);
@@ -94,7 +98,7 @@ void Test::onTestRun() {
     } adds[] = {
         { today + 7s, 4.0 },
     };
-    unpack = pack;
+    unpack = pack.begin();
     for (auto&& add : adds) {
         for (; unpack && unpack->time < add.time; ++unpack) {
             pack2.put(unpack->time, unpack->value);
@@ -106,7 +110,7 @@ void Test::onTestRun() {
     for (; unpack; ++unpack)
         pack2.put(unpack->time, unpack->value);
 
-    unpack = pack2;
+    unpack = pack2.begin();
     if (s_verbose) {
         for (; unpack; ++unpack)
             cout << unpack->time << ", " << unpack->value << '\n';
