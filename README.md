@@ -1,5 +1,5 @@
 <!--
-Copyright Glen Knowles 2016 - 2023.
+Copyright Glen Knowles 2016 - 2025.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
@@ -39,8 +39,8 @@ Time series metric collection
 
 ## Building
 #### Prerequisites
-  - CMake >= 3.6
-  - Visual Studio 2019 (should include "Git for Windows")
+  - CMake >= 3.10
+  - Visual Studio 2022 (should include "Git for Windows")
 
 #### Steps
 ~~~ batch
@@ -48,7 +48,7 @@ git clone https://github.com/gknowles/tismet.git
 cd tismet
 git submodule update --init
 configure.bat
-msbuild /p:Configuration=Release /m
+msbuild build\tismet.sln /p:Configuration=Release /m
 ~~~
 
 Instead of running msbuild you can open the tismet.sln solution file in
@@ -67,18 +67,18 @@ tismet install
 
 When run, Tismet accesses directories relative to the executable:
   - tismet.exe
-  - conf/
-  - crash/
-  - data/
-  - data/backup/
-  - log/
+  - ../conf/
+  - ../crash/
+  - ../data/
+  - ../data/backup/
+  - ../log/
 
 
 ## Configuring
 Because Graphite doesn't understand HTTP/2 the simplest thing is to have it go
 though a reverse proxy to talk to Tismet. I use Apache, but anything that can
 proxy http clients to http/2 servers should work. Notably IIS and Nginx do not,
-at this time, support http/2 connections to back-end servers.
+at this time (21 Feb 2018), support http/2 connections to back-end servers.
 
 For https you must have a certificate installed into the Windows certificate
 store and configure Tismet to use it. You tell Tismet which cert to use by

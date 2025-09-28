@@ -1,5 +1,5 @@
 ﻿<!--
-Copyright Glen Knowles 2018 - 2022.
+Copyright Glen Knowles 2018 - 2025.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
-- Changed - New UI written in Elm
+- Changed - New UI written in Elm (2019-02-04), and discarded
+- Changed - New UI in javascript + json
 
 ## tismet 1.1.0 (2018-12-05)
 Work directly from Grafana
