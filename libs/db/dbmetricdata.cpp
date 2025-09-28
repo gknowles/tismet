@@ -531,13 +531,13 @@ void DbData::updateSampleIndex(
     );
     StrTrieBase trie(&heap);
     [[maybe_unused]] auto result = false;
-    if (oldTime) {
+    if (!empty(oldTime)) {
         assert(sp->sampleIndex);
         auto key = ::trieKey({oldTime, spno});
         result = trie.erase(key);
         assert(result);
     }
-    if (newTime) {
+    if (!empty(newTime)) {
         auto key = ::trieKey({newTime, spno});
         result = trie.insert(key);
         assert(result);
@@ -919,7 +919,7 @@ void DbData::updateSample(
             assert(time != sp->firstTime);
             txn.walSampleUpdateTime(spno, time, last);
             updateSampleIndex(txn, sp, spno, oldTime, sp->firstTime);
-        } else if (last) {
+        } else if (!empty(last)) {
             txn.walSampleUpdateTime(spno, {}, last);
         }
         s_perfAdd += 1;
