@@ -6,6 +6,7 @@
 // db.h - tismet db
 #pragma once
 
+#include "basic/basic.h"
 #include "core/core.h"
 #include "file/file.h"
 
