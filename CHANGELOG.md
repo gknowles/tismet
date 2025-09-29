@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 - Changed - New UI written in Elm (2019-02-04), and discarded
-- Changed - New UI in javascript + json
+- Changed - New UI extending simple js framework in dimapp
 
 ## tismet 1.1.0 (2018-12-05)
 Work directly from Grafana

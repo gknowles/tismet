@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <ranges>
 #include <set>

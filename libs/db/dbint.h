@@ -740,12 +740,15 @@ private:
         bool createIfNotExists = false
     );
     void eraseSampleIndex(DbTxn & txn, uint32_t id);
+    // Updates the pages entry in the index to reflect it's new firstTime. If
+    // expiration is non-zero,
     void updateSampleIndex(
         DbTxn & txn,
         const SamplePage * sp,
         pgno_t spno,
-        Dim::TimePoint oldTime,
-        Dim::TimePoint newTime
+        std::optional<Dim::TimePoint> oldTime,
+        std::optional<Dim::TimePoint> newTime,
+        std::optional<Dim::Duration> expiration = {}
     );
 
     bool loadFreePages(DbTxn & txn);

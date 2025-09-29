@@ -500,7 +500,7 @@ bool DbData::findSamplePage(
     DbSamplePageHeap heap(&txn, this, root);
     StrTrieBase trie(&heap);
     auto i = trie.findLessEqual(key);
-    auto found = (i == trie.end()) ? trie.front() : *i;
+    auto found = i ? *i : trie.front();
     if (!::parseTrieKey(&rec, found)) {
         logMsgFatal() << "findSamplePage(" << id << ", " << time
             << "): invalid entry in sample index";
@@ -516,8 +516,9 @@ void DbData::updateSampleIndex(
     DbTxn & txn,
     const SamplePage * sp,
     pgno_t spno,
-    TimePoint oldTime,
-    TimePoint newTime
+    optional<TimePoint> oldTime,
+    optional<TimePoint> newTime,
+    optional<Duration> expiration
 ) {
     if (oldTime == newTime)
         return;
@@ -531,17 +532,40 @@ void DbData::updateSampleIndex(
     );
     StrTrieBase trie(&heap);
     [[maybe_unused]] auto result = false;
-    if (!empty(oldTime)) {
+    if (oldTime) {
         assert(sp->sampleIndex);
-        auto key = ::trieKey({oldTime, spno});
+        auto key = ::trieKey({*oldTime, spno});
         result = trie.erase(key);
         assert(result);
     }
-    if (!empty(newTime)) {
-        auto key = ::trieKey({newTime, spno});
-        result = trie.insert(key);
-        assert(result);
+
+    if (!newTime)
+        return;
+    auto key = ::trieKey({*newTime, spno});
+    result = trie.insert(key);
+    assert(result);
+
+    if (!expiration)
+        return;
+    key = ::trieKey({*newTime - *expiration});
+    auto i = trie.findLess(key);
+    if (!i) {
+        logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
+            << time << "): sample index with closed lower bound";
+        return;
     }
+    SampleIndexRec rec;
+    if (!::parseTrieKey(&rec, *i)) {
+        logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
+            << time << "): invalid entry in sample index";
+        return;
+    }
+    if (empty(rec.time)) {
+        // Oldest unexpired sample would land in the first page, so there are
+        // no completely expired pages to discard.
+        return;
+    }
+    //trie.erase(
 }
 
 //===========================================================================
@@ -969,14 +993,16 @@ void DbData::updateSample(
         s_perfAdd += 1;
 
         // Add new page to sample index.
-        updateSampleIndex(txn, sp, spno, {}, time);
+        updateSampleIndex(txn, sp, spno, {}, time, mi.retention);
         return;
     }
 
     // Split samples onto two pages.
     auto keepBits = sus.in.bits() + sus.updLen - sus.replLen;
+    Duration retention = {};
     if (spIsLastPage) {
         keepBits = keepBits * 7 / 8;
+        retention = mi.retention;
     } else {
         keepBits /= 2;
     }
@@ -1000,7 +1026,7 @@ void DbData::updateSample(
         sus.pack2.data(),
         sus.pack2.bits() - sp2->dataBits
     );
-    updateSampleIndex(txn, sp2, spno2, {}, sus.firstSample2.time);
+    updateSampleIndex(txn, sp2, spno2, {}, sus.firstSample2.time, retention);
 
     // Update existing page.
     txn.walSampleUpdateTime(spno, {}, sus.lastTime);
