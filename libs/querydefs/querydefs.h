@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2021.
+// Copyright Glen Knowles 2017 - 2025.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // querydefs.h - tismet querydefs
