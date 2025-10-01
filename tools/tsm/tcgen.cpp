@@ -494,4 +494,5 @@ static void genCmd(Cli & cli) {
         if (job->start(cli))
             job.release();
     }
+    cli.fail(EX_PENDING);
 }

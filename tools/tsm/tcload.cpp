@@ -406,4 +406,5 @@ static void loadCmd(Cli & cli) {
     s_db = h;
     fileSize(&s_progress.totalBytes, s_opts.dumpfile);
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
+    cli.fail(EX_PENDING);
 }

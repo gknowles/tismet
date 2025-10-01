@@ -272,8 +272,6 @@ static void app(Cli & cli) {
     updateFile(query_h, genQueryFunc(query_h));
     auto query_abnf = s_opts.root / "libs/query/queryfunc.abnf";
     updateFile(query_abnf, genQueryAbnf(query_abnf));
-
-    appSignalShutdown();
 }
 
 

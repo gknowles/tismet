@@ -250,5 +250,5 @@ static void replayCmd(Cli & cli) {
     //auto job = make_unique<AddrJob>();
     //if (job->start(cli))
     //    job.release();
-    //return false;
+    //cli.fail(EX_PENDING);
 }

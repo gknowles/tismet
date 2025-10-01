@@ -292,4 +292,5 @@ CmdOpts::CmdOpts() {
 //===========================================================================
 static void backupCmd(Cli & cli) {
     s_job.start(cli);
+    cli.fail(EX_PENDING);
 }

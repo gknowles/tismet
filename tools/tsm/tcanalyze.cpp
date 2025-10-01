@@ -230,4 +230,5 @@ static void analyzeCmd(Cli & cli) {
     taskSetQueueThreads(taskComputeQueue(), 1);
     carbonInitialize();
     fileStreamBinary(&s_source, s_opts.reportfile, 4096);
+    cli.fail(EX_PENDING);
 }

@@ -149,6 +149,7 @@ static void serveCmd(Cli & cli) {
     shutdownMonitor(&s_initTask);
     taskPushCompute(&s_initTask);
     logMsgInfo() << "Server starting";
+    cli.fail(EX_PENDING);
 }
 
 
