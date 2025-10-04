@@ -261,7 +261,7 @@ static void app(Cli & cli) {
     auto sln = s_opts.root / "tismet.sln";
     bool found = false;
     if (fileExists(&found, sln); !found) {
-        return appSignalUsageError(
+        return cli.badUsage(
             "'" + string(s_opts.root) + "' not tismet source root."
         );
     }
