@@ -142,6 +142,9 @@ static void initApp(Cli & cli) {
 
 //===========================================================================
 static void serveCmd(Cli & cli) {
+    if (consoleAttached())
+        logMonitor(&s_consoleLogger);
+
     httpRouteSetDefaultReplyHeader(kHttpServer, s_productVersion.c_str());
     httpRouteSetDefaultReplyHeader(kHttpAccessControlAllowOrigin, "*");
     consoleCatchCtrlC();
@@ -163,9 +166,6 @@ static void serveCmd(Cli & cli) {
 int main(int argc, char *argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
     _set_error_mode(_OUT_TO_MSGBOX);
-
-    if (consoleAttached())
-        logMonitor(&s_consoleLogger);
 
     Cli cli;
     cli.helpCmd();

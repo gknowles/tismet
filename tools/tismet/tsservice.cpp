@@ -44,6 +44,7 @@ static CmdOpts s_opts;
 //===========================================================================
 static bool execElevated(const vector<string> & rawArgs) {
     auto args = rawArgs;
+    args[0] = Path(envExecPath()).relative(appRootDir());
     string arg1 = "--console=";
     arg1 += toChars<unsigned>(envProcessId()).view();
     args.insert(args.begin() + 1, arg1);
@@ -60,6 +61,9 @@ static bool execElevated(const vector<string> & rawArgs) {
 ***/
 
 static void installCmd(Cli & cli);
+static void uninstallCmd(Cli & cli);
+static void startCmd(Cli & cli);
+static void stopCmd(Cli & cli);
 
 //===========================================================================
 CmdOpts::CmdOpts() {
@@ -67,41 +71,45 @@ CmdOpts::CmdOpts() {
     cli.before([&](auto & cli, auto & args) {
         this->args = args;
     });
-    cli.command("install")
-        .desc("Install Tismet service.")
-        .action(installCmd);
+    cli.command("install").action(installCmd)
+        .desc("Install as a Windows service.");
+    cli.command("uninstall").action(uninstallCmd)
+        .desc("Uninstall the service.");
+    cli.command("start").action(startCmd)
+        .desc("Start the service");
+    cli.command("stop").action(stopCmd)
+        .desc("Stop the service");
 }
 
 
 /****************************************************************************
 *
-*   Install command
+*   Install
 *
 ***/
 
 //===========================================================================
 static bool installService() {
     auto cmd = Cli::toCmdline({envExecPath(), "serve"});
-    WinServiceConfig sconf;
-    sconf.serviceName = "Tismet";
-    sconf.displayName = "Tismet Server",
+    WinSvcConf sconf;
+    sconf.serviceName = appServiceName();
     sconf.desc = "Provides efficient storage, processing, and access to time "
         "series metrics for graphing and monitoring applications.";
     sconf.progWithArgs = cmd.c_str();
-    sconf.account = WinServiceConfig::kLocalService;
+    sconf.account = WinSvcConf::kLocalService;
     sconf.deps = { "Tcpip", "Afd" };
-    sconf.sidType = WinServiceConfig::SidType::kRestricted;
+    sconf.sidType = WinSvcConf::SidType::kRestricted;
     sconf.privs = {
         "SeChangeNotifyPrivilege",
         // "SeManageVolumePrivilege",   // SetFileValidData
         // "SeLockMemoryPrivilege",     // VirtualAlloc with MEM_LARGE_PAGES
     };
-    sconf.failureFlag = WinServiceConfig::FailureFlag::kCrashOrNonZeroExitCode;
+    sconf.failureFlag = WinSvcConf::FailureFlag::kCrashOrNonZeroExitCode;
     sconf.failureReset = 24h;
     sconf.failureActions = {
-        { WinServiceConfig::Action::kRestart, 10s },
-        { WinServiceConfig::Action::kRestart, 60s },
-        { WinServiceConfig::Action::kRestart, 10min },
+        { WinSvcConf::Action::kRestart, 10s },
+        { WinSvcConf::Action::kRestart, 60s },
+        { WinSvcConf::Action::kRestart, 10min },
     };
 
     return !winSvcCreate(sconf);
@@ -145,6 +153,108 @@ static void installCmd(Cli & cli) {
     switch (envProcessRights()) {
     case kEnvUserAdmin:
         success = installService() && setFileAccess();
+        break;
+    case kEnvUserRestrictedAdmin:
+        success = execElevated(s_opts.args);
+        break;
+    case kEnvUserStandard:
+        logMsgError() << "You must be an administrator to create services.";
+        break;
+    }
+
+    logMonitorClose(consoleBasicLogger());
+    if (!success)
+        cli.fail(EX_OSERR, "Unable to create service.");
+}
+
+
+/****************************************************************************
+*
+*   Uninstall
+*
+***/
+
+//===========================================================================
+static bool uninstallService() {
+    return false;
+}
+
+//===========================================================================
+static void uninstallCmd(Cli & cli) {
+    auto success = false;
+    logMonitor(consoleBasicLogger());
+
+    switch (envProcessRights()) {
+    case kEnvUserAdmin:
+        success = uninstallService();
+        break;
+    case kEnvUserRestrictedAdmin:
+        success = execElevated(s_opts.args);
+        break;
+    case kEnvUserStandard:
+        logMsgError() << "You must be an administrator to create services.";
+        break;
+    }
+
+    logMonitorClose(consoleBasicLogger());
+    if (!success)
+        cli.fail(EX_OSERR, "Unable to create service.");
+}
+
+
+/****************************************************************************
+*
+*   Start
+*
+***/
+
+//===========================================================================
+static bool startService() {
+    return false;
+}
+
+//===========================================================================
+static void startCmd(Cli & cli) {
+    auto success = false;
+    logMonitor(consoleBasicLogger());
+
+    switch (envProcessRights()) {
+    case kEnvUserAdmin:
+        success = startService();
+        break;
+    case kEnvUserRestrictedAdmin:
+        success = execElevated(s_opts.args);
+        break;
+    case kEnvUserStandard:
+        logMsgError() << "You must be an administrator to create services.";
+        break;
+    }
+
+    logMonitorClose(consoleBasicLogger());
+    if (!success)
+        cli.fail(EX_OSERR, "Unable to create service.");
+}
+
+
+/****************************************************************************
+*
+*   Stop
+*
+***/
+
+//===========================================================================
+static bool stopService() {
+    return false;
+}
+
+//===========================================================================
+static void stopCmd(Cli & cli) {
+    auto success = false;
+    logMonitor(consoleBasicLogger());
+
+    switch (envProcessRights()) {
+    case kEnvUserAdmin:
+        success = stopService();
         break;
     case kEnvUserRestrictedAdmin:
         success = execElevated(s_opts.args);
