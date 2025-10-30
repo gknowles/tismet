@@ -42,43 +42,90 @@ static CmdOpts s_opts;
 ***/
 
 //===========================================================================
-static bool execElevated(const vector<string> & rawArgs) {
+static ExecResult execElevated(const vector<string> & rawArgs) {
+    ExecResult out;
     auto args = rawArgs;
     args[0] = Path(envExecPath()).relative(appRootDir());
     string arg1 = "--console=";
     arg1 += toChars<unsigned>(envProcessId()).view();
     args.insert(args.begin() + 1, arg1);
     auto argline = Cli::toCmdline(args);
-    int ec;
-    return execElevatedWait(&ec, argline);
+    execElevatedWait(&out, argline);
+    return out;
 }
 
 
 /****************************************************************************
 *
-*   Command line
+*   Action - contains code common to command actions
 *
 ***/
 
-static void installCmd(Cli & cli);
-static void uninstallCmd(Cli & cli);
-static void startCmd(Cli & cli);
-static void stopCmd(Cli & cli);
+namespace {
+
+class Action {
+public:
+    enum Flags : unsigned {
+        fSuccess    = 1 << 0,   // operation was successful
+        fReported   = 1 << 1,   // has been fully reported to console
+        fMore       = 1 << 2,   // hasn't been executed yet
+        fAlready    = 1 << 3,   // service was already stopped/paused/etc
+    };
+
+public:
+    Action(Cli & cli, string_view type, string_view typed);
+    ~Action();
+    explicit operator bool() const { return m_flags.any(fMore); }
+
+    EnumFlags<Flags> m_flags {};
+
+private:
+    Cli m_cli;
+    string m_type;
+    string m_typed;
+};
+
+} // namespace
 
 //===========================================================================
-CmdOpts::CmdOpts() {
-    Cli cli;
-    cli.before([&](auto & cli, auto & args) {
-        this->args = args;
-    });
-    cli.command("install").action(installCmd)
-        .desc("Install as a Windows service.");
-    cli.command("uninstall").action(uninstallCmd)
-        .desc("Uninstall the service.");
-    cli.command("start").action(startCmd)
-        .desc("Start the service");
-    cli.command("stop").action(stopCmd)
-        .desc("Stop the service");
+Action::Action(Cli & cli, string_view type, string_view typed)
+    : m_cli(cli)
+    , m_type(type)
+    , m_typed(typed)
+{
+    logMonitor(consoleBasicLogger());
+    auto rights = envProcessRights();
+    if (rights == kEnvUserAdmin) {
+        m_flags.set(fMore);
+    } else if (rights == kEnvUserRestrictedAdmin && !tsConsoleOwner()) {
+        auto res = execElevated(s_opts.args);
+        m_flags.set(fReported, res.exitType == ExecResult::kFinished);
+        m_flags.set(fSuccess, !res.exitCode);
+        if (res.exitType == ExecResult::kCanceled)
+            logMsgError() << "Operation canceled by user.";
+    } else if (rights == kEnvUserStandard) {
+        logMsgError() << "You must be an administrator to " << type
+            << " services.";
+    }
+};
+
+//===========================================================================
+Action::~Action() {
+    if (m_flags.any(fReported)) {
+        if (!m_flags.any(fSuccess))
+            m_cli.fail(EX_OSERR);
+    } else {
+        if (m_flags.any(fSuccess)) {
+            auto os = logMsgInfo();
+            os << appServiceName() << " service ";
+            if (m_flags.any(fAlready))
+                os << "already ";
+            os << m_typed << ".";
+        } else {
+            m_cli.fail(EX_OSERR, "Unable to " + m_type + " service.");
+        }
+    }
+    logMonitorClose(consoleBasicLogger());
 }
 
 
@@ -90,29 +137,29 @@ CmdOpts::CmdOpts() {
 
 //===========================================================================
 static bool installService() {
+    WinSvcConf conf;
     auto cmd = Cli::toCmdline({envExecPath(), "serve"});
-    WinSvcConf sconf;
-    sconf.serviceName = appServiceName();
-    sconf.desc = "Provides efficient storage, processing, and access to time "
+    conf.serviceName = appServiceName();
+    conf.desc = "Provides efficient storage, processing, and access to time "
         "series metrics for graphing and monitoring applications.";
-    sconf.progWithArgs = cmd.c_str();
-    sconf.account = WinSvcConf::kLocalService;
-    sconf.deps = { "Tcpip", "Afd" };
-    sconf.sidType = WinSvcConf::SidType::kRestricted;
-    sconf.privs = {
+    conf.progWithArgs = cmd.c_str();
+    conf.account = WinSvcConf::kLocalService;
+    conf.deps = { "Tcpip", "Afd" };
+    conf.sidType = WinSvcConf::SidType::kRestricted;
+    conf.privs = {
         "SeChangeNotifyPrivilege",
         // "SeManageVolumePrivilege",   // SetFileValidData
         // "SeLockMemoryPrivilege",     // VirtualAlloc with MEM_LARGE_PAGES
     };
-    sconf.failureFlag = WinSvcConf::FailureFlag::kCrashOrNonZeroExitCode;
-    sconf.failureReset = 24h;
-    sconf.failureActions = {
+    conf.failureFlag = WinSvcConf::FailureFlag::kCrashOrNonZeroExitCode;
+    conf.failureReset = 24h;
+    conf.failureActions = {
         { WinSvcConf::Action::kRestart, 10s },
         { WinSvcConf::Action::kRestart, 60s },
         { WinSvcConf::Action::kRestart, 10min },
     };
 
-    return !winSvcCreate(sconf);
+    return !winSvcCreate(conf);
 }
 
 //===========================================================================
@@ -147,24 +194,12 @@ static bool setFileAccess() {
 
 //===========================================================================
 static void installCmd(Cli & cli) {
-    auto success = false;
-    logMonitor(consoleBasicLogger());
+    Action act(cli, "create", "created");
+    if (!act)
+        return;
 
-    switch (envProcessRights()) {
-    case kEnvUserAdmin:
-        success = installService() && setFileAccess();
-        break;
-    case kEnvUserRestrictedAdmin:
-        success = execElevated(s_opts.args);
-        break;
-    case kEnvUserStandard:
-        logMsgError() << "You must be an administrator to create services.";
-        break;
-    }
-
-    logMonitorClose(consoleBasicLogger());
-    if (!success)
-        cli.fail(EX_OSERR, "Unable to create service.");
+    if (installService() && setFileAccess())
+        act.m_flags.set(Action::fSuccess);
 }
 
 
@@ -175,30 +210,13 @@ static void installCmd(Cli & cli) {
 ***/
 
 //===========================================================================
-static bool uninstallService() {
-    return false;
-}
-
-//===========================================================================
 static void uninstallCmd(Cli & cli) {
-    auto success = false;
-    logMonitor(consoleBasicLogger());
+    Action act(cli, "delete", "deleted");
+    if (!act)
+        return;
 
-    switch (envProcessRights()) {
-    case kEnvUserAdmin:
-        success = uninstallService();
-        break;
-    case kEnvUserRestrictedAdmin:
-        success = execElevated(s_opts.args);
-        break;
-    case kEnvUserStandard:
-        logMsgError() << "You must be an administrator to create services.";
-        break;
-    }
-
-    logMonitorClose(consoleBasicLogger());
-    if (!success)
-        cli.fail(EX_OSERR, "Unable to create service.");
+    if (!winSvcDelete(appServiceName()))
+        act.m_flags.set(Action::fSuccess);
 }
 
 
@@ -209,30 +227,16 @@ static void uninstallCmd(Cli & cli) {
 ***/
 
 //===========================================================================
-static bool startService() {
-    return false;
-}
-
-//===========================================================================
 static void startCmd(Cli & cli) {
-    auto success = false;
-    logMonitor(consoleBasicLogger());
+    Action act(cli, "start", "started");
+    if (!act)
+        return;
 
-    switch (envProcessRights()) {
-    case kEnvUserAdmin:
-        success = startService();
-        break;
-    case kEnvUserRestrictedAdmin:
-        success = execElevated(s_opts.args);
-        break;
-    case kEnvUserStandard:
-        logMsgError() << "You must be an administrator to create services.";
-        break;
-    }
-
-    logMonitorClose(consoleBasicLogger());
-    if (!success)
-        cli.fail(EX_OSERR, "Unable to create service.");
+    WinSvcStat st;
+    if (!winSvcStart(&st, appServiceName()))
+        act.m_flags.set(Action::fSuccess);
+    if (st.alreadyInState)
+        act.m_flags.set(Action::fAlready);
 }
 
 
@@ -243,28 +247,37 @@ static void startCmd(Cli & cli) {
 ***/
 
 //===========================================================================
-static bool stopService() {
-    return false;
+static void stopCmd(Cli & cli) {
+    Action act(cli, "stop", "stopped");
+    if (!act)
+        return;
+
+    WinSvcStat st;
+    if (!winSvcStop(&st, appServiceName()))
+        act.m_flags.set(Action::fSuccess);
+    if (st.alreadyInState)
+        act.m_flags.set(Action::fAlready);
 }
 
+
+/****************************************************************************
+*
+*   Command options
+*
+***/
+
 //===========================================================================
-static void stopCmd(Cli & cli) {
-    auto success = false;
-    logMonitor(consoleBasicLogger());
-
-    switch (envProcessRights()) {
-    case kEnvUserAdmin:
-        success = stopService();
-        break;
-    case kEnvUserRestrictedAdmin:
-        success = execElevated(s_opts.args);
-        break;
-    case kEnvUserStandard:
-        logMsgError() << "You must be an administrator to create services.";
-        break;
-    }
-
-    logMonitorClose(consoleBasicLogger());
-    if (!success)
-        cli.fail(EX_OSERR, "Unable to create service.");
+CmdOpts::CmdOpts() {
+    Cli cli;
+    cli.before([&](auto & cli, auto & args) {
+        this->args = args;
+    });
+    cli.command("install").action(installCmd)
+        .desc("Install as a Windows service.");
+    cli.command("uninstall").action(uninstallCmd)
+        .desc("Uninstall the service.");
+    cli.command("start").action(startCmd)
+        .desc("Start the service");
+    cli.command("stop").action(stopCmd)
+        .desc("Stop the service");
 }

@@ -134,6 +134,7 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 
 static string s_product = "tismet";
 static string s_productVersion;
+static unsigned s_consoleOwnerId = 0;
 
 //===========================================================================
 static void initApp(Cli & cli) {
@@ -174,17 +175,16 @@ int main(int argc, char *argv[]) {
             args.push_back(appFlags().any(fAppIsService) ? "serve" : "help");
         });
     cli.beforeExec(initApp);
-    cli.opt<unsigned>("console")
+    cli.opt(&s_consoleOwnerId, "console")
         .show(false).desc("Attach to console of other process.")
         .after([](auto & cli, auto & opt, auto & val) {
-        if (opt && !consoleAttach(*opt))
-            cli.fail(EX_OSERR, "Unable to attach");
-            });
+            if (opt && !consoleAttach(*opt))
+                cli.fail(EX_OSERR, "Unable to attach");
+        });
     cli.command("serve")
         .desc("Run Tismet server and process requests.")
         .action(serveCmd);
-    int code = appRun(argc, argv, {}, s_product, fAppServer);
-    return code;
+    return appRun(argc, argv, {}, s_product, fAppServer);
 }
 
 
@@ -197,4 +197,9 @@ int main(int argc, char *argv[]) {
 //===========================================================================
 string_view tsProductVersion() {
     return s_productVersion;
+}
+
+//===========================================================================
+unsigned tsConsoleOwner() {
+    return s_consoleOwnerId;
 }

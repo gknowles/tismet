@@ -6,6 +6,7 @@
 
 // Application
 std::string_view tsProductVersion();
+unsigned tsConsoleOwner();
 
 // Performance counters
 void tsPerfInitialize();
