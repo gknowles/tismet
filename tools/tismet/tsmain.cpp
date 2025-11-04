@@ -132,7 +132,7 @@ void InitializeTask::onShutdownConsole(bool firstTry) {
 *
 ***/
 
-static string s_product = "tismet";
+static string s_product = "Tismet";
 static string s_productVersion;
 static unsigned s_consoleOwnerId = 0;
 
