@@ -165,7 +165,7 @@ static bool installService() {
 //===========================================================================
 static bool setFileAccess() {
     using namespace Dim::File::Access;
-    auto path = Path{envExecPath()}.removeFilename();
+    auto path = Path(appRootDir());
     struct {
         const char * path;
         Right allow;
@@ -198,8 +198,13 @@ static void installCmd(Cli & cli) {
     if (!act)
         return;
 
-    if (installService() && setFileAccess())
-        act.m_flags.set(Action::fSuccess);
+    if (installService()) {
+        if (setFileAccess()) {
+            act.m_flags.set(Action::fSuccess);
+        } else {
+            winSvcDelete(appServiceName());
+        }
+    }
 }
 
 
@@ -271,7 +276,7 @@ CmdOpts::CmdOpts() {
     Cli cli;
     cli.before([&](auto & cli, auto & args) {
         this->args = args;
-    });
+    }, 0);
     cli.command("install").action(installCmd)
         .desc("Install as a Windows service.");
     cli.command("uninstall").action(uninstallCmd)
