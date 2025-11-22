@@ -158,14 +158,20 @@ private:
     );
 
     void prepareBuffer_LK(
+        std::unique_lock<std::mutex> & lk,
         const Record & rec,
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
-    void countBeginTxn_LK();
-    void countCommitTxns_LK(Lsx txn, const std::unordered_set<Lsx> * txns);
-    void countCommitTxn_LK(Lsx txn);
+    void countBeginTxn_LK(std::unique_lock<std::mutex> & lk);
+    void countCommitTxns_LK(
+        std::unique_lock<std::mutex> & lk,
+        Lsx txn,
+        const std::unordered_set<Lsx> * txns
+    );
+    void countCommitTxn_LK(std::unique_lock<std::mutex> & lk, Lsx txn);
     void updatePages_LK(
+        std::unique_lock<std::mutex> & lk,
         Lsn firstLsn,
         uint16_t cleanRecs,
         bool fullPageWrite

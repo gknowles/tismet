@@ -214,7 +214,7 @@ shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
 }
 
 //===========================================================================
-void DbRootSet::unlock_UNLK(unique_lock<mutex> & lk) {
+void DbRootSet::unlock_UNLK(unique_lock<mutex> && lk) {
     assert(lk && lk.mutex() == &m_info->mut);
     assert(m_info->commitInProgress);
     m_info->commitInProgress = false;
@@ -225,7 +225,7 @@ void DbRootSet::unlock_UNLK(unique_lock<mutex> & lk) {
 //===========================================================================
 void DbRootSet::unlock() {
     unique_lock lk(m_info->mut);
-    unlock_UNLK(lk);
+    unlock_UNLK(move(lk));
 }
 
 //===========================================================================
@@ -323,7 +323,7 @@ shared_ptr<DbRootSet> DbRootSet::commitNextSet(
     }
 
     m_info->data.m_metricRoots.store(m_next);
-    unlock_UNLK(lk);
+    unlock_UNLK(move(lk));
     return m_next;
 }
 

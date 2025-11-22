@@ -123,35 +123,41 @@ private:
     bool openData(std::string_view datafile);
     bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
-    void freePage_LK(DbPageHeader * hdr);
-    DbPageHeader * dupPage_LK(const DbPageHeader * hdr);
-    WorkPageInfo * dirtyPage_LK(pgno_t pgno, Lsn lsn);
-    WorkPageInfo * allocWorkInfo_LK();
-    void freeWorkInfo_LK(WorkPageInfo * pi);
+    void freePage_LK(std::unique_lock<std::mutex> & lk, DbPageHeader * hdr);
+    void freeWorkInfo_LK(std::unique_lock<std::mutex> & lk, WorkPageInfo * pi);
+
+    // Passing a const unique_lock is used to indicate that while access must
+    // be serialized it may be used in a single threaded context with no actual
+    // mutex (i.e. during recovery).
+    DbPageHeader * dupPage_LK(
+        const std::unique_lock<std::mutex> & lk,
+        const DbPageHeader * hdr
+    );
+    WorkPageInfo * dirtyPage_LK(
+        const std::unique_lock<std::mutex> & lk,
+        pgno_t pgno,
+        Lsn lsn
+    );
+    WorkPageInfo * allocWorkInfo_LK(const std::unique_lock<std::mutex> & lk);
 
     // Inherited by DbWal::IPageNotify
-    void * onWalGetPtrForUpdate(
-        pgno_t pgno,
-        Lsn lsn,
-        LocalTxn txn
-    ) override;
+    void * onWalGetPtrForUpdate(pgno_t pgno, Lsn lsn, LocalTxn txn) override;
     void onWalUnlockPtr(pgno_t pgno) override;
-    void * onWalGetPtrForRedo(
-        pgno_t pgno,
-        Lsn lsn,
-        LocalTxn txn
-    ) override;
+    void * onWalGetPtrForRedo(pgno_t pgno, Lsn lsn, LocalTxn txn) override;
     void onWalDurable(Lsn lsn, size_t bytes) override;
     Lsn onWalCheckpointPages(Lsn lsn) override;
 
-    Dim::Duration untilNextSave_LK();
-    void queueSaveWork_LK();
+    Dim::Duration untilNextSave_LK(const std::unique_lock<std::mutex> & lk);
+    void queueSaveWork_LK(const std::unique_lock<std::mutex> & lk);
     Dim::Duration onSaveTimer(Dim::TimePoint now);
     void saveWork();
-    void saveOverduePages_LK();
-    Lsn saveDirtyPages_LK(Dim::TimePoint lastSave);
-    void removeWalPages_LK(Lsn saveLsn);
-    void removeCleanPages_LK();
+    void saveOverduePages_LK(std::unique_lock<std::mutex> & lk);
+    Lsn saveDirtyPages_LK(
+        std::unique_lock<std::mutex> & lk,
+        Dim::TimePoint lastSave
+    );
+    void removeWalPages_LK(std::unique_lock<std::mutex> & lk, Lsn saveLsn);
+    void removeCleanPages_LK(std::unique_lock<std::mutex> & lk);
 
     // Variables determined at open
     size_t m_pageSize = 0;
@@ -218,8 +224,8 @@ private:
     Dim::List<WorkPageInfo> m_referencePages;
 
     // The LSN up to which all data can be safely recovered. All WAL for any
-    // transaction, that has not been rolled back and includes logs from this or
-    // any previous LSN, has been persisted to stable storage.
+    // transaction, that has not been rolled back and includes logs from this
+    // or any previous LSN, has been persisted to stable storage.
     Lsn m_durableLsn = {};
 
     // Info about WAL pages that have been persisted but with some or all of
@@ -526,7 +532,7 @@ public:
     void unlock();
 
 private:
-    void unlock_UNLK(std::unique_lock<std::mutex> & lk);
+    void unlock_UNLK(std::unique_lock<std::mutex> && lk);
 
     std::shared_ptr<Info> m_info;
     std::shared_ptr<DbRootSet> m_next;

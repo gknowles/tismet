@@ -247,7 +247,7 @@ DbConfig DbPage::configure(const DbConfig & conf) {
     unique_lock lk{m_workMut};
     m_maxWalAge = conf.checkpointMaxInterval;
     m_maxWalBytes = conf.checkpointMaxData;
-    queueSaveWork_LK();
+    queueSaveWork_LK(lk);
 
     return conf;
 }
@@ -372,7 +372,7 @@ void DbPage::onWalDurable(Lsn lsn, size_t bytes) {
         m_overflowWalBytes += wi.bytes;
     }
 
-    queueSaveWork_LK();
+    queueSaveWork_LK(lk);
 }
 
 //===========================================================================
@@ -404,7 +404,7 @@ Lsn DbPage::onWalCheckpointPages(Lsn lsn) {
 
 //===========================================================================
 // Calculate how long to wait until another set of dirty pages should be saved.
-Duration DbPage::untilNextSave_LK() {
+Duration DbPage::untilNextSave_LK(const unique_lock<mutex> & lk) {
     if (!m_durableLsn) {
         // Recovery hasn't completed, save must not be scheduled.
         return kTimerInfinite;
@@ -442,8 +442,8 @@ Duration DbPage::untilNextSave_LK() {
 }
 
 //===========================================================================
-void DbPage::queueSaveWork_LK() {
-    auto wait = untilNextSave_LK();
+void DbPage::queueSaveWork_LK(const unique_lock<mutex> & lk) {
+    auto wait = untilNextSave_LK(lk);
     timerUpdate(&m_saveTimer, wait, true);
 }
 
@@ -465,19 +465,19 @@ void DbPage::saveWork() {
 
     auto lastTime = m_lastSaveTime;
     m_lastSaveTime = timeNow();
-    saveOverduePages_LK();
-    auto savedLsn = saveDirtyPages_LK(lastTime);
+    saveOverduePages_LK(lk);
+    auto savedLsn = saveDirtyPages_LK(lk, lastTime);
     if (savedLsn)
-        removeWalPages_LK(savedLsn);
-    removeCleanPages_LK();
+        removeWalPages_LK(lk, savedLsn);
+    removeCleanPages_LK(lk);
 
     m_saveInProgress = false;
-    queueSaveWork_LK();
+    queueSaveWork_LK(lk);
 }
 
 //===========================================================================
 // Save (and then free) overdue pages whose modifying LSNs have been saved.
-void DbPage::saveOverduePages_LK() {
+void DbPage::saveOverduePages_LK(unique_lock<mutex> & lk) {
     if (!m_overduePages)
         return;
 
@@ -493,23 +493,21 @@ void DbPage::saveOverduePages_LK() {
 
     if (pages) {
         // Write the selected old pages.
-        unique_lock lk(m_workMut, adopt_lock);
         lk.unlock();
         for (auto && pi : pages)
             writePageWait(pi.hdr);
         lk.lock();
-        lk.release();
 
         // Free the selected pages.
         while (auto pi = pages.front()) {
             assert(m_pages[pi->hdr->pgno] != pi);
-            freePage_LK(pi->hdr);
-            freeWorkInfo_LK(pi);
+            freePage_LK(lk, pi->hdr);
+            freeWorkInfo_LK(lk, pi);
             s_perfOverduePages -= 1;
         }
 
         // Remove WAL info for the freed pages.
-        removeWalPages_LK(savedLsn);
+        removeWalPages_LK(lk, savedLsn);
     }
 }
 
@@ -520,11 +518,9 @@ void DbPage::saveOverduePages_LK() {
 // Returns LSN of most recent page saved, or 0 if no pages saved. Additional
 // unsaved pages for the same LSN may exist, but all prior LSNs have had their
 // pages saved.
-Lsn DbPage::saveDirtyPages_LK(TimePoint lastTime) {
+Lsn DbPage::saveDirtyPages_LK(unique_lock<mutex> & lk, TimePoint lastTime) {
     if (!m_dirtyPages)
         return {};
-
-    unique_lock lk(m_workMut, adopt_lock);
 
     // Use the time this save was started as now.
     auto now = m_lastSaveTime;
@@ -599,9 +595,9 @@ Lsn DbPage::saveDirtyPages_LK(TimePoint lastTime) {
             // original copy will either get dirtied with new updates or freed
             // by removeCleanPages after waiting for the overdue copy to be
             // saved.
-            auto npi = allocWorkInfo_LK();
+            auto npi = allocWorkInfo_LK(lk);
             m_overduePages.link(npi);
-            npi->hdr = dupPage_LK(pi->hdr);
+            npi->hdr = dupPage_LK(lk, pi->hdr);
             npi->firstTime = pi->firstTime;
             npi->firstLsn = pi->firstLsn;
             npi->flags = pi->flags;
@@ -625,13 +621,12 @@ Lsn DbPage::saveDirtyPages_LK(TimePoint lastTime) {
         }
     }
 
-    lk.release();
     return savedLsn;
 }
 
 //===========================================================================
 // Remove clean pages that are no longer needed to proxy unsaved old pages.
-void DbPage::removeCleanPages_LK() {
+void DbPage::removeCleanPages_LK(unique_lock<mutex> & lk) {
     if (!m_cleanPages)
         return;
 
@@ -662,8 +657,8 @@ void DbPage::removeCleanPages_LK() {
         assert(m_pages[pgno] == pi);
         m_pages[pgno] = nullptr;
         assert(pi->hdr);
-        freePage_LK(pi->hdr);
-        freeWorkInfo_LK(pi);
+        freePage_LK(lk, pi->hdr);
+        freeWorkInfo_LK(lk, pi);
     }
 
     s_perfCleanPages -= (unsigned) freed;
@@ -678,7 +673,7 @@ void DbPage::removeCleanPages_LK() {
 // passed in threshold, which is based on the most recent LSN that has no older
 // WAL records belonging to uncommitted transactions and for which all pages
 // have been written.
-void DbPage::removeWalPages_LK(Lsn lsn) {
+void DbPage::removeWalPages_LK(unique_lock<mutex> & lk, Lsn lsn) {
     assert(lsn);
     size_t bytes = 0;
 
@@ -726,7 +721,7 @@ void DbPage::writePageWait(DbPageHeader * hdr) {
 
 //===========================================================================
 // Mark page as free and add it to the pool of free pages.
-void DbPage::freePage_LK(DbPageHeader * hdr) {
+void DbPage::freePage_LK(unique_lock<mutex> & lk, DbPageHeader * hdr) {
     hdr->pgno = kFreePageMark;
     auto wpno = m_vwork.pgno(hdr);
     m_freeWorkPages.insert(wpno);
@@ -762,7 +757,7 @@ const void * DbPage::rptr(Lsn lsn, pgno_t pgno, bool withPin) {
         // NOTE: The tracking is only to assert correctness and is no more than
         //       a fancy assert.
         assert(withPin);
-        pi = allocWorkInfo_LK();
+        pi = allocWorkInfo_LK(lk);
         m_pages[pgno] = pi;
         m_referencePages.link(pi);
         pi->pgno = pgno;
@@ -796,7 +791,7 @@ void DbPage::unpin(const UnsignedSet & pages) {
             s_perfPinnedPages -= 1;
         if (!pi->readPins && !pi->hdr) {
             // Don't keep reference only page info that is no longer pinned.
-            freeWorkInfo_LK(pi);
+            freeWorkInfo_LK(lk, pi);
             m_pages[pgno] = nullptr;
         }
         notify = true;
@@ -809,7 +804,9 @@ void DbPage::unpin(const UnsignedSet & pages) {
 }
 
 //===========================================================================
-DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
+DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK(
+    const unique_lock<mutex> & lk
+) {
     auto pi = m_freeInfos.back();
     if (!pi)
         pi = new WorkPageInfo;
@@ -818,7 +815,7 @@ DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK() {
 }
 
 //===========================================================================
-void DbPage::freeWorkInfo_LK(WorkPageInfo * pi) {
+void DbPage::freeWorkInfo_LK(unique_lock<mutex> & lk, WorkPageInfo * pi) {
     m_freeInfos.link(pi);
 }
 
@@ -830,6 +827,7 @@ void * DbPage::onWalGetPtrForRedo(
 ) {
     // Only used during recovery, which is inherently single threaded, so no
     // locking/pinning needed.
+    const unique_lock<mutex> lk(m_workMut, defer_lock);
 
     if (pgno >= m_pages.size()) {
         m_vdata.growToFit(pgno);
@@ -847,7 +845,7 @@ void * DbPage::onWalGetPtrForRedo(
         // Page has already incorporated the WAL record with this LSN.
         return nullptr;
     }
-    pi = dirtyPage_LK(pgno, lsn);
+    pi = dirtyPage_LK(lk, pgno, lsn);
     return pi->hdr;
 }
 
@@ -870,7 +868,7 @@ void * DbPage::onWalGetPtrForUpdate(
     while (pi->readPins > 1) {
         m_workCv.wait(lk);
     }
-    pi = dirtyPage_LK(pgno, lsn);
+    pi = dirtyPage_LK(lk, pgno, lsn);
     return pi->hdr;
 }
 
@@ -888,7 +886,10 @@ void DbPage::onWalUnlockPtr(pgno_t pgno) {
 }
 
 //===========================================================================
-DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
+DbPageHeader * DbPage::dupPage_LK(
+    const unique_lock<mutex> & lk,
+    const DbPageHeader * hdr
+) {
     pgno_t wpno = {};
     if (m_freeWorkPages) {
         // Reuse existing free page.
@@ -906,17 +907,21 @@ DbPageHeader * DbPage::dupPage_LK(const DbPageHeader * hdr) {
 }
 
 //===========================================================================
-DbPage::WorkPageInfo * DbPage::dirtyPage_LK(pgno_t pgno, Lsn lsn) {
+DbPage::WorkPageInfo * DbPage::dirtyPage_LK(
+    const unique_lock<mutex> & lk,
+    pgno_t pgno,
+    Lsn lsn
+) {
     auto pi = m_pages[pgno];
     if (!pi) {
         // Page was untracked, create page info for it.
-        pi = allocWorkInfo_LK();
+        pi = allocWorkInfo_LK(lk);
         m_pages[pgno] = pi;
     }
     if (!pi->hdr) {
         // Create new dirty page from free or reference page.
         auto src = reinterpret_cast<const DbPageHeader *>(m_vdata.rptr(pgno));
-        pi->hdr = dupPage_LK(src);
+        pi->hdr = dupPage_LK(lk, src);
         pi->pgno = {};
         if (!pi->firstLsn) {
             // If dirtying reference or untracked page, add page bond.
@@ -943,7 +948,7 @@ DbPage::WorkPageInfo * DbPage::dirtyPage_LK(pgno_t pgno, Lsn lsn) {
         s_perfDirtyPages += 1;
         if (m_dirtyPages.front() == pi) {
             // There were no dirty pages, so no save is scheduled, do so now.
-            queueSaveWork_LK();
+            queueSaveWork_LK(lk);
         }
     }
     return pi;

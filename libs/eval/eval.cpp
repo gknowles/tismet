@@ -274,7 +274,7 @@ bool SourceNode::outputContext(SourceContext * out) {
 //===========================================================================
 void SourceNode::outputResult(const ResultInfo & info) {
     unique_lock lk{m_outMut};
-    outputResultImpl_LK(info);
+    outputResultImpl_LK(lk, info);
     if (!info.samples) {
         m_outputs.clear();
         if (!m_pendingOutputs.empty()) {
@@ -285,7 +285,10 @@ void SourceNode::outputResult(const ResultInfo & info) {
 }
 
 //===========================================================================
-void SourceNode::outputResultImpl_LK(const ResultInfo & info) {
+void SourceNode::outputResultImpl_LK(
+    unique_lock<mutex> & lk,
+    const ResultInfo & info
+) {
     if (m_outputs.empty())
         return;
     if (!info.samples) {

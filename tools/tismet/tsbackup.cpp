@@ -30,7 +30,7 @@ public:
 
 private:
     bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
-    void copy_LK(BackupProgress * from) const;
+    void copy_LK(unique_lock<mutex> & lk, BackupProgress * from) const;
 
     RunMode m_mode{kRunStopped};
     DbProgressInfo m_info{};
@@ -82,13 +82,13 @@ void BackupProgress::buildResponse(
 void BackupProgress::replyStatus(unsigned reqId, bool immediate) {
     BackupProgress progress;
     {
-        scoped_lock lk{m_mut};
+        unique_lock lk{m_mut};
         if (!immediate && m_mode != kRunStopped) {
             m_reqIds.insert(reqId);
             return;
         }
 
-        copy_LK(&progress);
+        copy_LK(lk, &progress);
     }
 
     HttpResponse res;
@@ -97,7 +97,10 @@ void BackupProgress::replyStatus(unsigned reqId, bool immediate) {
 }
 
 //===========================================================================
-void BackupProgress::copy_LK(BackupProgress * out) const {
+void BackupProgress::copy_LK(
+    unique_lock<mutex> & lk,
+    BackupProgress * out
+) const {
     out->m_mode = m_mode;
     out->m_info = m_info;
     out->m_time = m_time;
@@ -108,14 +111,14 @@ void BackupProgress::copy_LK(BackupProgress * out) const {
 bool BackupProgress::onDbProgress(RunMode mode, const DbProgressInfo & info) {
     BackupProgress progress;
     {
-        scoped_lock lk{m_mut};
+        unique_lock lk{m_mut};
         m_mode = mode;
         m_info = info;
         m_time = timeNow();
         if (!m_reqIds)
             return true;
 
-        copy_LK(&progress);
+        copy_LK(lk, &progress);
         m_reqIds.clear();
     }
 

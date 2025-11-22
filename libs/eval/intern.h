@@ -65,7 +65,10 @@ protected:
     void outputResult(const ResultInfo & info);
 
 private:
-    void outputResultImpl_LK(const ResultInfo & info);
+    void outputResultImpl_LK(
+        std::unique_lock<std::mutex> & lk,
+        const ResultInfo & info
+    );
     virtual void onSourceStart() = 0;
 
     std::shared_ptr<char[]> m_source;

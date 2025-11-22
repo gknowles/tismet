@@ -1347,20 +1347,20 @@ Lsn DbWal::wal(
     // Transaction commits are counted after logging, so it's always on the
     // page where they finished.
     if (m_bufPos == m_pageSize) {
-        prepareBuffer_LK(rec, 0, bytes);
+        prepareBuffer_LK(lk, rec, 0, bytes);
         if (txnMode == TxnMode::kBegin) {
             // Transaction began on the newly prepared page.
-            countBeginTxn_LK();
+            countBeginTxn_LK(lk);
         } else if (txnMode == TxnMode::kCommit) {
             // Transaction committed on newly prepared page.
-            countCommitTxns_LK(txn, txns);
+            countCommitTxns_LK(lk, txn, txns);
         }
         return lsn;
     }
 
     if (txnMode == TxnMode::kBegin) {
         // Transaction began on current page.
-        countBeginTxn_LK();
+        countBeginTxn_LK(lk);
     }
 
     // Adjust bytes down to amount that fits on this page, and overflow to
@@ -1389,7 +1389,7 @@ Lsn DbWal::wal(
         }
         if (txnMode == TxnMode::kCommit) {
             // Transaction committed on current page.
-            countCommitTxns_LK(txn, txns);
+            countCommitTxns_LK(lk, txn, txns);
         }
         return lsn;
     }
@@ -1416,12 +1416,12 @@ Lsn DbWal::wal(
 
     if (overflow) {
         // Initialize new buffer and make it the current buffer.
-        prepareBuffer_LK(rec, bytes, overflow);
+        prepareBuffer_LK(lk, rec, bytes, overflow);
     }
     if (txnMode == TxnMode::kCommit) {
         // Transaction committed on current page or, if overflow, on the newly
         // prepared page.
-        countCommitTxns_LK(txn, txns);
+        countCommitTxns_LK(lk, txn, txns);
     }
 
     lk.unlock();
@@ -1439,6 +1439,7 @@ Lsn DbWal::wal(
 
 //===========================================================================
 void DbWal::prepareBuffer_LK(
+    unique_lock<mutex> & lk,
     const Record & rec,
     size_t bytesOnOldPage,
     size_t bytesOnNewPage
@@ -1501,27 +1502,28 @@ void DbWal::prepareBuffer_LK(
 }
 
 //===========================================================================
-void DbWal::countBeginTxn_LK() {
+void DbWal::countBeginTxn_LK(unique_lock<mutex> & lk) {
     m_pages.back().activeTxns += 1;
 }
 
 //===========================================================================
 void DbWal::countCommitTxns_LK(
+    unique_lock<mutex> & lk,
     Lsx txn,
     const std::unordered_set<Lsx> * txns
 ) {
     if (txn) {
         assert(!txns);
-        countCommitTxn_LK(txn);
+        countCommitTxn_LK(lk, txn);
     } else if (txns) {
         assert(!txn);
         for (auto&& txn : *txns)
-            countCommitTxn_LK(txn);
+            countCommitTxn_LK(lk, txn);
     }
 }
 
 //===========================================================================
-void DbWal::countCommitTxn_LK(Lsx txn) {
+void DbWal::countCommitTxn_LK(unique_lock<mutex> & lk, Lsx txn) {
     s_perfCurTxns -= 1;
     auto localTxn = getLocalTxn(txn);
     [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
@@ -1590,7 +1592,7 @@ void DbWal::onFileWrite(const FileWriteData & data) {
     bool fullPageWrite = rawbuf >= m_buffers
         && rawbuf < m_buffers + m_numBufs * m_pageSize;
 
-    updatePages_LK(wp.firstLsn, wp.numRecs, fullPageWrite);
+    updatePages_LK(lk, wp.firstLsn, wp.numRecs, fullPageWrite);
 
     if (fullPageWrite) {
         // Full page was written.
@@ -1662,6 +1664,7 @@ void DbWal::onFileWrite(const FileWriteData & data) {
 // than it have been either rolled back, or committed and had all of their
 // WAL records (including ones after this LSN!) written to stable storage.
 void DbWal::updatePages_LK(
+    unique_lock<mutex> & lk,
     Lsn firstLsn,
     uint16_t cleanRecs,
     bool fullPageWrite
