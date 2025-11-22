@@ -199,13 +199,7 @@ static bool parseTrieKey(SampleIndexRec * out, string_view val) {
 
 /****************************************************************************
 *
-*   DbData
-*
-***/
-
-/****************************************************************************
-*
-*   Metric index
+*   DbData - Metric index
 *
 ***/
 
@@ -392,18 +386,10 @@ void DbData::insertMetric(DbTxn & txn, uint32_t id, string_view name) {
 
     // update indexes
     vector<TrieAction> actions = {
-        TrieAction::kInsert,    // metric info by id
-        TrieAction::kInsert,    // metric name
+        { TrieAction::kInsert, txn.roots().info,     trieKey(id, info) },
+        { TrieAction::kInsert, txn.roots().idByName, trieKey(name, id) },
     };
-    vector<shared_ptr<DbRootVersion>> roots = {
-        txn.roots().info,
-        txn.roots().name,
-    };
-    vector<string> keys = {
-        trieKey(id, info),
-        trieKey(name, id),
-    };
-    trieApply(txn, actions, roots, keys);
+    trieApply(txn, actions);
 
     // update in memory references
     m_numMetrics += 1;
@@ -420,20 +406,12 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     // erase samples
     eraseSamples(txn, id);
 
-    // update name index
+    // update indexes
     vector<TrieAction> actions = {
-        TrieAction::kErase,
-        TrieAction::kErase,
+        { TrieAction::kErase, txn.roots().info,     trieKey(id, mi) },
+        { TrieAction::kErase, txn.roots().idByName, trieKey(*name, id) },
     };
-    vector<shared_ptr<DbRootVersion>> roots = {
-        txn.roots().info,
-        txn.roots().name,
-    };
-    vector<string> keys = {
-        trieKey(id, mi),
-        trieKey(*name, id),
-    };
-    trieApply(txn, actions, roots, keys);
+    trieApply(txn, actions);
 
     return true;
 }
@@ -441,7 +419,7 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
 
 /****************************************************************************
 *
-*   Samples
+*   DbData - Samples
 *
 ***/
 

@@ -299,10 +299,13 @@ public:
     ~DbTxn();
 
     // Creates new DbTxn with same wal and page.
-    DbTxn makeTxn() const;
+    DbTxn makeTxn(bool withRoots = true) const;
 
     DbRootSet & roots() const { return *m_roots; }
-    Lsx getLsx() const;
+
+    // Returns lsx of active transaction, will assign and WAL log start of
+    // transaction if no id yet assigned.
+    Lsx getLsxAlways();
 
     // Returns pages that have been freed.
     Dim::UnsignedSet commit();
@@ -486,14 +489,18 @@ struct DbRootVersion {
 class DbRootSet : public std::enable_shared_from_this<DbRootSet> {
 public:
     std::shared_ptr<DbRootVersion> info;
-    std::shared_ptr<DbRootVersion> name;
+    std::shared_ptr<DbRootVersion> idByName;
+
+    struct Info {
+        DbData & data;
+        std::mutex mut;
+        std::condition_variable cv;
+        bool commitInProgress = false;
+    };
 
 public:
-    DbRootSet(
-        DbData * data,
-        std::shared_ptr<std::mutex> mut,
-        std::shared_ptr<std::condition_variable> cv
-    );
+    DbRootSet(DbData * data);
+    DbRootSet(const DbRootSet & from) = default;
 
     std::vector<std::shared_ptr<DbRootVersion> *> firstRoots();
 
@@ -510,20 +517,18 @@ public:
     std::shared_ptr<DbRootSet> lockForCommit(Lsx txnId);
 
     // Returns set of transactions to commit as a group.
-    std::unordered_set<Lsx> commit(Lsx txnId);
+    std::unordered_set<Lsx> findCompleteTxns(Lsx txnId);
 
-    std::shared_ptr<DbRootSet> publishNextSet(
+    std::shared_ptr<DbRootSet> commitNextSet(
         const std::unordered_set<Lsx> & txns
     );
 
     void unlock();
 
 private:
-    DbData & m_data;
-    std::shared_ptr<std::mutex> m_mut;
-    std::shared_ptr<std::condition_variable> m_cv;
+    void unlock_UNLK(std::unique_lock<std::mutex> & lk);
 
-    bool m_commitInProgress = false;
+    std::shared_ptr<Info> m_info;
     std::shared_ptr<DbRootSet> m_next;
 
     // Ids of transactions that have, or are waiting to, make an update.
@@ -819,25 +824,27 @@ private:
         std::string_view val
     );
 
-    enum TrieAction {
-        kUnknown,
-        kClear,
-        kInsert,
-        kErase,
-        kErasePrefix,
+    struct TrieAction {
+        enum Type {
+            kUnknown,
+            kClear,
+            kInsert,
+            kErase,
+            kErasePrefix,
+        } type;
+        std::shared_ptr<DbRootVersion> root;
+        std::string key;
     };
-    // Returns true if action taken, as opposed to key already existed, wasn't
-    // found, etc.
+    // Returns true if action taken, as opposed to key already existed, not
+    // present, etc.
     bool triePerformAction(
         DbPageHeap & heap,
-        DbData::TrieAction action,
+        DbData::TrieAction::Type type,
         const std::string & key
     );
     void trieApply(
         DbTxn & txn,
-        const std::vector<TrieAction> & actions,
-        const std::vector<std::shared_ptr<DbRootVersion>> & roots,
-        const std::vector<std::string> & keys
+        const std::vector<TrieAction> & actions
     );
     void trieClear(DbTxn & txn, pgno_t root);
     bool trieVisitWithPrefix(

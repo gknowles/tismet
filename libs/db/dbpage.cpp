@@ -784,6 +784,8 @@ const void * DbPage::rptr(Lsn lsn, pgno_t pgno, bool withPin) {
 
 //===========================================================================
 void DbPage::unpin(const UnsignedSet & pages) {
+    if (!pages)
+        return;
     unique_lock lk{m_workMut};
     bool notify = false;
     for (auto&& pgno : pages) {

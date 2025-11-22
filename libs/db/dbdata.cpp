@@ -62,7 +62,7 @@ static auto & s_perfDepPages = uperf("db.data pages (deprecated)");
 //===========================================================================
 DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data, unsigned rootId)
     : rootId(rootId)
-    , txn(txn->makeTxn())
+    , txn(txn->makeTxn(false))
     , data(*data)
 {}
 
@@ -97,19 +97,13 @@ shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
 ***/
 
 //===========================================================================
-DbRootSet::DbRootSet(
-    DbData * data,
-    shared_ptr<mutex> mut,
-    shared_ptr<condition_variable> cv
-)
-    : m_data(*data)
-    , m_mut(mut)
-    , m_cv(cv)
-{}
+DbRootSet::DbRootSet(DbData * data) {
+    m_info = make_shared<Info>(*data);
+}
 
 //===========================================================================
 vector<shared_ptr<DbRootVersion> *> DbRootSet::firstRoots() {
-    return { &info, &name };
+    return { &info, &idByName };
 }
 
 //===========================================================================
@@ -118,7 +112,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
     const vector<shared_ptr<DbRootVersion>> & roots
 ) {
     assert(id);
-    unique_lock lk(*m_mut);
+    unique_lock lk(m_info->mut);
 
     // Wait for available update capacity
     for (;;) {
@@ -129,7 +123,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
             m_writeTxns.insert(id);
             break;
         }
-        m_cv->wait(lk);
+        m_info->cv.wait(lk);
     }
 
     // Wait for last update to this root to complete
@@ -145,28 +139,28 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
                 return {root, pos};
             }
         }
-        m_cv->wait(lk);
+        m_info->cv.wait(lk);
     }
 }
 
 //===========================================================================
 void DbRootSet::rollbackUpdate(shared_ptr<DbRootVersion> root) {
-    unique_lock lk(*m_mut);
+    unique_lock lk(m_info->mut);
     while (root->next && root->next->complete())
         root = root->next;
     assert(!root->next->complete());
     root->next.reset();
-    m_cv->notify_all();
+    m_info->cv.notify_all();
 }
 
 //===========================================================================
 void DbRootSet::commitUpdate(shared_ptr<DbRootVersion> root, pgno_t pgno) {
-    unique_lock lk(*m_mut);
+    unique_lock lk(m_info->mut);
     while (root->next)
         root = root->next;
     assert(!root->complete());
     root->root = pgno;
-    m_cv->notify_all();
+    m_info->cv.notify_all();
 }
 
 //===========================================================================
@@ -185,44 +179,59 @@ static bool eligible(
         // Has no references, therefore no blocking references.
         return true;
     }
-    for (auto&& id : i->second) {
-        if (!completeTxns.contains(id)) {
+    for (auto&& refId : i->second) {
+        if (!completeTxns.contains(refId)) {
             // References incomplete transaction.
             return false;
         }
     }
+    bool okay = true;
+    path->insert(id);
     for (auto&& refId : i->second) {
-        path->insert(id);
         auto okay = eligible(path, refId, ref, completeTxns);
-        path->erase(id);
         if (!okay)
-            return false;
+            break;
     }
-    return true;
+    path->erase(id);
+    return okay;
 }
 
 //===========================================================================
 shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
     shared_ptr<DbRootSet> roots;
-    unique_lock lk(*m_mut);
+    unique_lock lk(m_info->mut);
     if (m_writeTxns.contains(id)) {
-        roots = shared_from_this();
         for (;;) {
-            while (roots->m_next)
-                roots = roots->m_next;
-            if (!roots->m_commitInProgress)
+            if (!m_info->commitInProgress)
                 break;
-            m_cv->wait(lk);
+            m_info->cv.wait(lk);
         }
-        m_commitInProgress = true;
+        m_info->commitInProgress = true;
+        roots = shared_from_this();
+        for (; roots->m_next; roots = roots->m_next) {}
     }
     return roots;
 }
 
 //===========================================================================
-unordered_set<Lsx> DbRootSet::commit(Lsx txnId) {
-    unique_lock lk(*m_mut);
-    assert(m_commitInProgress);
+void DbRootSet::unlock_UNLK(unique_lock<mutex> & lk) {
+    assert(lk && lk.mutex() == &m_info->mut);
+    assert(m_info->commitInProgress);
+    m_info->commitInProgress = false;
+    lk.unlock();
+    m_info->cv.notify_all();
+}
+
+//===========================================================================
+void DbRootSet::unlock() {
+    unique_lock lk(m_info->mut);
+    unlock_UNLK(lk);
+}
+
+//===========================================================================
+unordered_set<Lsx> DbRootSet::findCompleteTxns(Lsx txnId) {
+    unique_lock lk(m_info->mut);
+    assert(m_info->commitInProgress);
 
     if (!m_writeTxns.contains(txnId))
         return {txnId};
@@ -268,26 +277,25 @@ unordered_set<Lsx> DbRootSet::commit(Lsx txnId) {
 }
 
 //===========================================================================
-shared_ptr<DbRootSet> DbRootSet::publishNextSet(
+shared_ptr<DbRootSet> DbRootSet::commitNextSet(
     const unordered_set<Lsx> & txns
 ) {
-    scoped_lock lk(*m_mut);
-    auto out = make_shared<DbRootSet>(&m_data, m_mut, m_cv);
-    out->m_commitInProgress = true;
-    out->m_writeTxns = m_writeTxns;
-    out->m_completeTxns = m_completeTxns;
+    assert(!txns.empty());
+    unique_lock lk(m_info->mut);
+    m_next = make_shared<DbRootSet>(*this);
+    m_next->m_info->commitInProgress = true;
     for (auto&& id : txns) {
-        out->m_writeTxns.erase(id);
-        out->m_completeTxns.erase(id);
+        m_next->m_writeTxns.erase(id);
+        m_next->m_completeTxns.erase(id);
     }
 
     auto roots = firstRoots();
-    auto nexts = out->firstRoots();
+    auto nexts = m_next->firstRoots();
     assert(roots.size() == nexts.size());
     auto nroot = nexts.begin();
     for (auto i = roots.begin(); i != roots.end(); ++i, ++nroot) {
         auto n = **i;
-        **nroot = n;
+        assert(**nroot == n);
 
         // Search for first version after txns being published:
         //  - Skip first, it's the previous version.
@@ -314,17 +322,9 @@ shared_ptr<DbRootSet> DbRootSet::publishNextSet(
     #endif
     }
 
-    m_commitInProgress = false;
-    m_data.m_metricRoots.store(out);
-    return out;
-}
-
-//===========================================================================
-void DbRootSet::unlock() {
-    unique_lock lk(*m_mut);
-    assert(m_commitInProgress);
-    m_commitInProgress = false;
-    m_cv->notify_all();
+    m_info->data.m_metricRoots.store(m_next);
+    unlock_UNLK(lk);
+    return m_next;
 }
 
 
@@ -363,6 +363,7 @@ DbData::DbData() {
         { ":metricName", kTrie },
     };
     m_rootDefs.assign_range(defs);
+    m_metricRoots = make_shared<DbRootSet>(this);
 }
 
 //===========================================================================
@@ -417,15 +418,13 @@ bool DbData::openForUpdate(
     if (!upgradeRoots(txn))
         return false;
 
-    // Metric root set
-    auto roots = make_shared<DbRootSet>(
-        this,
-        make_shared<mutex>(),
-        make_shared<condition_variable>()
-    );
+    // Metric root set - modifies in place the root set being used by the
+    // active txn. Here, during initialization, we assume no other transactions
+    // will get confused as no other transactions should exist.
+    auto roots = m_metricRoots.load();
     pair<const char *, shared_ptr<DbRootVersion>*> indexes[] = {
         { ":metric", &roots->info },
-        { ":metricName", &roots->name },
+        { ":metricName", &roots->idByName },
     };
     for (auto&& index : indexes) {
         auto id = m_rootIdByName[index.first];
@@ -433,7 +432,6 @@ bool DbData::openForUpdate(
         auto root = make_shared<DbRootVersion>(&txn, this, id);
         *index.second = root;
     }
-    m_metricRoots = roots;
 
     if (m_verbose)
         logMsgInfo() << "Build metric index";
@@ -504,7 +502,8 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
         }
         auto key = string(kview);
         if (m_rootIdByName.contains(key)) {
-            logMsgError() << "Duplicate stored root Id name: '" << key << "'";
+            logMsgError() << "Duplicate stored root Id name: '" << key << "'"
+                << " (" << m_rootIdByName[key] << " and " << id << ")";
             return false;
         }
         m_rootIdByName[key] = id;
@@ -513,7 +512,8 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
     m_rootNameById.resize(lastId + 1);
     for (auto&& [key, id] : m_rootIdByName) {
         if (!m_rootNameById[id].empty()) {
-            logMsgError() << "Duplicate stored root Id: " << id;
+            logMsgError() << "Duplicate stored root Id: " << id
+                << " ('" << m_rootNameById[id] << "' and '" << key << "')";
             return false;
         }
         m_rootNameById[id] = key;
@@ -690,6 +690,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
 
     // Validate that pages in free list are in fact free.
     pgno_t blank = {};
+    num = 0;
     for (auto && p : m_freePages) {
         auto pgno = (pgno_t) p;
         if (pgno >= m_numPages)
@@ -712,7 +713,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
         } else if (!blank) {
             blank = pgno;
         }
-        if (appStopping())
+        if (num++ % 1000 == 0 && appStopping())
             return false;
     }
     if (blank && blank < m_numPages) {
@@ -738,9 +739,10 @@ bool DbData::loadDeprecatedPages(DbTxn & txn) {
     }
     if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedRoot))
         return false;
-    if (appStopping())
-        return false;
+    auto num = 0;
     while (m_deprecatedPages) {
+        if (num++ % 1000 == 0 && appStopping())
+            return false;
         auto pgno = (pgno_t) m_deprecatedPages.pop_front();
         freePage(txn, pgno);
     }
@@ -870,10 +872,11 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 void DbData::publishFreePages(const UnsignedSet & freePages) {
-    if (auto num = freePages.count()) {
+    if (freePages) {
         scoped_lock lk(m_pageMut);
         assert(!freePages.intersects(m_freePages));
         m_freePages.insert(freePages);
+        auto num = freePages.count();
         m_numFree += num;
         s_perfFreePages += (unsigned) num;
     }
@@ -967,11 +970,11 @@ pair<string_view, uint32_t> DbData::trieKeyToId(string_view val) {
 //===========================================================================
 bool DbData::triePerformAction(
     DbPageHeap & heap,
-    DbData::TrieAction action,
+    DbData::TrieAction::Type type,
     const string & key
 ) {
     StrTrieBase trie(&heap);
-    switch (action) {
+    switch (type) {
     case TrieAction::kClear:
         trie.clear();
         return true;
@@ -988,28 +991,26 @@ bool DbData::triePerformAction(
 //===========================================================================
 void DbData::trieApply(
     DbTxn & txn,
-    const vector<DbData::TrieAction> & actions,
-    const vector<shared_ptr<DbRootVersion>> & roots,
-    const vector<string> & keys
+    const vector<DbData::TrieAction> & actions
 ) {
-    assert(size(actions) == size(roots));
-    assert(size(actions) == size(keys));
-    vector<size_t> ords(roots.size());
-    for (size_t i = 0; i < ords.size(); ++i)
+    vector<size_t> ords(actions.size());
+    vector<shared_ptr<DbRootVersion>> roots(actions.size());
+    for (size_t i = 0; i < ords.size(); ++i) {
         ords[i] = i;
+        roots[i] = actions[i].root;
+    }
     while (!ords.empty()) {
         DbTxn::PinScope pins(txn);
-        auto [root, pos] = txn.roots().beginUpdate(txn.getLsx(), roots);
+        auto [root, pos] = txn.roots().beginUpdate(txn.getLsxAlways(), roots);
         assert(root->next);
         assert(!root->next->complete());
-        auto action = actions[ords[pos]];
-        auto key = keys[ords[pos]];
+        auto & action = actions[ords[pos]];
         if (pos != ords.size() - 1)
             ords[pos] = ords.back();
         ords.pop_back();
 
         DbPageHeap heap(&txn, this, root->root, root->rootId);
-        if (!triePerformAction(heap, action, key)) {
+        if (!triePerformAction(heap, action.type, action.key)) {
             txn.roots().rollbackUpdate(root);
         } else {
             root->deprecatedPages.insert(heap.destroyed());

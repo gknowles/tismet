@@ -176,6 +176,7 @@ void Test::dataTests() {
     unsigned count = 0;
     count += dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 1);
+    stats = dbQueryStats(h);
     DbMetricInfo info;
     info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(6.5 * pgt);
@@ -283,9 +284,13 @@ void Test::dataTests() {
         return;
     ctx.reset(h);
     dbFindMetrics(&found, h);
-    id = found.pop_front();
-    dbEraseMetric(h, id);
-    dbInsertMetric(&id, h, "replacement.metric.1");
+    if (found.empty()) {
+        EXPECT(!"No metrics after reopen");
+    } else {
+        id = found.pop_front();
+        dbEraseMetric(h, id);
+        dbInsertMetric(&id, h, "replacement.metric.1");
+    }
     ctx.reset();
     dbClose(h);
 }

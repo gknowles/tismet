@@ -1856,13 +1856,15 @@ DbTxn::~DbTxn() {
 }
 
 //===========================================================================
-DbTxn DbTxn::makeTxn() const {
-    DbTxn out(m_wal, m_page, m_roots);
+DbTxn DbTxn::makeTxn(bool withRoots) const {
+    DbTxn out(m_wal, m_page, withRoots ? m_roots : shared_ptr<DbRootSet>{});
     return out;
 }
 
 //===========================================================================
-Lsx DbTxn::getLsx() const {
+Lsx DbTxn::getLsxAlways() {
+    if (!m_txn)
+        m_txn = m_wal.beginTxn();
     return m_txn;
 }
 
@@ -1875,12 +1877,13 @@ UnsignedSet DbTxn::commit() {
             roots = m_roots->lockForCommit(m_txn);
         if (!roots) {
             m_wal.commit(m_txn);
-        } else if (auto txns = roots->commit(m_txn); !txns.empty()) {
+        } else if (auto txns = roots->findCompleteTxns(m_txn); !txns.empty()) {
             assert(txns.contains(m_txn));
             m_wal.commit(txns);
 
             // Create new index version
-            roots = roots->publishNextSet(txns);
+            roots = roots->commitNextSet(txns);
+        } else {
             roots->unlock();
         }
         m_txn = {};
@@ -1893,13 +1896,12 @@ UnsignedSet DbTxn::commit() {
 
 //===========================================================================
 void DbTxn::wal(DbWal::Record * rec, size_t bytes) {
-    if (!m_txn)
-        m_txn = m_wal.beginTxn();
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto pgno = m_wal.getPgno(*rec);
         m_pinnedPages.contains(pgno);
     }
-    m_wal.walAndApply(m_txn, rec, bytes);
+    auto txn = getLsxAlways();
+    m_wal.walAndApply(txn, rec, bytes);
 }
 
 //===========================================================================
