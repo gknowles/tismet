@@ -289,12 +289,12 @@ template<> struct std::hash<Lsx> {
 
 enum class DbPageType : int32_t {
     kInvalid = 0,
+    kBitmap = 'b',
     kFree = 'F',
-    kZero = 'dZ',
     kRadix = 'r',
     kSample = 's',
     kTrie = 't',
-    kBitmap = 'b',
+    kZero = 'dZ',
 };
 std::string toString(DbPageType type);
 

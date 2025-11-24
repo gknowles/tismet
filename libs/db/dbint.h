@@ -480,7 +480,6 @@ struct DbRootVersion {
     DbRootVersion(DbTxn * txn, DbData * data, unsigned id);
     ~DbRootVersion();
 
-    void loadRoot();
     std::shared_ptr<DbRootVersion> addNextVer(Lsx txnId);
     bool complete() const { return root; }
 };
@@ -497,7 +496,8 @@ public:
     std::shared_ptr<DbRootVersion> info;
     std::shared_ptr<DbRootVersion> idByName;
 
-    struct Info {
+    // Data shared by all versions of this root set.
+    struct Shared {
         DbData & data;
         std::mutex mut;
         std::condition_variable cv;
@@ -534,7 +534,7 @@ public:
 private:
     void unlock_UNLK(std::unique_lock<std::mutex> && lk);
 
-    std::shared_ptr<Info> m_info;
+    std::shared_ptr<Shared> m_shared;
     std::shared_ptr<DbRootSet> m_next;
 
     // Ids of transactions that have, or are waiting to, make an update.

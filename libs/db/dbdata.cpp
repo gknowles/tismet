@@ -75,12 +75,6 @@ DbRootVersion::~DbRootVersion() {
 }
 
 //===========================================================================
-void DbRootVersion::loadRoot() {
-    assert(root == pgno_t::npos);
-    root = data.loadRoot(txn, rootId);
-}
-
-//===========================================================================
 shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
     assert(!next);
     next = make_shared<DbRootVersion>(&txn, &data, rootId);
@@ -98,7 +92,7 @@ shared_ptr<DbRootVersion> DbRootVersion::addNextVer(Lsx id) {
 
 //===========================================================================
 DbRootSet::DbRootSet(DbData * data) {
-    m_info = make_shared<Info>(*data);
+    m_shared = make_shared<Shared>(*data);
 }
 
 //===========================================================================
@@ -112,7 +106,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
     const vector<shared_ptr<DbRootVersion>> & roots
 ) {
     assert(id);
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
 
     // Wait for available update capacity
     for (;;) {
@@ -123,7 +117,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
             m_writeTxns.insert(id);
             break;
         }
-        m_info->cv.wait(lk);
+        m_shared->cv.wait(lk);
     }
 
     // Wait for last update to this root to complete
@@ -139,28 +133,28 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
                 return {root, pos};
             }
         }
-        m_info->cv.wait(lk);
+        m_shared->cv.wait(lk);
     }
 }
 
 //===========================================================================
 void DbRootSet::rollbackUpdate(shared_ptr<DbRootVersion> root) {
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
     while (root->next && root->next->complete())
         root = root->next;
     assert(!root->next->complete());
     root->next.reset();
-    m_info->cv.notify_all();
+    m_shared->cv.notify_all();
 }
 
 //===========================================================================
 void DbRootSet::commitUpdate(shared_ptr<DbRootVersion> root, pgno_t pgno) {
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
     while (root->next)
         root = root->next;
     assert(!root->complete());
     root->root = pgno;
-    m_info->cv.notify_all();
+    m_shared->cv.notify_all();
 }
 
 //===========================================================================
@@ -199,14 +193,14 @@ static bool eligible(
 //===========================================================================
 shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
     shared_ptr<DbRootSet> roots;
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
     if (m_writeTxns.contains(id)) {
         for (;;) {
-            if (!m_info->commitInProgress)
+            if (!m_shared->commitInProgress)
                 break;
-            m_info->cv.wait(lk);
+            m_shared->cv.wait(lk);
         }
-        m_info->commitInProgress = true;
+        m_shared->commitInProgress = true;
         roots = shared_from_this();
         for (; roots->m_next; roots = roots->m_next) {}
     }
@@ -215,23 +209,23 @@ shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
 
 //===========================================================================
 void DbRootSet::unlock_UNLK(unique_lock<mutex> && lk) {
-    assert(lk && lk.mutex() == &m_info->mut);
-    assert(m_info->commitInProgress);
-    m_info->commitInProgress = false;
+    assert(lk && lk.mutex() == &m_shared->mut);
+    assert(m_shared->commitInProgress);
+    m_shared->commitInProgress = false;
     lk.unlock();
-    m_info->cv.notify_all();
+    m_shared->cv.notify_all();
 }
 
 //===========================================================================
 void DbRootSet::unlock() {
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
     unlock_UNLK(move(lk));
 }
 
 //===========================================================================
 unordered_set<Lsx> DbRootSet::findCompleteTxns(Lsx txnId) {
-    unique_lock lk(m_info->mut);
-    assert(m_info->commitInProgress);
+    unique_lock lk(m_shared->mut);
+    assert(m_shared->commitInProgress);
 
     if (!m_writeTxns.contains(txnId))
         return {txnId};
@@ -281,9 +275,9 @@ shared_ptr<DbRootSet> DbRootSet::commitNextSet(
     const unordered_set<Lsx> & txns
 ) {
     assert(!txns.empty());
-    unique_lock lk(m_info->mut);
+    unique_lock lk(m_shared->mut);
     m_next = make_shared<DbRootSet>(*this);
-    m_next->m_info->commitInProgress = true;
+    m_next->m_shared->commitInProgress = true;
     for (auto&& id : txns) {
         m_next->m_writeTxns.erase(id);
         m_next->m_completeTxns.erase(id);
@@ -322,7 +316,7 @@ shared_ptr<DbRootSet> DbRootSet::commitNextSet(
     #endif
     }
 
-    m_info->data.m_metricRoots.store(m_next);
+    m_shared->data.m_metricRoots.store(m_next);
     unlock_UNLK(move(lk));
     return m_next;
 }
@@ -429,8 +423,9 @@ bool DbData::openForUpdate(
     for (auto&& index : indexes) {
         auto id = m_rootIdByName[index.first];
         assert(id);
-        auto root = make_shared<DbRootVersion>(&txn, this, id);
-        *index.second = root;
+        auto rver = make_shared<DbRootVersion>(&txn, this, id);
+        rver->root = loadRoot(txn, id);
+        *index.second = rver;
     }
 
     if (m_verbose)
@@ -1005,9 +1000,12 @@ void DbData::trieApply(
         assert(root->next);
         assert(!root->next->complete());
         auto & action = actions[ords[pos]];
-        if (pos != ords.size() - 1)
+        if (pos != ords.size() - 1) {
             ords[pos] = ords.back();
+            roots[pos] = roots.back();
+        }
         ords.pop_back();
+        roots.pop_back();
 
         DbPageHeap heap(&txn, this, root->root, root->rootId);
         if (!triePerformAction(heap, action.type, action.key)) {
