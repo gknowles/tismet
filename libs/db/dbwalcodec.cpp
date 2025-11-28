@@ -270,6 +270,22 @@ static uint16_t sizeGroupCommit(const DbWal::Record & raw) {
 }
 
 //===========================================================================
+static void applyCheckpoint(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const CheckpointRec *>(args.rec);
+    args.notify->onWalApplyCheckpoint(args.lsn, rec->startLsn);
+}
+
+//===========================================================================
+static void applyTxnBegin(const DbWalApplyArgs & args) {
+    args.notify->onWalApplyBeginTxn(args.lsn, localTxnTransaction(*args.rec));
+}
+
+//===========================================================================
+static void applyTxnCommit(const DbWalApplyArgs & args) {
+    args.notify->onWalApplyCommitTxn(args.lsn, localTxnTransaction(*args.rec));
+}
+
+//===========================================================================
 static void applyGroupCommit(const DbWalApplyArgs & args) {
     auto rec = reinterpret_cast<const TransactionGroupRec *>(args.rec);
     vector<LocalTxn> txns(rec->numTxns);
@@ -280,32 +296,19 @@ static void applyGroupCommit(const DbWalApplyArgs & args) {
 static DbWalRegisterRec s_dataRecInfo = {
     { kRecTypeCheckpoint,
         DbWalRecInfo::sizeFn<CheckpointRec>,
-        [](auto args) {
-            auto rec = reinterpret_cast<const CheckpointRec *>(args.rec);
-            args.notify->onWalApplyCheckpoint(args.lsn, rec->startLsn);
-        },
+        applyCheckpoint,
         nullptr,    // localTxn
         invalidPgno,
     },
     { kRecTypeTxnBegin,
         DbWalRecInfo::sizeFn<TransactionRec>,
-        [](auto args) {
-            args.notify->onWalApplyBeginTxn(
-                args.lsn,
-                localTxnTransaction(*args.rec)
-            );
-        },
+        applyTxnBegin,
         localTxnTransaction,
         invalidPgno,
     },
     { kRecTypeTxnCommit,
         DbWalRecInfo::sizeFn<TransactionRec>,
-        [](auto args) {
-            args.notify->onWalApplyCommitTxn(
-                args.lsn,
-                localTxnTransaction(*args.rec)
-            );
-        },
+        applyTxnCommit,
         localTxnTransaction,
         invalidPgno,
     },

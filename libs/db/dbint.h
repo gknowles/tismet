@@ -701,17 +701,21 @@ public:
         Dim::TimePoint time,
         double value
     ) override;
-    void onWalApplySampleUpdate(
+    void onWalApplySampleUpdateRoot(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
+        pgno_t rootPage
     ) override;
     void onWalApplySampleUpdateTime(
         void * ptr,
         Dim::TimePoint firstTime,
         Dim::TimePoint lastTime
+    ) override;
+    void onWalApplySampleReplace(
+        void * ptr,
+        size_t dstPos,
+        size_t dstBits,
+        const uint8_t * src,
+        size_t srcBits
     ) override;
 
 private:
@@ -722,6 +726,11 @@ private:
     bool loadRoots(DbTxn & txn, pgno_t storeRoot);
     bool upgradeRoots(DbTxn & txn);
 
+    pgno_t loadRoot_LK(
+        std::unique_lock<std::recursive_mutex> & lk,
+        DbTxn & txn,
+        unsigned rootId
+    );
     pgno_t loadRoot(DbTxn & txn, const std::string & rootName);
     pgno_t loadRoot(DbTxn & txn, unsigned rootId);
     void updateRoot(DbTxn & txn, unsigned rootId, pgno_t root);

@@ -650,22 +650,26 @@ DbSampleType fromString(std::string_view src, DbSampleType def) {
 
 //===========================================================================
 void dbConfigure(DbHandle h, const DbConfig & conf) {
-    db(h)->configure(conf);
+    auto ptr = db(h);
+    ptr->configure(conf);
 }
 
 //===========================================================================
 DbStats dbQueryStats(DbHandle h) {
-    return db(h)->queryStats();
+    auto ptr = db(h);
+    return ptr->queryStats();
 }
 
 //===========================================================================
 void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable) {
-    db(h)->blockCheckpoint(notify, enable);
+    auto ptr = db(h);
+    ptr->blockCheckpoint(notify, enable);
 }
 
 //===========================================================================
 bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
-    return db(h)->backup(notify, dst);
+    auto ptr = db(h);
+    return ptr->backup(notify, dst);
 }
 
 //===========================================================================
@@ -676,47 +680,56 @@ unique_ptr<DbContext> dbNewContext(DbHandle f) {
 
 //===========================================================================
 bool dbInsertMetric(uint32_t * out, DbHandle h, string_view name) {
-    return db(h)->insertMetric(out, name);
+    auto ptr = db(h);
+    return ptr->insertMetric(out, name);
 }
 
 //===========================================================================
 void dbEraseMetric(DbHandle h, uint32_t id) {
-    db(h)->eraseMetric(id);
+    auto ptr = db(h);
+    ptr->eraseMetric(id);
 }
 
 //===========================================================================
 void dbUpdateMetric(DbHandle h, uint32_t id, const DbMetricInfo & info) {
-    db(h)->updateMetric(id, info);
+    auto ptr = db(h);
+    ptr->updateMetric(id, info);
 }
 
 //===========================================================================
 const char * dbGetMetricName(DbHandle h, uint32_t id) {
-    return db(h)->getMetricName(id);
+    auto ptr = db(h);
+    return ptr->getMetricName(id);
 }
 
 //===========================================================================
 bool dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id) {
-    return db(h)->getMetricInfo(notify, id);
+    auto ptr = db(h);
+    return ptr->getMetricInfo(notify, id);
 }
 
 //===========================================================================
 bool dbFindMetric(uint32_t * out, DbHandle h, string_view name) {
-    return db(h)->findMetric(out, name);
+    auto ptr = db(h);
+    return ptr->findMetric(out, name);
 }
 
 //===========================================================================
 void dbFindMetrics(UnsignedSet * out, DbHandle h, string_view name) {
-    db(h)->findMetrics(out, name);
+    auto ptr = db(h);
+    ptr->findMetrics(out, name);
 }
 
 //===========================================================================
 const char * dbGetBranchName(DbHandle h, uint32_t id) {
-    return db(h)->getBranchName(id);
+    auto ptr = db(h);
+    return ptr->getBranchName(id);
 }
 
 //===========================================================================
 void dbFindBranches(UnsignedSet * out, DbHandle h, string_view name) {
-    db(h)->findBranches(out, name);
+    auto ptr = db(h);
+    ptr->findBranches(out, name);
 }
 
 //===========================================================================
@@ -726,7 +739,8 @@ void dbUpdateSample(
     TimePoint time,
     double value
 ) {
-    db(h)->updateSample(id, time, value);
+    auto ptr = db(h);
+    ptr->updateSample(id, time, value);
 }
 
 //===========================================================================
@@ -738,7 +752,8 @@ bool dbGetSamples(
     TimePoint last,
     unsigned presamples
 ) {
-    return db(h)->getSamples(notify, id, first, last, presamples);
+    auto ptr = db(h);
+    return ptr->getSamples(notify, id, first, last, presamples);
 }
 
 

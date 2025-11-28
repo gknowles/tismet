@@ -404,16 +404,20 @@ public:
         Dim::TimePoint time,
         double value
     ) = 0;
-    virtual void onWalApplySampleUpdate(
+    virtual void onWalApplySampleUpdateRoot(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
+        pgno_t rootPage
     ) = 0;
     virtual void onWalApplySampleUpdateTime(
         void * ptr,
         Dim::TimePoint firstTime,
         Dim::TimePoint lastTime
+    ) = 0;
+    virtual void onWalApplySampleReplace(
+        void * ptr,
+        size_t dstPos,
+        size_t dstBits,
+        const uint8_t * src,
+        size_t srcBits
     ) = 0;
 };

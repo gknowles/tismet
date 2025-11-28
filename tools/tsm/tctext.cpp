@@ -86,17 +86,21 @@ private:
         TimePoint time,
         double value
     ) override;
-    void onWalApplySampleUpdate(
+    void onWalApplySampleUpdateRoot(
         void * ptr,
-        size_t firstPos,
-        size_t lastPos,
-        double value,
-        bool updateLast
+        pgno_t rootPage
     ) override;
     void onWalApplySampleUpdateTime(
         void * ptr,
         TimePoint firstTime,
         TimePoint lastTime
+    ) override;
+    void onWalApplySampleReplace(
+        void * ptr,
+        size_t dstPos,
+        size_t dstBits,
+        const uint8_t * src,
+        size_t srcBits
     ) override;
 
     // Inherited via IPageNotify
@@ -290,30 +294,11 @@ void TextWriter::onWalApplySampleInit(
 }
 
 //===========================================================================
-void TextWriter::onWalApplySampleUpdate(
+void TextWriter::onWalApplySampleUpdateRoot(
     void * ptr,
-    size_t firstPos,
-    size_t lastPos,
-    double value,
-    bool updateLast
+    pgno_t rootPage
 ) {
-    auto & os = out(ptr);
-    os << "samples[" << firstPos;
-    if (isnan(value)) {
-        if (firstPos < lastPos - 1)
-            os << " thru " << lastPos - 1;
-        os << "] = NAN";
-    } else {
-        if (firstPos < lastPos) {
-            os << " thru " << lastPos - 1 << ", " << lastPos << "] = NAN, ";
-        } else {
-            os << "] = ";
-        }
-        os << value;
-    }
-    if (updateLast)
-        os << "; samples.last = " << lastPos;
-    os << '\n';
+    out(ptr) << "samples.index = " << rootPage << '\n';
 }
 
 //===========================================================================
@@ -323,6 +308,21 @@ void TextWriter::onWalApplySampleUpdateTime(
     TimePoint lastTime
 ) {
     out(ptr) << "samples.time = " << firstTime << ", " << lastTime << '\n';
+}
+
+//===========================================================================
+void TextWriter::onWalApplySampleReplace(
+    void * ptr,
+    size_t dstPos,
+    size_t dstBits,
+    const uint8_t * src,
+    size_t srcBits
+) {
+    auto bytes = (srcBits + 7) / 8;
+    auto & os = out(ptr);
+    os << "samples.data(" << dstPos << ", " << dstBits << ") = "
+        << srcBits << "(" << bytes << " bytes)\n";
+    hexDump(os, {(const char *) src, bytes});
 }
 
 //===========================================================================

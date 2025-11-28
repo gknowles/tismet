@@ -28,11 +28,9 @@ struct SampleInitRec {
     TimePoint time;
     double value;
 };
-struct SampleUpdateRec {
+struct SampleUpdateRootRec {
     DbWal::Record hdr;
-    uint16_t firstSample;
-    uint16_t lastSample;
-    double value;
+    pgno_t rootPage;
 };
 struct SampleUpdateTimeRec {
     DbWal::Record hdr;
@@ -43,37 +41,46 @@ struct SampleUpdateTime2Rec {
     TimePoint firstTime;
     TimePoint lastTime;
 };
+struct SampleDataAtRec {
+    DbWal::Record hdr;
+    uint16_t bitPos;
+    uint16_t bitLen;
 
-// Update (with or without last) is also an implicit transaction
-struct SampleUpdateFloat64TxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t pos;
-    double value;
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
 };
-struct SampleUpdateFloat32TxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t pos;
-    float value;
+struct SampleDataRec {
+    DbWal::Record hdr;
+    uint16_t bitLen;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
 };
-struct SampleUpdateInt32TxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t pos;
-    int32_t value;
+struct SampleDataRefRec {
+    DbWal::Record hdr;
+    uint16_t bitPos;
+    uint16_t bitLen;
 };
-struct SampleUpdateInt16TxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t pos;
-    int16_t value;
+struct SampleDataLenRec {
+    DbWal::Record hdr;
+    uint16_t bitLen;
 };
-struct SampleUpdateInt8TxnRec {
-    DbWalRecType type;
-    pgno_t pgno;
-    uint16_t pos;
-    int8_t value;
+struct SampleReplaceAtRec {
+    DbWal::Record hdr;
+    uint16_t dstPos;
+    uint16_t dstBits;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+struct SampleReplaceRec {
+    DbWal::Record hdr;
+    uint16_t dstBits;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
 };
 
 } // namespace
@@ -100,26 +107,11 @@ static void applySampleInit(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
-static void applySampleUpdate(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
+static void applySampleUpdateRoot(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleUpdateRootRec *>(args.rec);
+    args.notify->onWalApplySampleUpdateRoot(
         args.page,
-        rec->firstSample,
-        rec->lastSample,
-        rec->value,
-        false
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateLast(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->firstSample,
-        rec->lastSample,
-        rec->value,
-        true
+        rec->rootPage
     );
 }
 
@@ -154,122 +146,21 @@ static void applySampleUpdateLastTime(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
-static void applySampleUpdateFloat32Txn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        false
-    );
+static uint16_t sizeSampleReplaceAt(const DbWal::Record & raw) {
+    auto & rec = reinterpret_cast<const SampleReplaceAtRec &>(raw);
+    return offsetof(SampleReplaceAtRec, data)
+        + (rec.srcBits + 7) / 8;
 }
 
 //===========================================================================
-static void applySampleUpdateFloat64Txn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
+static void applySampleReplaceAt(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleReplaceAtRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
         args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        false
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt8Txn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        false
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt16Txn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        false
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt32Txn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        false
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateFloat32LastTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat32TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        true
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateFloat64LastTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateFloat64TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        true
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt8LastTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt8TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        true
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt16LastTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt16TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        true
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateInt32LastTxn(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateInt32TxnRec *>(args.rec);
-    args.notify->onWalApplySampleUpdate(
-        args.page,
-        rec->pos,
-        rec->pos,
-        rec->value,
-        true
+        rec->dstPos,
+        rec->dstBits,
+        rec->data,
+        rec->srcBits
     );
 }
 
@@ -279,13 +170,9 @@ static DbWalRegisterRec s_sampleRecInfo{
         DbWalRecInfo::sizeFn<SampleInitRec>,
         applySampleInit,
     },
-    { kRecTypeSampleUpdate,
-        DbWalRecInfo::sizeFn<SampleUpdateRec>,
-        applySampleUpdate,
-    },
-    { kRecTypeSampleUpdateLast,
-        DbWalRecInfo::sizeFn<SampleUpdateRec>,
-        applySampleUpdateLast,
+    { kRecTypeSampleUpdateRoot,
+        DbWalRecInfo::sizeFn<SampleUpdateRootRec>,
+        applySampleUpdateRoot,
     },
     { kRecTypeSampleUpdateTime,
         DbWalRecInfo::sizeFn<SampleUpdateTime2Rec>,
@@ -299,45 +186,9 @@ static DbWalRegisterRec s_sampleRecInfo{
         DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
         applySampleUpdateLastTime,
     },
-    { kRecTypeSampleUpdateFloat32Txn,
-        DbWalRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
-        applySampleUpdateFloat32Txn,
-    },
-    { kRecTypeSampleUpdateFloat64Txn,
-        DbWalRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
-        applySampleUpdateFloat64Txn,
-    },
-    { kRecTypeSampleUpdateInt8Txn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
-        applySampleUpdateInt8Txn,
-    },
-    { kRecTypeSampleUpdateInt16Txn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
-        applySampleUpdateInt16Txn,
-    },
-    { kRecTypeSampleUpdateInt32Txn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
-        applySampleUpdateInt32Txn,
-    },
-    { kRecTypeSampleUpdateFloat32LastTxn,
-        DbWalRecInfo::sizeFn<SampleUpdateFloat32TxnRec>,
-        applySampleUpdateFloat32LastTxn,
-    },
-    { kRecTypeSampleUpdateFloat64LastTxn,
-        DbWalRecInfo::sizeFn<SampleUpdateFloat64TxnRec>,
-        applySampleUpdateFloat64LastTxn,
-    },
-    { kRecTypeSampleUpdateInt8LastTxn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt8TxnRec>,
-        applySampleUpdateInt8LastTxn,
-    },
-    { kRecTypeSampleUpdateInt16LastTxn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt16TxnRec>,
-        applySampleUpdateInt16LastTxn,
-    },
-    { kRecTypeSampleUpdateInt32LastTxn,
-        DbWalRecInfo::sizeFn<SampleUpdateInt32TxnRec>,
-        applySampleUpdateInt32LastTxn,
+    { kRecTypeSampleReplace,
+        sizeSampleReplaceAt,
+        applySampleReplaceAt,
     },
 };
 
@@ -366,14 +217,43 @@ void DbTxn::walSampleInit(
 
 //===========================================================================
 void DbTxn::walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot) {
+    auto [rec, bytes] = alloc<SampleUpdateRootRec>(
+        kRecTypeSampleUpdateRoot,
+        pgno
+    );
+    rec->rootPage = newRoot;
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
 void DbTxn::walSampleUpdateTime(
     pgno_t pgno,
-    Dim::TimePoint firstTime,
-    Dim::TimePoint lastTime
+    TimePoint firstTime,
+    TimePoint lastTime
 ) {
+    if (empty(firstTime) && empty(lastTime))
+        return;
+
+    if (!empty(firstTime) && !empty(lastTime)) {
+        auto [rec, bytes] = alloc<SampleUpdateTime2Rec>(
+            kRecTypeSampleUpdateTime,
+            pgno
+        );
+        rec->firstTime = firstTime;
+        rec->lastTime = lastTime;
+        wal(&rec->hdr, bytes);
+        return;
+    }
+
+    auto type = kRecTypeSampleUpdateFirstTime;
+    auto time = firstTime;
+    if (empty(firstTime)) {
+        type = kRecTypeSampleUpdateLastTime;
+        time = lastTime;
+    }
+    auto [rec, bytes] = alloc<SampleUpdateTimeRec>(type, pgno);
+    rec->pageTime = time;
+    wal(&rec->hdr, bytes);
 }
 
 //===========================================================================
@@ -381,7 +261,21 @@ void DbTxn::walSampleReplace(
     pgno_t pgno,
     size_t dstPos,
     size_t dstBits,
-    const uint8_t * src,
+    const uint8_t src[],
     size_t srcBits
 ) {
+    assert(dstPos < numeric_limits<uint16_t>::max());
+    assert(dstPos + dstBits < numeric_limits<uint16_t>::max());
+    assert(srcBits < numeric_limits<uint16_t>::max());
+    auto srcBytes = (srcBits + 7) / 8;
+    auto [rec, bytes] = alloc<SampleReplaceAtRec>(
+        kRecTypeSampleReplace,
+        pgno,
+        offsetof(SampleReplaceAtRec, data) + srcBytes
+    );
+    rec->dstPos = (uint16_t) dstPos;
+    rec->dstBits = (uint16_t) dstBits;
+    rec->srcBits = (uint16_t) srcBits;
+    memcpy(rec->data, src, srcBytes);
+    wal(&rec->hdr, bytes);
 }

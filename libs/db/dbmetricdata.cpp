@@ -48,6 +48,10 @@ struct DbData::SamplePage {
     // Type of data stored per sample (float32, float64, int8, ...).
     DbSampleType sampleType;
 
+    // Padding to make the overall structure a multiple of uint64_t in size.
+    // This allows the use of BitView/BitSpan on the data member.
+    uint8_t pad[1];
+
     // First byte
     //  bit 2 - has new time delta
     //  bit 1 - has new value
@@ -62,6 +66,8 @@ struct DbData::SamplePage {
     // EXTENDS BEYOND END OF STRUCT
     uint64_t data[1];
 };
+// The data[] must be uint64_t align so that BitView/BitSpan can be used.
+static_assert(sizeof(DbData::SamplePage) % alignof(uint64_t) == 0);
 
 #pragma pack(pop)
 
@@ -126,6 +132,16 @@ constexpr size_t sampleTypeSize(DbSampleType type) {
 constexpr size_t sampleDataPerPage(DbSampleType type, size_t pageSize) {
     assert(pageSize > sizeof DbData::SamplePage);
     return pageSize - offsetof(DbData::SamplePage, data);
+}
+
+//===========================================================================
+constexpr BitSpan sampleDataSpan(DbData::SamplePage * sp, size_t pageSize) {
+    assert(pageSize > sizeof DbData::SamplePage);
+    assert(offsetof(DbData::SamplePage, data) % alignof(uint64_t) == 0);
+    auto base = sp->data;
+    auto bytes = sampleDataPerPage(sp->sampleType, pageSize);
+    assert(bytes % alignof(uint64_t) == 0);
+    return { base, bytes / sizeof *base };
 }
 
 //===========================================================================
@@ -453,6 +469,7 @@ bool DbData::findLastSamplePage(
         // No pages, create page and add sample to it.
         *spno = allocPgno(txn);
         radixInsert(txn, m_sampleRoot, id, *spno);
+        pins.keep(*spno);
     }
     return false;
 }
@@ -604,7 +621,6 @@ namespace {
 // split point
 // replacement point
 // split point within replacement bits
-
 
 struct SampleUpdateState {
     const DbSample sample = {};
@@ -839,8 +855,8 @@ void DbData::updateSample(
     // Find page that should contain sample
     pgno_t spno;
     if (!findLastSamplePage(txn, &spno, id, true)) {
-        // No existing samples, new page was allocated. Initialize it and add
-        // this new sample.
+        // No existing samples, new page was allocated (and pinned). Initialize
+        // it and add this new sample.
         txn.walSampleInit(spno, id, mi.type, time, value);
         s_perfAdd += 1;
         return;
@@ -918,7 +934,7 @@ void DbData::updateSample(
         if (time > sp->lastTime)
             last = time;
         if (!sus.replPos) {
-            assert(time != sp->firstTime);
+            assert(time >= sp->firstTime);
             txn.walSampleUpdateTime(spno, time, last);
             updateSampleIndex(txn, sp, spno, oldTime, sp->firstTime);
         } else if (!empty(last)) {
@@ -966,12 +982,12 @@ void DbData::updateSample(
     if (spIsLastPage && time > sp->lastTime) {
         // Sample belongs at end of last page. Add entirely new page with just
         // the new sample.
-        spno = allocPgno(txn);
-        txn.walSampleInit(spno, id, mi.type, time, value);
+        auto spno2 = allocPgno(txn);
+        txn.walSampleInit(spno2, id, mi.type, time, value);
         s_perfAdd += 1;
 
         // Add new page to sample index.
-        updateSampleIndex(txn, sp, spno, {}, time, mi.retention);
+        updateSampleIndex(txn, sp, spno2, {}, time, mi.retention);
         return;
     }
 
@@ -1048,22 +1064,19 @@ void DbData::onWalApplySampleInit(
     sp->sampleType = type;
 
     // Write value to sp->data[]
-    DbPack pack(ptr, sampleDataPerPage(type, m_pageSize));
+    DbPack pack(sp->data, sampleDataPerPage(type, m_pageSize));
     pack.put(time, value);
     sp->dataBits = (uint16_t) (pack.bits());
 }
 
 //===========================================================================
-void DbData::onWalApplySampleUpdate(
+void DbData::onWalApplySampleUpdateRoot(
     void * ptr,
-    size_t firstPos,
-    size_t lastPos,
-    double value,
-    bool updateLast
+    pgno_t rootPage
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
-    sp->hdr.type = sp->kPageType;
+    sp->sampleIndex = rootPage;
 }
 
 //===========================================================================
@@ -1078,6 +1091,30 @@ void DbData::onWalApplySampleUpdateTime(
         sp->firstTime = firstTime;
     if (lastTime == TimePoint{})
         sp->lastTime = lastTime;
+}
+
+//===========================================================================
+void DbData::onWalApplySampleReplace(
+    void * ptr,
+    size_t dstPos,
+    size_t dstBits,
+    const uint8_t * src,
+    size_t srcBits
+) {
+    auto sp = static_cast<SamplePage *>(ptr);
+    assert(sp->hdr.type == sp->kPageType);
+    auto newCount = sp->dataBits + srcBits - dstBits;
+    if (srcBits <= dstBits) {
+        assert(dstBits - srcBits < sp->dataBits);
+        BitSpan bits(sp->data, sp->dataBits);
+        bits.replace(dstPos, dstBits, src, 0, srcBits);
+    } else {
+        assert(newCount <=
+            sampleDataPerPage(sp->sampleType, m_pageSize) * sizeof *sp->data);
+        BitSpan bits(sp->data, newCount);
+        bits.replace(dstPos, dstBits, src, 0, srcBits);
+    }
+    sp->dataBits = (uint16_t) newCount;
 }
 
 //===========================================================================

@@ -89,7 +89,7 @@ bool DbPack::put(TimePoint time, double value) {
 
 //===========================================================================
 bool DbPack::put(TimePoint time) {
-    assert(time > m_state.sample.time);
+    assert(!m_samplePos || time > m_state.sample.time);
     auto dt = time - m_state.sample.time;
     auto ddt = (dt - m_state.dt).count();
     m_state.sample.time = time;

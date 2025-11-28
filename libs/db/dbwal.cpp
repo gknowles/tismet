@@ -1901,7 +1901,7 @@ UnsignedSet DbTxn::commit() {
 void DbTxn::wal(DbWal::Record * rec, size_t bytes) {
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto pgno = m_wal.getPgno(*rec);
-        m_pinnedPages.contains(pgno);
+        assert(m_pinnedPages.contains(pgno));
     }
     auto txn = getLsxAlways();
     m_wal.walAndApply(txn, rec, bytes);

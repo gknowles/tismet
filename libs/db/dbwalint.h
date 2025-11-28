@@ -12,51 +12,41 @@
 ***/
 
 enum DbWalRecType : int8_t {
-    kRecTypeCheckpoint          = 1,  // [N/A] startLsn
-    kRecTypeTxnBegin            = 2,  // [N/A]
-    kRecTypeTxnCommit           = 3,  // [N/A]
-    kRecTypeTxnGroupCommit      = 40, // [N/A] numTxns, txns
+    kRecTypeCheckpoint          = 1,    // [N/A] startLsn
+    kRecTypeTxnBegin            = 2,    // [N/A]
+    kRecTypeTxnCommit           = 3,    // [N/A]
+    kRecTypeTxnGroupCommit      = 4,    // [N/A] numTxns, txns
 
-    kRecTypeZeroInit            = 4,  // [master]
-    kRecTypeRootUpdate          = 7,  // [master] rootPage
-    kRecTypePageFree            = 5,  // [any]
-    kRecTypeFullPage            = 16, // [any] id, data
-    kRecTypeBitInit             = 17, // [bitmap] pos
-    kRecTypeBitSet              = 38, // [bitmap] pos
-    kRecTypeBitReset            = 39, // [bitmap] pos
-    kRecTypeBitUpdateRange      = 6,  // [bitmap] firstPos, lastPos, value
-    kRecTypeRadixInit           = 8,  // [radix] id, height
-    kRecTypeRadixInitList       = 9,  // [radix] id, height, page list
-    kRecTypeRadixErase          = 10, // [metric/radix] firstPos, lastPos
-    kRecTypeRadixPromote        = 11, // [radix] refPage
-    kRecTypeRadixUpdate         = 12, // [radix] refPos, refPage
+    kRecTypeZeroInit            = 5,    // [master]
+    kRecTypeRootUpdate          = 6,    // [master] rootPage
+    kRecTypePageFree            = 7,    // [any]
+    kRecTypeFullPage            = 8,    // [any] id, data
+    kRecTypeBitInit             = 9,    // [bitmap] pos
+    kRecTypeBitSet              = 10,   // [bitmap] pos
+    kRecTypeBitReset            = 11,   // [bitmap] pos
+    kRecTypeBitUpdateRange      = 12,   // [bitmap] firstPos, lastPos, value
+    kRecTypeRadixInit           = 13,   // [radix] id, height
+    kRecTypeRadixInitList       = 14,   // [radix] id, height, page list
+    kRecTypeRadixErase          = 15,   // [radix] firstPos, lastPos
+    kRecTypeRadixPromote        = 16,   // [radix] refPage
+    kRecTypeRadixUpdate         = 17,   // [radix] refPos, refPage
 
-    kRecTypeSampleInit          = 18, // [sample] id, stype, time, value
-    kRecTypeSampleUpdate        = 19, // [sample] first, last, value
-                                      //    [first, last) = NANs, last = value
-    kRecTypeSampleUpdateLast    = 20, // [sample] first, last, value
-                                      //    [first, last) = NANs, last = value
-                                      //    lastPos = last
-    kRecTypeSampleUpdateTime    = 21,   // [sample] firstTime, lastTime
-    kRecTypeSampleUpdateFirstTime = 37, // [sample] pageTime
-    kRecTypeSampleUpdateLastTime = 41,  // [sample] pageTime
+    kRecTypeSampleInit          = 18,   // [sample] id, stype, time, value
+    kRecTypeSampleUpdateRoot    = 19,   // [sample] rootPage
+    kRecTypeSampleUpdateTime    = 20,   // [sample] firstTime, lastTime
+    kRecTypeSampleUpdateFirstTime = 21, // [sample] pageTime
+    kRecTypeSampleUpdateLastTime = 22,  // [sample] pageTime
+    kRecTypeSampleInsert        = 23,   // [sample]
+    kRecTypeSampleInsertBack    = 24,   // [sample]
+    kRecTypeSampleInsertFront   = 25,   // [sample]
+    kRecTypeSampleErase         = 26,   // [sample]
+    kRecTypeSampleEraseFront    = 27,   // [sample]
+    kRecTypeSampleEraseBack     = 28,   // [sample]
+    kRecTypeSampleReplace       = 29,   // [sample]
+    kRecTypeSampleReplaceFront  = 30,   // [sample]
+    kRecTypeSampleReplaceBack   = 31,   // [sample]
 
-    // [sample] page, pos, value (non-standard layout)
-    kRecTypeSampleUpdateFloat32Txn      = 22,
-    kRecTypeSampleUpdateFloat64Txn      = 24,
-    kRecTypeSampleUpdateInt8Txn         = 26,
-    kRecTypeSampleUpdateInt16Txn        = 28,
-    kRecTypeSampleUpdateInt32Txn        = 30,
-
-    // [sample] page, pos, value (non-standard layout)
-    //    lastPos = pos
-    kRecTypeSampleUpdateFloat32LastTxn  = 23,
-    kRecTypeSampleUpdateFloat64LastTxn  = 25,
-    kRecTypeSampleUpdateInt8LastTxn     = 27,
-    kRecTypeSampleUpdateInt16LastTxn    = 29,
-    kRecTypeSampleUpdateInt32LastTxn    = 31,
-
-    kRecType_LastAvailable  = 42,
+    kRecType_LastAvailable  = 32,
 };
 
 #pragma pack(push, 1)

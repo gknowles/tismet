@@ -609,10 +609,11 @@ bool DbData::upgradeRoots(DbTxn & txn) {
 }
 
 //===========================================================================
-pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
-
+pgno_t DbData::loadRoot_LK(
+    unique_lock<recursive_mutex> & lk,
+    DbTxn & txn,
+    unsigned rootId
+) {
     pgno_t out = pgno_t::npos;
     if (!radixFind(txn, &out, m_rootRoot, rootId))
         out = pgno_t::npos;
@@ -620,14 +621,21 @@ pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
 }
 
 //===========================================================================
+pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
+    unique_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+    return loadRoot_LK(lk, txn, rootId);
+}
+
+//===========================================================================
 pgno_t DbData::loadRoot(DbTxn & txn, const string & rootName) {
-    scoped_lock lk{m_pageMut};
+    unique_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
     pgno_t out = pgno_t::npos;
     auto i = m_rootIdByName.find(rootName);
     if (i != m_rootIdByName.end())
-        out = loadRoot(txn, i->second);
+        out = loadRoot_LK(lk, txn, i->second);
     return out;
 }
 
@@ -781,8 +789,8 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
         //
         // The reason removing an entry from the bitmap of free pages might
         // need to allocate a page is because if we're removing the last bit of
-        // a page, the page will be freed... which means it must be added to
-        // this bitmap.
+        // a page of the free list, the page will be freed... which means it
+        // must be added to this bitmap.
         [[maybe_unused]] bool updated =
             bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, false);
         assert(updated);
@@ -939,7 +947,7 @@ string DbData::trieKeyMin(uint32_t id) {
 // static
 string DbData::trieKey(uint32_t id) {
     string key(sizeof(id), 0);
-    hton32(key.data(), byteswap(id));
+    hton32(key.data(), id);
     return key;
 }
 
