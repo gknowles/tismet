@@ -27,8 +27,12 @@ struct DbSample {
 
 struct DbPackState {
     DbSample sample{};
+
+    // time encoding parameters
     Dim::Duration dt{};
-    uint8_t expBits{7};
+    uint8_t expBits{7};     // time exponent, defaults to 1s (100ns * 2**7)
+
+    // value encoding parameters
     uint8_t prefixBits{31};
     uint8_t lenBits{};
 
@@ -97,18 +101,19 @@ inline DbUnpackIter end(const DbUnpackIter & iter) { return {}; }
 
 class DbPack {
 public:
-    DbPack(void * out, size_t outLen);
+    DbPack(void * out, size_t outBytes);
     DbPack(
         void * out,
-        size_t outLen,
+        size_t outBytes,
         size_t bitPos,
         const DbPackState & st
     );
 
-    void retarget(void * out, size_t outLen);
+    void retarget(void * out, size_t outBytes);
+    void retarget(size_t bitPos, const DbPackState & st);
     void retarget(
         void * out,
-        size_t outLen,
+        size_t outBytes,
         size_t bitPos,
         const DbPackState & st
     );
@@ -119,7 +124,7 @@ public:
     size_t size() const { return (bits() + 7) / 8; }
     std::span<uint8_t> span() const { return {data(), size()}; }
     size_t bits() const { return m_samplePos + m_sampleBits; }
-    size_t capacity() const { return m_count; }
+    size_t capacity() const { return m_bytes; }
     const DbPackState & state() const { return m_state; }
 
     DbUnpackIter begin() const { return find(); }
@@ -135,7 +140,7 @@ private:
 
     // Target
     uint8_t * m_base{};
-    size_t m_count{};
+    size_t m_bytes{};
 
     // Position
     size_t m_samplePos{};

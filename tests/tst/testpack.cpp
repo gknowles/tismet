@@ -78,9 +78,11 @@ void Test::onTestRun() {
         { today + 8s, 5.0 },
         { today + 9s, 7.0 },
     };
+    pack.retarget(0, { .sample = { .time = today } });
     for (auto&& val : vals)
         pack.put(val.time, val.value);
     DbUnpackIter unpack(pack.data(), pack.bits());
+    unpack.seek(0, { .sample = { .time = today } });
     for (auto&& val : vals) {
         auto & s = *unpack;
         EXPECT_AT(val.sloc, s.time == val.time);

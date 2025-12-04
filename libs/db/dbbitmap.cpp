@@ -23,9 +23,15 @@ struct DbData::BitmapPage {
     DbPageHeader hdr;
     uint32_t base;
 
+    // Padding to make the overall structure a multiple of uint64_t in size.
+    // This allows the use of BitView/BitSpan on the data member.
+    uint8_t pad[4];
+
     // EXTENDS BEYOND END OF STRUCT
     uint64_t bits[1];
 };
+// The data[] must be uint64_t align so that BitView/BitSpan can be used.
+static_assert(sizeof(DbData::BitmapPage) % alignof(uint64_t) == 0);
 
 
 /****************************************************************************

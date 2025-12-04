@@ -38,18 +38,18 @@ constexpr struct {
 ***/
 
 //===========================================================================
-DbPack::DbPack(void * out, size_t outLen) {
-    retarget(out, outLen);
+DbPack::DbPack(void * out, size_t outBytes) {
+    retarget(out, outBytes);
 }
 
 //===========================================================================
 DbPack::DbPack(
     void * out,
-    size_t outLen,
+    size_t outBytes,
     size_t bitPos,
     const DbPackState & st
 ) {
-    retarget(out, outLen, bitPos, st);
+    retarget(out, outBytes, bitPos, st);
 }
 
 //===========================================================================
@@ -61,23 +61,28 @@ DbUnpackIter DbPack::find(
 }
 
 //===========================================================================
-void DbPack::retarget(void * out, size_t outLen) {
+void DbPack::retarget(void * out, size_t outBytes) {
     m_base = (unsigned char *) out;
-    m_count = outLen;
+    m_bytes = outBytes;
+}
+
+//===========================================================================
+void DbPack::retarget(size_t bitPos, const DbPackState & st) {
+    assert(bitPos < m_bytes * 8);
+    m_samplePos = bitPos;
+    m_sampleBits = 0;
+    m_state = st;
 }
 
 //===========================================================================
 void DbPack::retarget(
     void * out,
-    size_t outLen,
+    size_t outBytes,
     size_t bitPos,
     const DbPackState & st
 ) {
-    assert(bitPos < outLen * 8);
-    retarget(out, outLen);
-    m_samplePos = bitPos;
-    m_sampleBits = 0;
-    m_state = st;
+    retarget(out, outBytes);
+    retarget(bitPos, st);
 }
 
 //===========================================================================
@@ -177,7 +182,8 @@ bool DbPack::put(TimePoint time) {
 
 //===========================================================================
 bool DbPack::put(double value) {
-    auto dv = (uint64_t &) value ^ (uint64_t &) m_state.sample.value;
+    auto dv = bit_cast<uint64_t>(value)
+        ^ bit_cast<uint64_t>(m_state.sample.value);
     m_state.sample.value = value;
     if (!dv) {
         // Same as previous value.
@@ -213,6 +219,7 @@ bool DbPack::put(double value) {
 }
 
 //===========================================================================
+// 'nbits' includes space for leading sign bit.
 bool DbPack::putInt(size_t nbits, int64_t value) {
     assert(nbits > 1 && nbits <= 64);
     assert(availBits() >= nbits);
@@ -280,14 +287,13 @@ DbUnpackIter::DbUnpackIter(
 )
     : m_base{(unsigned char *) src}
     , m_bits{srcBits}
-    , m_state(st)
 {
     seek(bitPos, st);
 }
 
 //===========================================================================
 DbUnpackIter::operator bool() const {
-    return bits() != m_samplePos + m_sampleBits;
+    return bits() != m_samplePos;
 }
 
 //===========================================================================
@@ -326,6 +332,7 @@ bool DbUnpackIter::getTime() {
         return false;
     if (!u) {
         // '0' - delta same as previous delta
+        assert(!m_samplePos || m_state.dt.count() > 0);
         m_state.sample.time += m_state.dt;
         return true;
     }
@@ -362,6 +369,7 @@ bool DbUnpackIter::getTime() {
         s += 1;
     auto ddt = Duration{s * kExponentInfo[m_state.expBits].factor};
     m_state.dt += ddt;
+    assert(!m_samplePos || m_state.dt.count() > 0);
     m_state.sample.time += m_state.dt;
     return true;
 }

@@ -135,7 +135,8 @@ constexpr size_t sampleDataPerPage(DbSampleType type, size_t pageSize) {
 }
 
 //===========================================================================
-constexpr BitSpan sampleDataSpan(DbData::SamplePage * sp, size_t pageSize) {
+[[maybe_unused]]
+static BitSpan sampleDataSpan(DbData::SamplePage * sp, size_t pageSize) {
     assert(pageSize > sizeof DbData::SamplePage);
     assert(offsetof(DbData::SamplePage, data) % alignof(uint64_t) == 0);
     auto base = sp->data;
@@ -429,6 +430,9 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
     };
     trieApply(txn, actions);
 
+    // update in memory references
+    m_numMetrics -= 1;
+
     return true;
 }
 
@@ -438,20 +442,6 @@ bool DbData::eraseMetric(string * name, DbTxn & txn, uint32_t id) {
 *   DbData - Samples
 *
 ***/
-
-//===========================================================================
-pgno_t DbData::updateSampleIndexRoot(
-    DbTxn & txn,
-    pgno_t spno,
-    unsigned rootId,
-    pgno_t pgno
-) {
-    auto sp = txn.pin<SamplePage>(spno);
-    assert(rootId == sp->hdr.id);
-    auto oldRoot = sp->sampleIndex;
-    txn.walSampleUpdateIndexRoot(spno, pgno);
-    return oldRoot;
-}
 
 //===========================================================================
 bool DbData::findLastSamplePage(
@@ -466,7 +456,7 @@ bool DbData::findLastSamplePage(
     if (radixFind(txn, spno, m_sampleRoot, id))
         return true;
     if (createIfNotExists) {
-        // No pages, create page and add sample to it.
+        // No pages, create page and add it to metric samples index.
         *spno = allocPgno(txn);
         radixInsert(txn, m_sampleRoot, id, *spno);
         pins.keep(*spno);
@@ -489,7 +479,7 @@ bool DbData::findSamplePage(
 
     SampleIndexRec rec = {
         .time = time,
-        .pgno = {},
+        .pgno = pgno_t::npos,
     };
     auto key = ::trieKey(rec);
     DbSamplePageHeap heap(&txn, this, root);
@@ -506,77 +496,23 @@ bool DbData::findSamplePage(
     return true;
 }
 
-//===========================================================================
-void DbData::updateSampleIndex(
-    DbTxn & txn,
-    const SamplePage * sp,
-    pgno_t spno,
-    optional<TimePoint> oldTime,
-    optional<TimePoint> newTime,
-    optional<Duration> expiration
-) {
-    if (oldTime == newTime)
-        return;
 
-    DbSamplePageHeap heap(
-        &txn,
-        this,
-        sp->sampleIndex,
-        sp->hdr.id,
-        sp->hdr.pgno
-    );
-    StrTrieBase trie(&heap);
-    [[maybe_unused]] auto result = false;
-    if (oldTime) {
-        assert(sp->sampleIndex);
-        auto key = ::trieKey({*oldTime, spno});
-        result = trie.erase(key);
-        assert(result);
-    }
-
-    if (!newTime)
-        return;
-    auto key = ::trieKey({*newTime, spno});
-    result = trie.insert(key);
-    assert(result);
-
-    if (!expiration)
-        return;
-    key = ::trieKey({*newTime - *expiration});
-    auto i = trie.findLess(key);
-    if (!i) {
-        logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
-            << time << "): sample index with closed lower bound";
-        return;
-    }
-    SampleIndexRec rec;
-    if (!::parseTrieKey(&rec, *i)) {
-        logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
-            << time << "): invalid entry in sample index";
-        return;
-    }
-    if (empty(rec.time)) {
-        // Oldest unexpired sample would land in the first page, so there are
-        // no completely expired pages to discard.
-        return;
-    }
-    //trie.erase(
-}
+/****************************************************************************
+*
+*   DbData - Erase Samples
+*
+***/
 
 //===========================================================================
 void DbData::eraseSamples(DbTxn & txn, uint32_t id) {
-    pgno_t spno = {};
-    {
-        scoped_lock lk{m_mndxMut};
-        DbTxn::PinScope pins(txn);
-        spno = radixSwapValue(txn, m_sampleRoot, id, {});
-    }
+    auto spno = updateLastSamplePage(txn, id, {});
     if (!spno)
         return;
 
     auto sp = txn.pin<SamplePage>(spno);
     auto iroot = sp->sampleIndex;
-    if (!iroot) {
+    assert(iroot);
+    if (iroot == npos) {
         freePage(txn, spno);
         return;
     }
@@ -593,25 +529,104 @@ void DbData::eraseSamples(DbTxn & txn, uint32_t id) {
     trieClear(txn, iroot);
 }
 
+
+/****************************************************************************
+*
+*   DbData - Update Samples
+*
+***/
+
 //===========================================================================
-template<typename T>
-static double getSample(const T * out) {
-    if constexpr (is_same_v<T, pgno_t>) {
-        if (*out <= kMaxPageNum)
-            return NAN;
-        return (double) *out - (kMaxPageNum + kMaxPageNum / 2);
-    } else if constexpr (is_floating_point_v<T>) {
-        return *out;
-    } else if constexpr (is_integral_v<T>) {
-        constexpr auto maxval = numeric_limits<T>::max();
-        constexpr auto minval = -maxval;
-        T ival = *out;
-        if (ival == minval - 1)
-            return NAN;
-        return ival;
-    } else {
-        assert(!"Sample type must be numeric");
-        return NAN;
+pgno_t DbData::updateLastSamplePage(
+    DbTxn & txn,
+    uint32_t id,
+    pgno_t spno
+) {
+    scoped_lock lk{m_mndxMut};
+    DbTxn::PinScope pins(txn);
+    return radixSwapValue(txn, m_sampleRoot, id, spno);
+}
+
+//===========================================================================
+pgno_t DbData::updateSampleIndexRoot(
+    DbTxn & txn,
+    pgno_t spno,
+    unsigned rootId,
+    pgno_t pgno
+) {
+    auto sp = txn.pin<SamplePage>(spno);
+    assert(rootId == sp->hdr.id);
+    auto oldRoot = sp->sampleIndex;
+    txn.walSampleUpdateIndexRoot(spno, pgno);
+    return oldRoot;
+}
+
+//===========================================================================
+void DbData::updateSampleIndex(
+    DbTxn & txn,
+    const SamplePage * root,
+    pgno_t sampleIndex,
+    const SamplePage * sp,  // spno & newTime
+    optional<TimePoint> oldTime,
+    optional<Duration> expiration
+) {
+    assert(sampleIndex);
+    if (oldTime == sp->firstTime)
+        return;
+
+    DbSamplePageHeap heap(
+        &txn,
+        this,
+        sampleIndex,
+        root->hdr.id,
+        root->hdr.pgno
+    );
+    StrTrieBase trie(&heap);
+    [[maybe_unused]] auto result = false;
+    if (oldTime) {
+        assert(sampleIndex != npos);
+        auto key = ::trieKey({*oldTime, sp->hdr.pgno});
+        result = trie.erase(key);
+        assert(result);
+    }
+
+    auto key = ::trieKey({sp->firstTime, sp->hdr.pgno});
+    result = trie.insert(key);
+    assert(result);
+
+    if (!expiration)
+        return;
+
+    //-----------------------------------------------------------------------
+    // Remove pages that hold nothing but expired samples.
+    auto firstSampleTime = sp->firstTime - *expiration;
+
+    key = ::trieKey({sp->firstTime - *expiration, pgno_t::npos});
+    auto i = trie.upperBound(key);
+    if (!i) {
+        // No completely expired pages
+        return;
+    }
+    SampleIndexRec rec;
+    if (!::parseTrieKey(&rec, *i)) {
+        logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
+            << time << "): invalid entry in sample index";
+        return;
+    }
+    auto upperbound = rec.time;
+    for (;;) {
+        auto i = trie.begin();
+        if (!::parseTrieKey(&rec, *i)) {
+            logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
+                << time << "): invalid entry in sample index";
+            return;
+        }
+        if (rec.time == upperbound) {
+            // All expired pages have been erased.
+            break;
+        }
+        freePage(txn, rec.pgno);
+        trie.erase(*i);
     }
 }
 
@@ -630,6 +645,7 @@ struct SampleUpdateState {
     // Modification
     DbPack pack;
     TimePoint lastTime = {};
+    size_t updPos = {};
     size_t updLen = {};
     size_t replPos = {};
     size_t replLen = {};
@@ -665,19 +681,20 @@ SampleUpdateState::SampleUpdateState(
 )
     : sample(s)
     , firstTime(firstTime)
-    , in(data, dataBits, 0, { .sample = { firstTime } })
-    , pack(tmp.data(), tmp.size(), 0, { .sample = { firstTime } })
+    , in(data, dataBits, 0, {.sample = { firstTime }})
+    , pack(tmp.data(), tmp.size(), 0, {.sample = { firstTime }})
     , lastTime(lastTime)
     , pack2(tmp2.data(), tmp2.size())
 {}
 
 //===========================================================================
 void SampleUpdateState::rewind() {
-    in.seek(0, { .sample = { firstTime } });
-    pack.retarget(pack.data(), pack.capacity());
+    DbPackState st = {.sample = { firstTime }};
+    in.seek(0, st);
+    pack.retarget(0, st);
     lastTime = {};
     updLen = replPos = replLen = 0;
-    pack2.retarget(pack2.data(), pack2.capacity());
+    pack2.retarget(0, {});
     firstSample2 = {};
     lastTime2 = {};
 }
@@ -741,25 +758,41 @@ static bool calcExpiredSamples(
 //===========================================================================
 static void calcSampleUpdate(SampleUpdateState * sus) {
     assert(!sus->in || sus->firstTime == sus->in->time);
+    assert(!sus->replLen && !sus->updLen);
     for (; sus->in; ++sus->in) {
-        if (sus->in->time >= sus->sample.time)
+        auto & s = *sus->in;
+        if (s.time >= sus->sample.time)
             break;
-        packSample(sus, *sus->in);
+        packSample(sus, s);
     }
-    sus->replPos = sus->pack.bits();
-    if (sus->in && sus->in->time == sus->sample.time) {
-        if (sus->in->value == sus->sample.value)
-            return;
-        ++sus->in;
+    sus->replPos = sus->in.spos();
+    sus->updPos = sus->pack.bits();
+    if (!sus->in) {
+        sus->lastTime = sus->sample.time;
+    } else {
+        if (sus->in->time == sus->sample.time) {
+            if (sus->in->value == sus->sample.value)
+                return;
+            ++sus->in;
+        } else {
+            assert(sus->in->time > sus->sample.time);
+            if (!sus->replPos) {
+                // Inserting sample with new lower first time, so set packing
+                // state to start with new first time.
+                sus->firstTime = sus->sample.time;
+                sus->pack.retarget(0, {.sample = { sus->firstTime }});
+            }
+        }
     }
     packSample(sus, sus->sample);
     for (; sus->in; ++sus->in) {
-        packSample(sus, *sus->in);
+        auto & s = *sus->in;
+        packSample(sus, s);
         if (sus->pack.state() == sus->in.state())
             break;
     }
-    sus->replLen = sus->in.spos() - sus->replPos;
-    sus->updLen = sus->pack.bits() - sus->replPos;
+    sus->replLen = sus->in.spos() + sus->in.slen() - sus->replPos;
+    sus->updLen = sus->pack.bits() - sus->updPos;
 }
 
 //===========================================================================
@@ -783,7 +816,7 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
             sus->pack2.data(),
             sus->pack2.capacity(),
             0,
-            { .sample = { .time = sus->firstSample2.time } }
+            {.sample = { sus->firstSample2.time }}
         );
         for (; sus->in; ++sus->in) {
             packSample2(sus, *sus->in);
@@ -796,7 +829,7 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         sus->pack.data(),
         sus->pack.bits(),
         0,
-        { .sample = { .time = sus->firstTime } }
+        {.sample = { sus->firstTime }}
     );
     size_t splitPos = 0;
     auto splitLastTime = inpack->time;
@@ -812,7 +845,7 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         sus->pack2.data(),
         sus->pack2.capacity(),
         0,
-        { .sample = { .time = sus->firstSample2.time } }
+        {.sample = { sus->firstSample2.time }}
     );
     for (; inpack; ++inpack) {
         packSample2(sus, *inpack);
@@ -858,11 +891,15 @@ void DbData::updateSample(
         // No existing samples, new page was allocated (and pinned). Initialize
         // it and add this new sample.
         txn.walSampleInit(spno, id, mi.type, time, value);
+        updateLastSamplePage(txn, id, spno);
         s_perfAdd += 1;
         return;
     }
     auto sp = txn.pin<SamplePage>(spno);
-    bool spIsLastPage = true;
+    // Remember this last page as spLast, it stores the sampleIndex root which
+    // we may need later.
+    auto spLast = sp;
+
     if (time >= sp->firstTime) {
         // Updating sample on last page.
         assert(spno);
@@ -876,14 +913,14 @@ void DbData::updateSample(
         }
         // Search sample index for containing page.
         pgno_t pgno;
-        if (!findSamplePage(txn, &pgno, sp->sampleIndex, id, time)) {
-            // No (or malformed) sample index, add to last page.
+        if (!findSamplePage(txn, &pgno, spLast->sampleIndex, id, time)) {
+            // No (or malformed?) sample index, add to last (and only) page.
             assert(spno);
         } else {
-            // Update sample on page found in index.
+            // Update sample on page found in index (and we know it's not the
+            // last page of the index).
             spno = pgno;
             sp = txn.pin<SamplePage>(spno);
-            spIsLastPage = false;
         }
     }
 
@@ -902,10 +939,13 @@ void DbData::updateSample(
     auto dataLen = sampleDataPerPage(sp->sampleType, m_pageSize);
     auto buf = (uint8_t *) mallocAuto(3 * dataLen);
     Finally finBuf([&buf]() { freeAuto(buf); });
+    memset(buf, 0, 3 * dataLen);
+    auto tmp = span<uint8_t>(buf, 2 * dataLen);
+    auto tmp2 = span<uint8_t>(buf + 2 * dataLen, dataLen);
     SampleUpdateState sus(
-        { .time = time, .value = value },
-        { buf, 2 * dataLen },
-        { buf + 2 * dataLen, dataLen },
+        {.time = time, .value = value},
+        tmp,
+        tmp2,
         sp->data,
         sp->dataBits,
         sp->firstTime,
@@ -922,23 +962,31 @@ void DbData::updateSample(
             return;
         }
 
-        auto oldTime = sp->firstTime;
         txn.walSampleReplace(
             spno,
             sus.replPos,
             sus.replLen,
             sus.pack.data(),
+            sus.updPos,
             sus.updLen
         );
-        TimePoint last = {};
-        if (time > sp->lastTime)
-            last = time;
         if (!sus.replPos) {
-            assert(time >= sp->firstTime);
-            txn.walSampleUpdateTime(spno, time, last);
-            updateSampleIndex(txn, sp, spno, oldTime, sp->firstTime);
-        } else if (!empty(last)) {
-            txn.walSampleUpdateTime(spno, {}, last);
+            if (time == sp->firstTime) {
+                assert(time <= sp->lastTime);
+            } else {
+                assert(time < sp->firstTime);
+                auto oldTime = sp->firstTime;
+                txn.walSampleUpdateTime(spno, time, {});
+                if (auto si = spLast->sampleIndex; si != npos) {
+                    assert(time == sp->firstTime);
+                    updateSampleIndex(txn, spLast, si, sp, oldTime);
+                } else {
+                    // There is only one page, otherwise there would be an
+                    // index of the pages.
+                }
+            }
+        } else if (time > sp->lastTime) {
+            txn.walSampleUpdateTime(spno, {}, time);
         }
         s_perfAdd += 1;
         return;
@@ -948,8 +996,9 @@ void DbData::updateSample(
     // Not enough room left on page for update.
 
     if (time > sp->firstTime + mi.retention) {
-        // Page has expired entries, remove them. Already checked that not all
-        // samples are expired, so some current samples will remain.
+        // Page has expired entries, remove them and try again. Already checked
+        // that not all samples are expired, so some current samples will
+        // remain.
         sus.rewind();
         calcExpiredSamples(&sus, mi);
         auto oldTime = sp->firstTime;
@@ -958,10 +1007,19 @@ void DbData::updateSample(
             sus.replPos,
             sus.replLen,
             sus.pack.data(),
+            sus.replPos,
             sus.updLen
         );
-        txn.walSampleUpdateTime(spno, sus.firstTime, sus.lastTime);
-        updateSampleIndex(txn, sp, spno, oldTime, sp->firstTime);
+        if (sus.firstTime != sp->firstTime) {
+            if (sus.lastTime != sp->lastTime) {
+                txn.walSampleUpdateTime(spno, sus.firstTime, sus.lastTime);
+            } else {
+                txn.walSampleUpdateTime(spno, sus.firstTime, {});
+            }
+        } else if (sus.lastTime != sp->lastTime) {
+            txn.walSampleUpdateTime(spno, {}, sus.lastTime);
+        }
+        updateSampleIndex(txn, spLast, spLast->sampleIndex, sp, oldTime);
 
         // Now, with a little more space on the page, try again.
         if (sus.firstTime == time && sus.lastTime == time) {
@@ -974,27 +1032,38 @@ void DbData::updateSample(
     }
 
     // Update/create sample index.
-    if (!sp->sampleIndex) {
+    if (spLast->sampleIndex == npos) {
         // Sample index doesn't already exist, add current page.
-        updateSampleIndex(txn, sp, spno, {}, sp->firstTime);
+        assert(sp == spLast);
+        updateSampleIndex(txn, spLast, spLast->sampleIndex, sp, {});
     }
 
-    if (spIsLastPage && time > sp->lastTime) {
+    if (sp == spLast && time > sp->lastTime) {
         // Sample belongs at end of last page. Add entirely new page with just
         // the new sample.
         auto spno2 = allocPgno(txn);
         txn.walSampleInit(spno2, id, mi.type, time, value);
+        updateLastSamplePage(txn, id, spno2);
         s_perfAdd += 1;
 
         // Add new page to sample index.
-        updateSampleIndex(txn, sp, spno2, {}, time, mi.retention);
+        auto sp2 = txn.pin<SamplePage>(spno2);
+        updateSampleIndex(
+            txn,
+            sp2,
+            spLast->sampleIndex,
+            sp2,
+            {},
+            mi.retention
+        );
+        updateSampleIndexRoot(txn, spno, id, npos);
         return;
     }
 
     // Split samples onto two pages.
     auto keepBits = sus.in.bits() + sus.updLen - sus.replLen;
     Duration retention = {};
-    if (spIsLastPage) {
+    if (sp == spLast) {
         keepBits = keepBits * 7 / 8;
         retention = mi.retention;
     } else {
@@ -1011,6 +1080,7 @@ void DbData::updateSample(
         sus.firstSample2.time,
         sus.firstSample2.value
     );
+    updateLastSamplePage(txn, id, spno2);
     txn.walSampleUpdateTime(spno2, {}, sus.lastTime2);
     auto sp2 = txn.pin<SamplePage>(spno2);
     txn.walSampleReplace(
@@ -1018,9 +1088,12 @@ void DbData::updateSample(
         sp2->dataBits,
         0,
         sus.pack2.data(),
+        sp2->dataBits,
         sus.pack2.bits() - sp2->dataBits
     );
-    updateSampleIndex(txn, sp2, spno2, {}, sus.firstSample2.time, retention);
+    updateSampleIndex(txn, sp2, spno2, sp2, sus.firstSample2.time, retention);
+    if (sp == spLast)
+        updateSampleIndexRoot(txn, spno, id, npos);
 
     // Update existing page.
     txn.walSampleUpdateTime(spno, {}, sus.lastTime);
@@ -1030,6 +1103,7 @@ void DbData::updateSample(
             sus.truncPos,
             sp->dataBits - sus.truncPos,
             nullptr,
+            0,
             0
         );
     }
@@ -1038,6 +1112,7 @@ void DbData::updateSample(
         sus.replPos,
         sus.replLen,
         sus.pack.data(),
+        sus.replPos,
         sus.updLen
     );
 }
@@ -1060,11 +1135,16 @@ void DbData::onWalApplySampleInit(
     sp->hdr.id = id;
     sp->firstTime = time;
     sp->lastTime = time;
-    sp->sampleIndex = {};
+    sp->sampleIndex = npos;
     sp->sampleType = type;
 
     // Write value to sp->data[]
-    DbPack pack(sp->data, sampleDataPerPage(type, m_pageSize));
+    DbPack pack(
+        sp->data,
+        sampleDataPerPage(type, m_pageSize),
+        0,
+        {.sample = { time }}
+    );
     pack.put(time, value);
     sp->dataBits = (uint16_t) (pack.bits());
 }
@@ -1087,9 +1167,9 @@ void DbData::onWalApplySampleUpdateTime(
 ) {
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
-    if (firstTime == TimePoint{})
+    if (!empty(firstTime))
         sp->firstTime = firstTime;
-    if (lastTime == TimePoint{})
+    if (!empty(lastTime))
         sp->lastTime = lastTime;
 }
 
@@ -1104,17 +1184,125 @@ void DbData::onWalApplySampleReplace(
     auto sp = static_cast<SamplePage *>(ptr);
     assert(sp->hdr.type == sp->kPageType);
     auto newCount = sp->dataBits + srcBits - dstBits;
+    size_t bitCnt = sp->dataBits;
     if (srcBits <= dstBits) {
-        assert(dstBits - srcBits < sp->dataBits);
-        BitSpan bits(sp->data, sp->dataBits);
+        // Shrinking.
+        assert(dstBits - srcBits <= sp->dataBits);
+    } else {
+        // Growing, but not too much.
+        assert(newCount <= 8 * sampleDataPerPage(sp->sampleType, m_pageSize));
+        bitCnt = newCount;
+    }
+    assert(dstBits <= sp->dataBits);
+    if (dstPos == -1) {
+        // Special value indicates operation is at end of data.
+        dstPos = sp->dataBits - dstBits;
+    }
+    assert(dstPos + dstBits <= sp->dataBits);
+    auto wordBits = BitSpan::kWordBits;
+    auto words = (bitCnt + wordBits - 1) / wordBits;
+    BitSpan bits(sp->data, words);
+    if (srcBits) {
         bits.replace(dstPos, dstBits, src, 0, srcBits);
     } else {
-        assert(newCount <=
-            sampleDataPerPage(sp->sampleType, m_pageSize) * sizeof *sp->data);
-        BitSpan bits(sp->data, newCount);
-        bits.replace(dstPos, dstBits, src, 0, srcBits);
+        bits.erase(dstPos, dstBits);
     }
     sp->dataBits = (uint16_t) newCount;
+}
+
+
+/****************************************************************************
+*
+*   DbData - Get Samples
+*
+***/
+
+namespace {
+
+enum GetSampleResult {
+    kAborted,   // Callback handler returned false.
+    kMore,      // More matching samples may be on next page.
+    kComplete,  // All matching samples have been reported.
+};
+
+} // namespace
+
+//===========================================================================
+static GetSampleResult reportSamples(
+    unsigned * count,
+    IDbDataNotify * notify,
+    DbTxn & txn,
+    const DbMetricInfo & mi,
+    const DbData::SamplePage * sp,
+    TimePoint first,
+    TimePoint last
+) {
+    assert(sp->hdr.type == sp->kPageType);
+    DbUnpackIter in(
+        sp->data,
+        sp->dataBits,
+        0,
+        {.sample = { sp->firstTime }}
+    );
+    if (*count) {
+        assert(in);
+        for (;;) {
+            if (in->time > last)
+                return kComplete;
+            *count += 1;
+            if (!notify->onDbSample(sp->hdr.id, in->time, in->value))
+                return kAborted;
+            if (!++in)
+                return kMore;
+        }
+    }
+
+    // Still searching for first value in [first, last].
+    if (sp->lastTime < first) {
+        // The range starts in the gap between this page and the next.
+        if (first == last) {
+            // And ends in the gap, therefore there are no samples.
+            return kComplete;
+        }
+        // The range may extend onto the next page, so we have to check it.
+        return kMore;
+    }
+
+    if (sp->firstTime > last) {
+        // This can occur when there is only a single sample page and no index.
+        // Otherwise the index search (via findLessEqual) precludes starting on
+        // a page that's beyond the end of the range.
+        return kComplete;
+    }
+    for (;; ++in) {
+        assert(in);
+        if (in->time >= first)
+            break;
+    }
+    if (in->time > last) {
+        // First sample after range start was also after range end.
+        return kComplete;
+    }
+    DbSeriesInfo dsi;
+    dsi.id = sp->hdr.id;
+    dsi.name = mi.name;
+    dsi.type = mi.type;
+    dsi.interval = mi.interval;
+    dsi.first = first;
+    dsi.last = last + mi.interval;
+    if (!notify->onDbSeriesStart(dsi)) {
+        *count = 1;
+        return kAborted;
+    }
+    for (;;) {
+        *count += 1;
+        if (!notify->onDbSample(sp->hdr.id, in->time, in->value))
+            return kAborted;
+        if (!++in)
+            return kMore;
+        if (in->time > last)
+            return kComplete;
+    }
 }
 
 //===========================================================================
@@ -1130,7 +1318,7 @@ void DbData::getSamples(
     if (!mi.type)
         return noSamples(notify, id, {}, kSampleTypeInvalid, {}, {});
 
-    // round time to metric's sampling interval
+    // Round time to metric's sampling interval.
     first -= first.time_since_epoch() % mi.interval;
     last -= last.time_since_epoch() % mi.interval;
     // Expand range to include presamples.
@@ -1141,46 +1329,39 @@ void DbData::getSamples(
         return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
 
     auto sp = txn.pin<SamplePage>(lastPage);
-    if (first > last || first > sp->lastTime)
+    auto lastSampleTime = sp->lastTime;
+    auto firstSampleTime = lastSampleTime - mi.retention + mi.interval;
+    if (first < firstSampleTime)
+        first = firstSampleTime;
+    if (last > lastSampleTime)
+        last = lastSampleTime;
+    if (first >= last)
         return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
 
-    vector<pgno_t> pgnos;
-    if (first >= sp->firstTime) {
-        pgnos.push_back(lastPage);
-    } else {
-        // Get list from the metric's sample index.
-    }
-    if (pgnos.empty())
-        return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
-
-    DbSeriesInfo dsi;
-    dsi.id = id;
-    dsi.name = mi.name;
-    dsi.type = mi.type;
-    dsi.interval = mi.interval;
     unsigned count = 0;
-    for (auto && spno : pgnos) {
-        // Loop through entries on page
-        sp = txn.pin<SamplePage>(spno);
-        for (auto i = 0; i < 2; ++i) {
-            double value = NAN;
-            if (sp) {
-                value = 0;
-                if (isnan(value))
-                    continue;
-            }
-            if (!count++) {
-                dsi.first = first;
-                dsi.last = last + mi.interval;
-                if (!notify->onDbSeriesStart(dsi))
-                    return;
-            }
-            if (!notify->onDbSample(id, first, value))
-                return;
+    GetSampleResult result = {};
+    if (sp->sampleIndex == npos) {
+        result = reportSamples(&count, notify, txn, mi, sp, first, last);
+    } else {
+        SampleIndexRec rec = {
+            .time = first,
+            .pgno = pgno_t::npos,
+        };
+        auto key = ::trieKey(rec);
+        DbSamplePageHeap heap(&txn, this, sp->sampleIndex);
+        StrTrieBase trie(&heap);
+        for (auto i = trie.findLessEqual(key); i; ++i) {
+            result = reportSamples(&count, notify, txn, mi, sp, first, last);
+            if (result != kMore)
+                break;
         }
     }
-    if (!count) {
-        return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
+
+    if (result == kAborted) {
+        // Send no more updates after an abort.
+        return;
+    } else if (!count) {
+        noSamples(notify, id, mi.name, mi.type, last, mi.interval);
     } else {
         notify->onDbSeriesEnd(id);
     }

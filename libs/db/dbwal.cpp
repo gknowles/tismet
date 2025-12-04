@@ -1835,8 +1835,8 @@ void DbTxn::PinScope::release() {
 void DbTxn::PinScope::keep(pgno_t pgno) {
     assert(m_active);
     assert(m_txn.m_pinnedPages.contains(pgno));
-    [[maybe_unused]] auto found = m_prevPins.insert(pgno);
-    assert(found);
+    [[maybe_unused]] auto inserted = m_prevPins.insert(pgno);
+    assert(inserted);
 }
 
 

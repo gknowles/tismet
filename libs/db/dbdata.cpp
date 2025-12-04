@@ -68,10 +68,13 @@ DbRootVersion::DbRootVersion(DbTxn * txn, DbData * data, unsigned rootId)
 
 //===========================================================================
 DbRootVersion::~DbRootVersion() {
-    // Remove pages that were deprecated (via replacement) when building the
-    // next version.
-    for (auto&& pgno : deprecatedPages)
-        data.freeDeprecatedPage(txn, (pgno_t) pgno);
+    if (deprecatedPages) {
+        // Remove pages that were deprecated (via replacement) when building
+        // the next version.
+        data.freeDeprecatedPages(txn, deprecatedPages);
+        auto freePages = txn.commit();
+        data.publishFreePages(freePages);
+    }
 }
 
 //===========================================================================
@@ -594,8 +597,7 @@ bool DbData::upgradeRoots(DbTxn & txn) {
         // Add to persistent rootName index
         trie.insert(trieKey(def.name, def.id));
     }
-    for (auto&& pgno : heap.destroyed())
-        freeDeprecatedPage(txn, (pgno_t) pgno);
+    freeDeprecatedPages(txn, heap.destroyed());
 
     // Save radix index roots
     for (auto&& def : m_rootDefs) {
@@ -836,11 +838,13 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
     }
 
     auto noPages = !m_freePages && !txn.freePages();
+
     txn.walPageFree(pgno);
     assert(m_freeRoot);
     [[maybe_unused]] bool updated =
         bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, true);
     assert(updated);
+
     auto bpp = bitsPerPage();
     if (noPages && pgno / bpp == m_numPages / bpp) {
         // There were no free pages and the newly freed page is near the end of
@@ -896,8 +900,8 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
             && p->type != DbPageType::kFree);
     }
     assert(m_deprecatedRoot);
-    [[maybe_unused]] bool updated =
-        bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, true);
+    [[maybe_unused]] bool updated = false;
+    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, true);
     assert(updated);
     updated = m_deprecatedPages.insert(pgno);
     assert(updated);
@@ -905,15 +909,35 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-void DbData::freeDeprecatedPage(DbTxn & txn, pgno_t pgno) {
+void DbData::freeDeprecatedPages(DbTxn & txn, UnsignedSet pgnos) {
     [[maybe_unused]] bool updated = false;
-    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, false);
-    assert(updated);
-    freePage(txn, pgno);
+    //for (auto pgno : pgnos) {
+    //    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, false);
+    //    assert(updated);
+    //    freePage(txn, (pgno_t) pgno);
+    //    scoped_lock lk(m_pageMut);
+    //    updated = m_deprecatedPages.erase(pgno);
+    //    assert(updated);
+    //    s_perfDepPages -= 1;
+    //}
+
+    for (auto&& r : pgnos.ranges()) {
+        updated = bitAssign(
+            txn,
+            m_deprecatedRoot,
+            0,
+            r.first,
+            r.second + 1,
+            false
+        );
+        assert(updated);
+        for (auto pgno = r.first; pgno <= r.second; ++pgno)
+            freePage(txn, (pgno_t) pgno);
+    }
     scoped_lock lk{m_pageMut};
-    updated = m_deprecatedPages.erase(pgno);
-    assert(updated);
-    s_perfDepPages -= 1;
+    assert(m_deprecatedPages.contains(pgnos));
+    m_deprecatedPages.erase(pgnos);
+    s_perfDepPages -= (unsigned) pgnos.count();
 }
 
 
@@ -1122,6 +1146,8 @@ void DbTxn::walRootUpdate(pgno_t pgno, pgno_t rootPage) {
 void DbTxn::walPageFree(pgno_t pgno) {
     auto [rec, bytes] = alloc<DbWal::Record>(kRecTypePageFree, pgno);
     wal(rec, bytes);
+
+    // Record for the free page to be published when transaction is committed.
     m_freePages.insert(pgno);
 }
 
