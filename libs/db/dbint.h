@@ -379,6 +379,7 @@ public:
         size_t dstPos,
         size_t dstBits,
         const uint8_t * src,
+        size_t srcPos,
         size_t srcBits
     );
 
@@ -623,6 +624,12 @@ public:
     void getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id);
 
     // Returns value of previous root.
+    pgno_t updateLastSamplePage(
+        DbTxn & txn,
+        uint32_t id,
+        pgno_t spno
+    );
+    // Returns value of previous root.
     pgno_t updateSampleIndexRoot(
         DbTxn & txn,
         pgno_t spno,
@@ -759,15 +766,14 @@ private:
         uint32_t id,
         bool createIfNotExists = false
     );
-    void eraseSampleIndex(DbTxn & txn, uint32_t id);
     // Updates the pages entry in the index to reflect it's new firstTime. If
     // expiration is non-zero,
     void updateSampleIndex(
         DbTxn & txn,
+        const SamplePage * root,
+        pgno_t sampleIndex,
         const SamplePage * sp,
-        pgno_t spno,
         std::optional<Dim::TimePoint> oldTime,
-        std::optional<Dim::TimePoint> newTime,
         std::optional<Dim::Duration> expiration = {}
     );
 
@@ -920,6 +926,7 @@ public:
         pgno_t root,
         unsigned rootId = 0     // 0 for readonly
     );
+    DbTxn & txn() { return m_txn; }
     const Dim::UnsignedSet & destroyed() const { return m_destroyed; }
 
     // Inherited via IPageHeap

@@ -163,12 +163,7 @@ DbSamplePageHeap::DbSamplePageHeap(
 
 //===========================================================================
 void DbSamplePageHeap::onDbPageHeapSetRoot(pgno_t pgno) {
-    m_data.updateSampleIndexRoot(
-        m_txn,
-        m_rootIndex,
-        m_rootId,
-        pgno == pgno_t::npos ? (pgno_t) 0 : pgno
-    );
+    m_data.updateSampleIndexRoot(m_txn, m_rootIndex, m_rootId, pgno);
 }
 
 

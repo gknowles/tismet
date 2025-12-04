@@ -37,7 +37,7 @@ struct TestDbSeries : IDbDataNotify {
     TimePoint m_first;
     Duration m_interval;
     unsigned m_count{};
-    vector<double> m_samples;
+    vector<pair<TimePoint, double>> m_samples;
 
     bool onDbSeriesStart(const DbSeriesInfo & info) override;
     bool onDbSample(
@@ -56,11 +56,12 @@ bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & info) {
     m_first = info.first;
     m_interval = info.interval;
     m_count = 0;
-    if (!m_interval.count()) {
+    if (empty(m_interval)) {
         m_samples.clear();
     } else {
         auto count = (info.last - info.first) / info.interval;
-        m_samples.resize(count, NAN);
+        m_samples.reserve(count);
+        m_samples.resize(0);
     }
     return true;
 }
@@ -71,11 +72,8 @@ bool TestDbSeries::onDbSample(
     Dim::TimePoint time,
     double value
 ) {
-    auto pos = (time - m_first) / m_interval;
-    assert(pos >= 0 && pos < (int) m_samples.size());
-    m_samples[pos] = value;
-    if (!isnan(value))
-        m_count += 1;
+    m_samples.push_back({time, value});
+    m_count += 1;
     return true;
 }
 
@@ -170,11 +168,10 @@ void Test::dataTests() {
     //EXPECT(stats.freePages == 0);
     auto spp = 100u;
     auto pgt = spp * 1min;
-
     DbContext ctx(h);
     uint32_t id;
     unsigned count = 0;
-    count += dbInsertMetric(&id, h, name);
+    count = dbInsertMetric(&id, h, name);
     EXPECT("metrics inserted" && count == 1);
     stats = dbQueryStats(h);
     DbMetricInfo info;
@@ -182,65 +179,66 @@ void Test::dataTests() {
     info.retention = duration_cast<Duration>(6.5 * pgt);
     info.interval = 1min;
     dbUpdateMetric(h, id, info);
-    dbUpdateSample(h, id, start, 1.0);
-    ctx.reset();
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 7);
-    dbClose(h);
-    EXPECT(count == 1);
 
-    h = dbOpen(dat);
-    EXPECT(h && "Failure to reopen database");
-    if (!h)
-        return;
-    stats = dbQueryStats(h);
-    ctx.reset(h);
-    count = dbInsertMetric(&id, h, name);
-    EXPECT("metrics inserted" && count == 0);
-    dbUpdateSample(h, id, start, 3.0);
-    dbUpdateSample(h, id, start + 1min, 4.0);
-    dbUpdateSample(h, id, start - 1min, 2.0);
-    // add to first of new page 2
-    dbUpdateSample(h, id, start + pgt - 1min, 5.0);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 8);
-    // another on page 2
-    dbUpdateSample(h, id, start + pgt, 6.0);
-    ctx.reset();
-    dbClose(h);
+    struct UpdateInfo {
+        Duration sinceStart;
+        double value;
+        bool reopen = false;
+        unsigned line = source_location::current().line();
+    } vals[] = {
+        { 0s, 1, true },
+        { 0s, 3 },
+        { 1min, 4 },
+        { -1min, 2 },
+        { pgt - 1min, 5 },
+        { pgt, 6, true },
+        { 2*pgt - 2min, 7 },
+        { 4*pgt + 10min, 8 },
+        { -2min, 1 },
+        { 6*pgt, 6 },
+        { 20*pgt, 1 },
+    };
+    map<TimePoint, double> expected;
+    TestDbSeries samples;
+    for (auto&& val : vals) {
+        auto time = start + val.sinceStart;
+        auto value = val.value;
+        dbUpdateSample(h, id, time, value);
+        if (val.reopen) {
+            ctx.reset();
+            stats = dbQueryStats(h);
+            dbClose(h);
+            h = dbOpen(dat);
+            EXPECT(h && "Failure to reopen database");
+            if (!h)
+                return;
+            stats = dbQueryStats(h);
+            ctx.reset(h);
+            count = dbInsertMetric(&id, h, name);
+            EXPECT("metrics inserted" && count == 0);
+        }
+        expected[time] = value;
+        dbGetSamples(&samples, h, id);
+        auto ix = expected.begin();
+        auto success = true;
+        for (auto&& samp : samples.m_samples) {
+            if (ix == expected.end()) {
+                success = false;
+                break;
+            }
+            if (samp.first != ix->first || samp.second != ix->second) {
+                success = false;
+                break;
+            }
+            ++ix;
+        }
+        if (ix != expected.end())
+            success = false;
+        if (!success) {
+            EXPECT(!"Expected samples don't match.");
+        }
+    }
 
-    h = dbOpen(dat);
-    EXPECT(h && "Failure to reopen database");
-    if (!h)
-        return;
-    ctx.reset(h);
-    count = dbInsertMetric(&id, h, name);
-    EXPECT("metrics inserted" && count == 0);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 8);
-    // add to very end of page 2
-    dbUpdateSample(h, id, start + 2 * pgt - 2min, 7.0);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 8);
-    // add to new page 5. leaves sample pages 3, 4 unallocated
-    dbUpdateSample(h, id, start + 4 * pgt + 10min, 8.0);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 10);
-    // add to new historical page, and adds a radix page
-    dbUpdateSample(h, id, start - 2min, 1);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 11);
-    // circle back onto that historical page, reassigning it's time
-    dbUpdateSample(h, id, start + 6 * pgt, 6);
-    stats = dbQueryStats(h);
-    //EXPECT(stats.numPages == 11);
-    //EXPECT(stats.freePages == 0);
-    EXPECT(stats.metrics == 1);
-    // add sample more than the retention period in the future
-    dbUpdateSample(h, id, start + 20 * pgt, 1);
-    stats = dbQueryStats(h);
-    EXPECT(stats.freePages == 5);
-    EXPECT(stats.metrics == 1);
     // erase metric
     dbEraseMetric(h, id);
     stats = dbQueryStats(h);
@@ -347,6 +345,7 @@ void Test::sampleTests() {
     for (auto && id : found)
         dbEraseMetric(h, id);
     stats = dbQueryStats(h);
+    EXPECT(stats.metrics == 0);
     dbInsertMetric(&id, h, "this.is.metric.1");
     EXPECT(id == 1);
     dbUpdateSample(h, id, start, 1.0);
@@ -357,6 +356,9 @@ void Test::sampleTests() {
     auto pageStart = start;
     auto oldFree = dbQueryStats(h).freePages - 1;
     for (;;) {
+        if (auto m = pageStart - start; m == 35min) {
+            stats = dbQueryStats(h);
+        }
         dbUpdateSample(h, id, pageStart, 1.0);
         stats = dbQueryStats(h);
         if (oldFree != stats.freePages)

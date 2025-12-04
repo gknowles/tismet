@@ -146,6 +146,18 @@ static void applySampleUpdateLastTime(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
+static void applySampleEraseAt(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleDataRefRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        rec->bitPos,
+        rec->bitLen,
+        {},
+        0
+    );
+}
+
+//===========================================================================
 static uint16_t sizeSampleReplaceAt(const DbWal::Record & raw) {
     auto & rec = reinterpret_cast<const SampleReplaceAtRec &>(raw);
     return offsetof(SampleReplaceAtRec, data)
@@ -185,6 +197,10 @@ static DbWalRegisterRec s_sampleRecInfo{
     { kRecTypeSampleUpdateLastTime,
         DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
         applySampleUpdateLastTime,
+    },
+    { kRecTypeSampleErase,
+        DbWalRecInfo::sizeFn<SampleDataRefRec>,
+        applySampleEraseAt,
     },
     { kRecTypeSampleReplace,
         sizeSampleReplaceAt,
@@ -262,11 +278,21 @@ void DbTxn::walSampleReplace(
     size_t dstPos,
     size_t dstBits,
     const uint8_t src[],
+    size_t srcPos,
     size_t srcBits
 ) {
     assert(dstPos < numeric_limits<uint16_t>::max());
     assert(dstPos + dstBits < numeric_limits<uint16_t>::max());
-    assert(srcBits < numeric_limits<uint16_t>::max());
+    assert(srcPos < numeric_limits<uint16_t>::max());
+    assert(srcPos + srcBits < numeric_limits<uint16_t>::max());
+    if (!srcBits) {
+        auto [rec, bytes] = alloc<SampleDataRefRec>(kRecTypeSampleErase, pgno);
+        rec->bitPos = (uint16_t) dstPos;
+        rec->bitLen = (uint16_t) dstBits;
+        wal(&rec->hdr, bytes);
+        return;
+    }
+
     auto srcBytes = (srcBits + 7) / 8;
     auto [rec, bytes] = alloc<SampleReplaceAtRec>(
         kRecTypeSampleReplace,
@@ -276,6 +302,6 @@ void DbTxn::walSampleReplace(
     rec->dstPos = (uint16_t) dstPos;
     rec->dstBits = (uint16_t) dstBits;
     rec->srcBits = (uint16_t) srcBits;
-    memcpy(rec->data, src, srcBytes);
+    BitSpan::copy(rec->data, 0, src, srcPos, srcBits);
     wal(&rec->hdr, bytes);
 }
