@@ -356,6 +356,9 @@ void Test::sampleTests() {
     auto pageStart = start;
     auto oldFree = dbQueryStats(h).freePages - 1;
     for (;;) {
+        if (auto m = pageStart - start; m == 35min) {
+            stats = dbQueryStats(h);
+        }
         dbUpdateSample(h, id, pageStart, 1.0);
         stats = dbQueryStats(h);
         if (oldFree != stats.freePages)
