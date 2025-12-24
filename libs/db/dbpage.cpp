@@ -118,12 +118,15 @@ bool DbPage::open(
 bool DbPage::openData(string_view datafile) {
     using enum File::OpenMode;
     auto oflags = fReadWrite | fDenyWrite | fRandom;
-    if (m_flags.any(fDbOpenCreat))
-        oflags |= fCreat | fRemove;
+
     if (m_flags.any(fDbOpenTrunc))
         oflags |= fTrunc;
-    if (m_flags.any(fDbOpenExcl))
-        oflags |= fExcl;
+
+    if (m_flags.any(fDbOpenNew)) {
+        oflags |= fOpenNew | fRemove;
+    } else if (m_flags.any(fDbOpenAlways)) {
+        oflags |= fOpenAlways | fRemove;
+    }
     auto ec = fileOpen(&m_fdata, datafile, oflags);
     if (!m_fdata) {
         logMsgError() << "Open failed, " << datafile;
@@ -132,7 +135,7 @@ bool DbPage::openData(string_view datafile) {
 
     // If opened with exclusive create the file is obviously new, otherwise
     // assume it already existed until we know better.
-    m_newFiles = m_flags.all(fDbOpenCreat | fDbOpenExcl);
+    m_newFiles = m_flags.all(fDbOpenNew);
 
     // Auto-close file on failure of initial processing of the opened file.
     Finally fin([&fh = m_fdata, &newf = m_newFiles]() {
@@ -178,9 +181,12 @@ bool DbPage::openWork(string_view workfile) {
     auto oflags = fTemp | fReadWrite | fDenyWrite | fBlocking | fRandom;
     // Opening the data file has already succeeded, so always create the work
     // file (if not exist).
-    oflags |= fCreat;
-    if (m_flags.any(fDbOpenExcl))
-        oflags |= fExcl;
+    if (m_flags.any(fDbOpenNew)) {
+        oflags |= fOpenNew;
+    } else {
+        assert(m_flags.any(fDbOpenAlways));
+        oflags |= fOpenAlways;
+    }
     auto ec = fileOpen(&m_fwork, workfile, oflags);
     if (!m_fwork) {
         logMsgError() << "Open failed, " << workfile;

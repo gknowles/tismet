@@ -233,7 +233,7 @@ static void updateFile(string_view fname, string_view content) {
         fileOpen(
             &f,
             fname,
-            fReadWrite | fCreat | fTrunc | fBlocking
+            fReadWrite | fOpenAlways | fTrunc | fBlocking
         );
         fileAppendWait(nullptr, f, ncontent.data(), ncontent.size());
         fileClose(f);

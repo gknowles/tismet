@@ -115,7 +115,9 @@ public:
     size_t size() const { return m_pages.size(); }
 
     Dim::FileHandle dataFile() const { return m_fdata; }
+    Dim::FileHandle workFile() const { return m_fwork; }
     bool newFiles() const { return m_newFiles; }
+    Dim::EnumFlags<DbOpenFlags> openFlags() const { return m_flags; }
 
 private:
     struct WorkPageInfo;
@@ -378,7 +380,7 @@ public:
         pgno_t pgno,
         size_t dstPos,
         size_t dstBits,
-        const uint8_t * src,
+        const uint8_t src[],
         size_t srcPos,
         size_t srcBits
     );

@@ -165,7 +165,7 @@ static void dumpCmd(Cli & cli) {
         fileOpen(
             &fout,
             s_opts.dumpfile,
-            fCreat | fTrunc | fReadWrite | fDenyWrite
+            fOpenAlways | fTrunc | fReadWrite | fDenyWrite
         );
     }
 

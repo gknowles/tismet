@@ -392,7 +392,7 @@ static void loadCmd(Cli & cli) {
     logMsgInfo() << "Loading " << s_opts.dumpfile
         << " into " << s_opts.database;
     tcLogStart();
-    EnumFlags flags = fDbOpenCreat;
+    EnumFlags flags = fDbOpenAlways;
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
     auto h = dbOpen(s_opts.database, flags, 512);

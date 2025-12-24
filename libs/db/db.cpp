@@ -63,6 +63,7 @@ public:
     );
     void close();
     void configure(const DbConfig & conf);
+    DbInfo queryInfo();
     DbStats queryStats();
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
     bool backup(IDbProgressNotify * notify, string_view dst);
@@ -195,7 +196,7 @@ bool DbBase::open(
     if (!m_wal.open(walfile, flags, pageSize))
         return false;
     if (!m_wal.newFiles())
-        flags.reset(fDbOpenCreat | fDbOpenExcl);
+        flags.reset(fDbOpenNew | fDbOpenAlways);
     if (!m_page.open(
         datafile,
         workfile,
@@ -234,6 +235,17 @@ bool DbBase::onDbSeriesStart(const DbSeriesInfo & info) {
 void DbBase::configure(const DbConfig & conf) {
     m_page.configure(conf);
     m_wal.configure(conf);
+}
+
+//===========================================================================
+DbInfo DbBase::queryInfo() {
+    DbInfo out;
+    out.datafile = filePath(m_page.dataFile());
+    out.workfile = filePath(m_page.workFile());
+    out.walfile = filePath(m_wal.walFile());
+    out.flags = m_page.openFlags();
+    out.newFiles = m_page.newFiles();
+    return out;
 }
 
 //===========================================================================
@@ -652,6 +664,12 @@ DbSampleType fromString(std::string_view src, DbSampleType def) {
 void dbConfigure(DbHandle h, const DbConfig & conf) {
     auto ptr = db(h);
     ptr->configure(conf);
+}
+
+//===========================================================================
+DbInfo dbQueryInfo(DbHandle h) {
+    auto ptr = db(h);
+    return ptr->queryInfo();
 }
 
 //===========================================================================

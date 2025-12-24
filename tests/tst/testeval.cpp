@@ -596,7 +596,7 @@ void Test::onTestRun() {
     auto name = "this.is.metric.1"s;
 
     const char dat[] = "test";
-    auto h = dbOpen(dat, fDbOpenCreat | fDbOpenTrunc, 128);
+    auto h = dbOpen(dat, fDbOpenAlways | fDbOpenTrunc, 128);
     EXPECT(h && "Failure to create database");
     if (!h)
         return;

@@ -287,12 +287,12 @@ static FileHandle openWalFile(
     } else {
         oflags |= fReadWrite;
     }
-    if (flags.any(fDbOpenCreat))
-        oflags |= fCreat | fRemove;
+    if (flags.any(fDbOpenNew))
+        oflags |= fOpenNew | fRemove;
+    if (flags.any(fDbOpenAlways))
+        oflags |= fOpenAlways | fRemove;
     if (flags.any(fDbOpenTrunc))
         oflags |= fTrunc;
-    if (flags.any(fDbOpenExcl))
-        oflags |= fExcl;
     FileHandle f;
     auto ec = fileOpen(&f, fname, oflags);
     if (!f)
@@ -319,7 +319,7 @@ bool DbWal::open(
 
     // If opened with exclusive create the file is obviously new, otherwise
     // assume it already existed until we know better.
-    m_newFiles = m_openFlags.all(fDbOpenCreat | fDbOpenExcl);
+    m_newFiles = m_openFlags.all(fDbOpenNew);
 
     // Auto-close file on failure of initial processing of the opened file.
     Finally autoclose([&fh = m_fwal, &newf = m_newFiles]() {

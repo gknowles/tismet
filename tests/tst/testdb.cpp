@@ -16,11 +16,23 @@ using namespace Dim;
 *
 ***/
 
-#define EXPECT(...)                                                         \
+#define EXPECT_LINE(line, ...)                                              \
     if (!bool(__VA_ARGS__)) {                                               \
-        logMsgError() << "Line " << source_location::current().line()       \
-            << ": EXPECT(" << #__VA_ARGS__ << ") failed";                   \
+        logMsgError() << "Line " << line << ": "                            \
+            << "EXPECT(" << #__VA_ARGS__ << ") failed";                     \
     }
+#define EXPECT(...) EXPECT_LINE(source_location::current().line(), __VA_ARGS__)
+
+namespace {
+
+struct UpdateInfo {
+    Duration sinceStart;
+    double value;
+    bool reopen = false;
+    unsigned line = source_location::current().line();
+};
+
+} // namespace
 
 
 /****************************************************************************
@@ -80,6 +92,82 @@ bool TestDbSeries::onDbSample(
 
 /****************************************************************************
 *
+*   Helpers
+*
+***/
+
+//===========================================================================
+static void addSamples(
+    DbHandle * ph,
+    DbContext * ctx,
+    uint32_t id,
+    TimePoint start,
+    string_view name,
+    const vector<UpdateInfo> & vals
+) {
+    DbHandle h = *ph;
+    assert(h == ctx->handle());
+    TestDbSeries samples;
+    auto info = dbQueryInfo(h);
+    auto stats = dbQueryStats(h);
+    if (!dbGetSamples(&samples, h, id)) {
+        EXPECT_LINE(vals.front().line, !"Unable to preload samples");
+        return;
+    }
+    map<TimePoint, double> expected;
+    for (auto&& samp : samples.m_samples) {
+        expected[samp.first] = samp.second;
+    }
+    for (auto&& val : vals) {
+        auto time = start + val.sinceStart;
+        auto value = val.value;
+        dbUpdateSample(h, id, time, value);
+        if (val.reopen) {
+            ctx->reset();
+            stats = dbQueryStats(h);
+            dbClose(h);
+            h = dbOpen(
+                info.datafile,
+                info.flags & ~(fDbOpenNew | fDbOpenAlways | fDbOpenTrunc)
+            );
+            EXPECT_LINE(val.line, h && "Failure to reopen database");
+            if (!h) {
+                *ph = h;
+                return;
+            }
+            info = dbQueryInfo(h);
+            stats = dbQueryStats(h);
+            ctx->reset(h);
+            auto count = dbInsertMetric(&id, h, name);
+            EXPECT_LINE(val.line, "metrics inserted" && count == 0);
+        }
+        dbGetSamples(&samples, h, id);
+        expected[time] = value;
+        auto ix = expected.begin();
+        auto success = true;
+        for (auto&& samp : samples.m_samples) {
+            if (ix == expected.end()) {
+                success = false;
+                break;
+            }
+            if (samp.first != ix->first || samp.second != ix->second) {
+                success = false;
+                break;
+            }
+            ++ix;
+        }
+        if (ix != expected.end())
+            success = false;
+        if (!success) {
+            EXPECT_LINE(val.line, !"Expected samples don't match.");
+        }
+    }
+    *ph = h;
+}
+
+
+/****************************************************************************
+*
 *   Test
 *
 ***/
@@ -123,7 +211,7 @@ void Test::invalidFileTests() {
         kLogTypeError,
         "Open failed (system:5), " + invalidWal.str()
     }});
-    auto h = dbOpen(invalidWal, fDbOpenCreat | fDbOpenTrunc);
+    auto h = dbOpen(invalidWal, fDbOpenAlways | fDbOpenTrunc);
     EXPECT(!h && "Open of directory as file should have failed.");
     bool found = false;
     EXPECT(!fileDirExists(&found, invalidWal) && found);
@@ -133,7 +221,7 @@ void Test::invalidFileTests() {
 
     fileCreateDirs(invalidData);
     testLogMsgs({{kLogTypeError, "Open failed, " + invalidData.str()}});
-    h = dbOpen(invalidData, fDbOpenCreat | fDbOpenTrunc);
+    h = dbOpen(invalidData, fDbOpenAlways | fDbOpenTrunc);
     EXPECT(!h && "Open of directory as file should have failed.");
     EXPECT(!fileExists(&found, invalidWal) && !found);
     EXPECT(!fileDirExists(&found, invalidData) && found);
@@ -142,7 +230,7 @@ void Test::invalidFileTests() {
 
     fileCreateDirs(invalidWork);
     testLogMsgs({{kLogTypeError, "Open failed, " + invalidWork.str()}});
-    h = dbOpen(invalidWork, fDbOpenCreat | fDbOpenTrunc);
+    h = dbOpen(invalidWork, fDbOpenAlways | fDbOpenTrunc);
     EXPECT(!h && "Open of directory as file should have failed.");
     EXPECT(!fileExists(&found, invalidWal) && !found);
     EXPECT(!fileExists(&found, invalidData) && !found);
@@ -156,7 +244,7 @@ void Test::dataTests() {
     auto name = "this.is.metric.1"s;
 
     const char dat[] = "test";
-    auto h = dbOpen(dat, fDbOpenCreat | fDbOpenTrunc, 128);
+    auto h = dbOpen(dat, fDbOpenAlways | fDbOpenTrunc, 128);
     EXPECT(h && "Failure to create database");
     if (!h)
         return;
@@ -179,65 +267,6 @@ void Test::dataTests() {
     info.retention = duration_cast<Duration>(6.5 * pgt);
     info.interval = 1min;
     dbUpdateMetric(h, id, info);
-
-    struct UpdateInfo {
-        Duration sinceStart;
-        double value;
-        bool reopen = false;
-        unsigned line = source_location::current().line();
-    } vals[] = {
-        { 0s, 1, true },
-        { 0s, 3 },
-        { 1min, 4 },
-        { -1min, 2 },
-        { pgt - 1min, 5 },
-        { pgt, 6, true },
-        { 2*pgt - 2min, 7 },
-        { 4*pgt + 10min, 8 },
-        { -2min, 1 },
-        { 6*pgt, 6 },
-        { 20*pgt, 1 },
-    };
-    map<TimePoint, double> expected;
-    TestDbSeries samples;
-    for (auto&& val : vals) {
-        auto time = start + val.sinceStart;
-        auto value = val.value;
-        dbUpdateSample(h, id, time, value);
-        if (val.reopen) {
-            ctx.reset();
-            stats = dbQueryStats(h);
-            dbClose(h);
-            h = dbOpen(dat);
-            EXPECT(h && "Failure to reopen database");
-            if (!h)
-                return;
-            stats = dbQueryStats(h);
-            ctx.reset(h);
-            count = dbInsertMetric(&id, h, name);
-            EXPECT("metrics inserted" && count == 0);
-        }
-        expected[time] = value;
-        dbGetSamples(&samples, h, id);
-        auto ix = expected.begin();
-        auto success = true;
-        for (auto&& samp : samples.m_samples) {
-            if (ix == expected.end()) {
-                success = false;
-                break;
-            }
-            if (samp.first != ix->first || samp.second != ix->second) {
-                success = false;
-                break;
-            }
-            ++ix;
-        }
-        if (ix != expected.end())
-            success = false;
-        if (!success) {
-            EXPECT(!"Expected samples don't match.");
-        }
-    }
 
     // erase metric
     dbEraseMetric(h, id);
@@ -327,11 +356,13 @@ void Test::queryTests() {
 //===========================================================================
 void Test::sampleTests() {
     auto start = timeFromUnix(900'000'000);
+    auto name = "this.is.metric.1"s;
     const char dat[] = "test";
     UnsignedSet found;
     DbContext ctx;
     uint32_t id;
     DbMetricInfo info;
+    TestDbSeries samples;
 
     auto h = dbOpen(dat);
     EXPECT(h && "Failure to reopen database");
@@ -346,28 +377,50 @@ void Test::sampleTests() {
         dbEraseMetric(h, id);
     stats = dbQueryStats(h);
     EXPECT(stats.metrics == 0);
-    dbInsertMetric(&id, h, "this.is.metric.1");
+
+    dbInsertMetric(&id, h, name);
+    vector<UpdateInfo> vals = {
+        { 0s, 1, true },
+        { 0s, 3 },
+        { 1min, 4 },
+        { -1min, 2 },
+        { pgt - 1min, 5 },
+        { pgt, 6, true },
+        { 2*pgt - 2min, 7 },
+        { 4*pgt + 10min, 8 },
+        { -2min, 1 },
+        { 6*pgt, 6 },
+        { 20*pgt, 1 },
+    };
+    addSamples(&h, &ctx, id, start, name, vals);
+    dbEraseMetric(h, id);
+
+    // Page split when appending to end.
+    dbInsertMetric(&id, h, name);
     EXPECT(id == 1);
-    dbUpdateSample(h, id, start, 1.0);
     info.type = kSampleTypeFloat32;
     info.retention = duration_cast<Duration>(3 * pgt);
     info.interval = 1min;
     dbUpdateMetric(h, id, info);
+    dbUpdateSample(h, id, start, 1.0);
+    stats = dbQueryStats(h);
     auto pageStart = start;
-    auto oldFree = dbQueryStats(h).freePages - 1;
+    auto oldFree = stats.freePages;
     for (;;) {
-        if (auto m = pageStart - start; m == 35min) {
-            stats = dbQueryStats(h);
-        }
+        vals.emplace_back(pageStart - start, 1.0);
         dbUpdateSample(h, id, pageStart, 1.0);
         stats = dbQueryStats(h);
         if (oldFree != stats.freePages)
             break;
         pageStart += 1min;
     }
+    dbGetSamples(&samples, h, id);
+    EXPECT(samples.m_count == vals.size());
+
     oldFree = stats.freePages;
     // fill with homogeneous values to trigger conversion to virtual page
     for (auto time = pageStart; time < pageStart + pgt; time += 1min) {
+        vals.emplace_back(time - start, 1.0);
         dbUpdateSample(h, id, time, 1.0);
     }
     stats = dbQueryStats(h);
@@ -391,7 +444,6 @@ void Test::sampleTests() {
     }
     stats = dbQueryStats(h);
 
-    TestDbSeries samples;
     dbGetSamples(
         &samples,
         h,

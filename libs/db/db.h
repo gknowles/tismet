@@ -26,9 +26,9 @@ struct IDbDataNotify;
 struct DbHandle : Dim::HandleBase {};
 
 enum DbOpenFlags : unsigned {
-    fDbOpenCreat = 0x01,
-    fDbOpenTrunc = 0x02,
-    fDbOpenExcl = 0x04,
+    fDbOpenNew = 0x01,      // Must not already exist.
+    fDbOpenAlways = 0x02,   // May or may not exist.
+    fDbOpenTrunc = 0x04,
     fDbOpenVerbose = 0x08,  // Log database status info messages
     fDbOpenReadOnly = 0x10,
 };
@@ -60,6 +60,15 @@ enum DbSampleType : int8_t {
 };
 const char * toString(DbSampleType type, const char def[] = nullptr);
 DbSampleType fromString(std::string_view src, DbSampleType def);
+
+struct DbInfo {
+    std::string datafile;
+    std::string workfile;
+    std::string walfile;
+    Dim::EnumFlags<DbOpenFlags> flags;
+    bool newFiles = false;
+};
+DbInfo dbQueryInfo(DbHandle h);
 
 struct DbStats {
     // Constant for life of database

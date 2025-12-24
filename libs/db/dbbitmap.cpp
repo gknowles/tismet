@@ -41,15 +41,14 @@ static_assert(sizeof(DbData::BitmapPage) % alignof(uint64_t) == 0);
 ***/
 
 //===========================================================================
-[[maybe_unused]]
-static size_t bitmapBitsPerPage(size_t pageSize) {
+constexpr size_t bitmapBitsPerPage(size_t pageSize) {
     auto offset = offsetof(DbData::BitmapPage, bits);
     auto words = (pageSize - offset) / sizeof uint64_t;
     return words * 64;
 }
 
 //===========================================================================
-static BitView bitmapBits(const void * hdr, size_t pageSize) {
+constexpr BitView bitmapBits(const void * hdr, size_t pageSize) {
     auto offset = offsetof(DbData::BitmapPage, bits);
     auto words = (pageSize - offset) / sizeof uint64_t;
     auto base = (uint64_t *) ((char *) hdr + offset);
@@ -57,7 +56,7 @@ static BitView bitmapBits(const void * hdr, size_t pageSize) {
 }
 
 //===========================================================================
-static BitSpan bitmapBits(void * hdr, size_t pageSize) {
+constexpr BitSpan bitmapBits(void * hdr, size_t pageSize) {
     auto offset = offsetof(DbData::BitmapPage, bits);
     auto words = (pageSize - offset) / sizeof uint64_t;
     auto base = (uint64_t *) ((char *) hdr + offset);

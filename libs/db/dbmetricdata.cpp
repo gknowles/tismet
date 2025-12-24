@@ -135,8 +135,7 @@ constexpr size_t sampleDataPerPage(DbSampleType type, size_t pageSize) {
 }
 
 //===========================================================================
-[[maybe_unused]]
-static BitSpan sampleDataSpan(DbData::SamplePage * sp, size_t pageSize) {
+constexpr BitSpan sampleDataSpan(DbData::SamplePage * sp, size_t pageSize) {
     assert(pageSize > sizeof DbData::SamplePage);
     assert(offsetof(DbData::SamplePage, data) % alignof(uint64_t) == 0);
     auto base = sp->data;
