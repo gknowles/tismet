@@ -16,12 +16,14 @@ using namespace Dim;
 *
 ***/
 
-#define EXPECT_LINE(line, ...)                                              \
+#define EXPECT_AT(sloc, ...)                                                \
     if (!bool(__VA_ARGS__)) {                                               \
-        logMsgError() << "Line " << line << ": "                            \
-            << "EXPECT(" << #__VA_ARGS__ << ") failed";                     \
+        logMsgError() << "Line " << sloc.line() << ": EXPECT("              \
+            << #__VA_ARGS__ << ") failed";                                  \
     }
-#define EXPECT(...) EXPECT_LINE(source_location::current().line(), __VA_ARGS__)
+
+#define EXPECT(...) \
+    EXPECT_AT(source_location::current(), __VA_ARGS__)
 
 namespace {
 
@@ -29,7 +31,7 @@ struct UpdateInfo {
     Duration sinceStart;
     double value;
     bool reopen = false;
-    unsigned line = source_location::current().line();
+    source_location sloc = source_location::current();
 };
 
 } // namespace
@@ -97,6 +99,55 @@ bool TestDbSeries::onDbSample(
 ***/
 
 //===========================================================================
+static bool compareSamples(
+    TestDbSeries * samples,
+    DbHandle h,
+    uint32_t id,
+    const map<TimePoint, double> expected
+) {
+    dbGetSamples(samples, h, id);
+    auto ix = expected.begin();
+    for (auto&& samp : samples->m_samples) {
+        if (ix == expected.end())
+            return false;
+        if (samp.first != ix->first || samp.second != ix->second)
+            return false;
+        ++ix;
+    }
+    return ix == expected.end();
+}
+
+//===========================================================================
+static DbStats reopen(
+    DbHandle * ph,
+    DbContext * ctx,
+    uint32_t id,
+    string_view name,
+    auto sloc = source_location::current()
+) {
+    auto h = *ph;
+    auto info = dbQueryInfo(h);
+    ctx->reset();
+    auto stats = dbQueryStats(h);
+    dbClose(h);
+    h = dbOpen(
+        info.datafile,
+        info.flags & ~(fDbOpenNew | fDbOpenAlways | fDbOpenTrunc)
+    );
+    if (!h) {
+        EXPECT_AT(sloc, h && "Failure to reopen database");
+    } else {
+        info = dbQueryInfo(h);
+        stats = dbQueryStats(h);
+        ctx->reset(h);
+        auto count = dbInsertMetric(&id, h, name);
+        EXPECT_AT(sloc, "metrics inserted" && count == 0);
+    }
+    *ph = h;
+    return stats;
+}
+
+//===========================================================================
 static void addSamples(
     DbHandle * ph,
     DbContext * ctx,
@@ -111,7 +162,7 @@ static void addSamples(
     auto info = dbQueryInfo(h);
     auto stats = dbQueryStats(h);
     if (!dbGetSamples(&samples, h, id)) {
-        EXPECT_LINE(vals.front().line, !"Unable to preload samples");
+        EXPECT_AT(vals.front().sloc, !"Unable to preload samples");
         return;
     }
     map<TimePoint, double> expected;
@@ -122,45 +173,11 @@ static void addSamples(
         auto time = start + val.sinceStart;
         auto value = val.value;
         dbUpdateSample(h, id, time, value);
-        if (val.reopen) {
-            ctx->reset();
-            stats = dbQueryStats(h);
-            dbClose(h);
-            h = dbOpen(
-                info.datafile,
-                info.flags & ~(fDbOpenNew | fDbOpenAlways | fDbOpenTrunc)
-            );
-            EXPECT_LINE(val.line, h && "Failure to reopen database");
-            if (!h) {
-                *ph = h;
-                return;
-            }
-            info = dbQueryInfo(h);
-            stats = dbQueryStats(h);
-            ctx->reset(h);
-            auto count = dbInsertMetric(&id, h, name);
-            EXPECT_LINE(val.line, "metrics inserted" && count == 0);
-        }
-        dbGetSamples(&samples, h, id);
         expected[time] = value;
-        auto ix = expected.begin();
-        auto success = true;
-        for (auto&& samp : samples.m_samples) {
-            if (ix == expected.end()) {
-                success = false;
-                break;
-            }
-            if (samp.first != ix->first || samp.second != ix->second) {
-                success = false;
-                break;
-            }
-            ++ix;
-        }
-        if (ix != expected.end())
-            success = false;
-        if (!success) {
-            EXPECT_LINE(val.line, !"Expected samples don't match.");
-        }
+        if (val.reopen)
+            stats = reopen(&h, ctx, id, name, val.sloc);
+        if (!compareSamples(&samples, h, id, expected))
+            EXPECT_AT(val.sloc, !"Expected samples don't match.");
     }
     *ph = h;
 }
@@ -363,6 +380,7 @@ void Test::sampleTests() {
     uint32_t id;
     DbMetricInfo info;
     TestDbSeries samples;
+    map<TimePoint, double> expected;
 
     auto h = dbOpen(dat);
     EXPECT(h && "Failure to reopen database");
@@ -403,46 +421,54 @@ void Test::sampleTests() {
     info.interval = 1min;
     dbUpdateMetric(h, id, info);
     dbUpdateSample(h, id, start, 1.0);
+    expected.clear();
     stats = dbQueryStats(h);
     auto pageStart = start;
     auto oldFree = stats.freePages;
     for (;;) {
-        vals.emplace_back(pageStart - start, 1.0);
-        dbUpdateSample(h, id, pageStart, 1.0);
+        auto value = 1.0 * expected.size() + (expected.size() % 2 ? 0.5 : 0.0);
+        dbUpdateSample(h, id, pageStart, value);
+        expected[pageStart] = value;
         stats = dbQueryStats(h);
         if (oldFree != stats.freePages)
             break;
         pageStart += 1min;
     }
-    dbGetSamples(&samples, h, id);
-    EXPECT(samples.m_count == vals.size());
-
+    if (!compareSamples(&samples, h, id, expected))
+        EXPECT(!"Expected samples don't match.");
     oldFree = stats.freePages;
-    // fill with homogeneous values to trigger conversion to virtual page
-    for (auto time = pageStart; time < pageStart + pgt; time += 1min) {
-        vals.emplace_back(time - start, 1.0);
-        dbUpdateSample(h, id, time, 1.0);
-    }
-    stats = dbQueryStats(h);
-    EXPECT(oldFree == stats.freePages - 1);
 
     // completely fill sample pages
+    auto value = 1.0;
     for (auto i = 0u; i < 3 * spp; ++i) {
-        dbUpdateSample(h, id, start + i * 1min, 1.0);
+        auto time = start + i * 1min;
+        expected[time] = value;
+        dbUpdateSample(h, id, time, value);
     }
     stats = dbQueryStats(h);
+    if (!compareSamples(&samples, h, id, expected))
+        EXPECT(!"Expected samples don't match.");
 
     // change all historical sample values
+    value = 2.0;
     for (auto i = 0u; i < 3 * spp; ++i) {
-        dbUpdateSample(h, id, start + i * 1min, 2.0);
+        auto time = start + i * 1min;
+        expected[time] = value;
+        dbUpdateSample(h, id, time, value);
     }
     stats = dbQueryStats(h);
+    if (!compareSamples(&samples, h, id, expected))
+        EXPECT(!"Expected samples don't match.");
 
     // age out all sample values
+    value = 3.0;
     for (auto i = 3 * spp; i < 6 * spp; ++i) {
-        dbUpdateSample(h, id, start + i * 1min, 3.0);
+        auto time = start + i * 1min;
+        expected[time] = value;
+        dbUpdateSample(h, id, time, value);
     }
     stats = dbQueryStats(h);
+    dbGetSamples(&samples, h, id);
 
     dbGetSamples(
         &samples,

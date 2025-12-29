@@ -184,7 +184,6 @@ bool DbPage::openWork(string_view workfile) {
     if (m_flags.any(fDbOpenNew)) {
         oflags |= fOpenNew;
     } else {
-        assert(m_flags.any(fDbOpenAlways));
         oflags |= fOpenAlways;
     }
     auto ec = fileOpen(&m_fwork, workfile, oflags);

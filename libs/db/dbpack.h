@@ -55,6 +55,12 @@ public:
         size_t bitPos = 0,
         const DbPackState & state = {}
     );
+    DbUnpackIter(
+        const void * src,
+        size_t srcBits,
+        size_t bitPos,
+        Dim::TimePoint firstTime
+    );
     explicit operator bool() const;
     bool operator==(const DbUnpackIter & right) const;
     DbUnpackIter & operator++();
@@ -68,8 +74,10 @@ public:
     const DbPackState & state() const { return m_state; }
     size_t spos() const { return m_samplePos; }
     size_t slen() const { return m_sampleBits; }
+    size_t epos() const { return spos() + slen(); }
 
     void seek(size_t bitPos, const DbPackState & state);
+    void seek(size_t bitPos, Dim::TimePoint firstTime);
 
 private:
     bool getInt(int64_t * out, size_t nbits);
@@ -108,8 +116,21 @@ public:
         size_t bitPos,
         const DbPackState & st
     );
+    DbPack(
+        void * out,
+        size_t outBytes,
+        size_t bitPos,
+        Dim::TimePoint firstTime
+    );
 
     void retarget(void * out, size_t outBytes);
+    void retarget(size_t bitPos, Dim::TimePoint firstTime);
+    void retarget(
+        void * out,
+        size_t outBytes,
+        size_t bitPos,
+        Dim::TimePoint firstTime
+    );
     void retarget(size_t bitPos, const DbPackState & st);
     void retarget(
         void * out,

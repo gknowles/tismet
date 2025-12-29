@@ -131,6 +131,8 @@ struct DbMetricInfo {
     DbSampleType type{kSampleTypeInvalid};
     Dim::Duration retention = {};
     Dim::Duration interval = {};
+
+    auto operator<=>(const DbMetricInfo & other) const = default;
 };
 // Removes all existing data when type or retention are changed.
 void dbUpdateMetric(
@@ -255,8 +257,7 @@ enum LocalTxn : uint16_t {};
 struct Lsn {
     uint64_t val : 48;
 
-    bool operator==(const Lsn & b) const = default;
-    std::strong_ordering operator<=>(const Lsn & b) const = default;
+    auto operator<=>(const Lsn & b) const = default;
     explicit operator bool() const { return val; }
     Lsn & operator+=(ptrdiff_t b) { val += b; return *this; }
     Lsn & operator-=(ptrdiff_t b) { val -= b; return *this; }
@@ -282,8 +283,7 @@ struct Lsx {
     uint64_t localTxn : 16;
     uint64_t lsn : 48;
 
-    bool operator==(const Lsx & other) const = default;
-    std::strong_ordering operator<=>(const Lsx & other) const = default;
+    auto operator<=>(const Lsx & other) const = default;
     explicit operator bool() const { return lsn || localTxn; }
     explicit operator Lsn() const { return Lsn(lsn); }
 };

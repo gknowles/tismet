@@ -53,6 +53,16 @@ DbPack::DbPack(
 }
 
 //===========================================================================
+DbPack::DbPack(
+    void * out,
+    size_t outBytes,
+    size_t bitPos,
+    TimePoint firstTime
+)
+    : DbPack(out, outBytes, bitPos, {.sample = { firstTime }})
+{}
+
+//===========================================================================
 DbUnpackIter DbPack::find(
     size_t bitPos,
     const DbPackState & state
@@ -83,6 +93,22 @@ void DbPack::retarget(
 ) {
     retarget(out, outBytes);
     retarget(bitPos, st);
+}
+
+//===========================================================================
+void DbPack::retarget(size_t bitPos, TimePoint firstTime) {
+    retarget(bitPos, {.sample = { firstTime }});
+}
+
+//===========================================================================
+void DbPack::retarget(
+    void * out,
+    size_t outBytes,
+    size_t bitPos,
+    TimePoint firstTime
+) {
+    retarget(out, outBytes);
+    retarget(bitPos, firstTime);
 }
 
 //===========================================================================
@@ -292,6 +318,16 @@ DbUnpackIter::DbUnpackIter(
 }
 
 //===========================================================================
+DbUnpackIter::DbUnpackIter(
+    const void * src,
+    size_t srcBits,
+    size_t bitPos,
+    TimePoint firstTime
+)
+    : DbUnpackIter(src, srcBits, bitPos, {.sample = { firstTime }})
+{}
+
+//===========================================================================
 DbUnpackIter::operator bool() const {
     return bits() != m_samplePos;
 }
@@ -322,6 +358,11 @@ void DbUnpackIter::seek(size_t bitPos, const DbPackState & state) {
     m_sampleBits = 0;
     m_state = state;
     operator++();
+}
+
+//===========================================================================
+void DbUnpackIter::seek(size_t bitPos, TimePoint firstTime) {
+    seek(bitPos, {.sample = { firstTime }});
 }
 
 //===========================================================================
