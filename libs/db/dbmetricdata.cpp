@@ -1395,7 +1395,7 @@ void DbData::getSamples(
         first = firstSampleTime;
     if (last > lastSampleTime)
         last = lastSampleTime;
-    if (first >= last)
+    if (first > last)
         return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
 
     unsigned count = 0;

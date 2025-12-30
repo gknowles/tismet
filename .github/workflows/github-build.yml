@@ -34,10 +34,7 @@ jobs:
         working-directory: ${{github.workspace}}
     env:
       tests: |
-        "bin\tst carbon"
-        "bin\tst index"
-        "bin\tst pack"
-        "bin\tst query"
+        "bin\tst all"
 
     steps:
     - name: Setup OpenCppCoverage

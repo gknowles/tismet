@@ -34,7 +34,7 @@ struct TestEvalSeries {
 
 class UnitTest : public ListLink<>, IEvalNotify {
 public:
-    UnitTest(string_view name, int line = __LINE__);
+    UnitTest(string_view name, source_location sloc = source_location::current());
     UnitTest(const UnitTest & from);
 
     UnitTest & query(
@@ -66,7 +66,7 @@ private:
     void onEvalEnd() override;
 
     string m_name;
-    int m_line{};
+    source_location m_sloc{};
     string m_query;
     TimePoint m_first;
     TimePoint m_last;
@@ -134,9 +134,9 @@ static bool operator<(const TestEvalSeries & a, const TestEvalSeries & b) {
 ***/
 
 //===========================================================================
-UnitTest::UnitTest(string_view name, int line)
+UnitTest::UnitTest(string_view name, source_location sloc)
     : m_name{name}
-    , m_line{line}
+    , m_sloc{sloc}
 {
     s_unitTests.link(this);
 }
@@ -144,7 +144,7 @@ UnitTest::UnitTest(string_view name, int line)
 //===========================================================================
 UnitTest::UnitTest(const UnitTest & from)
     : m_name{from.m_name}
-    , m_line{from.m_line}
+    , m_sloc{from.m_sloc}
     , m_query(from.m_query)
     , m_first{from.m_first}
     , m_last{from.m_last}
@@ -252,7 +252,8 @@ void UnitTest::onTest(DbHandle h) {
     if (!matched) {
         if (m_errmsg.size())
             logMsgInfo() << m_errmsg;
-        logMsgError() << "Query failed, " << m_query;
+        logMsgError() << "Line " << m_sloc.line() << ": "
+            "Query failed, " << m_query;
     }
 }
 
