@@ -225,7 +225,7 @@ void DbWal::walAndApply(Lsx txn, Record * rec, size_t bytes) {
     auto localTxn = getLocalTxn(*rec);
     ptr = m_page->onWalGetPtrForUpdate(pgno, lsn, localTxn);
     applyUpdate(ptr, lsn, *rec);
-    m_page->onWalUnlockPtr(pgno);
+    m_page->onWalReleasePtrForUpdate(pgno);
 }
 
 //===========================================================================

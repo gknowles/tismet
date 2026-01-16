@@ -30,7 +30,7 @@ public:
 
 private:
     bool onDbProgress(RunMode mode, const DbProgressInfo & info) override;
-    void copy_LK(unique_lock<mutex> & lk, BackupProgress * from) const;
+    void copy_LK(const unique_lock<mutex> & lk, BackupProgress * from) const;
 
     RunMode m_mode{kRunStopped};
     DbProgressInfo m_info{};
@@ -98,7 +98,7 @@ void BackupProgress::replyStatus(unsigned reqId, bool immediate) {
 
 //===========================================================================
 void BackupProgress::copy_LK(
-    unique_lock<mutex> & lk,
+    const unique_lock<mutex> & lk,
     BackupProgress * out
 ) const {
     out->m_mode = m_mode;

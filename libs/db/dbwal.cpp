@@ -1246,7 +1246,7 @@ void DbWal::checkpointComplete() {
             blocker->onDbProgress(kRunStopped, info);
         lkBlock.unlock();
     }
-    m_bufCheckpointCv.notify_one();
+    m_bufCheckpointCv.notify_all();
 }
 
 //===========================================================================
@@ -1502,13 +1502,13 @@ void DbWal::prepareBuffer_LK(
 }
 
 //===========================================================================
-void DbWal::countBeginTxn_LK(unique_lock<mutex> & lk) {
+void DbWal::countBeginTxn_LK(const unique_lock<mutex> & lk) {
     m_pages.back().activeTxns += 1;
 }
 
 //===========================================================================
 void DbWal::countCommitTxns_LK(
-    unique_lock<mutex> & lk,
+    const unique_lock<mutex> & lk,
     Lsx txn,
     const std::unordered_set<Lsx> * txns
 ) {
@@ -1523,7 +1523,7 @@ void DbWal::countCommitTxns_LK(
 }
 
 //===========================================================================
-void DbWal::countCommitTxn_LK(unique_lock<mutex> & lk, Lsx txn) {
+void DbWal::countCommitTxn_LK(const unique_lock<mutex> & lk, Lsx txn) {
     s_perfCurTxns -= 1;
     auto localTxn = getLocalTxn(txn);
     [[maybe_unused]] auto found = m_localTxns.erase(localTxn);
@@ -1607,7 +1607,10 @@ void DbWal::onFileWrite(const FileWriteData & data) {
         m_checkpointData += m_pageSize;
         bool needCheckpoint = m_checkpointData >= m_maxCheckpointData;
         lk.unlock();
-        m_bufAvailCv.notify_one(); // After unlock() to avoid spurious wake-up.
+        // After unlock() to avoid spurious wake-up. It's not enough to use
+        // notify_one() because, when closing, the notice could go to the
+        // closer instead of the writer the closer is waiting for.
+        m_bufAvailCv.notify_all();
         if (needCheckpoint)
             timerUpdate(&m_checkpointTimer, 0ms);
         return;
@@ -1628,7 +1631,8 @@ void DbWal::onFileWrite(const FileWriteData & data) {
             // Buffer has not changed since the partial write was initiated.
             m_bufStates[ibuf] = Buffer::kPartialClean;
             lk.unlock();
-            m_bufAvailCv.notify_one();
+            // Waiting writers and closers are different, so must notify_all().
+            m_bufAvailCv.notify_all();
         } else {
             // Data has been added to buffer, but it's still not full.
             m_bufStates[ibuf] = Buffer::kPartialDirty;
@@ -1885,7 +1889,8 @@ UnsignedSet DbTxn::commit() {
             m_wal.commit(txns);
 
             // Create new index version
-            roots = roots->commitNextSet(txns);
+            auto next = roots->commitNextSet(txns);
+            roots = next;
         } else {
             roots->unlock();
         }
@@ -1919,8 +1924,7 @@ std::pair<void *, size_t> DbTxn::alloc(
     pgno_t pgno,
     size_t bytes
 ) {
-    if (!m_txn)
-        m_txn = m_wal.beginTxn();
+    getLsxAlways();
     m_buffer.resize(bytes);
     auto * lr = (DbWal::Record *) m_buffer.data();
     lr->type = type;

@@ -148,7 +148,19 @@ private:
     void walCommitTxns(const std::unordered_set<Lsx> & txns);
 
     // Returns LSN of record that was written.
-    enum class TxnMode { kBegin, kContinue, kCommit };
+    enum class TxnMode {
+        // Beginning a transaction.
+        kBegin,
+
+        // Either:
+        //  - middle record of a transaction.
+        //  - transaction that immediately begins and commits.
+        //  - non-transaction record (checkpoint, etc).
+        kContinue,
+
+        // Final record of transaction.
+        kCommit,
+    };
     Lsn wal(
         const Record & rec,
         size_t bytes,
@@ -163,13 +175,13 @@ private:
         size_t bytesOnOldPage,
         size_t bytesOnNewPage
     );
-    void countBeginTxn_LK(std::unique_lock<std::mutex> & lk);
+    void countBeginTxn_LK(const std::unique_lock<std::mutex> & lk);
     void countCommitTxns_LK(
-        std::unique_lock<std::mutex> & lk,
+        const std::unique_lock<std::mutex> & lk,
         Lsx txn,
         const std::unordered_set<Lsx> * txns
     );
-    void countCommitTxn_LK(std::unique_lock<std::mutex> & lk, Lsx txn);
+    void countCommitTxn_LK(const std::unique_lock<std::mutex> & lk, Lsx txn);
     void updatePages_LK(
         std::unique_lock<std::mutex> & lk,
         Lsn firstLsn,
@@ -290,15 +302,16 @@ public:
 
     // Returns content of page that will be updated in place by applying the
     // action already recorded at the specified LSN. The returned buffer has
-    // it's pgno and LSN fields set. Page must already be pinned, will be
-    // locked, and must be unlocked via subsequent call to onWalUnlockPtr().
+    // it's pgno and LSN fields set. Page must already be pinned for read, will
+    // be pinned for write, and must be released via subsequent call to
+    // onWalReleasePtrForUpdate().
     virtual void * onWalGetPtrForUpdate(
         pgno_t pgno,
         Lsn lsn,
         LocalTxn localTxn
     ) = 0;
     // Called to release lock on pointer returned by onWalGetPtrForUpdate().
-    virtual void onWalUnlockPtr(pgno_t pgno) = 0;
+    virtual void onWalReleasePtrForUpdate(pgno_t pgno) = 0;
 
     // Similar to onWalGetPtrForUpdate, except that if the page has already
     // been updated no action is taken and null is returned. A page is

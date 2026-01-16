@@ -109,7 +109,7 @@ private:
         Lsn lsn,
         LocalTxn localTxn
     ) override;
-    void onWalUnlockPtr(pgno_t pgno) override;
+    void onWalReleasePtrForUpdate(pgno_t pgno) override;
     void * onWalGetPtrForRedo(
         pgno_t pgno,
         Lsn lsn,
@@ -321,7 +321,7 @@ void TextWriter::onWalApplySampleReplace(
     auto bytes = (srcBits + 7) / 8;
     auto & os = out(ptr);
     os << "samples.data(" << dstPos << ", " << dstBits << ") = "
-        << srcBits << "(" << bytes << " bytes)\n";
+        << srcBits << " (" << bytes << " bytes)\n";
     hexDump(os, {(const char *) src, bytes});
 }
 
@@ -336,7 +336,7 @@ void * TextWriter::onWalGetPtrForUpdate(
 }
 
 //===========================================================================
-void TextWriter::onWalUnlockPtr(pgno_t pgno) {
+void TextWriter::onWalReleasePtrForUpdate(pgno_t pgno) {
     assert(!"updates not supported when dumping wal");
 }
 

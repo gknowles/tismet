@@ -113,14 +113,18 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
 
     // Wait for available update capacity
     for (;;) {
-        if (m_writeTxns.size() == kMaxActiveRootUpdates) {
-            if (m_writeTxns.contains(id))
+        if (m_shared->writeTxns.size() == kMaxActiveRootUpdates) {
+            if (m_shared->writeTxns.contains(id))
                 break;
         } else {
-            m_writeTxns.insert(id);
+            m_shared->writeTxns.insert(id);
             break;
         }
         m_shared->cv.wait(lk);
+    }
+
+    if (m_shared->completeTxns.contains(id)) {
+        assert(!"Updating root using completed transaction.");
     }
 
     // Wait for last update to this root to complete
@@ -143,8 +147,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
 //===========================================================================
 void DbRootSet::rollbackUpdate(shared_ptr<DbRootVersion> root) {
     unique_lock lk(m_shared->mut);
-    while (root->next && root->next->complete())
-        root = root->next;
+    assert(root->next);
     assert(!root->next->complete());
     root->next.reset();
     m_shared->cv.notify_all();
@@ -153,51 +156,17 @@ void DbRootSet::rollbackUpdate(shared_ptr<DbRootVersion> root) {
 //===========================================================================
 void DbRootSet::commitUpdate(shared_ptr<DbRootVersion> root, pgno_t pgno) {
     unique_lock lk(m_shared->mut);
-    while (root->next)
-        root = root->next;
-    assert(!root->complete());
-    root->root = pgno;
+    assert(root->next);
+    assert(!root->next->complete());
+    root->next->root = pgno;
     m_shared->cv.notify_all();
-}
-
-//===========================================================================
-static bool eligible(
-    unordered_set<Lsx> * path,
-    Lsx id,
-    const unordered_map<Lsx, unordered_set<Lsx>> & ref,
-    const unordered_set<Lsx> & completeTxns
-) {
-    if (path->contains(id)) {
-        // Recursive references are not blocking.
-        return true;
-    }
-    auto i = ref.find(id);
-    if (i == ref.end()) {
-        // Has no references, therefore no blocking references.
-        return true;
-    }
-    for (auto&& refId : i->second) {
-        if (!completeTxns.contains(refId)) {
-            // References incomplete transaction.
-            return false;
-        }
-    }
-    bool okay = true;
-    path->insert(id);
-    for (auto&& refId : i->second) {
-        auto okay = eligible(path, refId, ref, completeTxns);
-        if (!okay)
-            break;
-    }
-    path->erase(id);
-    return okay;
 }
 
 //===========================================================================
 shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
     shared_ptr<DbRootSet> roots;
     unique_lock lk(m_shared->mut);
-    if (m_writeTxns.contains(id)) {
+    if (m_shared->writeTxns.contains(id)) {
         for (;;) {
             if (!m_shared->commitInProgress)
                 break;
@@ -213,6 +182,7 @@ shared_ptr<DbRootSet> DbRootSet::lockForCommit(Lsx id) {
 //===========================================================================
 void DbRootSet::unlock_UNLK(unique_lock<mutex> && lk) {
     assert(lk && lk.mutex() == &m_shared->mut);
+    assert(!m_next);
     assert(m_shared->commitInProgress);
     m_shared->commitInProgress = false;
     lk.unlock();
@@ -230,46 +200,57 @@ unordered_set<Lsx> DbRootSet::findCompleteTxns(Lsx txnId) {
     unique_lock lk(m_shared->mut);
     assert(m_shared->commitInProgress);
 
-    if (!m_writeTxns.contains(txnId))
+    if (!m_shared->writeTxns.contains(txnId))
         return {txnId};
-    m_completeTxns.insert(txnId);
+    if (!m_shared->completeTxns.insert(txnId).second)
+        assert(!"Transaction already completed.");
 
-    unordered_map<Lsx, unordered_set<Lsx>> ref;
+    if (m_shared->writeTxns.size() == m_shared->completeTxns.size()) {
+        // All write txns are complete, so commit the full set. There's no
+        // need to search for a completed subset.
+        assert(m_shared->writeTxns == m_shared->completeTxns);
+        return m_shared->completeTxns;
+    }
+
+    unordered_map<Lsx, unordered_set<Lsx>> blocks;
     auto roots = firstRoots();
     for (auto && root : roots) {
+        assert(root);
         unordered_set<Lsx> found;
-        auto ptr = root->get();
-        if (ptr)
-            ptr = ptr->next.get();
-        for (;;) {
-            if (!ptr)
-                break;
-            if (!ptr->complete()) {
-                assert(!ptr->next);
-                break;
-            }
+        auto ptr = root->get()->next.get();
+        for (; ptr; ptr = ptr->next.get()) {
             auto id = ptr->lsx;
-            ref[id].insert(found.begin(), found.end());
+            for (auto&& f : found)
+                blocks[f].insert(id);
             found.insert(id);
-            ptr = ptr->next.get();
         }
     }
 
-    // Populate reverse reference index.
-    unordered_map<Lsx, unordered_set<Lsx>> refBy;
-    for (auto&& id : m_writeTxns) {
-        // Transactions always reference themselves.
-        ref[id].insert(id);
-        for (auto&& bid : ref[id])
-            refBy[bid].insert(id);
-    }
-
     unordered_set<Lsx> ready;
-    unordered_set<Lsx> path;
-    for (auto&& id : m_completeTxns) {
-        if (eligible(&path, id, refBy, m_completeTxns))
-            ready.insert(id);
+    unordered_set<Lsx> blocked;
+    vector<Lsx> check;
+    check.reserve(m_shared->writeTxns.size());
+    for (auto&& t : m_shared->writeTxns) {
+        if (!m_shared->completeTxns.contains(t)) {
+            blocked.insert(t);
+            check.push_back(t);
+        }
     }
+    for (auto i = 0; i < check.size(); ++i) {
+        auto&& t = check[i];
+        for (auto&& dep : blocks[t]) {
+            if (blocked.insert(dep).second) {
+                check.push_back(dep);
+                if (check.size() == check.capacity())
+                    return ready;
+            }
+        }
+    }
+    for (auto&& t : m_shared->completeTxns) {
+        if (!blocked.contains(t))
+            ready.insert(t);
+    }
+    assert(ready.contains(txnId));
     return ready;
 }
 
@@ -277,13 +258,15 @@ unordered_set<Lsx> DbRootSet::findCompleteTxns(Lsx txnId) {
 shared_ptr<DbRootSet> DbRootSet::commitNextSet(
     const unordered_set<Lsx> & txns
 ) {
-    assert(!txns.empty());
     unique_lock lk(m_shared->mut);
+    assert(!txns.empty());
+    assert(m_shared->commitInProgress);
     m_next = make_shared<DbRootSet>(*this);
-    m_next->m_shared->commitInProgress = true;
     for (auto&& id : txns) {
-        m_next->m_writeTxns.erase(id);
-        m_next->m_completeTxns.erase(id);
+        if (!m_shared->completeTxns.contains(id))
+            assert(!"Committing already completed transaction.");
+        m_shared->writeTxns.erase(id);
+        m_shared->completeTxns.erase(id);
     }
 
     auto roots = firstRoots();
@@ -306,6 +289,14 @@ shared_ptr<DbRootSet> DbRootSet::commitNextSet(
             continue;
         }
         assert(!txns.contains(n->lsx) && "Republishing old root");
+
+        vector<Lsx> rtxns;
+        for (auto i = n; i; i = i->next) {
+            rtxns.push_back(i->lsx);
+        }
+        if (rtxns.size() > 4 && m_shared->completeTxns.size() < 4)
+            rtxns.shrink_to_fit();
+
         n = n->next;
         while (n && txns.contains(n->lsx)) {
             **nroot = n;
@@ -313,14 +304,16 @@ shared_ptr<DbRootSet> DbRootSet::commitNextSet(
         }
     #ifndef NDEBUG
         while (n) {
-            assert(!txns.contains(n->lsx) && "Unpublished root update");
+            if (txns.contains(n->lsx)) {
+                assert(!"Unpublished root update");
+            }
             n = n->next;
         }
     #endif
     }
 
     m_shared->data.m_metricRoots.store(m_next);
-    unlock_UNLK(move(lk));
+    m_next->unlock_UNLK(move(lk));
     return m_next;
 }
 
@@ -733,6 +726,9 @@ bool DbData::loadFreePages(DbTxn & txn) {
 
 //===========================================================================
 bool DbData::loadDeprecatedPages(DbTxn & txn) {
+    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
+
     assert(!m_deprecatedPages);
     if (m_deprecatedRoot == pgno_t::npos) {
         if (m_readOnly) {
@@ -910,17 +906,10 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 
 //===========================================================================
 void DbData::freeDeprecatedPages(DbTxn & txn, UnsignedSet pgnos) {
-    [[maybe_unused]] bool updated = false;
-    //for (auto pgno : pgnos) {
-    //    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, false);
-    //    assert(updated);
-    //    freePage(txn, (pgno_t) pgno);
-    //    scoped_lock lk(m_pageMut);
-    //    updated = m_deprecatedPages.erase(pgno);
-    //    assert(updated);
-    //    s_perfDepPages -= 1;
-    //}
+    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn);
 
+    [[maybe_unused]] bool updated = false;
     for (auto&& r : pgnos.ranges()) {
         updated = bitAssign(
             txn,
@@ -934,7 +923,7 @@ void DbData::freeDeprecatedPages(DbTxn & txn, UnsignedSet pgnos) {
         for (auto pgno = r.first; pgno <= r.second; ++pgno)
             freePage(txn, (pgno_t) pgno);
     }
-    scoped_lock lk{m_pageMut};
+
     assert(m_deprecatedPages.contains(pgnos));
     m_deprecatedPages.erase(pgnos);
     s_perfDepPages -= (unsigned) pgnos.count();

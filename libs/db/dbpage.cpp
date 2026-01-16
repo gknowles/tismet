@@ -631,7 +631,7 @@ Lsn DbPage::saveDirtyPages_LK(unique_lock<mutex> & lk, TimePoint lastTime) {
 
 //===========================================================================
 // Remove clean pages that are no longer needed to proxy unsaved old pages.
-void DbPage::removeCleanPages_LK(unique_lock<mutex> & lk) {
+void DbPage::removeCleanPages_LK(const unique_lock<mutex> & lk) {
     if (!m_cleanPages)
         return;
 
@@ -678,7 +678,7 @@ void DbPage::removeCleanPages_LK(unique_lock<mutex> & lk) {
 // passed in threshold, which is based on the most recent LSN that has no older
 // WAL records belonging to uncommitted transactions and for which all pages
 // have been written.
-void DbPage::removeWalPages_LK(unique_lock<mutex> & lk, Lsn lsn) {
+void DbPage::removeWalPages_LK(const unique_lock<mutex> & lk, Lsn lsn) {
     assert(lsn);
     size_t bytes = 0;
 
@@ -726,7 +726,7 @@ void DbPage::writePageWait(DbPageHeader * hdr) {
 
 //===========================================================================
 // Mark page as free and add it to the pool of free pages.
-void DbPage::freePage_LK(unique_lock<mutex> & lk, DbPageHeader * hdr) {
+void DbPage::freePage_LK(const unique_lock<mutex> & lk, DbPageHeader * hdr) {
     hdr->pgno = kFreePageMark;
     auto wpno = m_vwork.pgno(hdr);
     m_freeWorkPages.insert(wpno);
@@ -751,7 +751,7 @@ void DbPage::growToFit(pgno_t pgno) {
 }
 
 //===========================================================================
-const void * DbPage::rptr(Lsn lsn, pgno_t pgno, bool withPin) {
+const void * DbPage::rptr(pgno_t pgno, Lsn lsn, bool withPin) {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];
@@ -792,12 +792,14 @@ void DbPage::unpin(const UnsignedSet & pages) {
         auto pi = m_pages[pgno];
         assert(pi);
         assert(pi->readPins && (pi->readPins > 1 || !pi->writePin));
-        if (!--pi->readPins)
+        if (!--pi->readPins) {
             s_perfPinnedPages -= 1;
-        if (!pi->readPins && !pi->hdr) {
-            // Don't keep reference only page info that is no longer pinned.
-            freeWorkInfo_LK(lk, pi);
-            m_pages[pgno] = nullptr;
+            if (!pi->hdr) {
+                // Don't keep reference only page info that is no longer
+                // pinned.
+                freeWorkInfo_LK(lk, pi);
+                m_pages[pgno] = nullptr;
+            }
         }
         notify = true;
     }
@@ -820,7 +822,10 @@ DbPage::WorkPageInfo * DbPage::allocWorkInfo_LK(
 }
 
 //===========================================================================
-void DbPage::freeWorkInfo_LK(unique_lock<mutex> & lk, WorkPageInfo * pi) {
+void DbPage::freeWorkInfo_LK(
+    const unique_lock<mutex> & lk,
+    WorkPageInfo * pi
+) {
     m_freeInfos.link(pi);
 }
 
@@ -878,7 +883,7 @@ void * DbPage::onWalGetPtrForUpdate(
 }
 
 //===========================================================================
-void DbPage::onWalUnlockPtr(pgno_t pgno) {
+void DbPage::onWalReleasePtrForUpdate(pgno_t pgno) {
     unique_lock lk{m_workMut};
     assert(pgno < m_pages.size());
     auto pi = m_pages[pgno];

@@ -199,6 +199,15 @@ static DbWalRegisterRec s_dataRecInfo = {
 ***/
 
 //===========================================================================
+static size_t trim(FullPageInitRec * rec) {
+    for (; rec->dataLen; --rec->dataLen) {
+        if (rec->data[rec->dataLen - 1])
+            break;
+    }
+    return offsetof(FullPageInitRec, data) + rec->dataLen;
+}
+
+//===========================================================================
 pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
     assert(extra <= pageSize());
     auto offset = offsetof(FullPageInitRec, data);
@@ -208,13 +217,12 @@ pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
 //===========================================================================
 void DbTxn::walFullPageInit(DbPageType type, uint32_t id, size_t extra) {
     assert(extra <= pageSize());
-    auto offset = offsetof(FullPageInitRec, data);
     auto rec = reinterpret_cast<FullPageInitRec *>(m_buffer.data());
     assert(rec->hdr.type == kRecTypeFullPage);
     rec->type = type;
     rec->id = id;
     rec->dataLen = (uint16_t) extra;
-    wal(&rec->hdr, offset + extra);
+    wal(&rec->hdr, trim(rec));
 }
 
 //===========================================================================
@@ -236,7 +244,7 @@ void DbTxn::walFullPageInit(
     rec->id = id;
     rec->dataLen = (uint16_t) extra;
     memcpy(rec->data, data.data(), extra);
-    wal(&rec->hdr, bytes);
+    wal(&rec->hdr, trim(rec));
 }
 
 

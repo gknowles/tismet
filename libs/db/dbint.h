@@ -107,7 +107,7 @@ public:
     // Pins page in cache (if it was already cached) with a read pin, and
     // returns a pointer to it. Read pins prevent cached pages from being freed
     // by saveWork().
-    const void * rptr(Lsn lsn, pgno_t pgno, bool withPin);
+    const void * rptr(pgno_t pgno, Lsn lsn, bool withPin);
     void unpin(const Dim::UnsignedSet & pages);
 
     size_t pageSize() const { return m_pageSize; }
@@ -125,8 +125,14 @@ private:
     bool openData(std::string_view datafile);
     bool openWork(std::string_view workfile);
     void writePageWait(DbPageHeader * hdr);
-    void freePage_LK(std::unique_lock<std::mutex> & lk, DbPageHeader * hdr);
-    void freeWorkInfo_LK(std::unique_lock<std::mutex> & lk, WorkPageInfo * pi);
+    void freePage_LK(
+        const std::unique_lock<std::mutex> & lk,
+        DbPageHeader * hdr
+    );
+    void freeWorkInfo_LK(
+        const std::unique_lock<std::mutex> & lk,
+        WorkPageInfo * pi
+    );
 
     // Passing a const unique_lock is used to indicate that while access must
     // be serialized it may be used in a single threaded context with no actual
@@ -144,7 +150,7 @@ private:
 
     // Inherited by DbWal::IPageNotify
     void * onWalGetPtrForUpdate(pgno_t pgno, Lsn lsn, LocalTxn txn) override;
-    void onWalUnlockPtr(pgno_t pgno) override;
+    void onWalReleasePtrForUpdate(pgno_t pgno) override;
     void * onWalGetPtrForRedo(pgno_t pgno, Lsn lsn, LocalTxn txn) override;
     void onWalDurable(Lsn lsn, size_t bytes) override;
     Lsn onWalCheckpointPages(Lsn lsn) override;
@@ -158,8 +164,11 @@ private:
         std::unique_lock<std::mutex> & lk,
         Dim::TimePoint lastSave
     );
-    void removeWalPages_LK(std::unique_lock<std::mutex> & lk, Lsn saveLsn);
-    void removeCleanPages_LK(std::unique_lock<std::mutex> & lk);
+    void removeWalPages_LK(
+        const std::unique_lock<std::mutex> & lk,
+        Lsn saveLsn
+    );
+    void removeCleanPages_LK(const std::unique_lock<std::mutex> & lk);
 
     // Variables determined at open
     size_t m_pageSize = 0;
@@ -414,7 +423,7 @@ template<typename T>
 const T * DbTxn::pin(pgno_t pgno) {
     auto lsn = DbWal::getLsn(m_txn);
     auto withPin = m_pinnedPages.insert(pgno);
-    auto ptr = static_cast<const T *>(m_page.rptr(lsn, pgno, withPin));
+    auto ptr = static_cast<const T *>(m_page.rptr(pgno, lsn, withPin));
     if constexpr (!std::is_same_v<T, DbPageHeader>) {
         // Must start with and be layout compatible with DbPageHeader.
         assert((std::is_same_v<decltype(ptr->hdr), DbPageHeader>));
@@ -469,7 +478,9 @@ struct DbRootVersion {
     // Next version of this index.
     std::shared_ptr<DbRootVersion> next;
 
-    // Transaction that owns this version.
+    // Transaction that owns this version. This will be empty for the version
+    // that was initially loaded from the database as opposed to all the ones
+    // subsequently created with a transaction.
     Lsx lsx = {};
 
     // Pages used by this version that have subsequently been deprecated and
@@ -505,6 +516,13 @@ public:
         std::mutex mut;
         std::condition_variable cv;
         bool commitInProgress = false;
+
+        // Ids of transactions that have, or are waiting to, make an update.
+        std::unordered_set<Lsx> writeTxns;
+
+        // Ids of the transactions that have finished making updates and are
+        // waiting to be committed.
+        std::unordered_set<Lsx> completeTxns;
     };
 
 public:
@@ -539,12 +557,6 @@ private:
 
     std::shared_ptr<Shared> m_shared;
     std::shared_ptr<DbRootSet> m_next;
-
-    // Ids of transactions that have, or are waiting to, make an update.
-    std::unordered_set<Lsx> m_writeTxns;
-
-    // Ids of the active transactions that aren't committed.
-    std::unordered_set<Lsx> m_completeTxns;
 };
 
 
