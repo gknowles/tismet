@@ -1,10 +1,10 @@
-# Copyright Glen Knowles 2016 - 2025.
+# Copyright Glen Knowles 2016 - 2026.
 # Distributed under the Boost Software License, Version 1.0.
 #
 # CMakeLists.txt - general project generator
 #
-# Use this one script file *unmodified* for all projects that follow the 
-# convections. All the careful tweaking is for Visual Studio, but it works on 
+# Use this one script file *unmodified* for all projects that follow the
+# convections. All the careful tweaking is for Visual Studio, but it works on
 # linux with both gcc and clang (at least well enough for CI :P).
 #
 # Project file layout:
@@ -81,7 +81,7 @@
 
 cmake_minimum_required(VERSION 3.10)
 option(BUILD_PROJECT_NAME "Override name of project to build" OFF)
-option(LINK_STATIC_RUNTIME "Link with static c++ runtime" ON)
+option(LINK_STATIC_RUNTIME "Link with static C++ runtime" ON)
 option(BUILD_SHARED_LIBS "Build DLLs instead of static libs" OFF)
 option(BUILD_UNICODE "Build with Unicode charset" OFF)
 option(BUILD_TESTING "Enable test generation for ctest" ON)
@@ -121,12 +121,13 @@ set(tmp "${LINK_STATIC_RUNTIME}")   # not used by clang or gcc builds
 # 2023-01-21 - Changed - Only create test projects if BUILD_TESTING enabled
 # 2024-02-18 - Removed - install_archive_pdb() in favor of /Z7
 # 2024-07-19 - Added - file/site project
-# 2024-07-20 - Added - Changelog
+# 2024-07-20 - Added - This changelog
 # 2025-01-09 - Changed - Use --std=c++2c with supporting GCC and Clang
 # 2025-02-24 - Added - Resource projects with arbitrary files
 # 2025-02-24 - Removed - file/site project, use a resource project instead
 # 2025-05-18 - Changed - Minimum required version now 3.10
 # 2025-06-03 - Added - Include CircleCI pipeline configurations
+# 2025-11-18 - Changed - CI service files into per service solution folders
 
 
 #############################################################################
@@ -169,7 +170,7 @@ if(NOT OUT_OF_TREE)
 endif()
 
 if(MSVC)
-    # "/EHsc" - exceptions from c++ only (not from structured or "C")
+    # "/EHsc" - exceptions from C++ only (not from structured or "C")
     # "/GF" - string pooling
     # "/GR-" (UNUSED) - disable RTTI
     # "/guard:cf" (UNUSED) - control flow guard
@@ -247,7 +248,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++2c")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "7")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "10")
         # The libstdc++6 library, as of 2021-06-15, no longer works with
         # Clang++-6 in c++2a mode, failing with a reference to the unknown
         # std::is_constant_evaluated().
@@ -296,8 +297,11 @@ endforeach()
 # for the same group name, all but the last are ignored. So I fear that the
 # "ci" regex is going to get really ugly.
 source_group(" " REGULAR_EXPRESSION ".*")
-source_group("ci" REGULAR_EXPRESSION "\.circleci/.*|\.github/.*\.yml")
-source_group("ci" FILES appveyor.yml codecov.yml .travis.yml)
+source_group("ci-appveyor" FILES appveyor.yml)
+source_group("ci-circle" REGULAR_EXPRESSION "\.circleci/.*")
+source_group("ci-codecov" FILES codecov.yml)
+source_group("ci-github" REGULAR_EXPRESSION "\.github/.*\.yml")
+source_group("ci-travis" FILES .travis.yml)
 source_group("vendor" REGULAR_EXPRESSION "web/(.*/)+vendor/.*")
 
 if(ROOT_PROJECT)
