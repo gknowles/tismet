@@ -830,7 +830,9 @@ static void calcSampleUpdate(SampleUpdateState * sus) {
         }
     }
     packSample(sus, sus->sample);
-    for (; sus->in; ++sus->in) {
+    for (;; ++sus->in) {
+        if (!sus->in)
+            break;
         auto & s = *sus->in;
         packSample(sus, s);
         if (sus->pack.state() == sus->in.state())
@@ -874,33 +876,38 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         return;
     }
 
+    // Split takes place in, at, or before update.
     DbUnpackIter inpack(
         sus->pack.data(),
         sus->pack.bits(),
         0,
         sus->firstTime
     );
-    size_t splitPos = 0;
-    auto splitLastTime = inpack->time;
-    for (; inpack; ++inpack) {
-        splitPos = inpack.spos();
-        if (splitPos + inpack.slen() > keepBits)
+    assert(inpack);
+    for (;;) {
+        sus->lastTime = inpack->time;
+        if (!++inpack)
             break;
-        splitLastTime = inpack->time;
+        if (inpack.epos() > keepBits)
+            break;
     }
-    sus->lastTime = splitLastTime;
+    size_t splitPos = inpack.spos();
     sus->firstSample2 = *inpack;
     sus->pack2.retarget(
         sus->pack2.data(),
         sus->pack2.capacity(),
         0,
-        {.sample = { sus->firstSample2.time }}
+        sus->firstSample2.time
     );
     for (; inpack; ++inpack) {
         packSample2(sus, *inpack);
     }
-    for (; sus->in; ++sus->in) {
-        packSample2(sus, *sus->in);
+    if (sus->in) {
+        assert(sus->pack2.state().sample == *sus->in);
+        ++sus->in;
+        for (; sus->in; ++sus->in) {
+            packSample2(sus, *sus->in);
+        }
     }
     sus->lastTime2 = sus->pack2.state().sample.time;
 
@@ -974,9 +981,11 @@ void DbData::updateSample(
     }
 
     //-----------------------------------------------------------------------
-    // Further in the future than the retention period?
+    // Short circuit when further in the future than the retention period.
     if (time > sp->lastTime + mi.retention) {
-        // Remove all samples and add as new initial sample.
+        // The new sample is far enough in the future that all preexisting
+        // samples become expired. Remove all samples and add as new initial
+        // sample.
         eraseSamples(txn, id);
         // Add new sample in green field.
         updateSample(txn, id, time, value);
@@ -1027,7 +1036,6 @@ void DbData::updateSample(
                 auto oldTime = sp->firstTime;
                 txn.walSampleUpdateTime(spno, time, {});
                 if (auto si = spLast->sampleIndex; si != npos) {
-                    assert(time == sp->firstTime);
                     updateSampleIndex(txn, spLast, si, sp, oldTime);
                 } else {
                     // There is only one page, otherwise there would be an

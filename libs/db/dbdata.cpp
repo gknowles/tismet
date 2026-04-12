@@ -745,7 +745,7 @@ bool DbData::loadDeprecatedPages(DbTxn & txn) {
         if (num++ % 1000 == 0 && appStopping())
             return false;
         auto pgno = (pgno_t) m_deprecatedPages.pop_front();
-        freePage(txn, pgno);
+        freePage(txn, pgno, /*mustNotBeFree=*/false);
     }
     return true;
 }
@@ -804,7 +804,7 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
 }
 
 //===========================================================================
-void DbData::freePage(DbTxn & txn, pgno_t pgno) {
+void DbData::freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree) {
     scoped_lock lk{m_pageMut};
     DbTxn::PinScope pins(txn);
 
@@ -824,8 +824,10 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno) {
         // keeping the preexisting children.
         break;
     case DbPageType::kFree:
-        logMsgFatal() << "freePage(" << (unsigned) pgno
-            << "): page already free";
+        if (mustNotBeFree) {
+            logMsgFatal() << "freePage(" << (unsigned) pgno
+                << "): page already free";
+        }
         return;
     default:
         logMsgFatal() << "freePage(" << (unsigned) pgno

@@ -794,7 +794,7 @@ private:
     bool loadFreePages(DbTxn & txn);
     bool loadDeprecatedPages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
-    void freePage(DbTxn & txn, pgno_t pgno);
+    void freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree = true);
     void deprecatePage(DbTxn & txn, pgno_t pgno);
     void freeDeprecatedPages(DbTxn & txn, Dim::UnsignedSet pgnos);
 

@@ -182,6 +182,40 @@ static void addSamples(
     *ph = h;
 }
 
+//===========================================================================
+static void setFullSamplePage(
+    uint32_t * id,
+    map<TimePoint, double> * out,
+    DbHandle h,
+    string name,
+    TimePoint start
+) {
+    dbEraseMetric(h, *id);
+    out->clear();
+    if (!dbInsertMetric(id, h, name)) {
+        EXPECT(!"Failure replacing metric.");
+        return;
+    }
+    DbMetricInfo info;
+    info.type = kSampleTypeFloat32;
+    info.interval = 1min;
+    info.retention = duration_cast<Duration>(300 * info.interval);
+    dbUpdateMetric(h, *id, info);
+    auto stats = dbQueryStats(h);
+    auto oldFree = stats.freePages;
+    while (oldFree == stats.freePages) {
+        auto pos = out->size();
+        auto value = 1.0 * pos + (pos % 2 ? 0.5 : 0.0);
+        auto time = start + pos * 1min;
+        dbUpdateSample(h, *id, time, value);
+        (*out)[time] = value;
+        stats = dbQueryStats(h);
+    }
+    TestDbSeries samples;
+    if (!compareSamples(&samples, h, *id, *out))
+        EXPECT(!"Expected samples don't match.");
+}
+
 
 /****************************************************************************
 *
@@ -411,32 +445,12 @@ void Test::sampleTests() {
         { 20*pgt, 1 },
     };
     addSamples(&h, &ctx, id, start, name, vals);
-    dbEraseMetric(h, id);
+
 
     // Page split when appending to end.
-    dbInsertMetric(&id, h, name);
-    EXPECT(id == 1);
-    info.type = kSampleTypeFloat32;
-    info.retention = duration_cast<Duration>(3 * pgt);
-    info.interval = 1min;
-    dbUpdateMetric(h, id, info);
-    dbUpdateSample(h, id, start, 1.0);
-    expected.clear();
+    setFullSamplePage(&id, &expected, h, name, start);
     stats = dbQueryStats(h);
-    auto pageStart = start;
-    auto oldFree = stats.freePages;
-    for (;;) {
-        auto value = 1.0 * expected.size() + (expected.size() % 2 ? 0.5 : 0.0);
-        dbUpdateSample(h, id, pageStart, value);
-        expected[pageStart] = value;
-        stats = dbQueryStats(h);
-        if (oldFree != stats.freePages)
-            break;
-        pageStart += 1min;
-    }
-    if (!compareSamples(&samples, h, id, expected))
-        EXPECT(!"Expected samples don't match.");
-    oldFree = stats.freePages;
+    [[maybe_unused]] auto oldFree = stats.freePages;
 
     // completely fill sample pages
     auto value = 1.0;
