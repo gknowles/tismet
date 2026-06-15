@@ -669,11 +669,14 @@ struct SampleUpdateState {
     // Modification
     DbPack pack;
     TimePoint lastTime = {};
+
+    // If there is a trunc it happens before the replace (if any)
+    size_t truncPos = {};
+
     size_t updPos = {};
     size_t updLen = {};
     size_t replPos = {};
     size_t replLen = {};
-    size_t truncPos = {};
 
     // Second page of split
     DbPack pack2;
@@ -849,15 +852,15 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
     if (keepBits > sus->pack.bits()) {
         // Split in area after update.
         assert(sus->in);
-        auto inKeepPoint = keepBits - sus->updLen + sus->replLen;
         for (;;) {
             ++sus->in;
-            if (sus->in.epos() > inKeepPoint)
+            if (sus->pack.bits() + sus->in.slen() > keepBits)
                 break;
-            packSample(sus, *sus->in);
+            auto & s = *sus->in;
+            packSample(sus, s);
         }
         sus->lastTime = sus->pack.state().sample.time;
-        sus->truncPos = sus->in.spos() + sus->updLen - sus->replLen;
+        sus->truncPos = sus->in.spos();
 
         sus->firstSample2 = *sus->in;
         sus->pack2.retarget(
@@ -868,7 +871,8 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         );
         assert(sus->in);
         for (;;) {
-            packSample2(sus, *sus->in);
+            auto & s = *sus->in;
+            packSample2(sus, s);
             if (!++sus->in)
                 break;
         }
@@ -891,7 +895,7 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         if (inpack.epos() > keepBits)
             break;
     }
-    size_t splitPos = inpack.spos();
+    sus->truncPos = inpack.spos();
     sus->firstSample2 = *inpack;
     sus->pack2.retarget(
         sus->pack2.data(),
@@ -900,20 +904,22 @@ static void calcSamplePageSplit(SampleUpdateState * sus, size_t keepBits) {
         sus->firstSample2.time
     );
     for (; inpack; ++inpack) {
-        packSample2(sus, *inpack);
+        auto & s = *inpack;
+        packSample2(sus, s);
     }
     if (sus->in) {
         assert(sus->pack2.state().sample == *sus->in);
         ++sus->in;
         for (; sus->in; ++sus->in) {
-            packSample2(sus, *sus->in);
+            auto & s = *sus->in;
+            packSample2(sus, s);
         }
     }
     sus->lastTime2 = sus->pack2.state().sample.time;
 
-    if (splitPos >= sus->pack.bits() - sus->updLen) {
+    if (sus->truncPos >= sus->pack.bits() - sus->updLen) {
         // Split takes place at or in update.
-        sus->updLen = splitPos - sus->replPos;
+        sus->updLen = sus->truncPos - sus->replPos;
         sus->replLen = sus->in.bits() - sus->replPos;
     } else {
         // Split in area before update.
@@ -973,8 +979,8 @@ void DbData::updateSample(
             // No (or malformed?) sample index, add to last (and only) page.
             assert(spno);
         } else {
-            // Update sample on page found in index (and we know it's not the
-            // last page of the index).
+            // Select page found in index (and we know it's not the last page
+            // of the index) to receive the sample.
             spno = pgno;
             sp = txn.pin<SamplePage>(spno);
         }
@@ -982,7 +988,7 @@ void DbData::updateSample(
 
     //-----------------------------------------------------------------------
     // Short circuit when further in the future than the retention period.
-    if (time > sp->lastTime + mi.retention) {
+    if (time > spLast->lastTime + mi.retention) {
         // The new sample is far enough in the future that all preexisting
         // samples become expired. Remove all samples and add as new initial
         // sample.
@@ -1091,7 +1097,8 @@ void DbData::updateSample(
 
     // Update/create sample index.
     if (spLast->sampleIndex == npos) {
-        // Sample index doesn't already exist, add current page.
+        // Sample index doesn't already exist, create it with an entry for
+        // the current page.
         assert(sp == spLast);
         updateSampleIndex(txn, spLast, spLast->sampleIndex, sp, {});
     }
@@ -1122,7 +1129,7 @@ void DbData::updateSample(
         return;
     }
 
-    // Split samples onto two pages.
+    // Split samples into two pages.
     auto keepBits = sus.in.bits() + sus.updLen - sus.replLen;
     Duration retention = {};
     if (sp == spLast) {

@@ -44,7 +44,6 @@
 //===========================================================================
 // Parser function covering:
 //  - 21 states
-[[gsl::suppress(bounds)]]
 bool CarbonParser::parse (char const src[]) {
     auto ptr = src;
     unsigned char ch;
