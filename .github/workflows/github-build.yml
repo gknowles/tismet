@@ -18,14 +18,14 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Debug, Release]
-        toolset: [v143]
-        image: [windows-2025]
+        toolset: [v145]
+        image: [windows-2025-vs2026]
         coverage: [false]
         include:
           - platform: x64
             configuration: Debug
-            toolset: v143
-            image: windows-2025
+            toolset: v145
+            image: windows-2025-vs2026
             coverage: true
     runs-on: ${{matrix.image}}
     defaults:
@@ -53,8 +53,8 @@ jobs:
         md build
         cd build
         set gen=Visual Studio 16 2019
-        if "${{matrix.toolset}}" == "v142" set gen=Visual Studio 17 2022
-        if "${{matrix.toolset}}" == "v143" set gen=Visual Studio 17 2022
+        if "${{matrix.toolset}}" == "v142" set gen=Visual Studio 18 2026
+        if "${{matrix.toolset}}" == "v143" set gen=Visual Studio 18 2026
         if "${{matrix.toolset}}" == "v145" set gen=Visual Studio 18 2026
         cmake .. -G "%gen%" -A ${{matrix.platform}} -T ${{matrix.toolset}}
         cmake . -DCMAKE_BUILD_TYPE=${{matrix.configuration}}^
@@ -96,7 +96,7 @@ jobs:
 
     - name: Report Coverage
       if: matrix.coverage
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         files: merged.xml
