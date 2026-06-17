@@ -1,11 +1,11 @@
 <!--
-Copyright Glen Knowles 2016 - 2025.
+Copyright Glen Knowles 2016 - 2026.
 Distributed under the Boost Software License, Version 1.0.
 -->
 
 # Tismet
 
-| Branch | MSVC 2022 | Test Coverage |
+| Branch | MSVC 2026 | Test Coverage |
 | :----: | :-------: | :-----------: |
 | master | [![Build][gh-image-master]][gh-link-master] | [![Coverage][cc-image-master]][cc-link-master] |
 | dev    | [![Build][gh-image-dev]][gh-link-dev] | [![Coverage][cc-image-dev]][cc-link-dev] |
