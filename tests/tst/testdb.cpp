@@ -103,16 +103,18 @@ static bool compareSamples(
     TestDbSeries * samples,
     DbHandle h,
     uint32_t id,
-    const map<TimePoint, double> expected
+    const map<TimePoint, double> & expected
 ) {
     dbGetSamples(samples, h, id);
     auto ix = expected.begin();
+    auto i = 0;
     for (auto&& samp : samples->m_samples) {
         if (ix == expected.end())
             return false;
         if (samp.first != ix->first || samp.second != ix->second)
             return false;
         ++ix;
+        ++i;
     }
     return ix == expected.end();
 }
@@ -201,6 +203,8 @@ static void setFullSamplePage(
     info.interval = 1min;
     info.retention = duration_cast<Duration>(300 * info.interval);
     dbUpdateMetric(h, *id, info);
+    dbUpdateSample(h, *id, start, 0);
+    (*out)[start] = 0;
     auto stats = dbQueryStats(h);
     auto oldFree = stats.freePages;
     while (oldFree == stats.freePages) {
@@ -213,7 +217,7 @@ static void setFullSamplePage(
     }
     TestDbSeries samples;
     if (!compareSamples(&samples, h, *id, *out))
-        EXPECT(!"Expected samples don't match.");
+        EXPECT(!"Fill first page: expected samples don't match.");
 }
 
 
@@ -416,8 +420,8 @@ void Test::sampleTests() {
     TestDbSeries samples;
     map<TimePoint, double> expected;
 
-    auto h = dbOpen(dat);
-    EXPECT(h && "Failure to reopen database");
+    auto h = dbOpen(dat, fDbOpenAlways | fDbOpenTrunc, 128);
+    EXPECT(h && "Failure to truncate database");
     if (!h)
         return;
     ctx.reset(h);
@@ -453,31 +457,38 @@ void Test::sampleTests() {
     [[maybe_unused]] auto oldFree = stats.freePages;
 
     // completely fill sample pages
-    auto value = 1.0;
+    auto base = 1.0;
     for (auto i = 0u; i < 3 * spp; ++i) {
         auto time = start + i * 1min;
+        auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
+        if (!compareSamples(&samples, h, id, expected))
+            EXPECT(!"Completely fill (step): expected samples don't match.");
     }
     stats = dbQueryStats(h);
     if (!compareSamples(&samples, h, id, expected))
-        EXPECT(!"Expected samples don't match.");
+        EXPECT(!"Completely fill: expected samples don't match.");
 
     // change all historical sample values
-    value = 2.0;
+    base = 2.0;
     for (auto i = 0u; i < 3 * spp; ++i) {
         auto time = start + i * 1min;
+        auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
+        if (!compareSamples(&samples, h, id, expected))
+            EXPECT(!"Change all (step): expected samples don't match.");
     }
     stats = dbQueryStats(h);
     if (!compareSamples(&samples, h, id, expected))
-        EXPECT(!"Expected samples don't match.");
+        EXPECT(!"Change all: expected samples don't match.");
 
     // age out all sample values
-    value = 3.0;
+    base = 3.0;
     for (auto i = 3 * spp; i < 6 * spp; ++i) {
         auto time = start + i * 1min;
+        auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
     }
