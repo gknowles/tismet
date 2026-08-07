@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2018 - 2025.
+// Copyright Glen Knowles 2018 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // pch.h - tismet test
@@ -31,6 +31,7 @@
 #include <fstream>
 #include <mutex>
 #include <random>
+#include <ranges>
 #include <set>
 #include <string>
 #include <type_traits>

@@ -1041,16 +1041,6 @@ void DbData::trieApply(
 }
 
 //===========================================================================
-void DbData::trieClear(DbTxn & txn, pgno_t root) {
-    assert(root);
-    DbPageHeap heap(&txn, this, root);
-    StrTrieBase trie(&heap);
-    trie.clear();
-    for (auto&& pgno : heap.destroyed())
-        freePage(txn, (pgno_t) pgno);
-}
-
-//===========================================================================
 bool DbData::trieVisitWithPrefix(
     DbTxn & txn,
     pgno_t root,

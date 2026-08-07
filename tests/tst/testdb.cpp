@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2025.
+// Copyright Glen Knowles 2017 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // testdb.cpp - tismet test
@@ -46,10 +46,9 @@ struct UpdateInfo {
 namespace {
 
 struct TestDbSeries : IDbDataNotify {
-    string m_name;
+    DbMetricInfo m_info;
     uint32_t m_id{};
     TimePoint m_first;
-    Duration m_interval;
     unsigned m_count{};
     vector<pair<TimePoint, double>> m_samples;
 
@@ -64,16 +63,22 @@ struct TestDbSeries : IDbDataNotify {
 } // namespace
 
 //===========================================================================
-bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & info) {
-    m_name = info.name;
-    m_id = info.id;
-    m_first = info.first;
-    m_interval = info.interval;
+bool TestDbSeries::onDbSeriesStart(const DbSeriesInfo & si) {
+    m_info.name = si.name;
+    m_info.interval = si.interval;
+    if (si.infoEx) {
+        auto & ei = static_cast<const DbSeriesInfoEx &>(si);
+        m_info.creation = ei.creation;
+        m_info.lastInfoWrite = ei.lastInfoWrite;
+        m_info.retention = ei.retention;
+    }
+    m_id = si.id;
+    m_first = si.first;
     m_count = 0;
-    if (empty(m_interval)) {
+    if (empty(m_info.interval)) {
         m_samples.clear();
     } else {
-        auto count = (info.last - info.first) / info.interval;
+        auto count = (si.last - si.first) / si.interval;
         m_samples.reserve(count);
         m_samples.resize(0);
     }
@@ -99,7 +104,7 @@ bool TestDbSeries::onDbSample(
 ***/
 
 //===========================================================================
-static bool compareSamples(
+static bool equalsExpected(
     TestDbSeries * samples,
     DbHandle h,
     uint32_t id,
@@ -116,7 +121,32 @@ static bool compareSamples(
         ++ix;
         ++i;
     }
-    return ix == expected.end();
+    if (ix != expected.end())
+        return false;
+    return true;
+}
+
+//===========================================================================
+static bool endsWithExpected(
+    TestDbSeries * samples,
+    DbHandle h,
+    uint32_t id,
+    const map<TimePoint, double> & expected
+) {
+    dbGetSamples(samples, h, id);
+    auto ix = expected.rbegin();
+    auto i = 0;
+    for (auto&& samp : ranges::reverse_view(samples->m_samples)) {
+        if (ix == expected.rend())
+            return true;
+        if (samp.first != ix->first || samp.second != ix->second)
+            return false;
+        ++ix;
+        ++i;
+    }
+    if (ix != expected.rend())
+        return false;
+    return true;
 }
 
 //===========================================================================
@@ -178,10 +208,13 @@ static void addSamples(
         expected[time] = value;
         if (val.reopen)
             stats = reopen(&h, ctx, id, name, val.sloc);
-        if (!compareSamples(&samples, h, id, expected))
+        if (!equalsExpected(&samples, h, id, expected))
             EXPECT_AT(val.sloc, !"Expected samples don't match.");
     }
     *ph = h;
+    stats = dbQueryStats(h);
+    EXPECT(stats.deprecatedPages == 0
+        && "Existing deprecated pages after commit.");
 }
 
 //===========================================================================
@@ -214,9 +247,11 @@ static void setFullSamplePage(
         dbUpdateSample(h, *id, time, value);
         (*out)[time] = value;
         stats = dbQueryStats(h);
+        if (stats.deprecatedPages)
+            EXPECT(!"Existing deprecated pages after commit.");
     }
     TestDbSeries samples;
-    if (!compareSamples(&samples, h, *id, *out))
+    if (!equalsExpected(&samples, h, *id, *out))
         EXPECT(!"Fill first page: expected samples don't match.");
 }
 
@@ -433,6 +468,7 @@ void Test::sampleTests() {
         dbEraseMetric(h, id);
     stats = dbQueryStats(h);
     EXPECT(stats.metrics == 0);
+    EXPECT(stats.deprecatedPages == 0);
 
     dbInsertMetric(&id, h, name);
     vector<UpdateInfo> vals = {
@@ -455,6 +491,8 @@ void Test::sampleTests() {
     setFullSamplePage(&id, &expected, h, name, start);
     stats = dbQueryStats(h);
     [[maybe_unused]] auto oldFree = stats.freePages;
+    dbGetMetricInfo(&samples, h, id);
+    info = samples.m_info;
 
     // completely fill sample pages
     auto base = 1.0;
@@ -463,11 +501,12 @@ void Test::sampleTests() {
         auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
-        if (!compareSamples(&samples, h, id, expected))
+        if (!equalsExpected(&samples, h, id, expected))
             EXPECT(!"Completely fill (step): expected samples don't match.");
     }
     stats = dbQueryStats(h);
-    if (!compareSamples(&samples, h, id, expected))
+    EXPECT(stats.deprecatedPages == 0);
+    if (!equalsExpected(&samples, h, id, expected))
         EXPECT(!"Completely fill: expected samples don't match.");
 
     // change all historical sample values
@@ -477,24 +516,31 @@ void Test::sampleTests() {
         auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
-        if (!compareSamples(&samples, h, id, expected))
+        if (!equalsExpected(&samples, h, id, expected))
             EXPECT(!"Change all (step): expected samples don't match.");
     }
     stats = dbQueryStats(h);
-    if (!compareSamples(&samples, h, id, expected))
+    EXPECT(stats.deprecatedPages == 0);
+    if (!equalsExpected(&samples, h, id, expected))
         EXPECT(!"Change all: expected samples don't match.");
 
     // age out all sample values
+    expected.clear();
     base = 3.0;
     for (auto i = 3 * spp; i < 6 * spp; ++i) {
         auto time = start + i * 1min;
         auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
         dbUpdateSample(h, id, time, value);
+        if (!endsWithExpected(&samples, h, id, expected))
+            EXPECT(!"Age out all (step): expected samples don't match.");
     }
     stats = dbQueryStats(h);
-    dbGetSamples(&samples, h, id);
+    EXPECT(stats.deprecatedPages == 0);
+    if (!equalsExpected(&samples, h, id, expected))
+        EXPECT(!"Age out all: expected samples don't match.");
 
+    // query for samples
     dbGetSamples(
         &samples,
         h,
@@ -503,6 +549,22 @@ void Test::sampleTests() {
         start + (3 * spp + 2) * 1min
     );
     EXPECT(samples.m_count == 3);
+
+    // Add samples in reverse order
+    expected.clear();
+    base = 1.0;
+    for (auto i = 0u; i < 3 * spp; ++i) {
+        auto time = start + 3 * info.retention - i * 1min;
+        auto value = base + (i % 2 ? 0.5 : 0.0);
+        expected[time] = value;
+        if (i == 49)
+            expected[time] = value;
+        dbUpdateSample(h, id, time, value);
+        if (!equalsExpected(&samples, h, id, expected))
+            EXPECT(!"Change reversed (step): expected samples don't match.");
+    }
+    stats = dbQueryStats(h);
+    EXPECT(stats.deprecatedPages == 0);
 
     ctx.reset();
     dbClose(h);

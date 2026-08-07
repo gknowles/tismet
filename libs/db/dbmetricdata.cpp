@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2025.
+// Copyright Glen Knowles 2017 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbmetricdata.cpp - tismet db
@@ -533,21 +533,29 @@ void DbData::eraseSamples(DbTxn & txn, uint32_t id) {
     auto sp = txn.pin<SamplePage>(spno);
     auto iroot = sp->sampleIndex;
     assert(iroot);
-    if (iroot == npos) {
-        freePage(txn, spno);
-        return;
+    if (iroot != npos) {
+        // Free each page in the index except for the last (it has the
+        // reference to the index), which we save for later.
+        trieVisitWithPrefix(txn, iroot, {}, [&](auto & txn, auto & key) {
+            SampleIndexRec rec;
+            if (!::parseTrieKey(&rec, key)) {
+                assert(!"Bad sample index entry");
+            } else if (rec.pgno == spno) {
+                // Don't free the last page yet.
+            } else {
+                freePage(txn, rec.pgno);
+            }
+            return true;
+        });
+
+        // Free the index of sample pages.
+        DbSamplePageHeap heap(&txn, this, iroot, sp->hdr.id, spno);
+        StrTrieBase trie(&heap);
+        trie.clear();
     }
 
-    trieVisitWithPrefix(txn, iroot, {}, [this](auto & txn, auto & key) {
-        SampleIndexRec rec;
-        if (!::parseTrieKey(&rec, key)) {
-            assert(!"Bad sample index entry");
-        } else {
-            freePage(txn, rec.pgno);
-        }
-        return true;
-    });
-    trieClear(txn, iroot);
+    // Lastly, free the last page.
+    freePage(txn, spno);
 }
 
 
@@ -624,6 +632,7 @@ void DbData::updateSampleIndex(
     if (oldTime == sp->firstTime)
         return;
 
+    SampleIndexRec rec = {};
     DbSamplePageHeap heap(
         &txn,
         this,
@@ -635,12 +644,17 @@ void DbData::updateSampleIndex(
     [[maybe_unused]] auto result = false;
     if (oldTime) {
         assert(sampleIndex != npos);
-        auto key = ::trieKey({*oldTime, sp->hdr.pgno});
+        rec = {*oldTime, sp->hdr.pgno};
+        auto key = ::trieKey(rec);
         result = trie.erase(key);
         assert(result);
     }
 
-    auto key = ::trieKey({sp->firstTime, sp->hdr.pgno});
+    rec = {
+        .time = sp->firstTime,
+        .pgno = sp->hdr.pgno,
+    };
+    auto key = ::trieKey(rec);
     result = trie.insert(key);
     assert(result);
 
@@ -658,7 +672,6 @@ void DbData::updateSampleIndex(
         // No definitely expired pages
         return;
     }
-    SampleIndexRec rec;
     if (!::parseTrieKey(&rec, *i)) {
         logMsgFatal() << "updateSampleIndex(" << sp->hdr.id << ", "
             << time << "): invalid entry in sample index";
@@ -901,7 +914,7 @@ static void calcSampleUpdate(SampleUpdateState * sus) {
     sus->updPos = head;
     sus->updLen = sus->pack.bits() - common;
     sus->replPos = head;
-    sus->replLen = sus->in.epos() - common;
+    sus->replLen = sus->in.bits() - common;
 }
 
 //===========================================================================
@@ -1197,7 +1210,8 @@ void DbData::updateSample(
     if (sp == spLast) {
         // Split from last page into new last page.
         updateLastSamplePage(txn, id, spno2);
-        updateSampleIndex(txn, sp2, spno2, sp2, {}, retention);
+        updateSampleIndex(txn, sp2, spLast->sampleIndex, sp2, {}, retention);
+        spLast = sp2;
         clearSampleIndexRoot(txn, *this, sp);
     } else {
         // Split doesn't effect last page.
@@ -1443,7 +1457,7 @@ void DbData::getSamples(
     last -= last.time_since_epoch() % mi.interval;
     // Expand range to include presamples.
     if (presamples) {
-        if (presamples * mi.interval < first - TimePoint{}) {
+        if (presamples * mi.interval < first.time_since_epoch()) {
             first -= presamples * mi.interval;
         } else {
             first = {};
@@ -1465,7 +1479,7 @@ void DbData::getSamples(
         return noSamples(notify, id, mi.name, mi.type, last, mi.interval);
 
     unsigned count = 0;
-    GetSampleResult result = {};
+    GetSampleResult result = kComplete;
     if (sp->sampleIndex == npos) {
         result = reportSamples(&count, notify, txn, mi, sp, first, last);
     } else {
@@ -1483,7 +1497,6 @@ void DbData::getSamples(
             if (!::parseTrieKey(&rec, *i)) {
                 logMsgError() << "Malformed sample page key of '"
                     << mi.name << "'";
-                result = kComplete;
                 break;
             }
             sp = txn.pin<SamplePage>(rec.pgno);
@@ -1496,7 +1509,9 @@ void DbData::getSamples(
     if (result == kAborted) {
         // Send no more updates after an abort.
         return;
-    } else if (!count) {
+    }
+    // kComplete or kMore with no more pages to scan.
+    if (!count) {
         noSamples(notify, id, mi.name, mi.type, last, mi.interval);
     } else {
         notify->onDbSeriesEnd(id);

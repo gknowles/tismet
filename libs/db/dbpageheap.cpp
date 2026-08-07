@@ -61,8 +61,13 @@ size_t DbPageHeap::create() {
 //===========================================================================
 void DbPageHeap::destroy(size_t pgno) {
     assert(!empty());
-    m_data.deprecatePage(m_txn, (pgno_t) pgno);
+    onDbPageHeapDestroy((pgno_t) pgno);
     m_destroyed.insert((unsigned) pgno);
+}
+
+//===========================================================================
+void DbPageHeap::onDbPageHeapDestroy(pgno_t pgno) {
+    m_data.deprecatePage(m_txn, (pgno_t) pgno);
 }
 
 //===========================================================================
@@ -160,6 +165,11 @@ DbSamplePageHeap::DbSamplePageHeap(
     : DbPageHeap(txn, data, root, rootId)
     , m_rootIndex(rootIndex)
 {}
+
+//===========================================================================
+void DbSamplePageHeap::onDbPageHeapDestroy(pgno_t pgno) {
+    m_data.freePage(m_txn, pgno);
+}
 
 //===========================================================================
 void DbSamplePageHeap::onDbPageHeapSetRoot(pgno_t pgno) {

@@ -741,6 +741,7 @@ public:
 
 private:
     friend class DbPageHeap;
+    friend class DbSamplePageHeap;
     friend class DbRootSet;
     friend struct DbRootVersion;
 
@@ -881,7 +882,6 @@ private:
         DbTxn & txn,
         const std::vector<TrieAction> & actions
     );
-    void trieClear(DbTxn & txn, pgno_t root);
     bool trieVisitWithPrefix(
         DbTxn & txn,
         pgno_t root,
@@ -955,6 +955,7 @@ public:
     const uint8_t * ptr(size_t pgno) const override;
 
 protected:
+    virtual void onDbPageHeapDestroy(pgno_t pgno);
     virtual void onDbPageHeapSetRoot(pgno_t pgno);
 
     DbTxn & m_txn;
@@ -982,6 +983,7 @@ public:
 
 protected:
     // Inherited via DbPageHeap
+    void onDbPageHeapDestroy(pgno_t pgno) override;
     void onDbPageHeapSetRoot(pgno_t pgno) override;
 
 private:
