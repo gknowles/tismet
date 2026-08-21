@@ -26,6 +26,10 @@ struct DbSample {
 };
 
 struct DbPackState {
+    // Initial sample time is 2001-01-01
+    constexpr static Dim::TimePoint kInitialSampleTime =
+        Dim::TimePoint(std::chrono::seconds(12'622'780'800));
+
     DbSample sample{};
 
     // time encoding parameters
@@ -53,13 +57,7 @@ public:
         const void * src,
         size_t srcBits,
         size_t bitPos = 0,
-        const DbPackState & state = {}
-    );
-    DbUnpackIter(
-        const void * src,
-        size_t srcBits,
-        size_t bitPos,
-        Dim::TimePoint firstTime
+        const DbPackState & state = { DbPackState::kInitialSampleTime }
     );
     explicit operator bool() const;
     bool operator==(const DbUnpackIter & right) const;
@@ -76,12 +74,15 @@ public:
     size_t slen() const { return m_sampleBits; }
     size_t epos() const { return spos() + slen(); }
 
-    void seek(size_t bitPos, const DbPackState & state);
-    void seek(size_t bitPos, Dim::TimePoint firstTime);
+    void seek(
+        size_t bitPos,
+        const DbPackState & state = { DbPackState::kInitialSampleTime }
+    );
+    void seekEnd();
 
 private:
-    bool getInt(int64_t * out, size_t nbits);
-    bool getUint(uint64_t * out, size_t nbits);
+    bool getInt(std::int64_t * out, size_t nbits);
+    bool getUint(std::uint64_t * out, size_t nbits);
     bool getTime();
     bool getValue();
 
@@ -114,29 +115,19 @@ public:
         void * out,
         size_t outBytes,
         size_t bitPos,
-        const DbPackState & st
-    );
-    DbPack(
-        void * out,
-        size_t outBytes,
-        size_t bitPos,
-        Dim::TimePoint firstTime
+        const DbPackState & st = { DbPackState::kInitialSampleTime }
     );
 
     void retarget(void * out, size_t outBytes);
-    void retarget(size_t bitPos, Dim::TimePoint firstTime);
     void retarget(
-        void * out,
-        size_t outBytes,
         size_t bitPos,
-        Dim::TimePoint firstTime
+        const DbPackState & st = { DbPackState::kInitialSampleTime }
     );
-    void retarget(size_t bitPos, const DbPackState & st);
     void retarget(
         void * out,
         size_t outBytes,
         size_t bitPos,
-        const DbPackState & st
+        const DbPackState & st = { DbPackState::kInitialSampleTime }
     );
     bool put(Dim::TimePoint time, double value);
     bool put(const DbSample & s) { return put(s.time, s.value); }
@@ -153,8 +144,8 @@ public:
     DbUnpackIter find(size_t bitPos = 0, const DbPackState & state = {}) const;
 
 private:
-    bool putInt(size_t nbits, int64_t value);
-    bool putUint(size_t nbits, uint64_t value);
+    bool putInt(size_t nbits, std::int64_t value);
+    bool putUint(size_t nbits, std::uint64_t value);
     size_t availBits();
     bool put(Dim::TimePoint time);
     bool put(double value);

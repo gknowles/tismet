@@ -53,16 +53,6 @@ DbPack::DbPack(
 }
 
 //===========================================================================
-DbPack::DbPack(
-    void * out,
-    size_t outBytes,
-    size_t bitPos,
-    TimePoint firstTime
-)
-    : DbPack(out, outBytes, bitPos, {.sample = { firstTime }})
-{}
-
-//===========================================================================
 DbUnpackIter DbPack::find(
     size_t bitPos,
     const DbPackState & state
@@ -93,22 +83,6 @@ void DbPack::retarget(
 ) {
     retarget(out, outBytes);
     retarget(bitPos, st);
-}
-
-//===========================================================================
-void DbPack::retarget(size_t bitPos, TimePoint firstTime) {
-    retarget(bitPos, {.sample = { firstTime }});
-}
-
-//===========================================================================
-void DbPack::retarget(
-    void * out,
-    size_t outBytes,
-    size_t bitPos,
-    TimePoint firstTime
-) {
-    retarget(out, outBytes);
-    retarget(bitPos, firstTime);
 }
 
 //===========================================================================
@@ -196,7 +170,7 @@ bool DbPack::put(TimePoint time) {
                     && putUint(4, 0b1110)
                     && putInt(bits, ddt);
             } else {
-                // ddt within [2049, 2^59]
+                // ddt within [2049, 2^63]
                 // '1110' + (ddt - 1) (61 - 64 bits, depending on exponent)
                 return availBits() >= 4 + bits
                     && putUint(4, 0b1110)
@@ -271,7 +245,7 @@ bool DbPack::putUint(size_t nbits, uint64_t value) {
     for (;;) {
         auto used = pos / 8;
         auto unusedBits = 8 - (pos % 8);
-        if (!unusedBits)
+        if (unusedBits == 8)
             m_base[used] = 0;
 
         if (unusedBits >= cnt) {
@@ -318,16 +292,6 @@ DbUnpackIter::DbUnpackIter(
 }
 
 //===========================================================================
-DbUnpackIter::DbUnpackIter(
-    const void * src,
-    size_t srcBits,
-    size_t bitPos,
-    TimePoint firstTime
-)
-    : DbUnpackIter(src, srcBits, bitPos, {.sample = { firstTime }})
-{}
-
-//===========================================================================
 DbUnpackIter::operator bool() const {
     return bits() != m_samplePos;
 }
@@ -361,8 +325,9 @@ void DbUnpackIter::seek(size_t bitPos, const DbPackState & state) {
 }
 
 //===========================================================================
-void DbUnpackIter::seek(size_t bitPos, TimePoint firstTime) {
-    seek(bitPos, {.sample = { firstTime }});
+void DbUnpackIter::seekEnd() {
+    while (*this)
+        ++*this;
 }
 
 //===========================================================================
@@ -450,14 +415,14 @@ bool DbUnpackIter::getValue() {
 
 //===========================================================================
 bool DbUnpackIter::getInt(int64_t * out, size_t nbits) {
-    if (!getUint((uint64_t *) out, nbits))
+    assert(nbits > 1 && nbits <= 64);
+    uint64_t val;
+    if (!getUint(&val, nbits))
         return false;
-    if (nbits > 1 && nbits < 64) {
-        auto signbit = *out & int64_t(1ull << (nbits - 1));
-        if (signbit)
-            *out = signbit - *out;
-    }
+    auto signbit = val & (1ull << (nbits - 1));
+    *out = signbit ? -(int64_t)(val - signbit) : (int64_t)val;
     return true;
+
 }
 
 //===========================================================================

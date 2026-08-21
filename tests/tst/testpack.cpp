@@ -63,8 +63,11 @@ void Test::onTestRun() {
     EXPECT(pack.size() == 0)
     EXPECT(pack.bits() == 0);
     EXPECT(pack.span().size() == 0);
+    DbUnpackIter unpack;
 
-    auto today = std::chrono::floor<std::chrono::days>(timeNow());
+    auto today = chrono::floor<chrono::days>(timeNow());
+    auto t1998 = timeFromUnix(900'000'000);
+    TimePoint tomorrow = today + 24h;
 
     struct {
         TimePoint time;
@@ -78,11 +81,13 @@ void Test::onTestRun() {
         { today + 8s, 5.0 },
         { today + 9s, 7.0 },
     };
-    pack.retarget(0, { .sample = { .time = today } });
+
+    // Insert and read back samples.
+    DbPackState stToday = { .sample = { .time = today } };
+    pack.retarget(0, stToday);
     for (auto&& val : vals)
         pack.put(val.time, val.value);
-    DbUnpackIter unpack(pack.data(), pack.bits());
-    unpack.seek(0, { .sample = { .time = today } });
+    unpack = pack.find(0, stToday);
     for (auto&& val : vals) {
         auto & s = *unpack;
         EXPECT_AT(val.sloc, s.time == val.time);
@@ -91,12 +96,14 @@ void Test::onTestRun() {
     }
     EXPECT(!unpack);
 
+    // Insert sample into middle of pack.
     string buf2;
     buf2.resize(40);
     DbPack pack2(buf2.data(), buf2.size());
     struct {
         TimePoint time;
         double value;
+        source_location sloc = source_location::current();
     } adds[] = {
         { today + 7s, 4.0 },
     };
@@ -117,4 +124,15 @@ void Test::onTestRun() {
         for (; unpack; ++unpack)
             cout << unpack->time << ", " << unpack->value << '\n';
     }
+
+    // First sample older than base time.
+    DbPackState stTomorrow = { .sample = { .time = tomorrow }};
+    pack.retarget(0, stTomorrow);
+    pack.put(vals[0].time, vals[0].value);
+    unpack = pack.find(0, stTomorrow);
+    auto & s = *unpack;
+    EXPECT(s.time == vals[0].time);
+    EXPECT(s.value == vals[0].value);
+    ++unpack;
+    EXPECT(!unpack);
 }
