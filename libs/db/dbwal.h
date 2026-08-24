@@ -421,11 +421,6 @@ public:
         void * ptr,
         pgno_t rootPage
     ) = 0;
-    virtual void onWalApplySampleUpdateTime(
-        void * ptr,
-        Dim::TimePoint firstTime,
-        Dim::TimePoint lastTime
-    ) = 0;
     virtual void onWalApplySampleReplace(
         void * ptr,
         size_t dstPos,

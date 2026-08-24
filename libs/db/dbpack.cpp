@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2023 - 2025.
+// Copyright Glen Knowles 2023 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbpack.cpp - tismet db
@@ -39,7 +39,7 @@ constexpr struct {
 
 //===========================================================================
 DbPack::DbPack(void * out, size_t outBytes) {
-    retarget(out, outBytes);
+    retarget(out, outBytes, 0);
 }
 
 //===========================================================================
@@ -193,8 +193,10 @@ bool DbPack::put(double value) {
 
     auto prefix = min(countl_zero(dv), 31);
     auto len = 64 - prefix - countr_zero(dv);
+
     if (prefix >= m_state.prefixBits
         && prefix + len <= m_state.prefixBits + m_state.lenBits
+        && 2 * len + 1 > m_state.lenBits
     ) {
         // Meaningful bits (i.e. not the leading or trailing zeros) fits
         // within previous range.

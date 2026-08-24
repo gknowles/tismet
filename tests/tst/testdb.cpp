@@ -437,6 +437,7 @@ void Test::queryTests() {
         dbInsertMetric(&id, h, name);
     }
     dbFindMetrics(&found, h);
+    EXPECT(found.count() == 2);
     for (auto && id : found)
         dbEraseMetric(h, id);
     ctx.reset();
@@ -515,7 +516,11 @@ void Test::sampleTests() {
         auto time = start + i * 1min;
         auto value = base + (i % 2 ? 0.5 : 0.0);
         expected[time] = value;
-        dbUpdateSample(h, id, time, value);
+        if (i == 90) {
+            dbUpdateSample(h, id, time, value);
+        } else {
+            dbUpdateSample(h, id, time, value);
+        }
         if (!equalsExpected(&samples, h, id, expected))
             EXPECT(!"Change all (step): expected samples don't match.");
     }
@@ -593,9 +598,10 @@ void Test::readonlyTests() {
 
 //===========================================================================
 void Test::onTestRun() {
+    sampleTests();
+
     invalidFileTests();
     dataTests();
     queryTests();
-    sampleTests();
     readonlyTests();
 }

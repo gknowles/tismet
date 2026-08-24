@@ -651,8 +651,8 @@ void DbPage::removeCleanPages_LK(const unique_lock<mutex> & lk) {
         if (pi->firstTime >= minTime)
             break;
         if (pi->readPins) {
-            // Page is pinned for reading (and maybe writing if pi->writePin is
-            // also true) so it can't be freed now, maybe next time.
+            // Page is pinned for reading (and writing if pi->writePin is also
+            // true) so it can't be freed now, maybe next time.
             continue;
         }
 

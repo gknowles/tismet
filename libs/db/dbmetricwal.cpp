@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2025.
+// Copyright Glen Knowles 2017 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbmetricwal.cpp - tismet db
@@ -31,15 +31,6 @@ struct SampleInitRec {
 struct SampleUpdateRootRec {
     DbWal::Record hdr;
     pgno_t rootPage;
-};
-struct SampleUpdateTimeRec {
-    DbWal::Record hdr;
-    TimePoint pageTime;
-};
-struct SampleUpdateTime2Rec {
-    DbWal::Record hdr;
-    TimePoint firstTime;
-    TimePoint lastTime;
 };
 struct SampleDataAtRec {
     DbWal::Record hdr;
@@ -116,36 +107,6 @@ static void applySampleUpdateRoot(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
-static void applySampleUpdateTimes(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateTime2Rec *>(args.rec);
-    args.notify->onWalApplySampleUpdateTime(
-        args.page,
-        rec->firstTime,
-        rec->lastTime
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateFirstTime(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.rec);
-    args.notify->onWalApplySampleUpdateTime(
-        args.page,
-        rec->pageTime,
-        {}
-    );
-}
-
-//===========================================================================
-static void applySampleUpdateLastTime(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleUpdateTimeRec *>(args.rec);
-    args.notify->onWalApplySampleUpdateTime(
-        args.page,
-        {},
-        rec->pageTime
-    );
-}
-
-//===========================================================================
 static void applySampleEraseAt(const DbWalApplyArgs & args) {
     auto rec = reinterpret_cast<const SampleDataRefRec *>(args.rec);
     args.notify->onWalApplySampleReplace(
@@ -185,18 +146,6 @@ static DbWalRegisterRec s_sampleRecInfo{
     { kRecTypeSampleUpdateRoot,
         DbWalRecInfo::sizeFn<SampleUpdateRootRec>,
         applySampleUpdateRoot,
-    },
-    { kRecTypeSampleUpdateTime,
-        DbWalRecInfo::sizeFn<SampleUpdateTime2Rec>,
-        applySampleUpdateTimes,
-    },
-    { kRecTypeSampleUpdateFirstTime,
-        DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
-        applySampleUpdateFirstTime,
-    },
-    { kRecTypeSampleUpdateLastTime,
-        DbWalRecInfo::sizeFn<SampleUpdateTimeRec>,
-        applySampleUpdateLastTime,
     },
     { kRecTypeSampleErase,
         DbWalRecInfo::sizeFn<SampleDataRefRec>,
@@ -238,37 +187,6 @@ void DbTxn::walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot) {
         pgno
     );
     rec->rootPage = newRoot;
-    wal(&rec->hdr, bytes);
-}
-
-//===========================================================================
-void DbTxn::walSampleUpdateTime(
-    pgno_t pgno,
-    TimePoint firstTime,
-    TimePoint lastTime
-) {
-    if (empty(firstTime) && empty(lastTime))
-        return;
-
-    if (!empty(firstTime) && !empty(lastTime)) {
-        auto [rec, bytes] = alloc<SampleUpdateTime2Rec>(
-            kRecTypeSampleUpdateTime,
-            pgno
-        );
-        rec->firstTime = firstTime;
-        rec->lastTime = lastTime;
-        wal(&rec->hdr, bytes);
-        return;
-    }
-
-    auto type = kRecTypeSampleUpdateFirstTime;
-    auto time = firstTime;
-    if (empty(firstTime)) {
-        type = kRecTypeSampleUpdateLastTime;
-        time = lastTime;
-    }
-    auto [rec, bytes] = alloc<SampleUpdateTimeRec>(type, pgno);
-    rec->pageTime = time;
     wal(&rec->hdr, bytes);
 }
 

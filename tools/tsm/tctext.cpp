@@ -90,11 +90,6 @@ private:
         void * ptr,
         pgno_t rootPage
     ) override;
-    void onWalApplySampleUpdateTime(
-        void * ptr,
-        TimePoint firstTime,
-        TimePoint lastTime
-    ) override;
     void onWalApplySampleReplace(
         void * ptr,
         size_t dstPos,
@@ -299,15 +294,6 @@ void TextWriter::onWalApplySampleUpdateRoot(
     pgno_t rootPage
 ) {
     out(ptr) << "samples.index = " << rootPage << '\n';
-}
-
-//===========================================================================
-void TextWriter::onWalApplySampleUpdateTime(
-    void * ptr,
-    TimePoint firstTime,
-    TimePoint lastTime
-) {
-    out(ptr) << "samples.time = " << firstTime << ", " << lastTime << '\n';
 }
 
 //===========================================================================

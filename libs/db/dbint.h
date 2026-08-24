@@ -380,11 +380,6 @@ public:
         double value
     );
     void walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot);
-    void walSampleUpdateTime(
-        pgno_t pgno,
-        Dim::TimePoint firstTime,
-        Dim::TimePoint lastTime
-    );
     void walSampleReplace(
         pgno_t pgno,
         size_t dstPos,
@@ -726,11 +721,6 @@ public:
         void * ptr,
         pgno_t rootPage
     ) override;
-    void onWalApplySampleUpdateTime(
-        void * ptr,
-        Dim::TimePoint firstTime,
-        Dim::TimePoint lastTime
-    ) override;
     void onWalApplySampleReplace(
         void * ptr,
         size_t dstPos,
@@ -769,8 +759,9 @@ private:
 
     bool findSamplePage(
         DbTxn & txn,
-        pgno_t * spno,  // pgno that should contain sample
-        pgno_t root,    // pgno of root of sample index of a metric
+        pgno_t * spno,      // pgno that should contain sample
+        bool * firstPage,   // was spno the first page of sample index?
+        pgno_t root,        // pgno of root of sample index of a metric
         uint32_t id,
         Dim::TimePoint time
     );
@@ -788,6 +779,7 @@ private:
         const SamplePage * root,
         pgno_t sampleIndex,
         const SamplePage * sp,
+        Dim::TimePoint time,
         std::optional<Dim::TimePoint> oldTime,
         std::optional<Dim::Duration> expiration = {}
     );
