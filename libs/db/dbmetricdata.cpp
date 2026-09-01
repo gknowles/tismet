@@ -467,8 +467,7 @@ bool DbData::findLastSamplePage(
     uint32_t id,
     bool createIfNotExists
 ) {
-    scoped_lock lk{m_mndxMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_mndxMut);
 
     if (radixFind(txn, spno, m_sampleRoot, id))
         return true;
@@ -570,8 +569,7 @@ pgno_t DbData::updateLastSamplePage(
     uint32_t id,
     pgno_t spno
 ) {
-    scoped_lock lk{m_mndxMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_mndxMut);
     return radixSwapValue(txn, m_sampleRoot, id, spno);
 }
 

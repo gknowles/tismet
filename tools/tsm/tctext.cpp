@@ -227,8 +227,8 @@ void TextWriter::onWalApplyRadixErase(
 ) {
     auto & os = out(ptr);
     os << "radix[" << firstPos;
-    if (firstPos != lastPos - 1)
-        os << " thru " << lastPos - 1;
+    if (lastPos - firstPos > 1)
+        os << "-" << lastPos - 1;
     os << "] = 0\n";
 }
 
@@ -271,7 +271,7 @@ void TextWriter::onWalApplyBitUpdate(
     auto & os = out(ptr);
     os << "bit[" << firstPos;
     if (lastPos - firstPos > 1)
-        os << "," << lastPos;
+        os << "-" << lastPos - 1;
     os << "] = " << (value ? 1 : 0) << '\n';
 }
 

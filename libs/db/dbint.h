@@ -283,12 +283,15 @@ class DbTxn {
 public:
     // Used to track and then release a set of buffer pins without requiring
     // the transaction to end.
-    class PinScope {
+    class PinScope : public Dim::ListLink<> {
     public:
         PinScope(DbTxn & txn);
+        PinScope(DbTxn & txn, std::mutex & mut);
 
         // Calls close() if scope is still active.
         ~PinScope();
+
+        explicit operator bool() const { return m_active; }
 
         // Closes scope, unpinning all pins taken while scope was active.
         // This is the default action on scope destruction.
@@ -304,14 +307,17 @@ public:
 
     private:
         DbTxn & m_txn;
+        std::unique_lock<std::mutex> m_lk;
         Dim::UnsignedSet m_prevPins;
 
         // Scope is active from construction until close or release is called.
-        bool m_active = true;
+        // UNLESS it is a recursive entry of the same scope mutex, in which
+        // case it is never active.
+        bool m_active = false;
     };
 
 public:
-    DbTxn(const DbTxn & from) = default;
+    DbTxn(const DbTxn & from);
     DbTxn(DbWal & wal, DbPage & page, std::shared_ptr<DbRootSet> roots);
     ~DbTxn();
 
@@ -408,6 +414,7 @@ private:
     DbPage & m_page;
     Lsx m_txn = {};
     std::string m_buffer;
+    Dim::List<PinScope> m_pinScopes;
     mutable Dim::UnsignedSet m_pinnedPages;
     Dim::UnsignedSet m_freePages;
     std::shared_ptr<DbRootSet> m_roots;
@@ -738,11 +745,7 @@ private:
     bool loadRoots(DbTxn & txn, pgno_t storeRoot);
     bool upgradeRoots(DbTxn & txn);
 
-    pgno_t loadRoot_LK(
-        std::unique_lock<std::recursive_mutex> & lk,
-        DbTxn & txn,
-        unsigned rootId
-    );
+    pgno_t loadRoot_PIN(DbTxn::PinScope & pins, DbTxn & txn, unsigned rootId);
     pgno_t loadRoot(DbTxn & txn, const std::string & rootName);
     pgno_t loadRoot(DbTxn & txn, unsigned rootId);
     void updateRoot(DbTxn & txn, unsigned rootId, pgno_t root);
@@ -787,9 +790,23 @@ private:
     bool loadFreePages(DbTxn & txn);
     bool loadDeprecatedPages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
-    void freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree = true);
+
+    // Only false if appCheckCount is requested (non-null) and fails.
+    bool freePage(
+        DbTxn & txn,
+        pgno_t pgno,
+        bool mustNotBeFree = true,
+        size_t * appCheckCount = {}
+    );
+
     void deprecatePage(DbTxn & txn, pgno_t pgno);
-    void freeDeprecatedPages(DbTxn & txn, Dim::UnsignedSet pgnos);
+
+    // Only false if appCheckCount is requested (non-null) and fails.
+    bool freeDeprecatedPages(
+        DbTxn & txn,
+        Dim::UnsignedSet pgnos,
+        size_t * appCheckCount = {}
+    );
 
     size_t radixPageEntries(
         int * ents,
@@ -798,8 +815,16 @@ private:
         uint16_t height,
         size_t pos
     );
-    void radixDestruct(DbTxn & txn, const DbPageHeader & hdr);
-    void radixDestructPage(DbTxn & txn, pgno_t pgno);
+    bool radixDestruct(
+        DbTxn & txn,
+        const DbPageHeader & hdr,
+        size_t * appCheckCount = {}
+    );
+    bool radixDestructPage(
+        DbTxn & txn,
+        pgno_t pgno,
+        size_t * appCheckCount = {}
+    );
     void radixErase(DbTxn & txn, pgno_t root, size_t firstPos, size_t lastPos);
     // The new value must be non-zero and the current value at the position
     // must be unassigned (zero).
@@ -907,7 +932,7 @@ private:
     mutable std::shared_mutex m_mposMut;
     unsigned m_numMetrics = 0;
 
-    mutable std::recursive_mutex m_pageMut;
+    mutable std::mutex m_pageMut;
     size_t m_numPages = 0;
     Dim::UnsignedSet m_freePages;
     size_t m_numFree = 0;

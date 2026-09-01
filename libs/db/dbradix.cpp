@@ -1,4 +1,4 @@
-// Copyright Glen Knowles 2017 - 2025.
+// Copyright Glen Knowles 2017 - 2026.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // dbradix.cpp - tismet db
@@ -81,7 +81,7 @@ size_t DbData::radixPageEntries(
         pos /= pents;
     }
 
-    // always return at least "height" entries
+    // Always return at least "height" entries.
     for (int * end = base + height + 1; out < end; ++out)
         *out = 0;
     reverse(base, out);
@@ -89,18 +89,30 @@ size_t DbData::radixPageEntries(
 }
 
 //===========================================================================
-void DbData::radixDestructPage(DbTxn & txn, pgno_t pgno) {
+bool DbData::radixDestructPage(
+    DbTxn & txn,
+    pgno_t pgno,
+    size_t * appCheckCount
+) {
     auto rp = txn.pin<RadixPage>(pgno);
-    radixDestruct(txn, rp->hdr);
+    return radixDestruct(txn, rp->hdr, appCheckCount);
 }
 
 //===========================================================================
-void DbData::radixDestruct(DbTxn & txn, const DbPageHeader & hdr) {
+bool DbData::radixDestruct(
+    DbTxn & txn,
+    const DbPageHeader & hdr,
+    size_t * appCheckCount
+) {
     auto rd = radixData(&hdr, m_pageSize);
     for (auto && p : *rd) {
-        if (p && p <= kMaxPageNum)
+        if (p && p <= kMaxPageNum) {
+            if (appCheckCount && ++*appCheckCount % 1000 == 0 && appStopping())
+                return false;
             freePage(txn, p);
+        }
     }
+    return true;
 }
 
 //===========================================================================
@@ -196,7 +208,7 @@ void DbData::radixInsert(
 
     auto oval = rd->pages[*d];
     if (oval) {
-        // there must be no page at the position
+        // There must be no page at the position.
         logMsgFatal() << "radixInsert(" << root << ", " << pos
             << "): already exists";
     }
@@ -252,7 +264,7 @@ bool DbData::radixFind(
     );
     count -= 1;
     if ((*rd)->height < count) {
-        // pos is beyond the limit that can be held in a tree this size, in
+        // 'pos' is beyond the limit that can be held in a tree this size, in
         // other words, it's past the end.
         return false;
     }
@@ -260,8 +272,9 @@ bool DbData::radixFind(
     while (auto height = (*rd)->height) {
         int pos = (height > count) ? 0 : *d;
         if (!(*rd)->pages[pos]) {
-            // Any zero value in a non-leaf page (since the stem pages are fully
-            // populated up to the highest pos) means that we're past the end.
+            // Any zero value in a non-leaf page (since the stem pages are
+            // fully populated up to the highest pos) means that we're past the
+            // end.
             return false;
         }
         *hdr = txn.pin<DbPageHeader>((*rd)->pages[pos]);

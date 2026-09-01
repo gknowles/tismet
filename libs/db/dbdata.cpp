@@ -402,8 +402,6 @@ bool DbData::openForUpdate(
         return false;
     if (!loadFreePages(txn))
         return false;
-    if (!loadDeprecatedPages(txn))
-        return false;
 
     if (!upgradeRoots(txn))
         return false;
@@ -424,6 +422,8 @@ bool DbData::openForUpdate(
         *index.second = rver;
     }
 
+    if (!loadDeprecatedPages(txn))
+        return false;
     if (m_verbose)
         logMsgInfo() << "Build metric index";
     if (!loadMetrics(txn, notify))
@@ -465,7 +465,7 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
 
     if (!m_rootRoot) {
         m_rootRoot = allocPgno(txn);
-        txn.walRadixInit(m_rootRoot, 0, 0, nullptr, nullptr);
+        txn.walRadixInit(m_rootRoot, kRootRootId, 0, nullptr, nullptr);
         txn.walRootUpdate(kZeroPageNum, m_rootRoot);
     }
     auto nameStoreRoot = kZeroPageNum;
@@ -604,8 +604,8 @@ bool DbData::upgradeRoots(DbTxn & txn) {
 }
 
 //===========================================================================
-pgno_t DbData::loadRoot_LK(
-    unique_lock<recursive_mutex> & lk,
+pgno_t DbData::loadRoot_PIN(
+    DbTxn::PinScope & pins,
     DbTxn & txn,
     unsigned rootId
 ) {
@@ -617,34 +617,31 @@ pgno_t DbData::loadRoot_LK(
 
 //===========================================================================
 pgno_t DbData::loadRoot(DbTxn & txn, unsigned rootId) {
-    unique_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
-    return loadRoot_LK(lk, txn, rootId);
+    DbTxn::PinScope pins(txn, m_pageMut);
+    return loadRoot_PIN(pins, txn, rootId);
 }
 
 //===========================================================================
 pgno_t DbData::loadRoot(DbTxn & txn, const string & rootName) {
-    unique_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     pgno_t out = pgno_t::npos;
     auto i = m_rootIdByName.find(rootName);
     if (i != m_rootIdByName.end())
-        out = loadRoot_LK(lk, txn, i->second);
+        out = loadRoot_PIN(pins, txn, i->second);
     return out;
 }
 
 //===========================================================================
 void DbData::updateRoot(DbTxn & txn, unsigned rootId, pgno_t root) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     radixSwapValue(txn, m_rootRoot, rootId, root);
 }
 
 //===========================================================================
 void DbData::updateRoot(DbTxn & txn, const string & name, pgno_t root) {
-    scoped_lock lk{m_pageMut};
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     auto id = m_rootIdByName[name];
     assert(id && "free page index not found");
@@ -726,8 +723,7 @@ bool DbData::loadFreePages(DbTxn & txn) {
 
 //===========================================================================
 bool DbData::loadDeprecatedPages(DbTxn & txn) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     assert(!m_deprecatedPages);
     if (m_deprecatedRoot == pgno_t::npos) {
@@ -740,20 +736,16 @@ bool DbData::loadDeprecatedPages(DbTxn & txn) {
     }
     if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedRoot))
         return false;
-    auto num = 0;
-    while (m_deprecatedPages) {
-        if (num++ % 1000 == 0 && appStopping())
-            return false;
-        auto pgno = (pgno_t) m_deprecatedPages.pop_front();
-        freePage(txn, pgno, /*mustNotBeFree=*/false);
-    }
+    s_perfDepPages = (unsigned) m_deprecatedPages.count();
+    size_t appCheckCount = 0;
+    freeDeprecatedPages(txn, m_deprecatedPages, &appCheckCount);
+    assert(!m_deprecatedPages);
     return true;
 }
 
 //===========================================================================
 pgno_t DbData::allocPgno(DbTxn & txn) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     auto freed = false;
     auto grew = false;
@@ -804,16 +796,21 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
 }
 
 //===========================================================================
-void DbData::freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+bool DbData::freePage(
+    DbTxn & txn,
+    pgno_t pgno,
+    bool mustNotBeFree,
+    size_t * appCheckCount
+) {
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     assert(pgno < m_numPages);
     auto p = txn.pin<DbPageHeader>(pgno);
     auto type = p->type;
     switch (type) {
     case DbPageType::kRadix:
-        radixDestructPage(txn, pgno);
+        if (!radixDestructPage(txn, pgno, appCheckCount))
+            return false;
         break;
     case DbPageType::kBitmap:
     case DbPageType::kSample:
@@ -828,12 +825,15 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree) {
             logMsgFatal() << "freePage(" << (unsigned) pgno
                 << "): page already free";
         }
-        return;
+        return false;
     default:
         logMsgFatal() << "freePage(" << (unsigned) pgno
             << "): invalid page type (" << (unsigned) type << ")";
-        return;
+        return false;
     }
+
+    if (appCheckCount && ++*appCheckCount % 1000 == 0 && appStopping())
+        return false;
 
     auto noPages = !m_freePages && !txn.freePages();
 
@@ -873,6 +873,7 @@ void DbData::freePage(DbTxn & txn, pgno_t pgno, bool mustNotBeFree) {
             s_perfFreePages += (unsigned) num;
         }
     }
+    return true;
 }
 
 //===========================================================================
@@ -889,14 +890,14 @@ void DbData::publishFreePages(const UnsignedSet & freePages) {
 
 //===========================================================================
 void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     if constexpr (DIMAPP_LIB_BUILD_DEBUG) {
         auto p = txn.pin<DbPageHeader>(pgno);
         assert(p->type != DbPageType::kInvalid
             && p->type != DbPageType::kFree);
     }
+    assert(pgno && pgno != pgno_t::npos);
     assert(m_deprecatedRoot);
     [[maybe_unused]] bool updated = false;
     updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, true);
@@ -907,9 +908,12 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
 }
 
 //===========================================================================
-void DbData::freeDeprecatedPages(DbTxn & txn, UnsignedSet pgnos) {
-    scoped_lock lk{m_pageMut};
-    DbTxn::PinScope pins(txn);
+bool DbData::freeDeprecatedPages(
+    DbTxn & txn,
+    UnsignedSet pgnos,
+    size_t * appCheckCount
+) {
+    DbTxn::PinScope pins(txn, m_pageMut);
 
     [[maybe_unused]] bool updated = false;
     for (auto&& r : pgnos.ranges()) {
@@ -922,13 +926,16 @@ void DbData::freeDeprecatedPages(DbTxn & txn, UnsignedSet pgnos) {
             false
         );
         assert(updated);
-        for (auto pgno = r.first; pgno <= r.second; ++pgno)
-            freePage(txn, (pgno_t) pgno);
+        for (auto pgno = r.first; pgno <= r.second; ++pgno) {
+            if (!freePage(txn, (pgno_t) pgno, true, appCheckCount))
+                return false;
+        }
     }
 
     assert(m_deprecatedPages.contains(pgnos));
     m_deprecatedPages.erase(pgnos);
     s_perfDepPages -= (unsigned) pgnos.count();
+    return true;
 }
 
 

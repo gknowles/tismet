@@ -1810,7 +1810,34 @@ DbTxn::PinScope::PinScope(DbTxn & txn)
     : m_txn(txn)
     , m_prevPins(m_txn.m_pinnedPages)
     , m_active(true)
-{}
+{
+    txn.m_pinScopes.link(this);
+}
+
+//===========================================================================
+DbTxn::PinScope::PinScope(DbTxn & txn, mutex & mut)
+    : m_txn(txn)
+    , m_prevPins(m_txn.m_pinnedPages)
+{
+    if (txn.m_pinScopes) {
+        auto ptr = txn.m_pinScopes.back();
+        if (ptr->m_lk.mutex() == &mut)
+            return;
+        for (;;) {
+            ptr = txn.m_pinScopes.prev(ptr);
+            if (!ptr)
+                break;
+            if (ptr->m_lk.mutex() == &mut) {
+                logMsgFatal() << "Interleaving memory pin scopes";
+                return;
+            }
+        }
+    }
+
+    m_active = true;
+    m_lk = unique_lock(mut);
+    txn.m_pinScopes.link(this);
+}
 
 //===========================================================================
 DbTxn::PinScope::~PinScope() {
@@ -1829,18 +1856,20 @@ void DbTxn::PinScope::close() {
 
 //===========================================================================
 void DbTxn::PinScope::release() {
-    assert(m_active);
-    swap(m_prevPins, m_txn.m_pinnedPages);
-    m_prevPins.clear();
-    m_active = false;
+    if (m_active) {
+        swap(m_prevPins, m_txn.m_pinnedPages);
+        m_prevPins.clear();
+        m_active = false;
+    }
 }
 
 //===========================================================================
 void DbTxn::PinScope::keep(pgno_t pgno) {
-    assert(m_active);
-    assert(m_txn.m_pinnedPages.contains(pgno));
-    [[maybe_unused]] auto inserted = m_prevPins.insert(pgno);
-    assert(inserted);
+    if (m_active) {
+        assert(m_txn.m_pinnedPages.contains(pgno));
+        [[maybe_unused]] auto inserted = m_prevPins.insert(pgno);
+        assert(inserted);
+    }
 }
 
 
@@ -1849,6 +1878,18 @@ void DbTxn::PinScope::keep(pgno_t pgno) {
 *   DbTxn
 *
 ***/
+
+//===========================================================================
+DbTxn::DbTxn(const DbTxn & from)
+    : m_wal(from.m_wal)
+    , m_page(from.m_page)
+    , m_txn(from.m_txn)
+    , m_pinnedPages(from.m_pinnedPages)
+    , m_freePages(from.m_freePages)
+    , m_roots(from.m_roots)
+{
+    assert(!from.m_pinScopes);
+}
 
 //===========================================================================
 DbTxn::DbTxn(DbWal & wal, DbPage & work, shared_ptr<DbRootSet> roots)
@@ -1877,6 +1918,7 @@ Lsx DbTxn::getLsxAlways() {
 
 //===========================================================================
 UnsignedSet DbTxn::commit() {
+    assert(!m_pinScopes);
     UnsignedSet out;
     if (m_txn) {
         shared_ptr<DbRootSet> roots;
