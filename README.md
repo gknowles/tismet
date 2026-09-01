@@ -40,7 +40,7 @@ Time series metric collection
 ## Building
 #### Prerequisites
   - CMake >= 3.10
-  - Visual Studio 2022 (should include "Git for Windows")
+  - Visual Studio 2026
 
 #### Steps
 ~~~ batch
