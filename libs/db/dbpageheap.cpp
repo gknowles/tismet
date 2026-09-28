@@ -137,11 +137,7 @@ bool DbPageHeap::releasePending(size_t pgno) {
         assert(m_updatePgno != pgno_t::npos);
         if (m_updatePgno == pgno)
             return false;
-        m_txn.walFullPageInit(
-            DbPageType::kTrie,
-            m_rootId,
-            pageSize()
-        );
+        m_txn.walFullPageInit(m_type, m_rootId, pageSize());
         m_updatePtr = nullptr;
     }
     return true;
@@ -164,7 +160,9 @@ DbSamplePageHeap::DbSamplePageHeap(
 )
     : DbPageHeap(txn, data, root, rootId)
     , m_rootIndex(rootIndex)
-{}
+{
+    m_type = DbPageType::kSampleTrie;
+}
 
 //===========================================================================
 void DbSamplePageHeap::onDbPageHeapDestroy(pgno_t pgno) {

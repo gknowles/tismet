@@ -834,6 +834,7 @@ bool DbData::freePage(
     case DbPageType::kBitmap:
     case DbPageType::kSample:
         break;
+    case DbPageType::kSampleTrie:
     case DbPageType::kTrie:
         // Trie pages aren't destroyed recursively because pages may be deleted
         // (and replaced with another page) from the middle of a trie index,

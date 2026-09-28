@@ -302,6 +302,7 @@ enum class DbPageType : int32_t {
     kFree = 'F',
     kRadix = 'r',
     kSample = 's',
+    kSampleTrie = 'ts', // trie of sample pages for metric
     kTrie = 't',
     kZero = 'dZ',
 };

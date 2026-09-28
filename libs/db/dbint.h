@@ -979,6 +979,7 @@ protected:
 
     DbTxn & m_txn;
     DbData & m_data;
+    DbPageType m_type = DbPageType::kTrie;
     unsigned m_rootId;
 
 private:
