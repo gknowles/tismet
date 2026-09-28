@@ -743,7 +743,7 @@ private:
     friend struct DbRootVersion;
 
     bool loadRoots(DbTxn & txn, pgno_t storeRoot);
-    bool upgradeRoots(DbTxn & txn);
+    bool assignRoots(DbTxn & txn);
 
     pgno_t loadRoot_PIN(DbTxn::PinScope & pins, DbTxn & txn, unsigned rootId);
     pgno_t loadRoot(DbTxn & txn, const std::string & rootName);
@@ -850,9 +850,9 @@ private:
     // Returns false and sets *out to 0 if no value was found at the position,
     // or if it's past the end of the index.
     bool radixFind(DbTxn & txn, pgno_t * out, pgno_t root, size_t pos);
-    // Calls the function for each page in index, exits immediately if the
-    // function returns false. Returns true if function never returned false
-    // for any page.
+    // Calls the function with the ordinal position and pgno for each page in
+    // index. Exits immediately if the function returns false and returns true
+    // if function never returned false for any page.
     bool radixVisit(
         DbTxn & txn,
         pgno_t root,
@@ -911,14 +911,16 @@ private:
     bool m_newFile = false;
 
     size_t m_pageSize = 0;
-    pgno_t m_rootRoot = npos;   // pgno_t::npos
-    pgno_t m_freeRoot = pgno_t::npos;
-    pgno_t m_deprecatedRoot = pgno_t::npos;
-    pgno_t m_sampleRoot = pgno_t::npos;
+    pgno_t m_rootRoot = npos;
+    pgno_t m_freeRoot = npos;
+    uint32_t m_freeRootId = 0;
+    pgno_t m_deprecatedRoot = npos;
+    uint32_t m_deprecatedRootId = 0;
+    pgno_t m_sampleRoot = npos;
     struct RootDef {
         std::string name;
         DbPageType type;
-        unsigned id;
+        uint32_t id;
         pgno_t * root;
         bool changed;
     };

@@ -598,10 +598,9 @@ void Test::readonlyTests() {
 
 //===========================================================================
 void Test::onTestRun() {
-    sampleTests();
-
     invalidFileTests();
     dataTests();
     queryTests();
     readonlyTests();
+    sampleTests();
 }

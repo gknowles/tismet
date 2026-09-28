@@ -17,8 +17,12 @@ using namespace Dim;
 
 constexpr auto kZeroPageNum = (pgno_t) 0;
 constexpr auto kDefaultRootStoreRoot = (pgno_t) 1;
-constexpr auto kRootRootId = 1;
-constexpr auto kRootNameRootId = 2;
+
+enum RootId : int {
+    kRootIdRoot = 1,
+    kRootIdRootName = 2,
+    kRootIds
+};
 
 const auto kDataFileSig = "66b1e542-541c-4c52-9f61-0cb805980075"_Guid;
 
@@ -344,8 +348,8 @@ static size_t queryPageSize(FileHandle f) {
 DbData::DbData() {
     using enum DbPageType;
     const RootDef defs[] = {
-        { ":root",       kRadix, kRootRootId },
-        { ":rootName",   kTrie,  kRootNameRootId },
+        { ":root",       kRadix, kRootIdRoot },
+        { ":rootName",   kTrie,  kRootIdRootName },
         { ":free",       kRadix, {}, &m_freeRoot },
         { ":deprecated", kRadix, {}, &m_deprecatedRoot },
         { ":metric",     kTrie },
@@ -400,11 +404,21 @@ bool DbData::openForUpdate(
 
     if (!loadRoots(txn, zp->rootStoreRoot))
         return false;
+    if (!assignRoots(txn))
+        return false;
     if (!loadFreePages(txn))
         return false;
-
-    if (!upgradeRoots(txn))
+    if (!loadDeprecatedPages(txn))
         return false;
+
+    // Add to persistent rootName index. Since insert is a no-op for duplicates
+    // we just insert everything.
+    auto nameStoreRoot = loadRoot(txn, kRootIdRootName);
+    DbPageHeap heap(&txn, this, nameStoreRoot, kRootIdRootName);
+    StrTrieBase trie(&heap);
+    for (auto&& def : m_rootDefs)
+        trie.insert(trieKey(def.name, def.id));
+    freeDeprecatedPages(txn, heap.destroyed());
 
     // Metric root set - modifies in place the root set being used by the
     // active txn. Here, during initialization, we assume no other transactions
@@ -422,8 +436,6 @@ bool DbData::openForUpdate(
         *index.second = rver;
     }
 
-    if (!loadDeprecatedPages(txn))
-        return false;
     if (m_verbose)
         logMsgInfo() << "Build metric index";
     if (!loadMetrics(txn, notify))
@@ -455,28 +467,53 @@ DbStats DbData::queryStats() const {
 *
 *   Roots
 *
+*   Each table has the following metadata that is stored in the root tables.
+*       - name
+*       - id (unique id of the table)
+*       - root page
+*
+*   ":root" table - id to root page mapping
+*   ":rootName" table - name to root page mapping
+*
+*   Additionally a reference to the root page of the :root table is stored in
+*   page 0 so that it can be found without having to already know where it is.
+*
+*
+*   -
 ***/
 
 //===========================================================================
+// - Ensure the :root table exists.
+// - Load :rootName and validate well formed and no dups.
+// - Populate:
+//      - rootNameById
+//      - rootIdByName
+//      - freeRootIds
+// - Update m_rootDef with assigned root ids and root pages.
+//
+// If a :free tables exists, this function MUST set m_freeRoot before
+// returning.
 bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
     assert(m_rootNameById.empty());
 
+    // Load :root root page, create if not exist.
     m_rootRoot = storeRoot;
-
     if (!m_rootRoot) {
         m_rootRoot = allocPgno(txn);
-        txn.walRadixInit(m_rootRoot, kRootRootId, 0, nullptr, nullptr);
+        txn.walRadixInit(m_rootRoot, kRootIdRoot, 0, nullptr, nullptr);
         txn.walRootUpdate(kZeroPageNum, m_rootRoot);
     }
+
+    // Load m_rootNameById from :rootName (found in :root).
     auto nameStoreRoot = kZeroPageNum;
-    if (!radixFind(txn, &nameStoreRoot, m_rootRoot, kRootNameRootId)) {
+    if (!radixFind(txn, &nameStoreRoot, m_rootRoot, kRootIdRootName)) {
         if (storeRoot) {
             logMsgError() << "Missing :rootName store";
             return false;
         }
         nameStoreRoot = pgno_t::npos;
     }
-    DbPageHeap heap(&txn, this, nameStoreRoot, kRootNameRootId);
+    DbPageHeap heap(&txn, this, nameStoreRoot, kRootIdRootName);
     StrTrieBase trie(&heap);
     unsigned lastId = 0;
     for (auto&& val : trie) {
@@ -499,6 +536,7 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
         }
         m_rootIdByName[key] = id;
     }
+    // Populate m_rootNameById from m_rootIdByName.
     assert(heap.destroyed().empty());
     m_rootNameById.resize(lastId + 1);
     for (auto&& [key, id] : m_rootIdByName) {
@@ -509,72 +547,55 @@ bool DbData::loadRoots(DbTxn & txn, pgno_t storeRoot) {
         }
         m_rootNameById[id] = key;
     }
+    // Populate m_freeRootIds from m_rootNameById.
     for (unsigned i = 1; i < m_rootNameById.size(); ++i) {
         if (m_rootNameById[i].empty())
             m_freeRootIds.insert(i);
     }
 
+    // - Update m_rootDefs ids and root pages.
+    // - Verify values for :root and :rootName, if present, match the values
+    //   just used to load them.
     for (auto&& def : m_rootDefs) {
-        if (auto i = m_rootIdByName.find(def.name); i != m_rootIdByName.end())
+        auto i = m_rootIdByName.find(def.name);
+        if (i != m_rootIdByName.end()) {
+            if (def.id && def.id != i->second) {
+                logMsgError() << "Reserved root '" << def.name << "' has id "
+                    << i->second << " (expected " << def.id << ")";
+                return false;
+            }
             def.id = i->second;
-        if (def.root)
+        }
+        if (def.id && def.root)
             *def.root = loadRoot(txn, def.id);
     }
     return true;
 }
 
 //===========================================================================
-bool DbData::upgradeRoots(DbTxn & txn) {
+// Add default roots to root indexes if they aren't already there.
+bool DbData::assignRoots(DbTxn & txn) {
     assert(m_rootRoot);
 
-    // Initialize radix index root pages, this is done specifically to ensure
-    // that the free and deprecated lists are initialized.
+    // Assign ids to predefined tables that didn't already have a predefined or
+    // saved value.
     for (auto&& def : m_rootDefs) {
-        if (def.type == DbPageType::kRadix
-            && def.root
-            && *def.root == pgno_t::npos
-        ) {
-            def.changed = true;
-            *def.root = allocPgno(txn);
-            txn.walRadixInit(*def.root, 0, 0, nullptr, nullptr);
-        }
-    }
-
-    auto nameStoreRoot = loadRoot(txn, kRootNameRootId);
-    DbPageHeap heap(&txn, this, nameStoreRoot, kRootNameRootId);
-    StrTrieBase trie(&heap);
-
-    // Add default roots to root indexes if they aren't already there.
-    for (auto&& def : m_rootDefs) {
-        if (m_rootIdByName.contains(def.name)) {
-            auto id = m_rootIdByName[def.name];
-            if (def.id) {
-                if (def.id != id) {
-                    logMsgError() << "Reserved root '" << def.name << "' has "
-                        "id " << id << " (expected " << def.id << ")";
-                    return false;
-                }
-                continue;
-            }
-            def.id = id;
-            continue;
-        }
-        // Assign id (if needed), and add to name by Id index
         if (def.id) {
             if (def.id >= m_rootNameById.size()) {
                 m_rootNameById.resize(def.id + 1);
+                m_rootNameById[def.id] = def.name;
+            } else if (m_rootNameById[def.id].empty()) {
+                // New table id, add to name by id index.
+                m_rootNameById[def.id] = def.name;
             } else {
-                if (!m_rootNameById[def.id].empty()) {
-                    logMsgError() << "Reserved root Id " << def.id
-                        << " assigned to '" << m_rootNameById[def.id] << "' "
-                        << "but is reversed for '" << def.name << "'";
-                    return false;
-                }
+                // Already assigned from name store. loadRoots() has already
+                // verified that predefined Ids, if present in the name store,
+                // match their predefined names.
+                assert(m_rootNameById[def.id] == def.name);
+                continue;
             }
-            m_rootNameById[def.id] = def.name;
         } else {
-            if (def.root)
-                def.changed = true;
+            // Assign id, and add to name by id index.
             if (m_freeRootIds) {
                 def.id = m_freeRootIds.pop_front();
                 assert(m_rootNameById[def.id].empty());
@@ -587,19 +608,24 @@ bool DbData::upgradeRoots(DbTxn & txn) {
         // Add to Id by name index
         assert(!m_rootIdByName.contains(def.name));
         m_rootIdByName[def.name] = def.id;
-        // Add to persistent rootName index
-        trie.insert(trieKey(def.name, def.id));
     }
-    freeDeprecatedPages(txn, heap.destroyed());
 
-    // Save radix index roots
+    // Initialize radix index root pages, this is done specifically to ensure
+    // that the free and deprecated lists are initialized.
     for (auto&& def : m_rootDefs) {
-        if (def.changed) {
-            assert(def.id && (!def.root || *def.root != pgno_t::npos));
+        if (def.type == DbPageType::kRadix
+            && def.root
+            && *def.root == pgno_t::npos
+        ) {
+            assert(def.id);
+            *def.root = allocPgno(txn);
+            txn.walRadixInit(*def.root, def.id, 0, nullptr, nullptr);
             updateRoot(txn, def.id, *def.root);
         }
     }
 
+    m_freeRootId = m_rootIdByName[":free"];
+    m_deprecatedRootId = m_rootIdByName[":deprecated"];
     return true;
 }
 
@@ -665,14 +691,9 @@ bool DbData::loadFreePages(DbTxn & txn) {
     assert(!m_freePages);
     if (m_verbose)
         logMsgInfo() << "Load free page list";
-
-    if (m_freeRoot == pgno_t::npos) {
-        if (m_readOnly) {
-            logMsgError() << "Missing free page list";
-            return false;
-        }
-        m_freeRoot = allocPgno(txn);
-        txn.walRadixInit(m_freeRoot, 0, 0, nullptr, nullptr);
+    if (!m_freeRoot || m_freeRoot == pgno_t::npos) {
+        logMsgError() << "Missing free page list";
+        return false;
     }
 
     if (!bitLoad(txn, &m_freePages, m_freeRoot))
@@ -722,23 +743,21 @@ bool DbData::loadFreePages(DbTxn & txn) {
 }
 
 //===========================================================================
+// Loads, and immediately frees, all pages in :deprecated table.
 bool DbData::loadDeprecatedPages(DbTxn & txn) {
     DbTxn::PinScope pins(txn, m_pageMut);
 
     assert(!m_deprecatedPages);
-    if (m_deprecatedRoot == pgno_t::npos) {
-        if (m_readOnly) {
-            logMsgError() << "Missing deprecated page list";
-            return false;
-        }
-        m_deprecatedRoot = allocPgno(txn);
-        txn.walRadixInit(m_deprecatedRoot, 0, 0, nullptr, nullptr);
+    if (!m_deprecatedRoot || m_deprecatedRoot == pgno_t::npos) {
+        logMsgError() << "Missing free page list";
+        return false;
     }
     if (!bitLoad(txn, &m_deprecatedPages, m_deprecatedRoot))
         return false;
     s_perfDepPages = (unsigned) m_deprecatedPages.count();
     size_t appCheckCount = 0;
-    freeDeprecatedPages(txn, m_deprecatedPages, &appCheckCount);
+    if (!freeDeprecatedPages(txn, m_deprecatedPages, &appCheckCount))
+        return false;
     assert(!m_deprecatedPages);
     return true;
 }
@@ -782,7 +801,7 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
         // a page of the free list, the page will be freed... which means it
         // must be added to this bitmap.
         [[maybe_unused]] bool updated =
-            bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, false);
+            bitAssign(txn, m_freeRoot, m_freeRootId, pgno, pgno + 1, false);
         assert(updated);
     }
 
@@ -840,7 +859,7 @@ bool DbData::freePage(
     txn.walPageFree(pgno);
     assert(m_freeRoot);
     [[maybe_unused]] bool updated =
-        bitAssign(txn, m_freeRoot, 0, pgno, pgno + 1, true);
+        bitAssign(txn, m_freeRoot, m_freeRootId, pgno, pgno + 1, true);
     assert(updated);
 
     auto bpp = bitsPerPage();
@@ -860,7 +879,7 @@ bool DbData::freePage(
             bitAssign(
                 txn,
                 m_freeRoot,
-                0,
+                m_freeRootId,
                 m_numPages,
                 m_numPages + num,
                 true
@@ -900,7 +919,14 @@ void DbData::deprecatePage(DbTxn & txn, pgno_t pgno) {
     assert(pgno && pgno != pgno_t::npos);
     assert(m_deprecatedRoot);
     [[maybe_unused]] bool updated = false;
-    updated = bitAssign(txn, m_deprecatedRoot, 0, pgno, pgno + 1, true);
+    updated = bitAssign(
+        txn,
+        m_deprecatedRoot,
+        m_deprecatedRootId,
+        pgno,
+        pgno + 1,
+        true
+    );
     assert(updated);
     updated = m_deprecatedPages.insert(pgno);
     assert(updated);
@@ -920,7 +946,7 @@ bool DbData::freeDeprecatedPages(
         updated = bitAssign(
             txn,
             m_deprecatedRoot,
-            0,
+            m_deprecatedRootId,
             r.first,
             r.second + 1,
             false
