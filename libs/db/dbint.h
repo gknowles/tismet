@@ -343,7 +343,11 @@ public:
     void walRootUpdate(pgno_t pgno, pgno_t rootPage);
     void walPageFree(pgno_t pgno);
 
-    std::pair<void *, size_t> allocFullPage(pgno_t pgno, size_t bytes);
+    std::pair<void *, size_t> allocFullPage(
+        pgno_t pgno,
+        size_t bytes,
+        bool zeroFill
+    );
     // "bytes" must be less or equal to amount passed in to preceding
     // allocFullPage() call.
     void walFullPageInit(DbPageType type, uint32_t id, size_t bytes);

@@ -118,7 +118,7 @@ uint8_t * DbPageHeap::wptr(size_t pgno) {
 
     auto psize = pageSize();
     m_updatePgno = (pgno_t) pgno;
-    auto pc = m_txn.allocFullPage(m_updatePgno, psize);
+    auto pc = m_txn.allocFullPage(m_updatePgno, psize, true);
     m_updatePtr = reinterpret_cast<uint8_t *>(pc.first);
     assert(offset == pc.second - psize);
     return m_updatePtr + offset;
@@ -216,10 +216,16 @@ static size_t trim(FullPageInitRec * rec) {
 }
 
 //===========================================================================
-pair<void *, size_t> DbTxn::allocFullPage(pgno_t pgno, size_t extra) {
+pair<void *, size_t> DbTxn::allocFullPage(
+    pgno_t pgno,
+    size_t extra,
+    bool zero
+) {
     assert(extra <= pageSize());
     auto offset = offsetof(FullPageInitRec, data);
-    return alloc(kRecTypeFullPage, pgno, offset + extra);
+    auto res = alloc(kRecTypeFullPage, pgno, offset + extra);
+    memset((byte *) res.first + offset, 0, extra);
+    return res;
 }
 
 //===========================================================================
