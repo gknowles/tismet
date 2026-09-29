@@ -84,9 +84,24 @@ bool DbData::bitAssign(
     size_t lastPos,
     bool value
 ) {
-    auto count = lastPos - firstPos;
+    if (firstPos >= lastPos)
+        return false;
     auto bpp = bitsPerPage();
     auto rpos = firstPos / bpp;
+    if (rpos != (lastPos - 1) / bpp) {
+        bool result = false;
+        auto pos2 = rpos * bpp + bpp;
+        for (;;) {
+            if (bitAssign(txn, root, id, firstPos, pos2, value))
+                result = true;
+            if (pos2 == lastPos)
+                return result;
+            firstPos = pos2;
+            pos2 = min(lastPos, pos2 + bpp);
+        }
+    }
+
+    auto count = lastPos - firstPos;
     auto bpos = firstPos % bpp;
     auto bpno = pgno_t{};
     radixFind(txn, &bpno, root, rpos);
