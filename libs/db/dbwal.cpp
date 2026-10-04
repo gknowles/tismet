@@ -1588,7 +1588,8 @@ void DbWal::onFileWrite(const FileWriteData & data) {
         return;
     }
 
-    // If the data is within m_buffers it was a full page write.
+    // If the data is within m_buffers (distinct from within m_partialBuffers)
+    // it was a full page write.
     bool fullPageWrite = rawbuf >= m_buffers
         && rawbuf < m_buffers + m_numBufs * m_pageSize;
 
@@ -1680,7 +1681,7 @@ void DbWal::updatePages_LK(
     i->fullPageSaved = fullPageWrite;
 
     // Will point to oldest page with transaction committed by this update. It
-    // is assumed to have committed transactions to itself.
+    // is assumed to have committed transactions within itself.
     auto base = i;
     // Process commits in reverse order so, after the loop, base is left at the
     // oldest.
@@ -1704,7 +1705,7 @@ void DbWal::updatePages_LK(
     }
 
     // Oldest dirty page may no longer have active transactions. Advance the
-    // durable LSN through as many pages as this holds true.
+    // durable LSN through consecutive completed pages.
     Lsn last = {};
     for (i = base; i != m_pages.end(); ++i) {
         auto & npi = *i;
@@ -1727,14 +1728,19 @@ void DbWal::updatePages_LK(
         }
         assert(npi.commits.empty());
     }
-    if (!last) {
-        // No eligible pages found, and hence no durable LSN advancement.
+    if (last <= m_durableLsn) {
+        // No eligible pages found, and hence no durable LSN advancement. First
+        // page was incomplete because:
+        if (!last) {
+            // Active transactions or no clean records.
+        } else {
+            // Was a partial write.
+            assert(last == m_durableLsn);
+        }
         return;
     }
 
     // Advance durable LSN and notify interested parties.
-    assert(last > m_durableLsn);
-
     m_durableLsn = last;
     m_page->onWalDurable(
         m_durableLsn,
