@@ -590,18 +590,16 @@ pgno_t DbData::updateSampleIndexRoot(
 }
 
 //===========================================================================
-static pgno_t clearSampleIndexRoot(
+pgno_t DbData::clearSampleIndexRoot(
     DbTxn & txn,
-    DbData & data,
     const DbData::SamplePage * root
 ) {
-
     if (root->hdr.type == DbPageType::kFree) {
         // No need to clear as the page has already been freed. Presumably by
         // index update as an expired page.
         return npos;
     } else {
-        return data.updateSampleIndexRoot(
+        return updateSampleIndexRoot(
             txn,
             root->hdr.pgno,
             root->hdr.id,
@@ -611,10 +609,9 @@ static pgno_t clearSampleIndexRoot(
 }
 
 //===========================================================================
-// Note: Any updates to sp->firstTime MUST be made before updating the index.
 // The index is updated based on the values of:
+//      time
 //      sp->hdr.pgno
-//      sp->firstTime
 //      oldTime
 //      expiration
 void DbData::updateSampleIndex(
@@ -1034,12 +1031,14 @@ void DbData::updateSample(
         );
         if (time >= sus.firstTime) {
             // New sample has not modified firstTime; no index update needed.
+            assert(!empty(time));
         } else {
             if (auto si = spLast->sampleIndex; si != npos) {
                 updateSampleIndex(txn, spLast, si, sp, time, sus.firstTime);
             } else {
                 // There is only one page, otherwise there would be an
                 // index of the pages.
+                assert(!empty(time));
             }
         }
         s_perfAdd += 1;
@@ -1076,7 +1075,7 @@ void DbData::updateSample(
             {},
             mi.retention
         );
-        clearSampleIndexRoot(txn, *this, sp);
+        clearSampleIndexRoot(txn, sp);
         return;
     }
 
@@ -1117,7 +1116,7 @@ void DbData::updateSample(
             retention
         );
         spLast = sp2;
-        clearSampleIndexRoot(txn, *this, sp);
+        clearSampleIndexRoot(txn, sp);
     } else {
         // Split doesn't effect last page.
         updateSampleIndex(

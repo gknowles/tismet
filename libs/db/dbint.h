@@ -339,6 +339,9 @@ public:
     void growToFit(pgno_t pgno) { m_page.growToFit(pgno); }
     const Dim::UnsignedSet & freePages() const { return m_freePages; }
 
+    // Used by data.freePage() to untangle reentrant page frees.
+    Dim::UnsignedSet & freePagesInProgress() { return m_freePagesInProgress; }
+
     void walZeroInit(pgno_t pgno);
     void walRootUpdate(pgno_t pgno, pgno_t rootPage);
     void walPageFree(pgno_t pgno);
@@ -421,6 +424,7 @@ private:
     Dim::List<PinScope> m_pinScopes;
     mutable Dim::UnsignedSet m_pinnedPages;
     Dim::UnsignedSet m_freePages;
+    Dim::UnsignedSet m_freePagesInProgress;
     std::shared_ptr<DbRootSet> m_roots;
 };
 
@@ -643,19 +647,6 @@ public:
     );
     void getMetricInfo(IDbDataNotify * notify, DbTxn & txn, uint32_t id);
 
-    // Returns value of previous root.
-    pgno_t updateLastSamplePage(
-        DbTxn & txn,
-        uint32_t id,
-        pgno_t spno
-    );
-    // Returns value of previous root.
-    pgno_t updateSampleIndexRoot(
-        DbTxn & txn,
-        pgno_t spno,
-        unsigned rootId,
-        pgno_t pgno
-    );
     void eraseSamples(DbTxn & txn, uint32_t id);
     void updateSample(
         DbTxn & txn,
@@ -779,6 +770,12 @@ private:
         uint32_t id,
         bool createIfNotExists = false
     );
+    // Returns value of previous root.
+    pgno_t updateLastSamplePage(
+        DbTxn & txn,
+        uint32_t id,
+        pgno_t spno
+    );
     // Updates the pages entry in the index to reflect it's new firstTime. If
     // expiration is non-zero,
     void updateSampleIndex(
@@ -790,11 +787,32 @@ private:
         std::optional<Dim::TimePoint> oldTime,
         std::optional<Dim::Duration> expiration = {}
     );
+    // Returns value of previous root.
+    pgno_t updateSampleIndexRoot(
+        DbTxn & txn,
+        pgno_t spno,
+        unsigned rootId,
+        pgno_t pgno
+    );
+    // Returns value of previous root, or npos if none.
+    pgno_t clearSampleIndexRoot(
+        DbTxn & txn,
+        const DbData::SamplePage * root
+    );
 
     bool loadFreePages(DbTxn & txn);
     bool loadDeprecatedPages(DbTxn & txn);
     pgno_t allocPgno(DbTxn & txn);
 
+    // Only false if appCheckCount is requested (non-null) and fails.
+    // NOTE: *Only* to be called from freePage().
+    bool freePage_PIN(
+        DbTxn::PinScope & pins,
+        DbTxn & txn,
+        pgno_t pgno,
+        bool mustNotBeFree = true,
+        size_t * appCheckCount = {}
+    );
     // Only false if appCheckCount is requested (non-null) and fails.
     bool freePage(
         DbTxn & txn,

@@ -815,14 +815,13 @@ pgno_t DbData::allocPgno(DbTxn & txn) {
 }
 
 //===========================================================================
-bool DbData::freePage(
+bool DbData::freePage_PIN(
+    DbTxn::PinScope & pins,
     DbTxn & txn,
     pgno_t pgno,
     bool mustNotBeFree,
     size_t * appCheckCount
 ) {
-    DbTxn::PinScope pins(txn, m_pageMut);
-
     assert(pgno < m_numPages);
     auto p = txn.pin<DbPageHeader>(pgno);
     auto type = p->type;
@@ -894,6 +893,37 @@ bool DbData::freePage(
         }
     }
     return true;
+}
+
+//===========================================================================
+bool DbData::freePage(
+    DbTxn & txn,
+    pgno_t pgno,
+    bool mustNotBeFree,
+    size_t * appCheckCount
+) {
+    DbTxn::PinScope pins(txn, m_pageMut);
+
+    auto & pages = txn.freePagesInProgress();
+    auto inProgress = !pages.empty();
+    assert(!pages.contains(pgno));
+    pages.insert(pgno);
+    if (inProgress)
+        return true;
+
+    for (;;) {
+        auto pn = (pgno_t) pages.front();
+        if (!freePage_PIN(pins, txn, pn, mustNotBeFree, appCheckCount)) {
+            if (!pages) {
+                // Only allow appCheck at end of dependent set of frees. Should
+                // make leaking a free page a harder bug to engineer.
+                return false;
+            }
+        }
+        pages.pop_front();
+        if (!pages)
+            return true;
+    }
 }
 
 //===========================================================================
