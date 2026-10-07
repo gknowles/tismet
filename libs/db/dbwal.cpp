@@ -1925,6 +1925,7 @@ Lsx DbTxn::getLsxAlways() {
 //===========================================================================
 UnsignedSet DbTxn::commit() {
     assert(!m_pinScopes);
+    assert(!m_freePagesInProgress);
     UnsignedSet out;
     if (m_txn) {
         shared_ptr<DbRootSet> roots;
@@ -1945,6 +1946,7 @@ UnsignedSet DbTxn::commit() {
         m_txn = {};
     }
     unpinAll();
+    m_roots.reset();
 
     swap(out, m_freePages);
     return out;
