@@ -270,7 +270,7 @@ void AddrConn::onSocketConnectFailed() {
 //===========================================================================
 void AddrConn::onSocketDisconnect() {
     if (!m_done) {
-        logMsgInfo() << "Disconnect";
+        tcLogShutdown(&s_opts.progress, "Disconnect", kLogTypeWarn);
         m_done = true;
     }
     sockMgrSetAddresses(s_mgr, nullptr, 0);

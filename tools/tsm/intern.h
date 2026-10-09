@@ -14,4 +14,8 @@ void tcLogStart(
     const DbProgressInfo * limit = {},
     Dim::Duration timeLimit = {}
 );
-void tcLogShutdown(const DbProgressInfo * total = {});
+void tcLogShutdown(
+    const DbProgressInfo * total = {},
+    std::string_view text = "Done",
+    Dim::LogType logType = Dim::LogType::kLogTypeInfo
+);

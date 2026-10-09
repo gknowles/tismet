@@ -133,12 +133,19 @@ void tcLogStart(
 }
 
 //===========================================================================
-void tcLogShutdown(const DbProgressInfo * total) {
+void tcLogShutdown(
+    const DbProgressInfo * total,
+    string_view text,
+    LogType logType
+) {
     TimePoint finish = timeNow();
     auto elapsed = finish - s_startTime;
-    auto os = logMsgInfo();
+    auto os = logType == kLogTypeError ? logMsgError()
+        : logType == kLogTypeWarn ? logMsgWarn()
+        : logType == kLogTypeInfo ? logMsgInfo()
+        : logMsgDebug();
     os.imbue(locale(""));
-    os << "Done";
+    os << text;
     if (total) {
         dump(os, *total, elapsed);
     } else {
