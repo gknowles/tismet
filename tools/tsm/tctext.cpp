@@ -307,7 +307,10 @@ void TextWriter::onWalApplySampleReplace(
     auto bytes = (srcBits + 7) / 8;
     auto & os = out(ptr);
     os << "samples.data(" << dstPos << ", " << dstBits << ") = "
-        << srcBits << " (" << bytes << " bytes)\n";
+        << srcBits << " (" << bytes;
+    if (auto bits = srcBits % 8)
+        os << ' ' << srcBits % 8 << "/8";
+    os << " bytes)\n";
     hexDump(os, {(const char *) src, bytes});
 }
 
