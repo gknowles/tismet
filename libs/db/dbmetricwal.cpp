@@ -32,31 +32,31 @@ struct SampleUpdateRootRec {
     DbWal::Record hdr;
     pgno_t rootPage;
 };
-struct SampleDataAtRec {
+struct SampleInsertAtRec {    // Insert
     DbWal::Record hdr;
-    uint16_t bitPos;
-    uint16_t bitLen;
+    uint16_t dstPos;
+    uint16_t srcBits;
 
     // EXTENDS BEYOND END OF STRUCT
     uint8_t data[1];
 };
-struct SampleDataRec {
+struct SampleInsertRec {      // InsertBack, InsertFront
     DbWal::Record hdr;
-    uint16_t bitLen;
+    uint16_t srcBits;
 
     // EXTENDS BEYOND END OF STRUCT
     uint8_t data[1];
 };
-struct SampleDataRefRec {
+struct SampleEraseAtRec {   // Erase
     DbWal::Record hdr;
-    uint16_t bitPos;
+    uint16_t dstPos;
+    uint16_t dstBits;
+};
+struct SampleEraseRec {   // EraseFront, EraseBack
+    DbWal::Record hdr;
     uint16_t bitLen;
 };
-struct SampleDataLenRec {
-    DbWal::Record hdr;
-    uint16_t bitLen;
-};
-struct SampleReplaceAtRec {
+struct SampleReplaceAtRec { // Replace
     DbWal::Record hdr;
     uint16_t dstPos;
     uint16_t dstBits;
@@ -65,8 +65,56 @@ struct SampleReplaceAtRec {
     // EXTENDS BEYOND END OF STRUCT
     uint8_t data[1];
 };
-struct SampleReplaceRec {
+struct SampleReplaceRec {   // ReplaceFront, ReplaceBack
     DbWal::Record hdr;
+    uint16_t dstBits;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+
+struct SampleInsertAtTxnRec { // InsertTxn
+    DbWalRecType type;
+    pgno_t pgno;
+    uint16_t dstPos;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+struct SampleInsertTxnRec {   // InsertFrontTxn, InsertBackTxn
+    DbWalRecType type;
+    pgno_t pgno;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+struct SampleEraseAtTxnRec {   // EraseTxn
+    DbWalRecType type;
+    pgno_t pgno;
+    uint16_t dstPos;
+    uint16_t dstBits;
+};
+struct SampleEraseTxnRec {   // EraseFrontTxn, EraseBackTxn
+    DbWalRecType type;
+    pgno_t pgno;
+    uint16_t dstBits;
+};
+struct SampleReplaceAtTxnRec { // ReplaceTxn
+    DbWalRecType type;
+    pgno_t pgno;
+    uint16_t dstPos;
+    uint16_t dstBits;
+    uint16_t srcBits;
+
+    // EXTENDS BEYOND END OF STRUCT
+    uint8_t data[1];
+};
+struct SampleReplaceTxnRec { // ReplaceFrontTxn, ReplaceBackTxn
+    DbWalRecType type;
+    pgno_t pgno;
     uint16_t dstBits;
     uint16_t srcBits;
 
@@ -107,27 +155,87 @@ static void applySampleUpdateRoot(const DbWalApplyArgs & args) {
 }
 
 //===========================================================================
+template <typename SampleRec>
+static uint16_t sizeSampleData(const DbWal::Record & raw) {
+    auto & rec = reinterpret_cast<const SampleRec &>(raw);
+    return offsetof(SampleRec, data) + (rec.srcBits + 7) / 8;
+}
+
+//===========================================================================
 static void applySampleEraseAt(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleDataRefRec *>(args.rec);
+    auto rec = reinterpret_cast<const SampleEraseAtRec *>(args.rec);
     args.notify->onWalApplySampleReplace(
         args.page,
-        rec->bitPos,
-        rec->bitLen,
+        rec->dstPos,
+        rec->dstBits,
         {},
         0
     );
 }
 
 //===========================================================================
-static uint16_t sizeSampleReplaceAt(const DbWal::Record & raw) {
-    auto & rec = reinterpret_cast<const SampleReplaceAtRec &>(raw);
-    return offsetof(SampleReplaceAtRec, data)
-        + (rec.srcBits + 7) / 8;
+static void applySampleReplaceAt(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleReplaceAtRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        rec->dstPos,
+        rec->dstBits,
+        rec->data,
+        rec->srcBits
+    );
 }
 
 //===========================================================================
-static void applySampleReplaceAt(const DbWalApplyArgs & args) {
-    auto rec = reinterpret_cast<const SampleReplaceAtRec *>(args.rec);
+static void applySampleInsertAtTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleInsertAtTxnRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        rec->dstPos,
+        0,
+        rec->data,
+        rec->srcBits
+    );
+}
+
+//===========================================================================
+static void applySampleInsertFrontTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleInsertTxnRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        0,
+        0,
+        rec->data,
+        rec->srcBits
+    );
+}
+
+//===========================================================================
+static void applySampleInsertBackTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleInsertTxnRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        (size_t) -1,
+        0,
+        rec->data,
+        rec->srcBits
+    );
+}
+
+//===========================================================================
+static void applySampleEraseAtTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleEraseAtTxnRec *>(args.rec);
+    args.notify->onWalApplySampleReplace(
+        args.page,
+        rec->dstPos,
+        rec->dstBits,
+        {},
+        0
+    );
+}
+
+//===========================================================================
+static void applySampleReplaceAtTxn(const DbWalApplyArgs & args) {
+    auto rec = reinterpret_cast<const SampleReplaceAtTxnRec *>(args.rec);
     args.notify->onWalApplySampleReplace(
         args.page,
         rec->dstPos,
@@ -148,12 +256,37 @@ static DbWalRegisterRec s_sampleRecInfo{
         applySampleUpdateRoot,
     },
     { kRecTypeSampleErase,
-        DbWalRecInfo::sizeFn<SampleDataRefRec>,
+        DbWalRecInfo::sizeFn<SampleEraseAtRec>,
         applySampleEraseAt,
     },
     { kRecTypeSampleReplace,
-        sizeSampleReplaceAt,
+        sizeSampleData<SampleReplaceAtRec>,
         applySampleReplaceAt,
+    },
+    { kRecTypeSampleInsertTxn,
+        sizeSampleData<SampleInsertAtTxnRec>,
+        applySampleInsertAtTxn,
+        DbWalRecInfo::localTxnZeroFn,
+    },
+    { kRecTypeSampleInsertFrontTxn,
+        sizeSampleData<SampleInsertTxnRec>,
+        applySampleInsertFrontTxn,
+        DbWalRecInfo::localTxnZeroFn,
+    },
+    { kRecTypeSampleInsertBackTxn,
+        sizeSampleData<SampleInsertTxnRec>,
+        applySampleInsertBackTxn,
+        DbWalRecInfo::localTxnZeroFn,
+    },
+    { kRecTypeSampleEraseTxn,
+        DbWalRecInfo::sizeFn<SampleEraseAtTxnRec>,
+        applySampleEraseAtTxn,
+        DbWalRecInfo::localTxnZeroFn,
+    },
+    { kRecTypeSampleReplaceTxn,
+        sizeSampleData<SampleReplaceAtTxnRec>,
+        applySampleReplaceAtTxn,
+        DbWalRecInfo::localTxnZeroFn,
     },
 };
 
@@ -191,6 +324,46 @@ void DbTxn::walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot) {
 }
 
 //===========================================================================
+void DbTxn::walSampleReplaceTxn(
+    pgno_t pgno,
+    size_t dstPos,
+    size_t dstBits,
+    const uint8_t src[],
+    size_t srcPos,
+    size_t srcBits
+) {
+    if (m_txn)
+        return walSampleReplace(pgno, dstPos, dstBits, src, srcPos, srcBits);
+
+    union {
+        DbWal::Record * rec;
+        SampleEraseAtTxnRec * e;
+        SampleReplaceAtTxnRec * r;
+    } ptr;
+    size_t bytes;
+    if (!srcBits) {
+        tie(ptr.e, bytes) = alloc<SampleEraseAtTxnRec>(
+            kRecTypeSampleEraseTxn,
+            pgno
+        );
+        ptr.e->dstPos = (uint16_t) dstPos;
+        ptr.e->dstBits = (uint16_t) dstBits;
+    } else {
+        auto srcBytes = (srcBits + 7) / 8;
+        tie(ptr.r, bytes) = alloc<SampleReplaceAtTxnRec>(
+            kRecTypeSampleReplaceTxn,
+            pgno,
+            offsetof(SampleReplaceAtTxnRec, data) + srcBytes
+        );
+        ptr.r->dstPos = (uint16_t) dstPos;
+        ptr.r->dstBits = (uint16_t) dstBits;
+        ptr.r->srcBits = (uint16_t) srcBits;
+        BitSpan::copy(ptr.r->data, 0, src, srcPos, srcBits);
+    }
+    m_wal.walAndApply({}, ptr.rec, bytes);
+}
+
+//===========================================================================
 void DbTxn::walSampleReplace(
     pgno_t pgno,
     size_t dstPos,
@@ -204,9 +377,9 @@ void DbTxn::walSampleReplace(
     assert(srcPos < numeric_limits<uint16_t>::max());
     assert(srcPos + srcBits < numeric_limits<uint16_t>::max());
     if (!srcBits) {
-        auto [rec, bytes] = alloc<SampleDataRefRec>(kRecTypeSampleErase, pgno);
-        rec->bitPos = (uint16_t) dstPos;
-        rec->bitLen = (uint16_t) dstBits;
+        auto [rec, bytes] = alloc<SampleEraseAtRec>(kRecTypeSampleErase, pgno);
+        rec->dstPos = (uint16_t) dstPos;
+        rec->dstBits = (uint16_t) dstBits;
         wal(&rec->hdr, bytes);
         return;
     }

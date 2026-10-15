@@ -999,7 +999,10 @@ void DbWal::applyUpdate(
         return;
 
     auto localTxn = getLocalTxn(rec);
-    if (localTxn && !data->activeTxns.contains(localTxn)) {
+    if (!localTxn) {
+        // WAL record is, in itself, a complete standalone transction. It has
+        // no parent transaction active across WAL records to track.
+    } else if (!data->activeTxns.contains(localTxn)) {
         // The id is not in the active list, so it must belong to one of
         // the incomplete transactions that are being skipped.
         return;
@@ -1974,7 +1977,6 @@ std::pair<void *, size_t> DbTxn::alloc(
     pgno_t pgno,
     size_t bytes
 ) {
-    getLsxAlways();
     m_buffer.resize(bytes);
     auto * lr = (DbWal::Record *) m_buffer.data();
     lr->type = type;

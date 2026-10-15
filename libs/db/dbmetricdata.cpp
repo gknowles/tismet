@@ -1021,14 +1021,6 @@ void DbData::updateSample(
     if (sus.pack.bits() <= 8 * dataLen) {
         // Original page plus update still fits on one page.
 
-        txn.walSampleReplace(
-            spno,               // dst
-            sus.replPos,
-            sus.replLen,
-            sus.pack.data(),    // src
-            sus.updPos,
-            sus.updLen
-        );
         if (time >= sus.firstTime) {
             // New sample has not modified firstTime; no index update needed.
             assert(!empty(time));
@@ -1036,11 +1028,19 @@ void DbData::updateSample(
             if (auto si = spLast->sampleIndex; si != npos) {
                 updateSampleIndex(txn, spLast, si, sp, time, sus.firstTime);
             } else {
-                // There is only one page, otherwise there would be an
-                // index of the pages.
+                // There is only one page, otherwise there would be an index of
+                // the pages.
                 assert(!empty(time));
             }
         }
+        txn.walSampleReplaceTxn(
+            spno,               // dst
+            sus.replPos,
+            sus.replLen,
+            sus.pack.data(),    // src
+            sus.updPos,
+            sus.updLen
+        );
         s_perfAdd += 1;
         return;
     }
@@ -1075,6 +1075,7 @@ void DbData::updateSample(
             {},
             mi.retention
         );
+        spLast = sp2;
         clearSampleIndexRoot(txn, sp);
         return;
     }

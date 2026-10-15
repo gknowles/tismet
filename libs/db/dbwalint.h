@@ -31,22 +31,33 @@ enum DbWalRecType : int8_t {
     kRecTypeRadixPromote        = 16,   // [radix] refPage
     kRecTypeRadixUpdate         = 17,   // [radix] refPos, refPage
 
-    kRecTypeSampleInit          = 18,   // [sample] id, stype, time, value
-    kRecTypeSampleUpdateRoot    = 19,   // [sample] rootPage
-    kRecTypeSampleUpdateTime    = 20,   // [sample] firstTime, lastTime
+    kRecTypeSampleInit            = 18, // [sample] id, stype, time, value
+    kRecTypeSampleUpdateRoot      = 19, // [sample] rootPage
+    kRecTypeSampleUpdateTime      = 20, // [sample] firstTime, lastTime
     kRecTypeSampleUpdateFirstTime = 21, // [sample] pageTime
-    kRecTypeSampleUpdateLastTime = 22,  // [sample] pageTime
-    kRecTypeSampleInsert        = 23,   // [sample]
-    kRecTypeSampleInsertBack    = 24,   // [sample]
-    kRecTypeSampleInsertFront   = 25,   // [sample]
-    kRecTypeSampleErase         = 26,   // [sample]
-    kRecTypeSampleEraseFront    = 27,   // [sample]
-    kRecTypeSampleEraseBack     = 28,   // [sample]
-    kRecTypeSampleReplace       = 29,   // [sample]
-    kRecTypeSampleReplaceFront  = 30,   // [sample]
-    kRecTypeSampleReplaceBack   = 31,   // [sample]
+    kRecTypeSampleUpdateLastTime  = 22, // [sample] pageTime
 
-    kRecType_LastAvailable  = 32,
+    kRecTypeSampleInsert          = 23, // [sample]
+    kRecTypeSampleInsertFront     = 24, // [sample]
+    kRecTypeSampleInsertBack      = 25, // [sample]
+    kRecTypeSampleErase           = 26, // [sample]
+    kRecTypeSampleEraseFront      = 27, // [sample]
+    kRecTypeSampleEraseBack       = 28, // [sample]
+    kRecTypeSampleReplace         = 29, // [sample]
+    kRecTypeSampleReplaceFront    = 30, // [sample]
+    kRecTypeSampleReplaceBack     = 31, // [sample]
+
+    kRecTypeSampleInsertTxn       = 32, // [sample]
+    kRecTypeSampleInsertFrontTxn  = 33, // [sample]
+    kRecTypeSampleInsertBackTxn   = 34, // [sample]
+    kRecTypeSampleEraseTxn        = 35, // [sample]
+    kRecTypeSampleEraseFrontTxn   = 36, // [sample]
+    kRecTypeSampleEraseBackTxn    = 37, // [sample]
+    kRecTypeSampleReplaceTxn      = 38, // [sample]
+    kRecTypeSampleReplaceFrontTxn = 39, // [sample]
+    kRecTypeSampleReplaceBackTxn  = 40, // [sample]
+
+    kRecType_LastAvailable  = 41,
 };
 
 #pragma pack(push, 1)
@@ -72,6 +83,9 @@ struct DbWalRecInfo {
     }
     static LocalTxn defLocalTxnFn(const DbWal::Record & rec) {
         return rec.localTxn;
+    }
+    static LocalTxn localTxnZeroFn(const DbWal::Record & rec) {
+        return {};
     }
     static pgno_t defPgnoFn(const DbWal::Record & rec) {
         return rec.pgno;

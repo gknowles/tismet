@@ -393,6 +393,14 @@ public:
         double value
     );
     void walSampleUpdateIndexRoot(pgno_t pgno, pgno_t newRoot);
+    void walSampleReplaceTxn(
+        pgno_t pgno,
+        size_t dstPos,
+        size_t dstBits,
+        const uint8_t src[],
+        size_t srcPos,
+        size_t srcBits
+    );
     void walSampleReplace(
         pgno_t pgno,
         size_t dstPos,
@@ -541,9 +549,8 @@ public:
 
     std::vector<std::shared_ptr<DbRootVersion> *> firstRoots();
 
-    // Returns position in vector of the one root ready to be updated. Updates
-    // vector entry to point that current version of root and adds new
-    // incomplete root as its next.
+    // Returns new incomplete root ready to be updated and it's position in
+    // vector of roots to be updated. First waits for a root to be ready.
     std::pair<std::shared_ptr<DbRootVersion>, size_t> beginUpdate(
         Lsx txnId,
         const std::vector<std::shared_ptr<DbRootVersion>> & roots
