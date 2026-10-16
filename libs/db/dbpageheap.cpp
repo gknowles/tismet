@@ -128,6 +128,8 @@ uint8_t * DbPageHeap::wptr(size_t pgno) {
 const uint8_t * DbPageHeap::ptr(size_t pgno) const {
     assert(!m_updatePtr || m_updatePgno != (pgno_t) pgno);
     auto page = m_txn.pin<DbPageHeader>((pgno_t) pgno);
+    assert(page->type == m_type);
+    assert(!m_rootId || page->id == m_rootId);
     return reinterpret_cast<const uint8_t *>(page + 1);
 }
 

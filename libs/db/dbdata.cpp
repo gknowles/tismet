@@ -131,7 +131,7 @@ pair<shared_ptr<DbRootVersion>, size_t> DbRootSet::beginUpdate(
         assert(!"Updating root using completed transaction.");
     }
 
-    // Wait for last update to this root to complete
+    // Wait for any one of the roots to be free of in progress updates.
     shared_ptr<DbRootVersion> root;
     size_t pos = 0;
     for (;;) {
@@ -920,7 +920,7 @@ bool DbData::freePage(
                 return false;
             }
         }
-        pages.pop_front();
+        pages.erase(pn);
         if (!pages)
             return true;
     }
