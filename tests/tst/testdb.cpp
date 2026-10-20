@@ -106,11 +106,11 @@ bool TestDbSeries::onDbSample(
 //===========================================================================
 static bool equalsExpected(
     TestDbSeries * samples,
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     const map<TimePoint, double> & expected
 ) {
-    dbGetSamples(samples, h, id);
+    dbGetSamples(samples, db, id);
     auto ix = expected.begin();
     auto i = 0;
     for (auto&& samp : samples->m_samples) {
@@ -129,11 +129,11 @@ static bool equalsExpected(
 //===========================================================================
 static bool endsWithExpected(
     TestDbSeries * samples,
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     const map<TimePoint, double> & expected
 ) {
-    dbGetSamples(samples, h, id);
+    dbGetSamples(samples, db, id);
     auto ix = expected.rbegin();
     auto i = 0;
     for (auto&& samp : ranges::reverse_view(samples->m_samples)) {
@@ -151,7 +151,7 @@ static bool endsWithExpected(
 
 //===========================================================================
 static DbStats reopen(
-    DbHandle * ph,
+    DbBase ** ph,
     DbContext * ctx,
     uint32_t id,
     string_view name,
@@ -181,15 +181,15 @@ static DbStats reopen(
 
 //===========================================================================
 static void addSamples(
-    DbHandle * ph,
+    DbBase ** ph,
     DbContext * ctx,
     uint32_t id,
     TimePoint start,
     string_view name,
     const vector<UpdateInfo> & vals
 ) {
-    DbHandle h = *ph;
-    assert(h == ctx->handle());
+    auto h = *ph;
+    assert(h == ctx->db());
     TestDbSeries samples;
     auto info = dbQueryInfo(h);
     auto stats = dbQueryStats(h);
@@ -221,7 +221,7 @@ static void addSamples(
 static void setFullSamplePage(
     uint32_t * id,
     map<TimePoint, double> * out,
-    DbHandle h,
+    DbBase * h,
     string name,
     TimePoint start
 ) {

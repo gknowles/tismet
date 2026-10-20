@@ -14,13 +14,13 @@ void tsPerfInitialize();
 // Data
 void tsDataInitialize();
 void tsDataBackup(IDbProgressNotify * notify);
-DbHandle tsDataHandle();
+DbBase * tsDataHandle();
 const Dim::Path & tsDataPath();
 
 // Returns false if the metric is not being stored
 bool tsDataInsertMetric(
     uint32_t * id,
-    DbHandle h,
+    DbBase * h,
     std::string_view name
 );
 

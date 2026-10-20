@@ -23,7 +23,7 @@ struct IDbDataNotify;
 *
 ***/
 
-struct DbHandle : Dim::HandleBase {};
+class DbBase;
 
 enum DbOpenFlags : unsigned {
     fDbOpenNew = 0x01,      // Must not already exist.
@@ -34,20 +34,20 @@ enum DbOpenFlags : unsigned {
 };
 // 'pageSize' is only used if new files are being created, use 0 for the same
 // size as system memory pages.
-DbHandle dbOpen(
+DbBase * dbOpen(
     std::string_view path,
     Dim::EnumFlags<DbOpenFlags> flags = {},
     size_t pageSize = 0
 );
 
-void dbClose(DbHandle h);
+void dbClose(DbBase * db);
 
 // Setting a parameter to zero causes that specific parameter to be unchanged.
 struct DbConfig {
     Dim::Duration checkpointMaxInterval;
     size_t checkpointMaxData;
 };
-void dbConfigure(DbHandle h, const DbConfig & conf);
+void dbConfigure(DbBase * db, const DbConfig & conf);
 
 enum DbSampleType : int8_t {
     kSampleTypeInvalid = 0,
@@ -68,7 +68,7 @@ struct DbInfo {
     Dim::EnumFlags<DbOpenFlags> flags;
     bool newFiles = false;
 };
-DbInfo dbQueryInfo(DbHandle h);
+DbInfo dbQueryInfo(const DbBase * db);
 
 struct DbStats {
     // Constant for life of database
@@ -81,7 +81,7 @@ struct DbStats {
     unsigned deprecatedPages;
     unsigned metrics;
 };
-DbStats dbQueryStats(DbHandle h);
+DbStats dbQueryStats(const DbBase * db);
 
 
 /****************************************************************************
@@ -95,34 +95,34 @@ DbStats dbQueryStats(DbHandle h);
 class DbContext : public Dim::NoCopy {
 public:
     DbContext() noexcept = default;
-    DbContext(DbHandle f);
+    DbContext(DbBase * db);
     ~DbContext();
 
-    DbHandle handle() const;
-    void reset(DbHandle f = {});
+    DbBase * db() const;
+    void reset(DbBase * db = {});
 
 private:
-    DbHandle m_f;
+    DbBase * m_db;
     uint64_t m_instance{0};
 };
 
 // Returns true if found.
-bool dbFindMetric(uint32_t * out, DbHandle h, std::string_view name);
+bool dbFindMetric(uint32_t * out, const DbBase * db, std::string_view name);
 
 void dbFindMetrics(
     Dim::UnsignedSet * out,
-    DbHandle h,
+    const DbBase * db,
     std::string_view pattern = {}  // empty name for all
 );
-const char * dbGetMetricName(DbHandle h, uint32_t id);
+const char * dbGetMetricName(const DbBase * db, uint32_t id);
 
 // Returns true if it completed synchronously.
-bool dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id);
+bool dbGetMetricInfo(IDbDataNotify * notify, const DbBase * db, uint32_t id);
 
 // Returns true if inserted, false if it already existed, sets out either way.
-bool dbInsertMetric(uint32_t * out, DbHandle h, std::string_view name);
+bool dbInsertMetric(uint32_t * out, DbBase * db, std::string_view name);
 
-void dbEraseMetric(DbHandle h, uint32_t id);
+void dbEraseMetric(DbBase * db, uint32_t id);
 
 struct DbMetricInfo {
     std::string name;          // readonly
@@ -136,7 +136,7 @@ struct DbMetricInfo {
 };
 // Removes all existing data when type or retention are changed.
 void dbUpdateMetric(
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     const DbMetricInfo & info
 );
@@ -144,10 +144,10 @@ void dbUpdateMetric(
 // Returns all branches containing metrics that match the pattern.
 void dbFindBranches(
     Dim::UnsignedSet * out,
-    DbHandle h,
+    const DbBase * db,
     std::string_view pattern = {}  // empty name for all
 );
-const char * dbGetBranchName(DbHandle h, uint32_t branchId);
+const char * dbGetBranchName(const DbBase * db, uint32_t branchId);
 
 
 /****************************************************************************
@@ -157,7 +157,7 @@ const char * dbGetBranchName(DbHandle h, uint32_t branchId);
 ***/
 
 void dbUpdateSample(
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     Dim::TimePoint time,
     double value
@@ -202,7 +202,7 @@ struct IDbDataNotify {
 // Returns true if it completed synchronously, false if the request was queued.
 bool dbGetSamples(
     IDbDataNotify * notify,
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     Dim::TimePoint first = {},
     Dim::TimePoint last = Dim::TimePoint::max(),
@@ -235,9 +235,9 @@ struct IDbProgressNotify {
 };
 
 // Returns false if backup is already running.
-bool dbBackup(IDbProgressNotify * notify, DbHandle h, std::string_view dst);
+bool dbBackup(IDbProgressNotify * notify, DbBase * db, std::string_view dst);
 
-void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable);
+void dbBlockCheckpoint(IDbProgressNotify * notify, DbBase * db, bool enable);
 
 
 /****************************************************************************

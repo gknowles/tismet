@@ -16,7 +16,7 @@ using namespace Dim;
 *
 ***/
 
-static DbHandle s_db;
+static DbBase * s_db;
 static auto & s_perfExpired = uperf("db.metrics expired");
 static auto & s_perfIgnored = uperf("db.samples ignored (rule)");
 
@@ -244,13 +244,13 @@ void tsDataBackup(IDbProgressNotify * notify) {
 }
 
 //===========================================================================
-DbHandle tsDataHandle() {
+DbBase * tsDataHandle() {
     assert(s_db);
     return s_db;
 }
 
 //===========================================================================
-bool tsDataInsertMetric(uint32_t * id, DbHandle f, string_view name) {
+bool tsDataInsertMetric(uint32_t * id, DbBase * f, string_view name) {
     assert(f);
     if (dbFindMetric(id, f, name))
         return true;

@@ -15,7 +15,7 @@
 *
 ***/
 
-void evalInitialize(DbHandle db);
+void evalInitialize(DbBase * db);
 
 struct IEvalNotify : IDbDataNotify {
     // Called after the last series for the query has ended.

@@ -55,7 +55,7 @@ public:
         Duration interval,
         vector<double> && samples
     );
-    void onTest(DbHandle h);
+    void onTest(DbBase * h);
 
     const string & name() const { return m_name; }
 
@@ -200,7 +200,7 @@ UnitTest & UnitTest::out(
 }
 
 //===========================================================================
-void UnitTest::onTest(DbHandle h) {
+void UnitTest::onTest(DbBase * h) {
     UnsignedSet ids;
     dbFindMetrics(&ids, h);
     for (auto && id : ids)

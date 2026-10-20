@@ -105,7 +105,7 @@ private:
 
 static CmdOpts s_opts;
 static DbProgressInfo s_progress;
-static DbHandle s_db;
+static DbBase * s_db;
 static DbWriter s_writer;
 
 
@@ -395,15 +395,15 @@ static void loadCmd(Cli & cli) {
     EnumFlags flags = fDbOpenAlways;
     if (s_opts.truncate)
         flags |= fDbOpenTrunc;
-    auto h = dbOpen(s_opts.database, flags, 512);
-    if (!h)
+    auto db = dbOpen(s_opts.database, flags, 512);
+    if (!db)
         return cli.fail(EX_ABORTED, "Canceled");
 
     DbConfig conf = {};
     conf.checkpointMaxData = 1'000'000'000;
     conf.checkpointMaxInterval = 24h;
-    dbConfigure(h, conf);
-    s_db = h;
+    dbConfigure(db, conf);
+    s_db = db;
     fileSize(&s_progress.totalBytes, s_opts.dumpfile);
     fileStreamBinary(&s_writer, s_opts.dumpfile, envMemoryConfig().pageSize);
     cli.fail(EX_PENDING);

@@ -72,7 +72,7 @@ public:
 *
 ***/
 
-static DbHandle s_db;
+static DbBase * s_db;
 
 static shared_mutex s_mut;
 static unordered_map<string_view, shared_ptr<SourceNode>> s_sources;
@@ -663,10 +663,10 @@ void ShutdownNotify::onShutdownServer(bool firstTry) {
 ***/
 
 //===========================================================================
-void evalInitialize(DbHandle f) {
+void evalInitialize(DbBase * db) {
     funcInitialize();
     shutdownMonitor(&s_cleanup);
-    s_db = f;
+    s_db = db;
 }
 
 //===========================================================================

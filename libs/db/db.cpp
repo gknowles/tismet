@@ -47,6 +47,8 @@ struct DbReq {
     double value;
 };
 
+} // namespace
+
 class DbBase
     : public HandleContent
     , IDbDataNotify
@@ -63,8 +65,8 @@ public:
     );
     void close();
     void configure(const DbConfig & conf);
-    DbInfo queryInfo();
-    DbStats queryStats();
+    DbInfo queryInfo() const;
+    DbStats queryStats() const;
     void blockCheckpoint(IDbProgressNotify * notify, bool enable);
     bool backup(IDbProgressNotify * notify, string_view dst);
 
@@ -138,8 +140,6 @@ private:
     DbWal m_wal; // MUST be last! (and destroyed first)
 };
 
-} // namespace
-
 
 /****************************************************************************
 *
@@ -147,25 +147,9 @@ private:
 *
 ***/
 
-static mutex s_mut;
-static HandleMap<DbHandle, DbBase> s_files;
-
 static auto & s_perfCreated = uperf("db.metrics created");
 static auto & s_perfDeleted = uperf("db.metrics deleted");
 static auto & s_perfTrunc = uperf("db.metric names truncated");
-
-
-/****************************************************************************
-*
-*   Helpers
-*
-***/
-
-//===========================================================================
-inline static DbBase * db(DbHandle h) {
-    scoped_lock lk{s_mut};
-    return s_files.find(h);
-}
 
 
 /****************************************************************************
@@ -238,7 +222,7 @@ void DbBase::configure(const DbConfig & conf) {
 }
 
 //===========================================================================
-DbInfo DbBase::queryInfo() {
+DbInfo DbBase::queryInfo() const {
     DbInfo out;
     out.datafile = filePath(m_page.dataFile());
     out.workfile = filePath(m_page.workFile());
@@ -249,7 +233,7 @@ DbInfo DbBase::queryInfo() {
 }
 
 //===========================================================================
-DbStats DbBase::queryStats() {
+DbStats DbBase::queryStats() const {
     return m_data.queryStats();
 }
 
@@ -362,8 +346,8 @@ bool DbBase::onFileRead(size_t * bytesUsed, const FileReadData & data) {
 ***/
 
 //===========================================================================
-DbContext::DbContext(DbHandle f) {
-    reset(f);
+DbContext::DbContext(DbBase * db) {
+    reset(db);
 }
 
 //===========================================================================
@@ -372,28 +356,23 @@ DbContext::~DbContext() {
 }
 
 //===========================================================================
-DbHandle DbContext::handle() const {
-    return m_f;
+DbBase * DbContext::db() const {
+    return m_db;
 }
 
 //===========================================================================
-void DbContext::reset(DbHandle f) {
-    if (!f && !m_instance) {
-        m_f = f;
+void DbContext::reset(DbBase * db) {
+    if (!db && !m_instance) {
+        m_db = db;
         return;
     }
 
-    scoped_lock lk{s_mut};
-    if (m_f && m_instance) {
-        if (auto * file = s_files.find(m_f))
-            file->releaseInstanceRef(m_instance);
-    }
-    m_f = f;
+    if (m_db && m_instance)
+        m_db->releaseInstanceRef(m_instance);
+    m_db = db;
     m_instance = 0;
-    if (f) {
-        if (auto * file = s_files.find(m_f))
-            m_instance = file->acquireInstanceRef();
-    }
+    if (db)
+        m_instance = db->acquireInstanceRef();
 }
 
 
@@ -617,25 +596,20 @@ bool DbBase::getSamples(
 ***/
 
 //===========================================================================
-DbHandle dbOpen(
+DbBase * dbOpen(
     string_view name,
     EnumFlags<DbOpenFlags> flags,
     size_t pageSize
 ) {
     auto db = make_unique<DbBase>();
     if (!db->open(name, flags, pageSize))
-        return DbHandle{};
+        return nullptr;
 
-    scoped_lock lk{s_mut};
-    auto h = s_files.insert(db.release());
-    return h;
+    return db.release();
 }
 
 //===========================================================================
-void dbClose(DbHandle h) {
-    unique_lock lk{s_mut};
-    auto db = s_files.release(h);
-    lk.unlock();
+void dbClose(DbBase * db) {
     if (db) {
         db->close();
         delete db;
@@ -663,117 +637,101 @@ DbSampleType fromString(std::string_view src, DbSampleType def) {
 }
 
 //===========================================================================
-void dbConfigure(DbHandle h, const DbConfig & conf) {
-    auto ptr = db(h);
-    ptr->configure(conf);
+void dbConfigure(DbBase * db, const DbConfig & conf) {
+    db->configure(conf);
 }
 
 //===========================================================================
-DbInfo dbQueryInfo(DbHandle h) {
-    auto ptr = db(h);
-    return ptr->queryInfo();
+DbInfo dbQueryInfo(const DbBase * db) {
+    return db->queryInfo();
 }
 
 //===========================================================================
-DbStats dbQueryStats(DbHandle h) {
-    auto ptr = db(h);
-    return ptr->queryStats();
+DbStats dbQueryStats(const DbBase * db) {
+    return db->queryStats();
 }
 
 //===========================================================================
-void dbBlockCheckpoint(IDbProgressNotify * notify, DbHandle h, bool enable) {
-    auto ptr = db(h);
-    ptr->blockCheckpoint(notify, enable);
+void dbBlockCheckpoint(IDbProgressNotify * notify, DbBase * db, bool enable) {
+    db->blockCheckpoint(notify, enable);
 }
 
 //===========================================================================
-bool dbBackup(IDbProgressNotify * notify, DbHandle h, string_view dst) {
-    auto ptr = db(h);
-    return ptr->backup(notify, dst);
+bool dbBackup(IDbProgressNotify * notify, DbBase * db, string_view dst) {
+    return db->backup(notify, dst);
 }
 
 //===========================================================================
-unique_ptr<DbContext> dbNewContext(DbHandle f) {
-    auto ptr = make_unique<DbContext>(f);
+unique_ptr<DbContext> dbNewContext(DbBase * db) {
+    auto ptr = make_unique<DbContext>(db);
     return ptr;
 }
 
 //===========================================================================
-bool dbInsertMetric(uint32_t * out, DbHandle h, string_view name) {
-    auto ptr = db(h);
-    return ptr->insertMetric(out, name);
+bool dbInsertMetric(uint32_t * out, DbBase * db, string_view name) {
+    return db->insertMetric(out, name);
 }
 
 //===========================================================================
-void dbEraseMetric(DbHandle h, uint32_t id) {
-    auto ptr = db(h);
-    ptr->eraseMetric(id);
+void dbEraseMetric(DbBase * db, uint32_t id) {
+    db->eraseMetric(id);
 }
 
 //===========================================================================
-void dbUpdateMetric(DbHandle h, uint32_t id, const DbMetricInfo & info) {
-    auto ptr = db(h);
-    ptr->updateMetric(id, info);
+void dbUpdateMetric(DbBase * db, uint32_t id, const DbMetricInfo & info) {
+    db->updateMetric(id, info);
 }
 
 //===========================================================================
-const char * dbGetMetricName(DbHandle h, uint32_t id) {
-    auto ptr = db(h);
-    return ptr->getMetricName(id);
+const char * dbGetMetricName(const DbBase * db, uint32_t id) {
+    return db->getMetricName(id);
 }
 
 //===========================================================================
-bool dbGetMetricInfo(IDbDataNotify * notify, DbHandle h, uint32_t id) {
-    auto ptr = db(h);
-    return ptr->getMetricInfo(notify, id);
+bool dbGetMetricInfo(IDbDataNotify * notify, const DbBase * db, uint32_t id) {
+    return db->getMetricInfo(notify, id);
 }
 
 //===========================================================================
-bool dbFindMetric(uint32_t * out, DbHandle h, string_view name) {
-    auto ptr = db(h);
-    return ptr->findMetric(out, name);
+bool dbFindMetric(uint32_t * out, const DbBase * db, string_view name) {
+    return db->findMetric(out, name);
 }
 
 //===========================================================================
-void dbFindMetrics(UnsignedSet * out, DbHandle h, string_view name) {
-    auto ptr = db(h);
-    ptr->findMetrics(out, name);
+void dbFindMetrics(UnsignedSet * out, const DbBase * db, string_view name) {
+    db->findMetrics(out, name);
 }
 
 //===========================================================================
-const char * dbGetBranchName(DbHandle h, uint32_t id) {
-    auto ptr = db(h);
-    return ptr->getBranchName(id);
+const char * dbGetBranchName(const DbBase * db, uint32_t id) {
+    return db->getBranchName(id);
 }
 
 //===========================================================================
-void dbFindBranches(UnsignedSet * out, DbHandle h, string_view name) {
-    auto ptr = db(h);
-    ptr->findBranches(out, name);
+void dbFindBranches(UnsignedSet * out, const DbBase * db, string_view name) {
+    db->findBranches(out, name);
 }
 
 //===========================================================================
 void dbUpdateSample(
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     TimePoint time,
     double value
 ) {
-    auto ptr = db(h);
-    ptr->updateSample(id, time, value);
+    db->updateSample(id, time, value);
 }
 
 //===========================================================================
 bool dbGetSamples(
     IDbDataNotify * notify,
-    DbHandle h,
+    DbBase * db,
     uint32_t id,
     TimePoint first,
     TimePoint last,
     unsigned presamples
 ) {
-    auto ptr = db(h);
-    return ptr->getSamples(notify, id, first, last, presamples);
+    return db->getSamples(notify, id, first, last, presamples);
 }
 
 
